@@ -1,0 +1,90 @@
+# Klaverjas
+
+Klaverjassen in the browser: the Dutch trick-taking card game for four players
+in two pairs, with friends, with bots, or both. The interface is entirely in
+Dutch. It runs at <https://klaverjas.kroes.dev>.
+
+## Features
+
+- **Start in one tap.** *Snel spelen* starts a game against three bots at once.
+  A hosted game gets a four-letter code and a link (`/ABCD`); friends join by
+  typing the code or opening the link, and only need to give a name.
+- **The rules as played in Dutch cafés**: Utrechts (voorhand chooses trump) or
+  gedraaid (a turned suit to play or pass), with Amsterdams or Rotterdams
+  trumping; roem on the table, nat and pit, scored over a *boompje* of 16 hands
+  or another length. Illegal cards cannot be played, and the game says why.
+- **Eight bots with a character of their own**, from Opa Henk to Bakker Lies,
+  shown as "Naam (AI)", at three strengths. The strongest counts cards, infers
+  voids and gives and reads signals. They fill empty seats and chat in
+  character.
+- **Easy to follow**: cards fly to the table, the winning card lights up, tricks
+  slide to their winner, roem and trump get a banner, and short pauses let
+  every move register. Sound effects are synthesised in the browser.
+- **Score sheet, last trick and the whole previous hand** to look back on;
+  chat with quick reactions.
+- **Handleiding**: the controls, the rules, card values, roem, signals
+  (*seinen*), tips and a glossary.
+- **Oefenen**: a training game with Juf Ans as partner, hints on every turn,
+  an explanation after every trick, and optionally all cards face up.
+- Built for phones (touch, portrait and landscape), tablets and desktop
+  browsers (mouse and keyboard).
+
+## Playing it locally
+
+The host needs only podman and make: the Go toolchain runs in a container
+(`scripts/go`).
+
+```sh
+make dev     # the server from source, serving web/, on http://127.0.0.1:18093/
+```
+
+The first start compiles for a minute; Ctrl-C stops it. Other players on your
+network cannot join this one, because it listens on loopback.
+
+## Tests
+
+```sh
+make test       # go vet, the Go tests (-short) and the JS unit tests
+make test-all   # also the bot arena: sterk must beat normaal must beat makkelijk
+make e2e        # full games over the websocket against the server from source
+```
+
+Browser checks with Puppeteer live in `test/ui` and run against a server
+(`scripts/dev-server PORT`) and a headless Chromium (`scripts/chrome PORT`):
+
+```sh
+cd test/ui
+node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # full games by tapping, reload, rematch
+node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
+node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at five sizes, into test/ui/out/
+```
+
+## How it is built
+
+- `internal/game`: the rules engine, pure and exhaustively tested: legal moves
+  for both rule sets, tricks, roem, scoring and the state machine of one hand.
+- `internal/bot`: the personalities, the three playing strengths (the strongest
+  uses determinised Monte Carlo playouts), the training hints and chat.
+- `internal/server`: rooms with codes, the websocket protocol, pacing, chat and
+  limits. Each room is one goroutine; all state is in memory.
+- `cmd/klaverjas`: the binary, which ties the bots to the server.
+- `web/`: the frontend, plain ES modules and CSS with no build step and nothing
+  loaded from other sites, so a strict Content Security Policy applies.
+
+[`docs/design.md`](docs/design.md) is the contract between these parts: the
+rules as implemented, the Go APIs, the wire protocol, the interface and the
+deployment.
+
+## Deployment
+
+Two images from one `Containerfile`, a static Go binary `FROM scratch` and
+nginx-unprivileged with the frontend, run as one rootless podman pod from
+quadlet units, behind Nginx Proxy Manager:
+
+```sh
+make install    # the pod and container units, for your user
+make deploy     # build both images, restart, check health
+```
+
+[`deploy/README-deploy.md`](deploy/README-deploy.md) covers the first setup,
+the proxy host, day-to-day operation and what is exposed.

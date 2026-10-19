@@ -4,7 +4,9 @@
 set -eu
 port=${1:?usage: chrome PORT}
 podman rm -f "kj-chrome-$port" >/dev/null 2>&1 || true
-podman run -d --rm --name "kj-chrome-$port" --network host \
+# Room in /dev/shm for the compositor: with the default 64 MB, large pages
+# with many animated layers stall the renderer.
+podman run -d --rm --name "kj-chrome-$port" --network host --shm-size=1g \
   docker.io/zenika/alpine-chrome:124 --headless --no-sandbox --disable-gpu \
   --autoplay-policy=no-user-gesture-required \
   --remote-debugging-address=127.0.0.1 --remote-debugging-port="$port" about:blank >/dev/null

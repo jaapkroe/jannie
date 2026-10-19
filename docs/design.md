@@ -28,7 +28,7 @@ internal/bot/              bot personalities, play levels, hints/advice, chat li
 internal/server/           rooms, codes, websocket protocol, pacing, chat, limits
 web/                       static frontend, vanilla ES modules, no build step
   index.html  favicon.svg  manifest.webmanifest
-  css/app.css  css/cards.css
+  css/app.css  css/cards.css  css/manual.css
   js/main.js … (app modules)  js/cards.js  js/sound.js  js/manual.js
 test/e2e/                  node scripts that play full games over the websocket
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored)
@@ -96,7 +96,9 @@ Let `led` be the suit of the first card in the trick.
 4. **Other suit led, you don't have it, you have trumps**:
    - `rotterdams`: you must trump, always (also when your partner is winning).
      Must overtrump if you can beat the highest trump in the trick; if you cannot,
-     you must still play a (lower) trump.
+     play a non-trump card; only if you hold nothing but lower trumps, undertrump
+     (Wikipedia: "Ondertroeven mag alléén als men geen andere kleur kaarten dan
+     lagere troeven in handen heeft").
    - `amsterdams` (default):
      - partner currently winning the trick: free choice among non-trump cards and
        trumps that beat the highest trump in the trick; *ondertroeven* (a trump
@@ -246,14 +248,52 @@ type HandResult struct {
 
 type View struct {
     Seat Seat; Hand []Card; Dealer Seat; Voorhand Seat
-    Mode TrumpMode; Rules Rules; Phase Phase
+    Mode TrumpMode; Rules Rules; Phase Phase; Turn Seat   // Turn: NoSeat when done
     Trump Suit; TrumpKnown bool; TrumpBy Seat; PlayingTeam int
     Turned Suit; Bids [4]int; Forced bool
     Current Trick; Tricks []Trick          // full history of this hand (bots may remember)
     Legal []Card                           // when it is Seat's turn in phase play
-    HandNo, HandsTotal int; MatchScore [2]int
+    HandNo, HandsTotal int; MatchScore [2]int   // zero from Deal.View; the server fills them
 }
 ```
+
+Semantics and additions (implemented in `internal/game`):
+
+- `View.Current` is the trick the next card goes into: once a trick is complete
+  it is already the next, empty trick led by the winner (the completed one is the
+  last of `View.Tricks`); when done it is the last trick. `Deal.Current()` keeps
+  the complete trick until the next `Play` (for display). `LegalMoves` and friends
+  treat a complete trick as empty (next card leads).
+- `Deal.Tricks()` includes a completed trick that is still `Current()`.
+- `HandResult.Roem` includes the `PitBonus` (100); `Deal.HandRoem()` does not.
+- Errors (Dutch texts, safe to show): `ErrWrongPhase`, `ErrNotYourTurn`,
+  `ErrBadSuit`, `ErrTurnedSuit`, `ErrNotInHand`, `ErrIllegal`; `Play` returns
+  `*IllegalError{Card, Reason}` (Reason = `ExplainIllegal` text,
+  `errors.Is(err, ErrIllegal)`).
+- Constants/names: `NumSuits`, `NumRanks`, `NoSeat` (-1), `PhaseTrump/Bid/Play/Done`,
+  `RoemDrie/Vier/Stuk/VierGelijk/VierBoeren`, `PitBonus`, `LastTrickBonus`;
+  `Suit.Symbol()` "♥", `Suit.Red()`, `Rank.NameNL()` "boer", `Rank.Letter()` "B",
+  `CardShortNL(c)` "♥B", `RoemItem.NameNL()` "stuk"/"driekaart"/"vier gelijke",
+  `Rules.NameNL()`/`TrumpMode.NameNL()`, `ParseRules`, `ParseTrumpMode`,
+  `Seat.Valid()`, `Card.Valid()`, `Card.Index()`/`CardFromIndex` (0..31),
+  `MustParseCards("JH 9H")` (tests); all these types also implement
+  `encoding.TextMarshaler`.
+- Rules helpers: `Order(c, trump)` (0..7 within suit), `TrumpOrder(r)`,
+  `PlainOrder(r)`, `CardPoints(cards, trump)`, `ScoreHand(playingTeam, points,
+  roem) (score, nat)`, `Trick.Complete()`, `Trick.Next()` (seat to play),
+  `Trick.WinningCard(trump)`, `Trick.RoemTotal()`; `Trick` marshals empty
+  `cards`/`roem` as `[]`.
+- Fast paths for simulation (no allocations): `AppendLegalMoves(dst, hand, trick,
+  seat, trump, rules)`, `IsLegal(card, hand, trick, seat, trump, rules)`,
+  `AppendTrickRoem(dst, cards, trump)`, `RoemPoints(cards, trump)`;
+  `Deal` holds no slices or maps, so `*dst = *src` (or `d.Clone()`) is a full
+  independent copy; `d.AppendLegal(dst)`/`d.Legal()` for the seat on turn,
+  `d.AppendHand(dst, seat)`, `d.HandLen(seat)`, `d.TrickCount()`.
+  `Resume(v View, hands [4][]Card) (*Deal, error)` rebuilds a deal in phase play
+  from a view plus every seat's remaining cards (e.g. sampled hidden hands).
+- Deal accessors for the server: `Dealer()`, `Voorhand()`, `Mode()`, `Rules()`,
+  `TricksWon() [2]int`, `HandPoints() [2]int` (incl. last trick),
+  `HandRoem() [2]int`.
 
 Tests in `internal/game` are table-driven and exhaustive for: legal moves in
 both rule sets (all branches above), trick winner, roem (each kind, combos,
@@ -264,7 +304,8 @@ choice, turn order, last-trick bonus, 162 total).
 ### 4.2 `internal/bot`
 
 ```go
-type Level int  // Makkelijk, Normaal, Sterk; func ParseLevel("normaal")
+type Level int  // Makkelijk, Normaal, Sterk; String() "normaal"
+func ParseLevel(s string) (Level, error)    // "makkelijk"|"normaal"|"sterk"; error → Normaal
 type Persona struct {
     ID, Name, Emoji, Color, Bio string   // Name without "(AI)"; Bio is Dutch, one line
     Aggression float64  // 0..1: willingness to play/choose trump on weaker hands, to go for pit
@@ -288,7 +329,7 @@ type Advice struct {
 }
 func Advise(v game.View) Advice
 // Dutch explanation of a finished trick for training tips:
-// "Fatima (AI) wint de slag met ♥B (troef). 25 punten, roem: stuk (20)."
+// "Fatima (AI) wint de slag met ♥B, de hoogste troef. 25 punten, roem: stuk (20)."
 func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
 
 // Personality chat. Returns "" for silence; the server rate-limits on top.
@@ -322,11 +363,34 @@ hands between levels and asserts sterk > normaal > makkelijk in average points.
 
 ### 4.3 `internal/server`
 
+`internal/server` does **not** import `internal/bot`: it defines the interface
+it needs, and `cmd/klaverjas/ai.go` adapts package `bot` to it. Server tests
+use a fake AI (first legal card), so the two packages build independently.
+
 ```go
+type Persona struct{ ID, Name, Emoji, Color, Bio string; Chattiness, Speed float64 }
+type Brain interface {
+    ChooseTrump(v game.View) game.Suit
+    Bid(v game.View) bool
+    Play(v game.View) game.Card
+}
+type Advice struct{ Card *game.Card; Suit *game.Suit; Play *bool; Text string }
+type ChatEvent struct{ Kind string; Mine bool; Text string; Points int } // as bot.ChatEvent
+type AI interface {
+    Personas() []Persona
+    NewBrain(personaID, level string, seed uint64) Brain   // level "makkelijk"|"normaal"|"sterk";
+                                                           // personaID "" = neutral substitute for an away human
+    Advise(v game.View) Advice
+    ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
+    Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
+}
 type Config struct {
+    AI   AI
     Fast bool           // scale all delays by 0.05 (tests)
     MaxRooms int        // default 500
     AllowedOrigins []string // websocket Origin patterns besides same-host
+    Version  string     // reported by /api/health {ok, version, rooms, players}
+    Logger   *slog.Logger // nil: slog.Default()
 }
 func New(cfg Config) *Server
 func (s *Server) Handler() http.Handler   // /ws, /api/health
@@ -334,7 +398,8 @@ func (s *Server) Shutdown(ctx context.Context)
 ```
 
 `cmd/klaverjas` flags: `-addr 127.0.0.1:8081`, `-static DIR` (dev only: also
-serve the frontend, with the same `/^[A-Z]{4}$/` → index.html rule as nginx),
+serve the frontend, with the same `/^[A-Za-z]{4}$/` → index.html rule as nginx,
+`Cache-Control: no-cache` and the nginx CSP),
 `-fast`, `-origin PATTERN` (repeatable), `-healthcheck` (GET
 `http://127.0.0.1:8081/api/health`, exit 0/1; the scratch image has no curl).
 Logs with `log/slog` to stdout. Never log chat text or tokens.
@@ -364,7 +429,9 @@ Chat lines are Dutch, short, in character, varied (≥ 4 lines per event kind
 per persona where it fits), never revealing a bot's hidden cards. Bots greet
 on game start, react to roem, nat, pit and game end, and occasionally reply to
 human chat ("hoi", "goed gespeeld", "gg", "haha"…). The server allows a bot at
-most one line per trick and one per 8 s, scaled by Chattiness.
+most one line per trick and one per 8 s, scaled by Chattiness (the gap is
+8 s / max(Chattiness, 0.2)); per event at most one bot speaks (two for the
+greeting and game end), and about 60% of human lines get a reply attempt.
 
 ## 6. Server behaviour
 
@@ -372,9 +439,11 @@ most one line per trick and one per 8 s, scaled by Chattiness.
 
 - Code: 4 letters from `ABCDEFGHJKLMNPQRSTUVWXYZ` (no I, O), unique among live
   rooms, case-insensitive on input. Join link: `https://klaverjas.kroes.dev/ABCD`.
-- Creator sits at seat 0 and is host. If the host leaves, the next human becomes
-  host. A room is removed after 30 min with no connected human, or 30 min after
-  game over; max 500 rooms (`Config.MaxRooms`), error when full.
+- Creator sits at seat 0 and is host. If the host leaves, or stays disconnected
+  for 30 s while another human is connected, the next human becomes host. A room
+  is removed after 30 min with no connected human, or 30 min after game over
+  (players still connected get `onbekend`), and at once when the last human
+  leaves its lobby; max 500 rooms (`Config.MaxRooms`), error when full.
 - Bots in the lobby: when `humans < 4`, seats are prefilled with random distinct
   personas so that remaining human seats are partners where possible
   (`humans`=2 → bots at 1 and 3; 3 → bot at 3; 1 → bots at 1,2,3). Changing
@@ -387,10 +456,18 @@ most one line per trick and one per 8 s, scaled by Chattiness.
   seat (a human left; a bot plays it meanwhile), else error `gestart`.
 - Reconnect: `join` with the room's code and the seat token returns you to your
   seat, mid-game included.
-- A human who disconnects keeps the seat. If it is their turn and they are still
-  away after 20 s, a substitute bot (level normaal) plays for them
-  (`away: true`) until they return. Explicit `leave` mid-game vacates the seat.
-- If no human is connected, the game pauses (bots do not play).
+- A human who disconnects keeps the seat (event `away`, `connected: false`). If
+  it is their turn and they are still away after 20 s, a substitute bot (level
+  normaal) plays for them (a second `away` event, `away: true`) until they
+  return (`back`). Explicit `leave` mid-game (or at game over) vacates the seat:
+  a random persona at the room's level plays it (system line "… neemt het
+  over") until a joiner takes it over. A second connection that joins with the
+  same token takes the seat over; the old one gets `onbekend`.
+- If no human is connected, the game pauses (bots do not play, the hand summary
+  waits); when someone returns, bots think again and the summary countdown
+  restarts.
+- System chat lines (`sys`, seat -1): start, joining, leaving (and which bot
+  takes over), away/back of a substitute, host changes, rematch.
 
 ### Pacing (ms, scaled by tempo; `-fast` multiplies everything by 0.05)
 
@@ -403,6 +480,11 @@ most one line per trick and one per 8 s, scaled by Chattiness.
 | hand summary before auto-continue (unless all humans `ready`) | 15000 | 12000 | 8000 |
 
 During a pause nobody may act (`turn` is -1). Humans have no time limit.
+Pauses start with `deal`, `trump` (and a `bid` with `play: true`), `trick` and
+`handEnd`. A pause ends with the event that follows it (`turned` opens the
+bidding in gedraaid, `collect` gives the lead to the winner, `deal` or
+`gameOver` after the summary), or else with an update whose `ev` is null that
+opens the turn (utrechts after the deal; voorhand's first lead after trump).
 
 ### Limits
 
@@ -410,7 +492,10 @@ WebSocket messages ≤ 4 KiB; per connection ≤ 20 messages/s (excess:
 disconnect); chat ≤ 200 characters, 1 per second with burst 5; names 1–20
 characters, control characters stripped, trimmed (empty → "Speler"); room
 creation ≤ 20 per 10 minutes per client IP (`X-Real-IP` from nginx, else remote
-address); ≤ 16 websocket connections per IP. WebSocket `Origin` must match
+address; over the limit, or `MaxRooms` reached: error `te-veel-spellen`); ≤ 16
+websocket connections per IP (more: HTTP 429 before the upgrade). Chat over the
+limit: error `limiet`; over the message rate: error `limiet`, then the server
+closes the connection (status 1008). WebSocket `Origin` must match
 the Host (coder/websocket default) or an `-origin` pattern. Server pings every
 25 s (nginx and NPM time out idle proxied connections at 60 s).
 
@@ -452,14 +537,19 @@ rotates so `you` is at the bottom.
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
 
-Error codes: `onbekend` (no such room), `vol`, `gestart`, `geen-host`,
+Error codes: `onbekend` (no such room, or no longer in it: room removed, seat
+taken over by another window), `vol`, `gestart`, `geen-host`,
 `niet-jouw-beurt`, `ongeldig` (bad card/suit/fields; `msg` from
 `ExplainIllegal` for cards), `limiet` (rate limit), `te-veel-spellen`, `herstart`
 (server restarting; client reconnects after a delay).
 
 Every state change is one `update`: the client queues updates, animates `ev`
 from its previous state to `s`, then renders `s`. A resync (join, reconnect)
-is an `update` with `ev: null`. `seq` increases per room.
+is an `update` with `ev: null`; so is a change without animation (a pause ends
+and a turn opens, `ready` flags, a host change). `seq` increases per room with
+every event; a resync carries the current `seq` (the joiner gets `ev: null`
+where the others get `join`/`back` with the same `seq`). A choice by `bid` with
+`play: true` sends `bid`, then `trump`.
 
 ### Events (`ev.type`)
 
@@ -485,6 +575,7 @@ is an `update` with `ev: null`. `seq` increases per room.
   "opts": { "humans":4, "hands":16, "trumpMode":"utrechts", "rules":"amsterdams",
             "ai":"normaal", "tempo":"normaal", "open":false },
   "training": false, "you": 0, "host": 0,
+  "roster": [ {"id":"henk","name":"Opa Henk","emoji":"👴","color":"#8a5a2b","bio":"…"} ],  // lobby only: bot picker
   "players": [ // always 4 entries; null = empty seat
     { "name":"Piet", "bot":false, "botId":"", "emoji":"", "color":"",
       "connected":true, "away":false, "cards":8, "ready":false },
@@ -512,7 +603,23 @@ is an `update` with `ev: null`. `seq` increases per room.
 ```
 
 `HandResult` JSON: `{"playingTeam":0,"trumpBy":2,"trump":"H","dealer":1,
-"points":[104,58],"roem":[20,0],"score":[124,0],"nat":false,"pit":false,"pitTeam":-1}`.
+"points":[104,58],"roem":[20,0],"score":[124,58],"nat":false,"pit":false,"pitTeam":-1}`.
+
+Every key above is always present, except `roster` (lobby only) and `legal` and
+`rule` (only on your turn in phase `play`). Further:
+
+- `turned`: the turned suit in gedraaid from the deal on (the `turned` event
+  opens the bidding), else null.
+- `trick`: null outside `trump`/`bid`/`play`; a complete trick stays until
+  `collect`, then it is the empty next trick led by the winner (`turn` = winner).
+  Tricks carry `points` and `roem` too (0 and `[]` while in progress).
+- `lastTrick`: the latest completed trick of this hand (null after a new deal;
+  kept through `handEnd` and `gameOver`).
+- `hand` is `[]` and `turn` -1 outside a hand; during `handEnd`/`gameOver`,
+  `dealer`, `voorhand`, `trump`, `trumpBy`, `playingTeam`, `tricksWon`,
+  `handPoints` and `handRoem` still describe the finished hand.
+- `players[i].cards` is 0 outside a hand; `ready` only counts in `handEnd`.
+- `hint` and `hands4` are null unless they apply; `hint.text` is always set.
 
 ## 8. Seinen (signals) — used by sterk bots and explained in the manual
 
@@ -533,8 +640,9 @@ Vanilla ES modules, no framework, no build step, no inline `<script>`/`<style>`
 and no `style="…"` attributes or `setAttribute('style')` (CSP `style-src
 'self'`; setting `el.style.x` from JS is fine). Build DOM with
 `document.createElement`/`textContent`; never `innerHTML` with user or server
-text. At most ~14 files fetched per page load (NPM allows bursts of 20
-requests): keep app JS to ≤ 7 modules. No service worker. System font stack.
+text. At most 16 requests per page load in total, the websocket included (NPM
+allows bursts of 20 per address): html, 3 css, favicon, manifest, ≤ 6 app
+modules, cards.js, sound.js, manual.js. No service worker. System font stack.
 `localStorage` access wrapped in try/catch (keys prefixed `kj.`).
 
 ### Module contracts shared between agents
@@ -551,13 +659,18 @@ export function createCard(code, opts={}) // → HTMLElement .card; opts: {size:
 export function createBack(opts={})       // → HTMLElement .card.back
 // Card size scales with the CSS custom property --card-w on any ancestor (height = 1.4 × width).
 // Four-colour deck when an ancestor has class .four-color (♣ green, ♦ blue/orange).
+// Extras: parseCard(code) → {rank,suit}|null; suitIcon(suit, {colored}) → <svg.suit-icon> (1em);
+//   createBack({size, color:'blue'|'red'}). State classes: .legal .selected (lifted) .disabled
+//   .hint (pulsing glow) .winner (gold ring) .selectable (hover/press only); they use the
+//   individual `translate`/`scale` properties, so layout may use `transform`. Cards < 60 px wide
+//   show a compact face (big index + one big pip).
 
 // web/js/sound.js — synthesised with WebAudio, no audio files
 export const sound = {
-  unlock(),            // call on the first user gesture
+  unlock(),            // call on the first user gesture (also self-armed on any gesture); Promise, never rejects
   play(name),          // 'card','deal','shuffle','trick','trickWon','roem','trump','turn','chat',
                        // 'nat','pit','handWon','handLost','win','lose','click','error','join'
-  setMuted(bool), isMuted(), setVolume(0..1)    // persisted in localStorage kj.sound
+  setMuted(bool), isMuted(), setVolume(0..1), getVolume()   // persisted in localStorage kj.sound
 };
 
 // web/js/manual.js — the in-game handleiding (Dutch content + renderer)
@@ -565,6 +678,7 @@ export const SECTIONS = [ {id:'bediening',title:'Bediening'}, {id:'regels',title
   {id:'punten',title:'Kaartwaarden'}, {id:'roem',title:'Roem'}, {id:'seinen',title:'Seinen & voorkaarten'},
   {id:'tips',title:'Tips'}, {id:'woorden',title:'Woordenlijst'} ];
 export function renderManual(sectionId) // → HTMLElement with that section's content (uses cards.js for illustrations)
+// Styles for the manual content live in web/css/manual.css (classes prefixed man-).
 ```
 
 ### Screens and flows (minimal clicks)
@@ -621,9 +735,14 @@ export function renderManual(sectionId) // → HTMLElement with that section's c
   script-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self';
   object-src 'none'; form-action 'none'`, nosniff, Referrer-Policy,
   Permissions-Policy, COOP); `Cache-Control: no-cache` for html/js/css (ETag
-  revalidation) so a deploy is picked up at once; gzip; `X-Real-IP` forwarding.
+  revalidation) so a deploy is picked up at once; gzip; `X-Real-IP` forwarding:
+  NPM's `X-Real-IP` is trusted from `127.0.0.1` only and passed on as the one
+  client address (`X-Forwarded-For` is dropped); `Host` is passed unchanged
+  (`$http_host`), which the websocket Origin check compares against.
 - Quadlets rendered by `make install` into `~/.config/containers/systemd/`:
-  `klaverjas.pod` (`PublishPort=127.0.0.1:8093:8080`), `klaverjas-web.container`,
+  `klaverjas.pod` (`PublishPort=127.0.0.1:8093:8080`; `Network=pasta:--host-lo-to-ns-lo`,
+  so NPM's connections arrive from `127.0.0.1` instead of the host's LAN
+  address), `klaverjas-web.container`,
   `klaverjas-server.container` (`Pod=klaverjas.pod`, `Pull=never`, `ReadOnly`,
   `NoNewPrivileges`, `DropCapability=ALL`, health checks).
 - `Makefile` like `/storage/CLIC/ISMS/Makefile`: `help test image install deploy

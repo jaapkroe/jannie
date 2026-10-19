@@ -1,0 +1,16 @@
+{
+  "name": "Klaverjas",
+  "short_name": "Klaverjas",
+  "description": "Klaverjassen online met vrienden of tegen AI-spelers met karakter.",
+  "lang": "nl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b2b21",
+  "theme_color": "#0b2b21",
+  "categories": ["games"],
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

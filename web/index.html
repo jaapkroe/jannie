@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Klaverjas</title>
+<meta name="description" content="Klaverjassen online: speel met vrienden of tegen AI-spelers met karakter. Gratis, zonder account, op je telefoon, tablet of computer.">
+<meta name="theme-color" content="#0b2b21">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Klaverjas">
+<meta name="format-detection" content="telephone=no">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/css/app.css">
+<link rel="stylesheet" href="/css/cards.css">
+<link rel="stylesheet" href="/css/manual.css">
+<link rel="modulepreload" href="/js/util.js">
+<link rel="modulepreload" href="/js/cards.js">
+<link rel="modulepreload" href="/js/sound.js">
+<link rel="modulepreload" href="/js/manual.js">
+<link rel="modulepreload" href="/js/net.js">
+<link rel="modulepreload" href="/js/table.js">
+<link rel="modulepreload" href="/js/panels.js">
+<link rel="modulepreload" href="/js/home.js">
+<script type="module" src="/js/main.js"></script>
+</head>
+<body data-screen="home">
+<div id="app">
+  <section id="home" class="screen screen-home" aria-label="Start">
+    <div class="home-inner">
+      <header class="logo">
+        <div class="logo-suits" aria-hidden="true"><span class="ls-c">♣</span><span class="ls-d">♦</span><span class="ls-h">♥</span><span class="ls-s">♠</span></div>
+        <h1>Klaverjas</h1>
+        <p class="tagline">Met vrienden of tegen AI-spelers met karakter</p>
+      </header>
+      <div id="boot" class="boot" aria-hidden="true"><span></span><span></span><span></span></div>
+      <p id="boot-slow" class="boot-slow" role="status">Duurt het laden lang? Wacht even, of laad de pagina over een paar seconden opnieuw.</p>
+      <noscript><p class="noscript">Zet JavaScript aan om te kunnen klaverjassen.</p></noscript>
+    </div>
+  </section>
+  <section id="lobby" class="screen screen-lobby" aria-label="Tafel klaarzetten"></section>
+  <section id="game" class="screen screen-game" aria-label="Speltafel"></section>
+</div>
+<div id="fly" aria-hidden="true"></div>
+<div id="modals"></div>
+<div id="toasts" aria-live="polite"></div>
+<div id="net-banner" class="net-banner" role="status" hidden><span class="spin" aria-hidden="true"></span>Verbinding verbroken, opnieuw verbinden...</div>
+</body>
+</html>

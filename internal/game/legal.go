@@ -1,0 +1,265 @@
+package game
+
+// need is what the rules demand of the next card.
+type need uint8
+
+const (
+	needFree        need = iota // any card
+	needSuit                    // a card of the led (non-trump) suit
+	needTrump                   // any trump
+	needHigherTrump             // a trump above the highest trump in the trick
+	needNoUnder                 // anything except a trump below the trick's highest trump
+	needNonTrump                // a non-trump card (undertrumping is not allowed)
+)
+
+// reason is why: it selects the Dutch explanation.
+type reason uint8
+
+const (
+	rLead            reason = iota // first card of the trick
+	rFollow                        // side suit led and you have it
+	rTrumpOver                     // trump led, you can beat the highest trump
+	rTrumpUnder                    // trump led, you cannot beat it: any trump
+	rTrumpLedNone                  // trump led, you have none
+	rVoidNoTrump                   // cannot follow, no trump
+	rMustTrump                     // cannot follow, no trump in the trick yet
+	rMustOvertrump                 // cannot follow, beat the trick's trump
+	rCannotOvertrump               // cannot follow or overtrump: play another suit
+	rOnlyLowerTrumps               // nothing but lower trumps left: undertrump
+	rPartnerFree                   // Amsterdams: partner wins, free choice (no undertrump)
+)
+
+// situation is the rules' verdict for one player at one moment.
+type situation struct {
+	need     need
+	why      reason
+	led      Suit
+	trump    Suit
+	high     int8 // trump order of the trick's highest trump, -1 if none
+	best     Card // card winning the trick so far
+	partner  bool // partner is winning the trick
+	hasLower bool // hand holds trumps below the trick's highest trump
+	hasOther bool // hand holds non-trump cards
+}
+
+// judge determines what the player holding hand must play into the trick
+// described by ti. It does not allocate.
+func judge(hand []Card, ti *trickInfo, seat Seat, trump Suit, rules Rules) situation {
+	s := situation{led: ti.led, trump: trump, high: ti.high, best: ti.best}
+	if ti.n == 0 {
+		s.why = rLead
+		return s
+	}
+	var hasLed, hasTrump, hasHigher bool
+	for _, c := range hand {
+		switch {
+		case c.Suit == trump:
+			hasTrump = true
+			if trumpOrder[c.Rank] > ti.high {
+				hasHigher = true
+			} else {
+				s.hasLower = true
+			}
+		case c.Suit == ti.led:
+			hasLed = true
+			s.hasOther = true
+		default:
+			s.hasOther = true
+		}
+	}
+	s.partner = ti.winner == seat.Partner()
+
+	switch {
+	case ti.led == trump && !hasTrump:
+		s.why = rTrumpLedNone
+	case ti.led == trump && hasHigher:
+		s.need, s.why = needHigherTrump, rTrumpOver
+	case ti.led == trump:
+		s.need, s.why = needTrump, rTrumpUnder
+	case hasLed:
+		s.need, s.why = needSuit, rFollow
+	case !hasTrump:
+		s.why = rVoidNoTrump
+	case rules == Amsterdams && s.partner:
+		if s.hasOther || hasHigher {
+			s.need, s.why = needNoUnder, rPartnerFree
+		} else {
+			s.why = rOnlyLowerTrumps
+		}
+	case hasHigher && ti.high < 0:
+		s.need, s.why = needTrump, rMustTrump
+	case hasHigher:
+		s.need, s.why = needHigherTrump, rMustOvertrump
+	case s.hasOther:
+		s.need, s.why = needNonTrump, rCannotOvertrump
+	default:
+		s.why = rOnlyLowerTrumps
+	}
+	return s
+}
+
+// allows reports whether c (assumed to be in the hand) may be played.
+func (s *situation) allows(c Card) bool {
+	switch s.need {
+	case needSuit:
+		return c.Suit == s.led
+	case needTrump:
+		return c.Suit == s.trump
+	case needHigherTrump:
+		return c.Suit == s.trump && trumpOrder[c.Rank] > s.high
+	case needNoUnder:
+		return c.Suit != s.trump || trumpOrder[c.Rank] > s.high
+	case needNonTrump:
+		return c.Suit != s.trump
+	}
+	return true
+}
+
+// LegalMoves returns the cards of hand that seat may play into trick
+// (a complete trick counts as empty: the next card leads a new one).
+func LegalMoves(hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) []Card {
+	return AppendLegalMoves(make([]Card, 0, len(hand)), hand, trick, seat, trump, rules)
+}
+
+// AppendLegalMoves appends the legal cards to dst, in hand order; with
+// enough capacity in dst it does not allocate.
+func AppendLegalMoves(dst, hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) []Card {
+	ti := infoFromTrick(trick, trump)
+	return appendLegal(dst, hand, &ti, seat, trump, rules)
+}
+
+func appendLegal(dst, hand []Card, ti *trickInfo, seat Seat, trump Suit, rules Rules) []Card {
+	s := judge(hand, ti, seat, trump, rules)
+	if s.need == needFree {
+		return append(dst, hand...)
+	}
+	for _, c := range hand {
+		if s.allows(c) {
+			dst = append(dst, c)
+		}
+	}
+	return dst
+}
+
+// IsLegal reports whether seat may play card (which must be in hand).
+func IsLegal(card Card, hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) bool {
+	if !contains(hand, card) {
+		return false
+	}
+	ti := infoFromTrick(trick, trump)
+	s := judge(hand, &ti, seat, trump, rules)
+	return s.allows(card)
+}
+
+// ExplainConstraint returns a short Dutch line describing what seat must
+// play, shown above the hand on that player's turn.
+func ExplainConstraint(hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) string {
+	ti := infoFromTrick(trick, trump)
+	s := judge(hand, &ti, seat, trump, rules)
+	return s.constraint()
+}
+
+// ExplainIllegal returns a Dutch sentence why card may not be played,
+// or "" if it is legal.
+func ExplainIllegal(card Card, hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) string {
+	if !contains(hand, card) {
+		return "Die kaart heb je niet."
+	}
+	ti := infoFromTrick(trick, trump)
+	s := judge(hand, &ti, seat, trump, rules)
+	if s.allows(card) {
+		return ""
+	}
+	return s.illegal(card)
+}
+
+func (s *situation) constraint() string {
+	t := s.trump.Symbol()
+	switch s.why {
+	case rLead:
+		return "Je komt uit: speel wat je wilt"
+	case rFollow:
+		return "Bekennen: speel " + s.led.Symbol()
+	case rTrumpOver:
+		return "Troef gevraagd: overtroeven (" + t + ")"
+	case rTrumpUnder:
+		return "Troef gevraagd: je kunt niet overtroeven, speel een lagere troef (" + t + ")"
+	case rTrumpLedNone:
+		return "Troef gevraagd, maar je hebt geen troef: vrije keuze"
+	case rVoidNoTrump:
+		return "Je kunt niet bekennen en hebt geen troef: vrije keuze"
+	case rMustTrump:
+		if s.partner {
+			return "Rotterdams: je moet troeven (" + t + "), ook al heeft je maat de slag"
+		}
+		return "Je kunt niet bekennen: je moet troeven (" + t + ")"
+	case rMustOvertrump:
+		if s.partner {
+			return "Rotterdams: je moet overtroeven (" + t + "), ook over je maat heen"
+		}
+		return "Je kunt niet bekennen: je moet overtroeven (" + t + ")"
+	case rCannotOvertrump:
+		return "Je kunt niet overtroeven: speel een andere kleur (ondertroeven mag niet)"
+	case rOnlyLowerTrumps:
+		return "Je hebt alleen nog lagere troef: je moet ondertroeven"
+	case rPartnerFree:
+		switch {
+		case !s.hasLower:
+			return "Je maat heeft de slag: vrije keuze"
+		case !s.hasOther:
+			return "Je maat heeft de slag, maar je hebt alleen troef: overtroeven (ondertroeven mag niet)"
+		default:
+			return "Je maat heeft de slag: vrije keuze (ondertroeven mag niet)"
+		}
+	}
+	return ""
+}
+
+func (s *situation) illegal(card Card) string {
+	t := s.trump.Symbol()
+	above := " (hoger dan " + CardShortNL(s.best) + ")"
+	switch s.why {
+	case rFollow:
+		return "Je moet bekennen (" + s.led.Symbol() + ")."
+	case rTrumpOver:
+		if card.Suit != s.trump {
+			return "Troef is gevraagd: je moet troef bekennen (" + t + ")."
+		}
+		return "Troef is gevraagd: je moet overtroeven" + above + "."
+	case rTrumpUnder:
+		return "Troef is gevraagd: je moet troef bekennen (" + t + "), ook als dat ondertroeven is."
+	case rMustTrump:
+		if s.partner {
+			return "Je kunt niet bekennen, dus je moet troeven (" + t + "). Bij Rotterdams ook als je maat de slag heeft."
+		}
+		return "Je kunt niet bekennen, dus je moet troeven (" + t + ")."
+	case rMustOvertrump:
+		var msg string
+		if card.Suit == s.trump {
+			msg = "Ondertroeven mag niet: je moet overtroeven" + above + "."
+		} else {
+			msg = "Je kunt niet bekennen, dus je moet overtroeven" + above + "."
+		}
+		if s.partner {
+			msg += " Bij Rotterdams ook als je maat de slag heeft."
+		}
+		return msg
+	case rCannotOvertrump:
+		return "Ondertroeven mag niet: je kunt niet overtroeven, dus speel een andere kleur."
+	case rPartnerFree:
+		if !s.hasOther {
+			return "Ondertroeven mag niet: je hebt alleen troef, dus je moet overtroeven" + above + "."
+		}
+		return "Ondertroeven mag niet: je maat heeft de slag, dus speel een andere kaart."
+	}
+	return "Die kaart mag je nu niet spelen."
+}
+
+func contains(hand []Card, c Card) bool {
+	for _, h := range hand {
+		if h == c {
+			return true
+		}
+	}
+	return false
+}
