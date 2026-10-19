@@ -1,0 +1,11 @@
+#!/bin/sh
+# Starts headless Chromium with the DevTools protocol on 127.0.0.1:PORT, for
+# puppeteer-core scripts under test/ui. Stop with: podman stop kj-chrome-PORT
+set -eu
+port=${1:?usage: chrome PORT}
+podman rm -f "kj-chrome-$port" >/dev/null 2>&1 || true
+podman run -d --rm --name "kj-chrome-$port" --network host \
+  docker.io/zenika/alpine-chrome:124 --headless --no-sandbox --disable-gpu \
+  --autoplay-policy=no-user-gesture-required \
+  --remote-debugging-address=127.0.0.1 --remote-debugging-port="$port" about:blank >/dev/null
+echo "kj-chrome-$port: CDP at http://127.0.0.1:$port/json/version"

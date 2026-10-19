@@ -1,0 +1,9 @@
+{
+  "name": "klaverjas-ui-tests",
+  "private": true,
+  "type": "module",
+  "description": "Browser checks driven through headless Chromium (scripts/chrome)",
+  "devDependencies": {
+    "puppeteer-core": "23.11.1"
+  }
+}

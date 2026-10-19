@@ -1,0 +1,17 @@
+#!/bin/sh
+# Runs the Go toolchain in a container, so the host needs only podman.
+#   scripts/go test ./...          from anywhere inside the repository
+# Host networking, so `scripts/go run ./cmd/klaverjas -addr 127.0.0.1:18200` is
+# reachable from the host. Module and build caches live in two podman volumes.
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+case "$PWD/" in
+  "$root"/*) rel=${PWD#"$root"} ;;
+  *) rel= ;;
+esac
+tty=; [ -t 0 ] && tty=-t
+exec podman run --rm -i $tty --network host \
+  -v "$root":/src -v klaverjas-gocache:/go -v klaverjas-gobuild:/root/.cache \
+  -e GOFLAGS=-buildvcs=false -e GOTOOLCHAIN=local -e CGO_ENABLED=0 \
+  -w "/src$rel" ${KJ_GO_NAME:+--name "$KJ_GO_NAME"} \
+  docker.io/library/golang:1.27-alpine go "$@"
