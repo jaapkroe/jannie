@@ -545,6 +545,57 @@ func TestPlayTexts(t *testing.T) {
 			want: "Speel ♦B: met een boer van een bijkleur zeg je dat jij de troefboer hebt (boer over boer).",
 		},
 		{
+			name: "lead the last card of a side suit", trump: game.Hearts,
+			spec: [4]string{"KS JH 9H 7C 8C 9C AD TD", "", "", ""},
+			card: "KS",
+			want: "Speel ♠H, je laatste schoppen: dan ben je die kleur kwijt en kun je later troeven als hij gevraagd wordt.",
+		},
+		{
+			name: "defender leads the highest trump", voorhand: 1, trump: game.Hearts,
+			spec:  [4]string{"AD JH 7C 8C 9C 7S 8S 9S", "7D", "8D", "9D"},
+			plays: "7D 8D 9D AD",
+			card:  "JH",
+			want: "Speel ♥B, de hoogste troef: als tegenpartij kom je meestal niet met troef uit, maar met de hoogste troef pak je zelf de slag. " +
+				"Zo haal je troeven weg bij de spelende partij, die ze dan niet meer kan gebruiken om jullie azen af te troeven.",
+		},
+		{
+			name: "trump in a trick without points", voorhand: 1, trump: game.Hearts,
+			spec:  [4]string{"7H 8H 7S 8S 9S TS JS QS", "7C", "7D 8D 9D TD JD QD KD AD", "8C"},
+			plays: "7C 7D 8C",
+			card:  "7H",
+			want:  "Troef met ♥7: je kunt niet bekennen en zo pak je de slag.",
+		},
+		{
+			name: "no rule: bank the points of a trump that could be caught", voorhand: 1, trump: game.Clubs, rules: game.Rotterdams,
+			spec:  [4]string{"KC 7C 7S 8S 9S TS QS KS", "JH", "AH", "JS 7D 8D 9D TD QD KD AD"},
+			plays: "JH AH JS",
+			card:  "KC",
+			want: "Je kunt niet bekennen, en bij Rotterdams moet je dan troeven, ook al heeft je maat de slag. " +
+				"Speel ♣H: de slag is zeker voor jullie, dus zo zijn de 4 punten van ♣H binnen; later kan een hogere troef hem nog pakken.",
+		},
+		{
+			name: "no rule: the cheapest card gives roem", voorhand: 3, trump: game.Spades, rules: game.Rotterdams,
+			spec:  [4]string{"QS", "TS", "9D 9S 8D KS AH AS TH 7C", "JS"},
+			plays: "JS QS TS",
+			card:  "AS",
+			want: "Speel ♠A: je kunt de slag niet winnen, en met ♠H zou je de tegenstanders 50 roem geven (vierkaart en stuk in plaats van driekaart). " +
+				"Met ♠9 zou je de tegenstanders 30 roem geven.",
+		},
+		{
+			name: "the cheapest card would give roem", voorhand: 1, trump: game.Spades,
+			spec: [4]string{"8S QS AS 9C QH KD 7D 8D", "9S JS 7S 7C 8C TC JC QC",
+				"KS KC AC 9D TD JD QD AD", "TS 7H 8H 9H TH JH KH AH"},
+			plays: "9S KS TS",
+			card:  "AS",
+			want:  "Speel ♠A: je kunt de slag niet winnen. Met ♠8 zou je de tegenstanders 20 roem geven.",
+		},
+		{
+			name: "no rule: a lead that keeps the trumps", trump: game.Hearts,
+			spec: [4]string{"8S 7H 8H 9H TH QH KH AH", "", "", ""},
+			card: "8S",
+			want: "Kom uit met ♠8: zo houd je je troeven achter de hand. Let op: je maat kan een kleintje lezen als kleintje boer (“ik heb de troefboer”).",
+		},
+		{
 			name: "a side boer without the trump boer", trump: game.Hearts,
 			spec: [4]string{"JD QD 9H 8H AS KS AC KC", "", "", ""},
 			card: "JD",

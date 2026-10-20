@@ -22,9 +22,9 @@ const proxy = await addressProxy(A.url);
 const BASE = proxy.url;
 
 // Wraps the page's WebSocket: records what is sent, can drop outgoing
-// messages, make a socket deaf (a half-open connection), hold incoming
-// messages back for a while (from now, or after a given event) or block new
-// sockets.
+// messages, make a socket deaf (a half-open connection), rewrite incoming
+// messages (K.rewrite: text in, text out), hold them back for a while (from
+// now, or after a given event) or block new sockets.
 function netHooks() {
   const Native = window.WebSocket;
   const K = (window.__kj = { socks: [], sent: [], block: false });
@@ -45,6 +45,7 @@ function netHooks() {
     set onmessage(fn) {
       super.onmessage = fn && (e => {
         if (this.__deaf) return;
+        if (K.rewrite) e = new MessageEvent('message', { data: K.rewrite(String(e.data)) });
         if (this.__hold) { this.__hold.push(() => fn(e)); return; }
         fn(e);
         if (this.__holdAfter && String(e.data).includes(`"type":"${this.__holdAfter}"`)) {
@@ -413,6 +414,217 @@ CHECKS.quick = async browser => {
   });
 };
 
+// Leaves the table through the ⋯ menu (phones: under 600 px wide).
+async function leaveTable(P) {
+  await press(P, '.topbar .tb-menu');
+  await waitFor(P, () => document.querySelector('.m-menu.open'), { label: 'menu' });
+  await sleep(250);
+  await press(P, '.m-menu .menu-item.danger');
+  await waitFor(P, () => document.querySelector('.m-confirm.open'), { label: 'leave?' });
+  await sleep(250);
+  await press(P, '.m-confirm .btn-danger');
+  await waitFor(P, () => document.body.dataset.screen === 'home' && !document.body.classList.contains('busy'), { label: 'home again' });
+  await sleep(300);
+}
+
+// Snel spelen and Oefenen start without a name: as "Speler", which is not
+// kept as the player's name. Nieuw spel asks for one first (friends will
+// see it), gently: the field takes the focus and a toast says why.
+CHECKS.solo = async browser => {
+  const P = await page(browser, VP.phone, 'solo', {
+    hooks: true,
+    init: () => localStorage.setItem('kj.opts', JSON.stringify({ hands: 4, tempo: 'snel' })),
+  });
+  await run(P, async () => {
+    const st = () => P.page.evaluate(() => ({
+      creates: window.__kj.sent.filter(m => m.t === 'create').map(m => [m.name, !!m.training]),
+      stored: localStorage.getItem('kj.name'),
+      field: document.getElementById('name').value,
+      toasts: [...document.querySelectorAll('.toast-main')].map(t => t.textContent),
+    }));
+    await P.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
+    await waitFor(P, () => document.querySelector('#btn-quick'), { label: 'home' });
+    await quick(P);
+    let s = await st();
+    if (JSON.stringify(s.creates) !== '[["Speler",false]]' || s.stored !== null || s.toasts.length) throw new Error(`Snel spelen without a name: ${JSON.stringify(s)}`);
+    // A reload goes back to the seat (its token), not to the invite that asks for a name.
+    await P.page.reload({ waitUntil: 'networkidle0' });
+    await waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelector('.hand .card'), { label: 'back at the table after a reload' });
+    const join = await P.page.evaluate(() => window.__kj.sent.find(m => m.t === 'join'));
+    if (join?.name !== 'Speler' || !join.token) throw new Error(`rejoin after a reload: ${JSON.stringify(join)}`);
+    await leaveTable(P);
+
+    await press(P, '#btn-train');
+    await waitFor(P, () => document.querySelector('.m-train.open'), { label: 'training sheet' });
+    await sleep(300);
+    await press(P, '#btn-train-go');
+    await waitFor(P, () => document.body.dataset.screen === 'game', { label: 'training table' });
+    s = await st();
+    if (JSON.stringify(s.creates) !== '[["Speler",true]]' || s.stored !== null) throw new Error(`Oefenen without a name: ${JSON.stringify(s)}`);
+    await leaveTable(P);
+    s = await st();
+    if (s.field !== '' || s.stored !== null) throw new Error(`the default name was kept: ${JSON.stringify(s)}`);
+
+    await press(P, '#btn-new');
+    await waitFor(P, () => document.activeElement?.id === 'name' && document.getElementById('name').classList.contains('ask'), { label: 'name field asked for' });
+    await sleep(400);
+    s = await st();
+    if (await P.page.$('.m-new') || !s.toasts.includes('Hoe heet je?')) throw new Error(`Nieuw spel without a name: ${JSON.stringify(s)}`);
+    await shot(P, 'asked');
+    await P.page.keyboard.type('Anna');
+    if (await P.page.$eval('#name', e => e.classList.contains('ask'))) throw new Error('the name field still asks after typing');
+    await press(P, '#btn-new');
+    await waitFor(P, () => document.querySelector('.m-new.open'), { label: 'new game sheet with a name' });
+    s = await st();
+    if (s.stored !== 'Anna') throw new Error(`typed name not kept: ${JSON.stringify(s)}`);
+  });
+};
+
+// The hand summary shows the whole hand without scrolling: the headline,
+// the score, all eight tricks and the button. On phones the tricks are a
+// 4 × 2 grid; in landscape they sit beside the score. The result is
+// rewritten to the tallest case (the opponents went nat: a long title, two
+// lines under it and the "Waarom nat?" line), then to our pit; updates
+// after the hand's end are held back so it stays open.
+const SUMMARY_FIT = () => {
+  const r = el => el.getBoundingClientRect();
+  const body = document.querySelector('.m-summary .dlg-body');
+  const tiles = [...document.querySelectorAll('.m-summary .mt')];
+  const bad = [];
+  if (body.scrollHeight > body.clientHeight + 1) bad.push(`scrolls ${body.scrollHeight} > ${body.clientHeight}`);
+  const visible = (el, name) => {
+    const b = r(el);
+    if (b.top < 0 || b.bottom > innerHeight || b.left < 0 || b.right > innerWidth) bad.push(`${name} outside the screen`);
+    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+    if (!hit || !(hit === el || el.contains(hit))) bad.push(`${name} covered by ${hit?.className}`);
+  };
+  tiles.forEach((t, i) => visible(t, `trick ${i + 1}`));
+  visible(document.querySelector('.m-summary .btn-go'), 'button');
+  const title = document.querySelector('.sum-title');
+  if (r(title).height > parseFloat(getComputedStyle(title).fontSize) * 1.5) bad.push('the title wraps');
+  const card = document.querySelector('.m-summary .mt .card');
+  return {
+    bad, tiles: tiles.length, title: title.textContent, cls: document.querySelector('.sum-head').className,
+    sub: document.querySelector('.sum-sub').textContent, why: !!document.querySelector('.sum-why')?.getClientRects().length,
+    cols: new Set(tiles.map(t => Math.round(r(t).left))).size, card: Math.round(r(card).width),
+  };
+};
+
+CHECKS.summary = async browser => {
+  const P = await page(browser, VP.phone, 'summary', {
+    hooks: true,
+    init: () => localStorage.setItem('kj.opts', JSON.stringify({ hands: 4, tempo: 'snel' })),
+  });
+  // Rewrites the next hand's result as seen by us (w): who played, nat, pit.
+  const force = (playing, nat, pit) => P.page.evaluate((pl, na, pi) => {
+    window.__kj.rewrite = data => {
+      const m = JSON.parse(data);
+      if (m.t !== 'update' || m.s?.phase !== 'handEnd') return data;
+      const w = m.s.you % 2;
+      const team = x => (x === 'wij' ? w : x === 'zij' ? 1 - w : -1);
+      for (const res of [m.ev?.result, m.s.prevHand?.result]) {
+        if (res) Object.assign(res, { playingTeam: team(pl), nat: na, pit: pi !== 'geen', pitTeam: team(pi) });
+      }
+      return JSON.stringify(m);
+    };
+    window.__kj.last().__holdAfter = 'handEnd';
+  }, playing, nat, pit);
+  const toSummary = async () => {
+    await playUntil(P, () => !!document.querySelector('.m-summary.open'), { ready: false, label: 'summary' });
+    await sleep(1600); // the numbers count up
+  };
+  await run(P, async () => {
+    await home(P);
+    await quick(P);
+    await force('zij', true, 'geen');
+    await toSummary();
+    for (const vp of ['phone', 'iphone', 'landscape', 'smallLandscape']) {
+      await P.page.setViewport(VP[vp]);
+      await sleep(500);
+      const st = await P.page.evaluate(SUMMARY_FIT);
+      const wide = VP[vp].isLandscape;
+      if (st.bad.length || st.tiles !== 8 || st.cols !== (wide ? 2 : 4) || st.title !== 'Zij gaan nat!' || st.cls !== 'sum-head nat good'
+        || st.sub !== 'Zij spelen en halen het niet. Alle punten voor Wij!' || st.why !== !wide) {
+        throw new Error(`summary at ${vp}: ${JSON.stringify(st)}`);
+      }
+      await shot(P, `nat-${vp}`);
+    }
+    await P.page.setViewport(VP.phone);
+    await force('zij', true, 'wij');
+    await P.page.evaluate(() => window.__kj.release());
+    await press(P, '.m-summary .btn-go', { timeout: 3000 }).catch(() => {});
+    await waitFor(P, () => !document.querySelector('.m-summary'), { label: 'the next hand' });
+    await toSummary();
+    const st = await P.page.evaluate(SUMMARY_FIT);
+    if (st.bad.length || st.tiles !== 8 || st.title !== 'Pit!' || st.cls !== 'sum-head pit good') throw new Error(`our pit: ${JSON.stringify(st)}`);
+    const glow = await P.page.$eval('.sum-title', e => getComputedStyle(e).textShadow);
+    if (glow === 'none') throw new Error('our pit does not shine');
+    await shot(P, 'pit-phone');
+  });
+};
+
+// The sound button is a toggle: aria-pressed and the tooltip ("Geluid aan",
+// "Geluid uit") follow the state, in the lobby bar and at the table, also
+// after a reload.
+CHECKS.sound = async browser => {
+  const P = await page(browser, VP.desktop, 'sound');
+  await run(P, async () => {
+    const state = sel => P.page.$$eval(sel, els => els.map(e => `${e.getAttribute('aria-label')}|${e.getAttribute('aria-pressed')}|${e.title}|${e.classList.contains('muted')}`));
+    await home(P);
+    await newGame(P);
+    const lobby = '.lobby-bar .tb-sound';
+    let st = await state(lobby);
+    if (st.join() !== 'Geluid|true|Geluid aan|false') throw new Error(`lobby, sound on: ${st}`);
+    await press(P, lobby);
+    await waitFor(P, () => [...document.querySelectorAll('.toast-main')].some(t => t.textContent === 'Geluid uit'), { label: 'toast Geluid uit' });
+    st = await state(lobby);
+    if (st.join() !== 'Geluid|false|Geluid uit|true') throw new Error(`lobby, sound off: ${st}`);
+    await press(P, '#btn-start:not(:disabled)');
+    await waitFor(P, () => document.body.dataset.screen === 'game', { label: 'table' });
+    const table = '.topbar .tb-sound';
+    st = await state(table);
+    if (st.join() !== 'Geluid|false|Geluid uit|true') throw new Error(`table, sound off: ${st}`);
+    await shot(P, 'off');
+    await press(P, table);
+    st = await state(table);
+    if (st.join() !== 'Geluid|true|Geluid aan|false') throw new Error(`table, sound on: ${st}`);
+    await shot(P, 'on');
+    await press(P, table);
+    await P.page.reload({ waitUntil: 'networkidle0' });
+    await waitFor(P, () => document.body.dataset.screen === 'game', { label: 'table after a reload' });
+    st = await state(table);
+    if (st.join() !== 'Geluid|false|Geluid uit|true') throw new Error(`after a reload: ${st}`);
+  });
+};
+
+// The home tiles at 360 px: "AI-spelers" stays whole, and each tile's line
+// under its title fits on one line.
+CHECKS.hometiles = async browser => {
+  for (const vp of ['phone', 'iphone', 'landscape']) {
+    const P = await page(browser, VP[vp], `hometiles-${vp}`);
+    await run(P, async () => {
+      await P.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
+      await waitFor(P, () => document.querySelector('#btn-quick'), { label: 'home' });
+      const st = await P.page.evaluate(() => {
+        const lines = el => {
+          const rg = document.createRange();
+          rg.selectNodeContents(el);
+          return new Set([...rg.getClientRects()].map(b => Math.round(b.top))).size;
+        };
+        const sub = document.getElementById('quick-sub');
+        const word = sub.querySelector('.nobreak');
+        return {
+          sub: sub.textContent, word: word?.textContent, wordLines: word ? lines(word) : 0, subLines: lines(sub),
+          tiles: [...document.querySelectorAll('.btn-tile small')].map(e => [e.textContent, lines(e)]),
+        };
+      });
+      if (st.sub !== 'Meteen aan tafel met drie AI-spelers' || st.word !== 'AI-spelers' || st.wordLines !== 1) throw new Error(`"AI-spelers" breaks: ${JSON.stringify(st)}`);
+      if (vp === 'phone' && st.tiles.some(([, n]) => n !== 1)) throw new Error(`a tile wraps: ${JSON.stringify(st.tiles)}`);
+      await shot(P, 'home');
+    });
+  }
+};
+
 // Touch: a lifted card says how to play it; a forced card plays on one tap.
 // The chat badge stays dark for bot and system lines.
 CHECKS.taps = async browser => {
@@ -699,7 +911,7 @@ CHECKS.names = async browser => {
     await G2.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
     if (await G2.page.$eval('#name', e => e.enterKeyHint) !== 'done') throw new Error('the home name field lost its done key');
     await type(G2, '#join-code', code);
-    await waitFor(G2, () => document.activeElement?.id === 'name' && [...document.querySelectorAll('.toast')].some(t => t.textContent === 'Vul eerst je naam in'), { label: 'asked for a name' });
+    await waitFor(G2, () => document.activeElement?.id === 'name' && [...document.querySelectorAll('.toast-main')].some(t => t.textContent === 'Hoe heet je?'), { label: 'asked for a name' });
     await G2.page.keyboard.type('Bert');
     await G2.page.keyboard.press('Enter');
     await waitFor(G2, () => document.body.dataset.screen === 'lobby', { label: 'second guest in the lobby after Enter', timeout: 8000 });

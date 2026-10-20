@@ -1,7 +1,7 @@
 // Entry point: routing, connection handling and the update queue that
 // animates every server event before rendering the new state.
 import { sound } from './sound.js';
-import { app, store, toast, vibrate, watchKeyboard } from './util.js';
+import { app, store, toast, vibrate, watchKeyboard, DEFAULT_NAME } from './util.js';
 import { createNet } from './net.js';
 import * as table from './table.js';
 import * as panels from './panels.js';
@@ -56,8 +56,9 @@ function send(m) {
 
 // ---------- actions ----------
 
-function create({ opts = {}, training = false, start = false }) {
-  const name = home.currentName();
+// name: given for a game with bots only (Snel spelen, Oefenen), which
+// needs none typed; otherwise the home screen asks for it.
+function create({ opts = {}, training = false, start = false, name = home.currentName() }) {
   if (!name) return;
   enterRoom('');
   setStarting(start);
@@ -67,7 +68,7 @@ function create({ opts = {}, training = false, start = false }) {
 
 function join(code) {
   code = code.toUpperCase();
-  const name = store.get('name', '') || 'Speler';
+  const name = store.get('name', '') || DEFAULT_NAME;
   if (leaveLater?.code === code) leaveLater = null; // back to that seat after all
   if (code !== app.code) enterRoom(code);
   setStarting(false);
@@ -103,7 +104,7 @@ function leave() {
     // first; only then is the token deleted.
     const token = store.get('token.' + code, '');
     if (token) {
-      leaveLater = { code, token, name: store.get('name', '') || 'Speler' };
+      leaveLater = { code, token, name: store.get('name', '') || DEFAULT_NAME };
       sendLeaveLater();
     }
   }
@@ -156,7 +157,7 @@ function onOpen() {
   if (inRoom && app.code) {
     joining = true;
     const token = store.get('token.' + app.code, '');
-    net.raw({ t: 'join', code: app.code, name: store.get('name', '') || 'Speler', ...(token ? { token } : {}) });
+    net.raw({ t: 'join', code: app.code, name: store.get('name', '') || DEFAULT_NAME, ...(token ? { token } : {}) });
   }
 }
 
@@ -409,7 +410,9 @@ function boot() {
   screen('home');
   if (r) {
     const code = r[1].toUpperCase();
-    if (store.get('name', '')) join(code);
+    // A seat token is a seat of ours: a reload in Snel spelen or Oefenen,
+    // which may be played without a name, goes back to it.
+    if (store.get('name', '') || store.get('token.' + code, '')) join(code);
     else {
       home.show();
       home.showInvite(code);

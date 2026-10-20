@@ -340,7 +340,12 @@ func New(p Persona, lvl Level, seed uint64) Player
 // the cheapest card, if that card has a reason of its own and the search
 // cannot tell the two apart (gap under max(5 points, 2 paired SE)), never a
 // card that falsely signals kleintje boer. A hint that still has no reason
-// says by how much the search rates the card above the cheapest one.
+// names a fact that speaks for the card against the cheapest other one,
+// true whatever the other hands hold (it keeps the last trick, gives no
+// roem, banks points in a sure trick, keeps the trumps, the highest card of
+// a side suit or the guard of an honour); without one it says by how much
+// the search rates it higher ("volgens de berekening levert ♠A gemiddeld 9
+// punten meer op dan ♠8").
 type Advice struct {
     Card *game.Card; Suit *game.Suit; Play *bool
     Text string     // e.g. "Speel ♥A: je maat heeft de slag nog niet en de aas is hoog."
@@ -631,7 +636,7 @@ rotates so `you` is at the bottom.
 | `update` | `seq`, `ev` (event or null), `s` (full state for you) |
 | `chat` | `msg`: `{seat, name, text, ts, bot, sys}` (`sys`: system line, seat -1) |
 | `chatlog` | `msgs`: last 50, sent after `joined` |
-| `tip` | `text` (training: explanation after a trick, Dutch; when you played another card than the hint, it ends with the advised card and why: "Juf Ans had ♣9 aangeraden: …") |
+| `tip` | `text` (training: explanation after a trick, Dutch; when you played another card than the hint, it ends with the advised card and why: "Juf Ans had ♣9 aangeraden: …"; the first trick's tip of a hand also says so of a trump choice or bid against the hint, before any card: "Juf Ans had ♥ als troef aangeraden: …", "Juf Ans had aangeraden om te passen: …") |
 | `refused` | `name`: to the host only, someone could not join because the table is full (§6); no state change, so no `update` |
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
@@ -663,7 +668,7 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
 | `play` | `seat`, `card` | card flies from the seat to its trick slot |
 | `trick` | `winner`, `points`, `roem` [], `last` bool | highlight winning card; roem burst "+20 Stuk!" |
 | `collect` | `winner` | trick slides to the winner and fades |
-| `handEnd` | `result` (HandResult as JSON, below) | summary overlay: gehaald/nat/pit |
+| `handEnd` | `result` (HandResult as JSON, below) | summary overlay: gehaald/nat/pit, seen from the viewer's team (§9 Review) |
 | `gameOver` | `total` [2], `winner` (0,1, or -1 draw) | celebration |
 | `join` / `leave` / `away` / `back` | `seat` | small toast |
 
@@ -722,6 +727,9 @@ Every key above is always present, except `roster` (lobby only) and `legal` and
 - `hint` and `hands4` are null unless they apply; `hint.text` is always set.
 
 ## 8. Seinen (signals) — used by normaal and sterk bots and explained in the manual
+
+The manual's section is titled *Seinen*; its text and the glossary also give
+the other name, *voorkaarten*.
 
 - **Aas voorspelen**: leading the ace of a side suit says "ik heb ook de
   10 van deze kleur". After the ace that 10 is the highest card of the suit,
@@ -826,14 +834,20 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
 
 ### Screens and flows (minimal clicks)
 
-- **Home**: name field (remembered; asked once), and big buttons: *Snel spelen*
+- **Home**: name field (remembered), and big buttons: *Snel spelen*
   (one tap: solo vs 3 bots, starts immediately, straight from home to the table
   without showing the lobby; it uses the options last chosen for a new game,
-  named under the button when they differ from the defaults), *Nieuw spel*
+  named under the button when they differ from the defaults; "AI-spelers"
+  never breaks at its hyphen), *Nieuw spel*
   (options sheet with defaults → *Maak spel*), *Meedoen* (4-letter code field;
   joins as soon as 4 letters are typed), *Oefenen* (training), *Handleiding*.
+  Snel spelen and Oefenen (bots only) never ask for a name: without one the
+  player is "Speler", which is not stored as their name. *Nieuw spel* and
+  *Meedoen*, where others see the name, ask for it first, gently: the name
+  field takes the focus with a soft glow and a toast "Hoe heet je?" says why.
   Opening a join link `/ABCD` goes straight to joining (asks only for a name if
-  none is stored). Enter (the keyboard's go key) in the name field joins that
+  none is stored and the browser holds no seat token for that room, so a
+  reload in a game without a name goes back to the seat). Enter (the keyboard's go key) in the name field joins that
   invite, or the code typed before the name was asked for.
 - **Lobby**: big code + *Kopieer link* + *Delen* (`navigator.share` where
   available; when copying fails the link is shown in a field to copy by hand);
@@ -850,7 +864,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
 - **Table**: you at the bottom with your hand as a fan; partner on top, opponents
   left/right with card backs and names; dealer chip; turn glow; trump indicator;
   score bar *Wij – Zij* with names; potje n/16; buttons for chat (with unread
-  badge), score sheet, last trick, help, settings, sound. Where a name must
+  badge), score sheet, last trick, help, settings, sound (a toggle:
+  `aria-pressed` while the sound is on, tooltip "Geluid aan" / "Geluid uit",
+  icon to match; on phones it is in the ⋯ menu). Where a name must
   shorten (lobby seat, score bar, *Laatste slag*), only the name does: its
   "(AI)" stays readable ("Kees de Vi… (AI)"). The trump badge's details show
   what the badge shows, also during the trump banner.
@@ -901,7 +917,15 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   points and roem; the hand summary (and the score sheet for the previous hand,
   which stays open while updates arrive) shows all 8 tricks of the finished
   hand in play order, each card underlined in its team's colour; tapping a
-  trick shows it at the seats like *Laatste slag*.
+  trick shows it at the seats like *Laatste slag*. The summary's headline
+  speaks from the viewer's team (`handHeadline` in util.js): we played and
+  made it *Gehaald!*, went nat *Nat!*; they made it *Zij halen het*, went nat
+  *Zij gaan nat!*; our pit *Pit!* (gold, also when they went nat), theirs
+  *Zij halen pit*; good news for us in our colour, bad news in red. The
+  whole summary fits without scrolling: on phones (< 600 px wide) the tricks
+  are a 4 × 2 grid of small tiles (number and points over the cards), in
+  short landscape they sit beside the score; the ready chips show only with
+  another person at the table.
 - **Chat**: drawer (side panel on wide screens), quick reactions (👍 😂 😱 "Mooi!"
   "Nat!" "Goed gespeeld"), bot lines, system lines, unread badge (counts what
   people write; system lines and bot chatter, shown as speech bubbles, do not).

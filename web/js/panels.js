@@ -5,7 +5,7 @@ import { sound } from './sound.js';
 import { SECTIONS, renderManual } from './manual.js';
 import {
   app, h, $$, icon, prefs, savePrefs, store, toast, dur, posOf, isWij, teamCls, teamName,
-  nameOf, suitSym, suitName, suitText, isRed, roemTotal, roemText, variantText, countUp, avatar, playerName, suitify, cap,
+  nameOf, suitSym, suitName, suitText, isRed, roemTotal, roemText, variantText, countUp, avatar, playerName, suitify, cap, handHeadline,
 } from './util.js';
 
 const PLAYING = new Set(['trump', 'bid', 'play']);
@@ -185,16 +185,16 @@ const TOOLS = {
   chat: ['chat', 'Chat', 'Chat met de tafel', () => toggleChat()],
   help: ['help', 'Handleiding', 'Handleiding: bediening, spelregels, roem en tips', () => openManual()],
   settings: ['settings', 'Instellingen', 'Instellingen: geluid, kaarten, animaties en je naam', () => openSettings()],
-  sound: ['soundOn', 'Geluid', 'Geluid aan of uit', () => toggleSound()],
+  sound: ['soundOn', 'Geluid', 'Geluid aan', () => toggleSound()], // a toggle: soundState sets icon, tooltip, aria-pressed
   menu: ['menu', 'Meer', 'Meer: scorebord, handleiding, instellingen', () => openMenu()],
 };
 
 export function toolButtons(names) {
   return names.map(n => {
     const [ic, label, title, fn] = TOOLS[n];
-    const b = h('button', { class: 'tb tb-' + n, type: 'button', title, 'aria-label': label, onclick: () => { sound.unlock(); fn(); } },
-      n === 'sound' ? icon(sound.isMuted() ? 'soundOff' : 'soundOn') : icon(ic));
+    const b = h('button', { class: 'tb tb-' + n, type: 'button', title, 'aria-label': label, onclick: () => { sound.unlock(); fn(); } }, icon(ic));
     if (n === 'chat') b.append(h('span', { class: 'chat-badge', hidden: true }));
+    if (n === 'sound') soundState(b);
     return b;
   });
 }
@@ -211,10 +211,18 @@ function toggleSound() {
 }
 
 export function refreshSound() {
-  for (const b of $$('.tb-sound')) {
-    b.replaceChildren(icon(sound.isMuted() ? 'soundOff' : 'soundOn'));
-    b.classList.toggle('muted', sound.isMuted());
-  }
+  for (const b of $$('.tb-sound')) soundState(b);
+}
+
+// The sound button is a toggle: pressed while the sound is on. Its icon and
+// tooltip say which it is now ("Geluid aan", "Geluid uit"); the label
+// stays "Geluid", so a screen reader says "Geluid, ingedrukt".
+function soundState(b) {
+  const on = !sound.isMuted();
+  b.replaceChildren(icon(on ? 'soundOn' : 'soundOff'));
+  b.classList.toggle('muted', !on);
+  b.setAttribute('aria-pressed', String(on));
+  b.title = on ? 'Geluid aan' : 'Geluid uit';
 }
 
 function openMenu() {
@@ -588,21 +596,13 @@ export function sync(s, ev) {
   byId('score')?.refresh?.();
 }
 
-function summaryTitle(s, r) {
-  const w = s.you % 2;
-  const we = r.playingTeam === w;
-  if (r.pit) return { t: 'Pit!', sub: r.pitTeam === w ? 'Wij halen alle acht slagen: 100 roem extra' : 'Zij halen alle acht slagen', cls: 'pit' };
-  if (r.nat) return { t: 'Nat!', sub: we ? 'Wij spelen en halen het niet. Alle punten naar Zij.' : 'Zij spelen en halen het niet. Alle punten voor Wij!', cls: we ? 'nat bad' : 'nat good' };
-  return { t: 'Gehaald!', sub: we ? 'Wij spelen en halen het.' : 'Zij spelen en halen het.', cls: we ? 'good' : 'neutral' };
-}
-
 function showSummary(s, ev) {
   const r = (ev?.type === 'handEnd' && ev.result) || s.prevHand?.result;
   if (!r) return;
   let m = byId('summary');
   if (!m) {
     const w = s.you % 2;
-    const T = summaryTitle(s, r);
+    const T = handHeadline(r, w);
     const fresh = ev?.type === 'handEnd';
     const nums = [];
     const num = (v, cls) => { const el = h('b', { class: cls, text: fresh ? 0 : v }); if (fresh) nums.push([el, v]); else el.dataset.n = v; return el; };
@@ -646,8 +646,12 @@ function showSummary(s, ev) {
   m.ring.el.toggleAttribute('hidden', !s.nextAt); // training: no countdown
   const mine = s.players[s.you]?.ready;
   if (mine) { m.go.disabled = true; m.go.lastChild.textContent = 'Wachten op de rest'; }
-  m.ready.replaceChildren(...s.players.map((p, seat) => p && !p.bot ? h('span', { class: 'ready-chip ' + (p.ready ? 'on ' : '') + teamCls(s, seat) },
-    p.ready ? icon('check') : null, nameOf(s, seat)) : null).filter(Boolean));
+  // Who is ready, when there is anyone to wait for; alone with bots the
+  // chip would only say "Jij" and cost a phone a row of tricks.
+  const chips = s.players.map((p, seat) => p && !p.bot ? h('span', { class: 'ready-chip ' + (p.ready ? 'on ' : '') + teamCls(s, seat) },
+    p.ready ? icon('check') : null, nameOf(s, seat)) : null).filter(Boolean);
+  m.ready.replaceChildren(...(chips.length > 1 ? chips : []));
+  m.ready.hidden = chips.length < 2;
 }
 
 function countdownRing() {

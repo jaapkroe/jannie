@@ -118,6 +118,11 @@ const nextIP = () => {
   return `10.${(process.pid >> 8) & 255}.${process.pid & 255}.${ipSeq & 255}`;
 };
 
+// Short Dutch card names as in the server's texts: "AH" is ♥A, "TC" ♣10.
+const SUIT_SYMBOL = { C: '♣', D: '♦', H: '♥', S: '♠' };
+const RANK_NL = { 7: '7', 8: '8', 9: '9', T: '10', J: 'B', Q: 'V', K: 'H', A: 'A' };
+const cardNL = code => SUIT_SYMBOL[code[1]] + RANK_NL[code[0]];
+
 const rand = n => Math.floor(Math.random() * n);
 const pick = a => a[rand(a.length)];
 const sum2 = (a, b) => [a[0] + b[0], a[1] + b[1]];
@@ -137,6 +142,7 @@ class Player {
     this.handEnds = 0;
     this.tips = 0;
     this.hints = 0;
+    this.misses = []; // training: what the next tip must say was advised instead
     this.reconnects = 0;
     this.reconnecting = false;
     this.over = false;
@@ -219,6 +225,13 @@ class Player {
       case 'tip':
         this.check(typeof m.text === 'string' && m.text.length > 0, 'empty tip');
         this.tips++;
+        // A trump, bid or card against the hint is told with the (first)
+        // trick, and only then. A reconnect may lose a tip or a decision.
+        if (!this.game.cfg.reconnect) {
+          for (const want of this.misses) this.check(m.text.includes(want), `tip ${JSON.stringify(m.text)} does not say "${want}"`);
+          if (!this.misses.length) this.check(!m.text.includes('aangeraden'), `tip ${JSON.stringify(m.text)} after following the hints`);
+        }
+        this.misses = [];
         break;
       case 'update':
         this.update(m);
@@ -407,18 +420,27 @@ class Player {
 
   decide(s) {
     if (s !== this.s || this.reconnecting) return; // the state moved on (e.g. a reconnect)
+    const h = this.game.cfg.training ? s.hint : null;
     switch (s.phase) {
       case 'trump': {
         const suits = ['C', 'D', 'H', 'S'].filter(c => !(s.forced && c === s.turned));
-        this.send({ t: 'trump', suit: pick(suits) });
+        const suit = pick(suits);
+        if (h?.suit && suit !== h.suit) this.misses.push(`${SUIT_SYMBOL[h.suit]} als troef aangeraden`);
+        this.send({ t: 'trump', suit });
         break;
       }
-      case 'bid':
-        this.send({ t: 'bid', play: Math.random() < 0.3 });
+      case 'bid': {
+        const play = Math.random() < 0.3;
+        if (typeof h?.play === 'boolean' && play !== h.play) this.misses.push(`aangeraden om te ${h.play ? 'spelen' : 'passen'}`);
+        this.send({ t: 'bid', play });
         break;
-      case 'play':
-        this.send({ t: 'play', card: pick(s.legal) });
+      }
+      case 'play': {
+        const card = pick(s.legal);
+        if (h?.card && card !== h.card) this.misses.push(`${cardNL(h.card)} aangeraden`);
+        this.send({ t: 'play', card });
         break;
+      }
     }
   }
 

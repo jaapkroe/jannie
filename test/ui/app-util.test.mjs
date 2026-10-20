@@ -22,7 +22,7 @@ class FakeNode {
 }
 globalThis.Node = FakeNode;
 globalThis.document = { createElement: tag => new FakeNode(tag) };
-const { store, roemText, cap, playerName, keyboardOpen, textField } = await import('../../web/js/util.js');
+const { store, roemText, cap, playerName, keyboardOpen, textField, handHeadline, DEFAULT_NAME } = await import('../../web/js/util.js');
 
 test('store keeps values in memory when localStorage is blocked', () => {
   mode = 'blocked';
@@ -113,4 +113,37 @@ test('textField knows which fields bring up the keyboard', () => {
   assert.equal(textField({ tagName: 'DIV', isContentEditable: true }), true);
   assert.equal(textField({ tagName: 'BUTTON' }), false);
   assert.equal(textField(null), false);
+});
+
+test('the hand summary headline speaks from our side', () => {
+  // r as the server sends it: playingTeam and pitTeam are 0 or 1 (pitTeam -1: no pit).
+  const r = (playingTeam, nat, pitTeam = -1) => ({ playingTeam, nat, pit: pitTeam >= 0, pitTeam });
+  const seen = (res, w) => { const { t, cls } = handHeadline(res, w); return `${t} [${cls}]`; };
+  for (const w of [0, 1]) {
+    const wij = w;
+    const zij = 1 - w;
+    assert.equal(seen(r(wij, false), w), 'Gehaald! [good]');
+    assert.equal(seen(r(wij, true), w), 'Nat! [nat bad]');
+    assert.equal(seen(r(zij, false), w), 'Zij halen het [neutral]', 'they made it: not our "Gehaald!"');
+    assert.equal(seen(r(zij, true), w), 'Zij gaan nat! [nat good]');
+    assert.equal(seen(r(wij, false, wij), w), 'Pit! [pit good]');
+    assert.equal(seen(r(zij, true, wij), w), 'Pit! [pit good]', 'they went nat and we took every trick');
+    assert.equal(seen(r(zij, false, zij), w), 'Zij halen pit [pit bad]');
+    assert.equal(seen(r(wij, true, zij), w), 'Nat! [nat bad]', 'we played and took no trick');
+  }
+  assert.equal(handHeadline(r(0, false), 0).sub, 'Wij spelen en halen het.');
+  assert.equal(handHeadline(r(0, false), 1).sub, 'Zij spelen en halen meer dan de helft van de punten.');
+  assert.equal(handHeadline(r(1, true, 0), 0).sub, 'Zij gaan nat en wij halen alle acht slagen: 100 roem extra.');
+  assert.equal(handHeadline(r(0, true, 1), 0).sub, 'Wij spelen en halen geen slag. Zij krijgen alles, plus 100 roem voor pit.');
+  // Good news for us is never shown as bad, and the other way round.
+  for (const pl of [0, 1]) for (const nat of [false, true]) for (const pt of [-1, 0, 1]) {
+    const { cls } = handHeadline(r(pl, nat, pt), 0);
+    const goodForUs = pt === 0 || (pt === -1 && (pl === 0) !== nat);
+    if (goodForUs) assert.match(cls, /\bgood\b/, `${pl} ${nat} ${pt}`);
+    else assert.doesNotMatch(cls, /\bgood\b/, `${pl} ${nat} ${pt}`);
+  }
+});
+
+test('a player without a name is "Speler", as the server calls one', () => {
+  assert.equal(DEFAULT_NAME, 'Speler');
 });

@@ -106,7 +106,8 @@ type room struct {
 	bot       botTurn     // the bot decision of the current turn
 	hintStep  int
 	hintVal   *hint
-	missed    *missedHint // training: the hint the player did not follow in this trick
+	missed    *missedHint  // training: the hint the player did not follow in this trick
+	misses    []missedHint // training: trump and bid hints not followed in this hand, told with its first trick
 	scores    []scoreRow
 	total     [2]int
 	prev      *prevHand

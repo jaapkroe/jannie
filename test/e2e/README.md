@@ -77,6 +77,12 @@ On every update:
 - The score sheet has one row per finished hand, numbered in order, and
   `total` is the sum of the rows.
 
+In training, after each trick: a trick's tip says what the hint advised
+when the player played another card ("♣9 aangeraden"), and the first trick's
+tip does so too for a trump choice or bid against the hint ("♥ als troef
+aangeraden", "aangeraden om te passen"); a tip after following every hint
+says nothing of the kind (not checked with `--reconnect`).
+
 At each hand end: the card points add up to 162; nat exactly when the playing
 team does not get more than half of points plus roem, with 0 for them and
 162 + all roem for the others; otherwise each team scores points + roem; pit

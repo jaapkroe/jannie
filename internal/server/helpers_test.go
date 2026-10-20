@@ -48,10 +48,10 @@ func (a *fakeAI) Advise(v game.View) Advice {
 	switch v.Phase {
 	case game.PhaseTrump:
 		s := firstSuit(v)
-		return Advice{Suit: &s, Text: "Kies " + game.SuitNameNL(s) + "."}
+		return Advice{Suit: &s, Text: "Kies " + s.Symbol() + " als troef: de eerste kleur die mag."}
 	case game.PhaseBid:
 		p := false
-		return Advice{Play: &p, Text: "Passen."}
+		return Advice{Play: &p, Text: "Passen: dat doet de test altijd."}
 	}
 	c := v.Legal[0]
 	return Advice{Card: &c, Text: "Speel " + game.CardShortNL(c) + ": de eerste kaart die mag."}
@@ -458,6 +458,22 @@ func (c *tclient) join(code, name, token string) {
 func (c *tclient) myTurn() bool {
 	s := c.s
 	return s != nil && s.Turn == s.You && (s.Phase == phaseTrump || s.Phase == phaseBid || s.Phase == phasePlay)
+}
+
+// actHint follows the training hint on the client's turn.
+func (c *tclient) actHint() {
+	c.t.Helper()
+	h := c.s.Hint
+	switch {
+	case h == nil:
+		c.t.Fatalf("no hint in phase %s", c.s.Phase)
+	case h.Suit != nil:
+		c.send(map[string]any{"t": "trump", "suit": h.Suit.String()})
+	case h.Play != nil:
+		c.send(map[string]any{"t": "bid", "play": *h.Play})
+	case h.Card != nil:
+		c.send(map[string]any{"t": "play", "card": h.Card.String()})
+	}
 }
 
 // actRandom makes a random legal decision on the client's turn.

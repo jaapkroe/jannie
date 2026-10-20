@@ -299,6 +299,18 @@ body[data-screen="game"] #game {
   box-shadow: 0 0 0 3px rgba(242, 193, 78, 0.25);
 }
 
+/* The name asked for (Nieuw spel, Meedoen): a soft glow until typed in. */
+.field-name.ask {
+  border-color: var(--gold);
+  animation: kj-ask 1.6s ease-in-out 2;
+}
+
+@keyframes kj-ask {
+  50% {
+    box-shadow: 0 0 0 6px rgba(242, 193, 78, 0.32);
+  }
+}
+
 .info-btn {
   position: relative;
   display: inline-grid;
@@ -627,6 +639,11 @@ body[data-screen="game"] #game {
   font-size: 14px;
   font-weight: 650;
   opacity: 0.8;
+  text-wrap: balance;
+}
+
+.nobreak {
+  white-space: nowrap;
 }
 
 .tiles {
@@ -676,6 +693,7 @@ body[data-screen="game"] #game {
   font-size: 13px;
   font-weight: 600;
   color: var(--ink-2);
+  text-wrap: balance;
 }
 
 .join {
@@ -3471,12 +3489,13 @@ body.busy::after {
   animation: kj-pop 0.5s var(--ease);
 }
 
+/* Seen from Wij: good news in our colour, bad news in red, the opponents
+   making their game plain; our pit shines gold (util.js handHeadline). */
 .sum-head.good .sum-title { color: var(--wij-hi); }
 .sum-head.neutral .sum-title { color: var(--ink); }
-.sum-head.nat.bad .sum-title { color: #ff6b6b; }
-.sum-head.nat.good .sum-title { color: var(--wij-hi); }
+.sum-head.bad .sum-title { color: #ff6b6b; }
 
-.sum-head.pit .sum-title {
+.sum-head.pit.good .sum-title {
   color: var(--gold-hi);
   text-shadow: 0 0 24px rgba(242, 193, 78, 0.6);
 }
@@ -3485,6 +3504,7 @@ body.busy::after {
   margin-top: 6px;
   font-weight: 700;
   color: var(--ink-2);
+  text-wrap: balance;
 }
 
 .sum-meta {
@@ -3633,6 +3653,126 @@ body.busy::after {
   width: 14px;
   height: 14px;
   stroke-width: 3;
+}
+
+/* Phones: the whole hand on one screen, all eight tricks included, as a
+   4 × 2 grid of small tiles (number and points over the four cards). */
+@media (max-width: 599px) {
+  .m-summary .dlg-body {
+    padding: 12px 14px 0;
+  }
+
+  .m-summary .sum-title {
+    font-size: clamp(32px, 10vw, 42px);
+  }
+
+  .m-summary .sum-sub {
+    margin-top: 4px;
+    font-size: 14.5px;
+    line-height: 1.3;
+  }
+
+  .m-summary .sum-meta {
+    margin-top: 4px;
+    font-size: 12.5px;
+  }
+
+  .m-summary .sum-meta .suit {
+    width: 18px;
+    height: 18px;
+    font-size: 13px;
+  }
+
+  .m-summary .sum-table {
+    margin: 4px 0 0;
+  }
+
+  .m-summary .sum-table th,
+  .m-summary .sum-table td {
+    padding: 2px 8px;
+  }
+
+  .m-summary .sum-table td {
+    font-size: 16px;
+  }
+
+  .m-summary .sum-table .sum-score td b {
+    font-size: 22px;
+  }
+
+  .m-summary .sum-table .sum-total th,
+  .m-summary .sum-table .sum-total td {
+    padding-top: 5px;
+  }
+
+  .m-summary .sum-why {
+    font-size: 13px;
+  }
+
+  .m-summary .sum-review {
+    margin-top: 8px;
+  }
+
+  .m-summary .sum-review h3 {
+    margin-bottom: 5px;
+  }
+
+  .m-summary .review {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .m-summary .mt {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 3px 2px;
+    padding: 4px 4px 7px 7px;
+    border-radius: 10px;
+  }
+
+  .m-summary .mt-n {
+    width: auto;
+    text-align: left;
+  }
+
+  .m-summary .mt-pts {
+    grid-area: 1 / 2;
+    display: flex;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: 3px;
+    font-size: 12px;
+  }
+
+  .m-summary .mt-pts i {
+    display: inline;
+    font-size: 10.5px;
+  }
+
+  .m-summary .mt-cards {
+    --card-w: clamp(20px, 6.2vw, 26px);
+    grid-area: 2 / 1 / 3 / -1;
+    justify-content: center;
+  }
+
+  .m-summary .mt-cards > .card {
+    margin-left: calc(var(--card-w) * -0.4);
+  }
+
+  .m-summary .mt-cards > .card:first-child {
+    margin-left: 0;
+  }
+
+  .m-summary .sum-foot {
+    gap: 6px;
+    margin: 0 -14px;
+    padding: 10px 14px 14px;
+  }
+
+  .m-summary .sum-foot .btn-big {
+    min-height: 52px;
+  }
 }
 
 /* game over */
@@ -4050,6 +4190,20 @@ body.chat-open .chat-scrim {
   :where(html:not(.kb)) .m-summary .sum-sub {
     margin-top: 2px;
     font-size: 14px;
+    line-height: 1.25;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-table {
+    margin: 4px 0 0;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-table td {
+    font-size: 16px;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-table .sum-total th,
+  :where(html:not(.kb)) .m-summary .sum-table .sum-total td {
+    padding-top: 4px;
   }
 
   :where(html:not(.kb)) .m-summary .sum-foot .btn-big {

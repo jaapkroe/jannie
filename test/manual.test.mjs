@@ -423,7 +423,7 @@ test('glossary has the required words, sorted, and search filters it', () => {
   const lower = terms.join(' | ').toLowerCase();
   const required = ['aas', 'boer', 'jas', 'nel', 'maat', 'voorhand', 'achterhand', 'bekennen', 'troeven',
     'overtroeven', 'ondertroeven', 'verzaken', 'roem', 'stuk', 'nat', 'pit', 'doormars', 'potje', 'boom',
-    'spekken (ook wel smeren)', 'seinen', 'slag', 'spelende partij', 'gedraaid', 'verplicht'];
+    'spekken (ook wel smeren)', 'seinen (voorkaarten)', 'slag', 'spelende partij', 'gedraaid', 'verplicht'];
   for (const w of required) assert.ok(lower.includes(w), w);
 
   const el = renderManual('woorden');
@@ -532,6 +532,25 @@ test('seinen covers every signal from design section 8', () => {
     assert.ok(heads.some((h) => h.includes(w)), w);
   }
   assert.match(el.textContent, /geen valsspelen/);
+});
+
+test('bediening says Snel spelen and Oefenen need no name', () => {
+  const text = renderManual('bediening').textContent;
+  assert.match(text, /Voor Snel spelen en Oefenen hoef je geen naam in te vullen\./);
+  assert.doesNotMatch(text, /naam vul je maar één keer in/);
+});
+
+test('bediening says when Juf Ans tells what she had advised', () => {
+  const text = renderManual('bediening').textContent;
+  assert.match(text, /Speel je een andere kaart, dan vertelt Juf Ans na de slag welke kaart zij had aangeraden en waarom\./);
+  assert.match(text, /Kies je een andere troef, of speel of pas je tegen haar advies in, dan hoor je dat na de eerste slag\./);
+});
+
+test('seinen keeps its short title and names voorkaarten in the text', () => {
+  assert.equal(SECTIONS.find((s) => s.id === 'seinen').title, 'Seinen');
+  assert.match(renderManual('seinen').textContent,
+    /^Met seinen \(ook wel voorkaarten\) vertel je je maat iets over je hand, alleen met de kaart die je speelt\./);
+  assert.ok(blocksOf('glossary')[0].some(([t]) => t === 'Seinen (voorkaarten)'));
 });
 
 test('seinen explains aas voorspelen and hoog of laag as the house agrees them', () => {

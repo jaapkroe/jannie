@@ -6,9 +6,10 @@ Dutch. It runs at <https://klaverjas.kroes.dev>.
 
 ## Features
 
-- **Start in one tap.** *Snel spelen* starts a game against three bots at once.
-  A hosted game gets a four-letter code and a link (`/ABCD`); friends join by
-  typing the code or opening the link, and only need to give a name.
+- **Start in one tap.** *Snel spelen* starts a game against three bots at once,
+  without even asking for a name (as does *Oefenen*). A hosted game gets a
+  four-letter code and a link (`/ABCD`); friends join by typing the code or
+  opening the link, and only need to give a name.
 - **The rules as played in Dutch cafés**: Utrechts (voorhand chooses trump) or
   gedraaid (a turned suit to play or pass), with Amsterdams or Rotterdams
   trumping; roem on the table, nat and pit, scored over a *boom* of 16 hands
@@ -23,7 +24,7 @@ Dutch. It runs at <https://klaverjas.kroes.dev>.
 - **Score sheet, last trick and the whole previous hand** to look back on;
   chat with quick reactions.
 - **Handleiding**: the controls, the rules, card values, roem, signals
-  (*seinen*), tips and a glossary.
+  (*seinen*, also called *voorkaarten*), tips and a glossary.
 - **Oefenen**: a training game with Juf Ans as partner, hints on every turn,
   an explanation after every trick, and optionally all cards face up.
 - Built for phones (touch, portrait and landscape), tablets and desktop
@@ -57,7 +58,7 @@ cd test/ui
 node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # full games by tapping, reload, rematch
 node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
 node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at five sizes, into test/ui/out/
-node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 21 behaviour checks (coach, taps, back button, lost socket, full table…); needs -fast, ~15 min
+node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 26 behaviour checks (coach, taps, back button, lost socket, full table, summary on a phone…); needs -fast, ~15 min
 node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image
 ```
 

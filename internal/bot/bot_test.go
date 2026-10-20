@@ -173,7 +173,7 @@ func TestForcedTrumpNeverTurned(t *testing.T) {
 var (
 	sureClaims = []string{"zo pak je de slag", "niemand na je kan hier nog overheen", "de slag is zeker", "slag al zeker", "slag zeker voor jullie"}
 	loseClaims = []string{"Je kunt de slag niet winnen", "je kunt de slag niet winnen"}
-	noReasons  = []string{"naar verwachting het meeste op", "naar verwachting meer", "kaartverdelingen door"}
+	noReasons  = []string{"naar verwachting het meeste op", "naar verwachting meer", "volgens de berekening"}
 )
 
 func containsAny(s string, subs []string) bool {

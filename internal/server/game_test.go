@@ -959,14 +959,13 @@ func TestTrainingMissedHint(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Leerling", map[string]any{"hands": 4}, true, true)
-	rng := rand.New(rand.NewPCG(4, 4))
 	acted, followed, missed := 0, false, false
 	for !followed || !missed {
 		c.until(10*time.Second, "my turn", func(m *msg) bool { return c.myTurn() && c.seq > acted })
 		acted = c.seq
 		s := c.s
 		if s.Phase != phasePlay {
-			c.actRandom(rng)
+			c.actHint() // a trump or bid against the hint would be told too
 			continue
 		}
 		hinted := *s.Hint.Card
@@ -991,6 +990,71 @@ func TestTrainingMissedHint(t *testing.T) {
 	}
 }
 
+// TestTrainingMissedChoice: a learner who chooses another trump, or bids
+// otherwise, than the hint hears with the first trick what Juf Ans
+// advised, and why; the next trick says it no more.
+func TestTrainingMissedChoice(t *testing.T) {
+	cases := []struct {
+		mode, phase, want string
+	}{
+		{"utrechts", phaseTrump, " als troef aangeraden: de eerste kleur die mag."},
+		{"gedraaid", phaseBid, "Juf Ans had aangeraden om te passen: dat doet de test altijd."},
+	}
+	for _, tc := range cases {
+		t.Run(tc.mode, func(t *testing.T) {
+			_, ts, _ := newTestServer(t)
+			c := dial(t, ts)
+			c.create("Leerling", map[string]any{"hands": 24, "trumpMode": tc.mode}, true, true)
+			acted, readied, missed, tricks := 0, 0, false, 0
+			for tricks < 2 {
+				m := c.until(10*time.Second, "my turn, a summary or a tip", func(m *msg) bool {
+					return m.T == "tip" || m.T == "update" && c.seq > acted &&
+						(c.myTurn() || c.phase() == phaseHandEnd && c.s.HandNo > readied)
+				})
+				if m.T == "tip" {
+					switch {
+					case !missed:
+						if strings.Contains(m.Text, "aangeraden") {
+							t.Errorf("followed every hint, tip %q", m.Text)
+						}
+					case tricks == 0:
+						if !strings.Contains(m.Text, " wint de slag. ") || !strings.Contains(m.Text, tc.want) {
+							t.Errorf("first trick after the miss: tip %q, want %q", m.Text, tc.want)
+						}
+						tricks++
+					default:
+						if strings.Contains(m.Text, "aangeraden") {
+							t.Errorf("second trick, tip %q", m.Text)
+						}
+						tricks++
+					}
+					continue
+				}
+				acted = c.seq
+				s := c.s
+				switch {
+				case s.Phase == phaseHandEnd: // the training summary waits
+					readied = s.HandNo
+					c.send(map[string]any{"t": "ready"})
+				case !missed && s.Phase == tc.phase && s.Hint.Suit != nil:
+					for su := game.Suit(0); su < game.NumSuits; su++ {
+						if su != *s.Hint.Suit && !(s.Forced && s.Turned != nil && su == *s.Turned) {
+							c.send(map[string]any{"t": "trump", "suit": su.String()})
+							break
+						}
+					}
+					missed = true
+				case !missed && s.Phase == tc.phase && s.Hint.Play != nil:
+					c.send(map[string]any{"t": "bid", "play": !*s.Hint.Play})
+					missed = true
+				default:
+					c.actHint()
+				}
+			}
+		})
+	}
+}
+
 func TestMissedText(t *testing.T) {
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEXT")
@@ -998,16 +1062,47 @@ func TestMissedText(t *testing.T) {
 	nine := game.Card{Rank: game.Nine, Suit: game.Clubs}
 	cs := game.CardShortNL(nine)
 	for text, want := range map[string]string{
-		"Speel " + cs + ": je maat heeft de slag al.": "Juf Ans had " + cs + " aangeraden: je maat heeft de slag al.",
-		"Trek troef met " + cs + ".":                  "Juf Ans had " + cs + " aangeraden. Trek troef met " + cs + ".",
-		"":                                            "Juf Ans had " + cs + " aangeraden.",
+		"Speel " + cs + ": je maat heeft de slag al.":                    "Juf Ans had " + cs + " aangeraden: je maat heeft de slag al.",
+		"Kom uit met " + cs + ": een lage kaart kost weinig.":            "Juf Ans had " + cs + " aangeraden: een lage kaart kost weinig.",
+		"Gooi " + cs + " af: je kunt niet bekennen.":                     "Juf Ans had " + cs + " aangeraden: je kunt niet bekennen.",
+		"Gooi je " + cs + " af: die is niets waard.":                     "Juf Ans had " + cs + " aangeraden: die is niets waard.",
+		"Troef met " + cs + ": je kunt niet bekennen.":                   "Juf Ans had " + cs + " aangeraden: je kunt niet bekennen.",
+		"Overtroef met " + cs + ": je kunt niet bekennen.":               "Juf Ans had " + cs + " aangeraden: je kunt niet bekennen.",
+		"Speel troef (" + cs + "): je maat vroeg om troef.":              "Juf Ans had " + cs + " aangeraden: je maat vroeg om troef.",
+		"Speel " + cs + ", je laatste klaveren: dan ben je die kwijt.":   "Juf Ans had " + cs + " aangeraden, je laatste klaveren: dan ben je die kwijt.",
+		"Speel je laagste, " + cs + ": daarmee is de slag al zeker.":     "Juf Ans had " + cs + " aangeraden, je laagste: daarmee is de slag al zeker.",
+		"Gooi je laatste klaveren af (" + cs + "): dan kun je straks...": "Juf Ans had " + cs + " aangeraden, je laatste klaveren: dan kun je straks...",
+		"Je maat heeft de slag: spek hem met je " + cs + ".":             "Juf Ans had " + cs + " aangeraden. Je maat heeft de slag: spek hem met je " + cs + ".",
+		"Trek troef met " + cs + ".":                                     "Juf Ans had " + cs + " aangeraden. Trek troef met " + cs + ".",
+		"Speel ♣8: een andere kaart.":                                    "Juf Ans had " + cs + " aangeraden. Speel ♣8: een andere kaart.",
+		"":                                                               "Juf Ans had " + cs + " aangeraden.",
 	} {
-		if got := r.missedText(0, &missedHint{seat: 0, card: nine, text: text}); got != want {
+		if got := r.missedText(0, &missedHint{seat: 0, hint: hint{Card: &nine, Text: text}}); got != want {
 			t.Errorf("missedText(%q) = %q, want %q", text, got, want)
 		}
 	}
+	hearts := game.Hearts
+	yes, no := true, false
+	for _, c := range []struct {
+		h    hint
+		want string
+	}{
+		{hint{Suit: &hearts, Text: "Kies ♥ als troef: je hebt de boer en de nel, in totaal vier harten."},
+			"Juf Ans had ♥ als troef aangeraden: je hebt de boer en de nel, in totaal vier harten."},
+		{hint{Suit: &hearts, Text: "Iedereen heeft gepast, dus jij moet kiezen (niet ♠). Kies ♥ als troef: met vier harten is dat je langste kleur."},
+			"Juf Ans had ♥ als troef aangeraden: met vier harten is dat je langste kleur."},
+		{hint{Play: &yes, Text: "Spelen: met de boer van ♥ (je enige troef) is je hand sterk genoeg."},
+			"Juf Ans had aangeraden om te spelen: met de boer van ♥ (je enige troef) is je hand sterk genoeg."},
+		{hint{Play: &no, Text: "Passen: je hebt geen harten. Als je speelt, haal je het naar schatting bijna nooit; de kans op nat is te groot."},
+			"Juf Ans had aangeraden om te passen: je hebt geen harten. Als je speelt, haal je het naar schatting bijna nooit; de kans op nat is te groot."},
+		{hint{Play: &no, Text: "Iets anders."}, "Juf Ans had aangeraden om te passen. Iets anders."},
+	} {
+		if got := r.missedText(0, &missedHint{hint: c.h}); got != c.want {
+			t.Errorf("missedText(%+v) = %q, want %q", c.h, got, c.want)
+		}
+	}
 	r.seats[2] = newHuman("Bob")
-	if got := r.missedText(0, &missedHint{card: nine}); got != "De tip had "+cs+" aangeraden." {
+	if got := r.missedText(0, &missedHint{hint: hint{Card: &nine}}); got != "De tip had "+cs+" aangeraden." {
 		t.Errorf("without a bot partner: %q", got)
 	}
 }

@@ -1,7 +1,7 @@
 // Home screen (name, quick play, new game, join, training), the join-link
 // invite, and the lobby where seats and options are arranged.
 import { sound } from './sound.js';
-import { app, h, clear, icon, store, toast, POS, posOf, isWij, teamCls, avatar, playerName, variantText, copyText, anim } from './util.js';
+import { app, h, clear, icon, store, toast, POS, posOf, isWij, teamCls, avatar, playerName, variantText, copyText, DEFAULT_NAME } from './util.js';
 import * as panels from './panels.js';
 
 const E = {};
@@ -64,6 +64,13 @@ function quickSub() {
   return parts.length ? `Drie AI-spelers · ${parts.join(' · ')}` : 'Meteen aan tafel met drie AI-spelers';
 }
 
+// Shows the quick-play subtitle with "AI-spelers" kept whole: a narrow
+// phone would break the line after "AI-".
+function showQuickSub() {
+  E.quickSub.replaceChildren(...quickSub().split(/(AI-spelers)/).filter(Boolean)
+    .map(part => (part === 'AI-spelers' ? h('span', { class: 'nobreak', text: part }) : part)));
+}
+
 // ---------- home ----------
 
 export function init() {
@@ -73,6 +80,8 @@ export function init() {
     autocapitalize: 'words', spellcheck: false, enterKeyHint: 'done', value: store.get('name', ''), 'aria-label': 'Je naam',
   });
   E.name.addEventListener('change', saveName);
+  E.name.addEventListener('input', () => E.name.classList.remove('ask'));
+  E.name.addEventListener('blur', () => E.name.classList.remove('ask'));
   // Enter (the keyboard's go key) does what the name was asked for: join
   // the invite, or the code already typed; otherwise it just closes the
   // keyboard.
@@ -104,18 +113,19 @@ export function init() {
   E.main = h('div', { class: 'home-main' },
     h('button', { class: 'btn btn-hero', type: 'button', id: 'btn-quick', onclick: quick },
       h('span', { class: 'hero-ico', 'aria-hidden': 'true' }, icon('bolt')),
-      h('span', { class: 'hero-txt' }, h('b', { text: 'Snel spelen' }), E.quickSub = h('small', { id: 'quick-sub', text: quickSub() }))),
+      h('span', { class: 'hero-txt' }, h('b', { text: 'Snel spelen' }), E.quickSub = h('small', { id: 'quick-sub' }))),
     h('div', { class: 'tiles' },
       h('button', { class: 'btn btn-tile', type: 'button', id: 'btn-new', onclick: openNewGame },
         icon('users'), h('b', { text: 'Nieuw spel' }), h('small', { text: 'Speel met vrienden' })),
       h('button', { class: 'btn btn-tile', type: 'button', id: 'btn-train', onclick: openTraining },
-        icon('school'), h('b', { text: 'Oefenen' }), h('small', { text: 'Leer het spel met tips' }))),
+        icon('school'), h('b', { text: 'Oefenen' }), h('small', { text: 'Leren met tips' }))),
     h('div', { class: 'join' },
       h('label', { class: 'join-lbl', for: 'join-code' }, 'Meedoen met een code'),
       h('div', { class: 'join-row' }, E.code,
         h('button', { class: 'btn btn-join', type: 'button', onclick: () => joinCode(E.code.value) }, icon('enter'), 'Meedoen'))),
     h('button', { class: 'btn btn-link', type: 'button', id: 'btn-help', onclick: () => panels.openManual() }, icon('book'), 'Handleiding en spelregels'));
   E.code.id = 'join-code';
+  showQuickSub();
   E.card = h('div', { class: 'home-card' },
     h('label', { class: 'name-lbl', for: 'name', text: 'Je naam' }), E.name, E.invite, E.main);
   root.querySelector('.home-inner').append(E.card,
@@ -133,21 +143,29 @@ function saveName() {
   return v;
 }
 
-// The player's name, or '' after nudging them to fill it in.
+// The player's name, or '' after asking for it: for a game with friends,
+// who will see it. The field takes the focus, with a word on why.
 export function currentName() {
   const v = saveName();
   if (v) return v;
   E.name.focus();
-  anim(E.name, [{ translate: '0 0' }, { translate: '-6px 0' }, { translate: '6px 0' }, { translate: '0 0' }], 300);
-  toast('Vul eerst je naam in', { kind: 'warn' });
+  E.name.classList.add('ask');
+  toast('Hoe heet je?', { sub: 'Vul je naam in, dan weten de anderen aan tafel wie je bent.' });
   return '';
+}
+
+// Snel spelen and Oefenen are with bots only: they never wait for a name.
+// The one typed is used (and kept); without one the player is "Speler",
+// which is not stored as their name.
+function soloName() {
+  return saveName() || DEFAULT_NAME;
 }
 
 export function show() {
   E.invite.hidden = true;
   E.main.hidden = false;
   E.name.enterKeyHint = 'done';
-  E.quickSub.textContent = quickSub();
+  showQuickSub();
   E.name.value = store.get('name', '') || E.name.value;
   setBusy(false);
   if (!E.name.value && matchMedia('(pointer: fine)').matches) setTimeout(() => E.name.focus(), 50);
@@ -183,8 +201,7 @@ export function setBusy(on) {
 function quick() {
   sound.unlock();
   sound.play('click');
-  if (!currentName()) return;
-  app.create({ opts: quickOpts(), start: true });
+  app.create({ opts: quickOpts(), start: true, name: soloName() });
 }
 
 function joinCode(v) {
@@ -202,11 +219,12 @@ function joinCode(v) {
 function openNewGame() {
   sound.unlock();
   sound.play('click');
+  if (!currentName()) return; // friends will see it: ask before the options
   const opts = { ...DEFAULTS, ...store.json('opts', {}) };
   delete opts.open;
   const m = panels.openModal({
     id: 'new', title: 'Nieuw spel', cls: 'm-sheet m-new', body: [
-      optionsForm(opts, (k, v) => { opts[k] = v; store.setJSON('opts', opts); E.quickSub.textContent = quickSub(); }),
+      optionsForm(opts, (k, v) => { opts[k] = v; store.setJSON('opts', opts); showQuickSub(); }),
       h('p', { class: 'sheet-note', text: 'Je krijgt een code en een link om te delen. Lege plaatsen worden aangevuld met AI-spelers.' }),
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-create', onclick: () => {
         if (!currentName()) { m.close(); return; }
@@ -232,9 +250,8 @@ function openTraining() {
         h('span', { class: 'switch' }, open, h('i'))),
       optionsForm(opts, (k, v) => { opts[k] = v; }, ['trumpMode', 'rules', 'tempo']),
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-train-go', onclick: () => {
-        if (!currentName()) { m.close(); return; }
         m.close(true);
-        app.create({ opts, training: true, start: true });
+        app.create({ opts, training: true, start: true, name: soloName() });
       } }, 'Start oefenspel')),
     ],
   });

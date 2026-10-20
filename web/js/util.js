@@ -303,11 +303,15 @@ export const isWij = (s, seat) => seat % 2 === s.you % 2;
 export const teamCls = (s, seat) => (isWij(s, seat) ? 'wij' : 'zij');
 export const teamName = (s, team) => (team === s.you % 2 ? 'Wij' : 'Zij');
 
+// The name for whoever gave none: Snel spelen and Oefenen do not ask for
+// one (nobody else sees it), and the server calls a nameless player so too.
+export const DEFAULT_NAME = 'Speler';
+
 // Display name; "Jij" for yourself when `jij` is set.
 export function nameOf(s, seat, jij = true) {
   if (seat == null || seat < 0) return '';
   if (jij && seat === s.you) return 'Jij';
-  return s.players?.[seat]?.name || 'Speler';
+  return s.players?.[seat]?.name || DEFAULT_NAME;
 }
 
 // A name for a tight spot: a long name shortens with an ellipsis, but the
@@ -348,6 +352,30 @@ export const cap = text => (text ? text[0].toUpperCase() + text.slice(1) : '');
 
 export const variantText = o =>
   `${o.trumpMode === 'gedraaid' ? 'Gedraaid' : 'Utrechts'}/${o.rules === 'rotterdams' ? 'Rotterdams' : 'Amsterdams'}`;
+
+// The hand summary's headline, seen from team w (the viewer's): t the title,
+// sub the line under it, cls its colour: good news for us is 'good',
+// bad news 'bad', the opponents making their game 'neutral'; 'nat' and
+// 'pit' mark the two big outcomes. A pit by the defenders means the
+// players went nat as well.
+export function handHeadline(r, w) {
+  const we = r.playingTeam === w;
+  if (r.pit) {
+    const ours = r.pitTeam === w;
+    if (ours && we) return { t: 'Pit!', sub: 'Wij halen alle acht slagen: 100 roem extra.', cls: 'pit good' };
+    if (ours) return { t: 'Pit!', sub: 'Zij gaan nat en wij halen alle acht slagen: 100 roem extra.', cls: 'pit good' };
+    if (!we) return { t: 'Zij halen pit', sub: 'Zij halen alle acht slagen en krijgen 100 roem extra.', cls: 'pit bad' };
+    return { t: 'Nat!', sub: 'Wij spelen en halen geen slag. Zij krijgen alles, plus 100 roem voor pit.', cls: 'nat bad' };
+  }
+  if (r.nat) {
+    return we
+      ? { t: 'Nat!', sub: 'Wij spelen en halen het niet. Alle punten gaan naar Zij.', cls: 'nat bad' }
+      : { t: 'Zij gaan nat!', sub: 'Zij spelen en halen het niet. Alle punten voor Wij!', cls: 'nat good' };
+  }
+  return we
+    ? { t: 'Gehaald!', sub: 'Wij spelen en halen het.', cls: 'good' }
+    : { t: 'Zij halen het', sub: 'Zij spelen en halen meer dan de helft van de punten.', cls: 'neutral' };
+}
 
 // Avatar circle for a player: emoji for bots, initial for humans.
 export function avatar(p, cls = '') {

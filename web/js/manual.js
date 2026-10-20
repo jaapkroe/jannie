@@ -56,7 +56,7 @@ export const CONTENT = {
       ],
       chips: true,
     },
-    { p: 'Je naam vul je maar één keer in; je browser onthoudt hem. Bij Instellingen kun je hem altijd aanpassen.' },
+    { p: 'Voor Snel spelen en Oefenen hoef je geen naam in te vullen. Speel je met anderen, dan vraagt het spel er één keer om, want zij zien hem aan tafel; je browser onthoudt hem. Bij Instellingen kun je hem altijd aanpassen.' },
 
     { h4: 'Spelregels bij Nieuw spel' },
     {
@@ -136,7 +136,7 @@ export const CONTENT = {
         'Tik op [Oefenen] en dan op [Start oefenspel]. Je speelt alleen met AI-spelers: **Juf Ans (AI)** is je maat en niemand anders kan aanschuiven.',
         'Zet **Open kaarten** aan als je alle vier de handen wilt zien. Zo snap je beter waarom iemand iets speelt.',
         'Ben je aan de beurt, dan geeft een tipballon advies en licht de aangeraden kaart op. Moet je troef kiezen, dan staat de tip in het venster met de kleuren. Met ✕ verberg je de tip tot je volgende beurt.',
-        'Je mag het advies ook in de wind slaan: zo leer je het meest. Speel je iets anders, dan vertelt Juf Ans na de slag welke kaart zij had aangeraden en waarom.',
+        'Je mag het advies ook in de wind slaan: zo leer je het meest. Speel je een andere kaart, dan vertelt Juf Ans na de slag welke kaart zij had aangeraden en waarom. Kies je een andere troef, of speel of pas je tegen haar advies in, dan hoor je dat na de eerste slag.',
         'Na elke slag legt Juf Ans uit wat er gebeurde: wie er won, met welke kaart en hoeveel punten en roem erin zaten.',
         'Na elk potje wacht het spel tot je op [Volgend potje] tikt, zodat je de slagen rustig kunt nalopen.',
         'Het tempo staat op rustig, zodat je alles goed kunt volgen.',
@@ -383,7 +383,7 @@ export const CONTENT = {
   ],
 
   seinen: [
-    { lead: 'Met **seinen** vertel je je maat iets over je hand, alleen met de kaart die je speelt.' },
+    { lead: 'Met **seinen** (ook wel **voorkaarten**) vertel je je maat iets over je hand, alleen met de kaart die je speelt.' },
     { note: 'Seinen is een afspraak tussen maten, geen valsspelen: de kaart zelf is het signaal en iedereen aan tafel mag de afspraken kennen. Praten over je kaarten, knipogen of zuchten bij een slag hoort er niet bij.' },
     { p: 'De AI-spelers op Normaal en Sterk houden zich aan **aas voorspelen**, **kleintje boer** en **laag bijspelen**. Komt een AI-speler van de spelende partij voor het eerst uit met een kleintje, dan heeft die (bijna altijd) de troefboer. Let dus goed op wat zij uitspelen en bijspelen.' },
 
@@ -508,7 +508,7 @@ export const CONTENT = {
         ['Roem', 'Bonuspunten voor combinaties in één slag: reeksen, stuk, vier gelijke.'],
         ['Roem melden', 'Aan tafel hardop zeggen dat er roem in de slag zit. Hier doet de computer dat.'],
         ['Rotterdams', 'Variant waarin je altijd moet troeven als je niet kunt bekennen, ook als je maat de slag heeft.'],
-        ['Seinen', 'Je maat iets vertellen met de kaart die je speelt.'],
+        ['Seinen (voorkaarten)', 'Je maat iets vertellen met de kaart die je speelt.'],
         ['Slag', 'De vier kaarten van één ronde. Wie de slag wint, komt weer uit.'],
         ['Spekken (ook wel smeren)', 'Punten (een 10 of aas) bijspelen op een slag die je maat zeker wint.'],
         ['Spelende partij', 'Het koppel dat troef heeft gemaakt en moet halen.'],

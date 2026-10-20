@@ -152,6 +152,7 @@ func (r *room) startHand() {
 		dealer = r.deal.Dealer().Next()
 	}
 	r.handNo++
+	r.missed, r.misses = nil, nil
 	r.deal = game.NewDeal(dealer, game.Shuffle(r.rng), r.opts.TrumpMode, r.opts.Rules, game.Suit(r.rng.IntN(game.NumSuits)))
 	r.phase = string(r.deal.Phase())
 	r.collected = false
@@ -369,12 +370,16 @@ func (r *room) humanAct(c *client, i game.Seat, a action) {
 		c.sendError(errInvalid, "Dat kan nu niet.")
 		return
 	}
+	miss := r.missedHintFor(i, a)
 	if a.kind == actPlay {
-		r.missed = r.missedHintFor(i, a.card) // explained with the trick
+		r.missed = miss // explained with the trick
 	}
 	err := r.act(i, a)
-	if err != nil {
+	switch {
+	case err != nil:
 		r.missed = nil
+	case miss != nil && a.kind != actPlay:
+		r.misses = append(r.misses, *miss) // explained with the first trick
 	}
 	switch {
 	case err == nil:
@@ -453,29 +458,36 @@ func (r *room) act(i game.Seat, a action) error {
 	return nil
 }
 
-// missedHint is a training hint for a card the player did not play.
+// missedHint is a training hint the player did not follow: it advised
+// another card, trump suit or bid than the one chosen.
 type missedHint struct {
 	seat game.Seat
-	card game.Card
-	text string
+	hint hint
 }
 
-// missedHintFor returns the hint seat i saw this turn when card is not the
-// advised one, else nil.
-func (r *room) missedHintFor(i game.Seat, card game.Card) *missedHint {
+// missedHintFor returns the hint seat i saw this turn when action a is not
+// the advised one, else nil.
+func (r *room) missedHintFor(i game.Seat, a action) *missedHint {
 	h := r.hintVal
-	if !r.training || r.hintStep != r.step || h == nil || h.Card == nil || *h.Card == card ||
-		r.deal == nil || r.deal.Turn() != i {
+	if !r.training || r.hintStep != r.step || h == nil || r.deal == nil || r.deal.Turn() != i {
 		return nil
 	}
-	return &missedHint{seat: i, card: *h.Card, text: h.Text}
+	switch {
+	case a.kind == actPlay && h.Card != nil && *h.Card != a.card:
+	case a.kind == actTrump && h.Suit != nil && *h.Suit != a.suit:
+	case a.kind == actBid && h.Play != nil && *h.Play != a.play:
+	default:
+		return nil
+	}
+	return &missedHint{seat: i, hint: *h}
 }
 
 // sendTips explains a finished trick to the player in training, and what
-// the hint was when they played another card.
+// the hint was when they played another card. The first trick of a hand
+// also says so of a trump choice or bid that went against the hint.
 func (r *room) sendTips(t game.Trick) {
-	missed := r.missed
-	r.missed = nil
+	missed, choices := r.missed, r.misses
+	r.missed, r.misses = nil, nil
 	if !r.training {
 		return
 	}
@@ -490,31 +502,96 @@ func (r *room) sendTips(t game.Trick) {
 			names[k] = r.displayName(game.Seat(k))
 		}
 		names[i] = "Jij"
-		text := r.explainTrick(t, trump, names)
-		if missed != nil && missed.seat == game.Seat(i) {
-			text = strings.TrimSpace(text + " " + r.missedText(game.Seat(i), missed))
+		parts := []string{r.explainTrick(t, trump, names)}
+		for _, m := range choices {
+			if m.seat == game.Seat(i) {
+				parts = append(parts, r.missedText(game.Seat(i), &m))
+			}
 		}
-		if text != "" {
+		if missed != nil && missed.seat == game.Seat(i) {
+			parts = append(parts, r.missedText(game.Seat(i), missed))
+		}
+		if text := strings.TrimSpace(strings.Join(parts, " ")); text != "" {
 			st.client.send(mustJSON(tipMsg{T: "tip", Text: text}))
 		}
 	}
 }
 
-// missedText says which card the hint advised: "Juf Ans had ♣9 aangeraden:
-// …" with the reason of the hint.
+// missedText says what the hint advised, with its reason: "Juf Ans had ♣9
+// aangeraden: …", "Juf Ans had ♥ als troef aangeraden: …", "Juf Ans had
+// aangeraden om te passen: …". The opening of the hint that only repeats
+// the advice ("Speel ♣9: ", "Kies ♥ als troef: ", "Passen: ") is left out.
 func (r *room) missedText(i game.Seat, m *missedHint) string {
 	who := "De tip"
 	if p := &r.seats[i.Partner()]; p.kind == seatBot {
 		who = p.persona.Name
 	}
-	cs := game.CardShortNL(m.card)
-	if why, ok := strings.CutPrefix(m.text, "Speel "+cs+": "); ok && why != "" {
-		return fmt.Sprintf("%s had %s aangeraden: %s", who, cs, why)
+	h := &m.hint
+	var advised, app, why string
+	ok := false
+	switch {
+	case h.Card != nil:
+		cs := game.CardShortNL(*h.Card)
+		advised = "had " + cs + " aangeraden"
+		app, why, ok = cardWhy(h.Text, cs)
+	case h.Suit != nil:
+		advised = "had " + h.Suit.Symbol() + " als troef aangeraden"
+		_, why, ok = strings.Cut(h.Text, "Kies "+h.Suit.Symbol()+" als troef: ")
+	case h.Play != nil && *h.Play:
+		advised = "had aangeraden om te spelen"
+		why, ok = strings.CutPrefix(h.Text, "Spelen: ")
+	case h.Play != nil:
+		advised = "had aangeraden om te passen"
+		why, ok = strings.CutPrefix(h.Text, "Passen: ")
 	}
-	if m.text == "" {
-		return fmt.Sprintf("%s had %s aangeraden.", who, cs)
+	switch {
+	case ok && why != "" && app != "":
+		return who + " " + advised + ", " + app + ": " + why
+	case ok && why != "":
+		return who + " " + advised + ": " + why
+	case h.Text == "":
+		return who + " " + advised + "."
 	}
-	return fmt.Sprintf("%s had %s aangeraden. %s", who, cs, m.text)
+	return who + " " + advised + ". " + h.Text
+}
+
+// cardVerbs open a card hint that names the card right after them.
+var cardVerbs = []string{"Speel ", "Kom uit met ", "Troef met ", "Overtroef met ", "Pak de slag met ",
+	"Trek troef met ", "Duik met ", "Neem de slag over met "}
+
+// cardWhy splits the text of a hint for card cs whose opening, up to the
+// first colon, only says to play cs: it returns what the opening says of
+// the card besides (app) and the reason after the colon. "Speel ♣9: …"
+// gives "" and "…"; "Speel ♠8, je laatste schoppen: …", "Speel je
+// laagste, ♠8: …" and "Gooi je laatste schoppen af (♠8): …" give "je
+// laatste schoppen" or "je laagste" too. ok is false for another opening
+// ("Je maat heeft de slag: spek hem met je ♠10, …"), which says more.
+func cardWhy(text, cs string) (app, why string, ok bool) {
+	head, why, found := strings.Cut(text, ": ")
+	if !found || why == "" {
+		return "", "", false
+	}
+	for _, verb := range cardVerbs {
+		rest, cut := strings.CutPrefix(head, verb)
+		switch {
+		case !cut:
+		case rest == cs, rest == "troef ("+cs+")":
+			return "", why, true
+		case strings.HasPrefix(rest, cs+", "):
+			return strings.TrimPrefix(rest, cs+", "), why, true
+		case strings.HasSuffix(rest, ", "+cs):
+			return strings.TrimSuffix(rest, ", "+cs), why, true
+		}
+	}
+	if rest, cut := strings.CutPrefix(head, "Gooi "); cut {
+		switch {
+		case rest == cs+" af", rest == "je "+cs+" af":
+			return "", why, true
+		case strings.HasSuffix(rest, " af ("+cs+")"):
+			return strings.TrimSuffix(rest, " af ("+cs+")"), why, true
+		}
+	}
+	return "", "", false
 }
 
 func (r *room) explainTrick(t game.Trick, trump game.Suit, names [4]string) (text string) {

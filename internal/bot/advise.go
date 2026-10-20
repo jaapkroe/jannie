@@ -311,35 +311,133 @@ func playText(v *game.View, tab *table, c game.Card) string {
 	return text
 }
 
-// noReason is the clause for card c when the hint can name no reason for
-// it: the search simply rates it best. With the search at hand it says how
-// much more c brings in than the cheapest other card, after join ("maar
-// reken je de mogelijke kaartverdelingen door, dan levert ♠A hier
-// gemiddeld zo'n 9 punten meer op dan ♠8"); without it, or when the
-// difference is under half a point, it is plain.
+// noReason is the clause for card c when the rules behind the hints name
+// no reason for it: the search simply rates it best. It compares c with y,
+// the cheapest other legal card. A concrete fact that speaks for c against
+// y comes first (see concreteReason), after "en " when join is set ("je
+// kunt niet bekennen, en zo houd je je troeven achter de hand"). Else,
+// with the search at hand, it says plainly what the calculation gives,
+// after join ("maar volgens de berekening levert ♠A gemiddeld 9 punten
+// meer op dan ♠8"); without it, or when the difference is under half a
+// point, it is plain. Either way the hint names no reason of the
+// kind the rules teach: it stays generic for teachPick.
 func (m *explainer) noReason(c game.Card, plain, join string) string {
 	m.generic = true
-	i := resultIndex(m.res, c)
-	if i < 0 || len(m.res) < 2 {
+	y, ok := m.cheapestOther(c)
+	if !ok {
 		return plain
 	}
-	others := make([]game.Card, 0, len(m.res)-1)
-	for _, r := range m.res {
-		if r.card != c {
-			others = append(others, r.card)
+	if why := m.concreteReason(c, y); why != "" {
+		if join != "" {
+			return "en " + why
 		}
+		return why
 	}
-	y := cheapest(others, m.t.trump)
-	gap := m.res[i].mean() - m.res[resultIndex(m.res, y)].mean()
+	i, j := resultIndex(m.res, c), resultIndex(m.res, y)
+	if i < 0 || j < 0 {
+		return plain
+	}
+	gap := m.res[i].mean() - m.res[j].mean()
 	what := "iets"
 	switch n := int(math.Round(gap)); {
 	case gap < 0.5:
 		return plain
 	case n >= 2:
-		what = "zo'n " + strconv.Itoa(n) + " punten"
+		what = strconv.Itoa(n) + " punten"
 	}
-	return join + "reken je de mogelijke kaartverdelingen door, dan levert " + game.CardShortNL(c) +
-		" hier gemiddeld " + what + " meer op dan " + game.CardShortNL(y)
+	return join + "volgens de berekening levert " + game.CardShortNL(c) + " gemiddeld " + what + " meer op dan " + game.CardShortNL(y)
+}
+
+// cheapestOther returns the cheapest legal card other than c, if any.
+func (m *mover) cheapestOther(c game.Card) (game.Card, bool) {
+	others := m.legal &^ bit(c)
+	if others == 0 {
+		return game.Card{}, false
+	}
+	return cheapest(others.appendCards(make([]game.Card, 0, 8)), m.t.trump), true
+}
+
+// concreteReason returns a fact that speaks for playing c rather than y,
+// another legal card, when one holds: y is the highest trump and the
+// mover's last card after this trick, so it takes the last trick; y would
+// give the opponents roem in their trick, and c gives none (unless the
+// roem warning of the hint names y already: see roemWarn); the trick is
+// sure for the mover's team and c, an honour that could still be caught
+// later, banks its points; c keeps the mover's trumps; c keeps y, the
+// highest card of a side suit that no opponent can trump; or c keeps y as
+// the guard of an honour. It returns "" when none holds. Each fact is true
+// whatever the other hands hold; that it decides the search's choice is
+// not claimed.
+func (m *mover) concreteReason(c, y game.Card) string {
+	t := m.t
+	trump := t.trump
+	ys := game.CardShortNL(y)
+	if m.hand.count() == 2 && y.Suit == trump && m.isBoss(y) {
+		return "zo houd je " + ys + " over voor de laatste slag, die je daarmee zeker pakt (" +
+			strconv.Itoa(game.LastTrickBonus) + " punten extra)"
+	}
+	if r := m.roemGain(y); r > 0 && m.roemGain(c) == 0 && t.n > 0 && t.win.Team() != m.seat.Team() &&
+		!game.Beats(y, t.best, t.led(), trump) {
+		if _, warned, ok := m.roemWarn(c, 0); !ok || warned != y {
+			return "met " + ys + " zou je de tegenstanders " + strconv.Itoa(r) + " roem geven (" + m.roemNames(y) + ")"
+		}
+	}
+	if pts := game.Points(c, trump); pts >= honourPoints && pts > game.Points(y, trump) && m.oursFor(c) {
+		if who := m.catchers(c); who != "" {
+			return "de slag is zeker voor jullie, dus zo zijn de " + strconv.Itoa(pts) + " punten van " + game.CardShortNL(c) +
+				" binnen; later kan " + who + " hem nog pakken"
+		}
+	}
+	if c.Suit != trump && y.Suit == trump {
+		if m.hand.countSuit(trump) > 1 {
+			return "zo houd je je troeven achter de hand"
+		}
+		return "zo houd je je troef (" + ys + ") achter de hand"
+	}
+	if m.topSide(y) && !m.topSide(c) {
+		return "zo houd je de hoogste " + game.SuitNameNL(y.Suit) + " (" + ys + ") achter de hand"
+	}
+	if h, ok := m.guarded(y); ok && h != c {
+		return "zo houd je " + ys + " bij je " + game.CardShortNL(h) + ", anders staat die kaal"
+	}
+	return ""
+}
+
+// topSide reports whether c is a side card that no card of its suit can
+// beat, in the mover's hand or out, while others still hold that suit and
+// no opponent can trump it.
+func (m *mover) topSide(c game.Card) bool {
+	trump := m.t.trump
+	return c.Suit != trump && (m.unk|m.hand).higher(c, trump) == 0 && m.unk.inSuit(c.Suit) != 0 && !m.oppMayRuff(c.Suit)
+}
+
+// oursFor reports whether the trick is certainly the mover's team's once
+// it plays c: c wins it and no opponent after the mover can beat it, or
+// the partner's card keeps it and no opponent can beat that.
+func (m *mover) oursFor(c game.Card) bool {
+	t := m.t
+	if t.n == 0 || game.Beats(c, t.best, t.led(), t.trump) {
+		return m.certain(c)
+	}
+	return t.win == m.partner() && m.certain(t.best)
+}
+
+// catchers names what of the opponents could still take c, a card of the
+// mover, in a later trick: "♣A of ♣10", "een hogere troef", "♠A of een
+// troef". It returns "" when nothing can.
+func (m *mover) catchers(c game.Card) string {
+	trump := m.t.trump
+	names := namesHighToLow(m.oppsMayHold(m.unk.higher(c, trump)), trump)
+	if len(names) > 2 {
+		names = []string{"een hogere " + game.SuitNameNL(c.Suit)}
+		if c.Suit == trump {
+			names = []string{"een hogere troef"}
+		}
+	}
+	if c.Suit != trump && m.oppMayRuff(c.Suit) {
+		names = append(names, "een troef")
+	}
+	return joinOr(names)
 }
 
 // onlyCardReason says why c is the only card that seat may play into the
@@ -437,7 +535,7 @@ func leadText(m *explainer, c game.Card) string {
 			"maar zo pak je de slag en haal je troeven weg bij de spelende partij."
 	case m.isBoss(c):
 		return "Speel " + cs + ", de hoogste troef: " + usually + "met de hoogste troef pak je zelf de slag. " +
-			"Zo haal je troeven weg bij de spelende partij, die ze dan niet meer kunnen gebruiken om jullie azen af te troeven."
+			"Zo haal je troeven weg bij de spelende partij, die ze dan niet meer kan gebruiken om jullie azen af te troeven."
 	}
 	return "Speel troef (" + cs + "): " + usually + "hier wel: " + m.defenderTrumpReason(c) + "."
 }
@@ -479,7 +577,7 @@ func sideLeadText(m *explainer, c game.Card) string {
 	}
 	n := m.hand.countSuit(c.Suit)
 	if n == 1 && m.hand.inSuit(trump) != 0 {
-		return "Speel " + cs + ", je laatste " + suitName + ": dan ben je die kleur kwijt en kun je hem later troeven."
+		return "Speel " + cs + ", je laatste " + suitName + ": dan ben je die kleur kwijt en kun je later troeven als hij gevraagd wordt."
 	}
 	if low, _ := m.hand.bottom(c.Suit, trump); low == c {
 		if c.Rank <= game.Nine {
@@ -822,7 +920,10 @@ func followText(m *explainer, c game.Card) string {
 		if roem > 0 {
 			extra = " En je maakt er " + strconv.Itoa(roem) + " roem bij (" + m.roemNames(c) + ")."
 		}
-		where := " (" + count(total, "punt", "punten") + " tot nu toe)"
+		where := ""
+		if total > 0 {
+			where = " (" + count(total, "punt", "punten") + " tot nu toe)"
+		}
 		switch {
 		case c.Suit == trump && led != trump:
 			verb := "Troef"
@@ -848,9 +949,11 @@ func followText(m *explainer, c game.Card) string {
 	}
 
 	// The opponents keep the trick. A roem warning about the only cheaper
-	// card is the reason not to play that card.
+	// card, or about the cheapest other card, is the reason not to play
+	// that card.
 	warn, warned, ok := m.roemWarn(c, roem)
-	warnOnly := ok && m.cheaperLosers(c) == bit(warned)
+	y, _ := m.cheapestOther(c)
+	warnOnly := ok && (m.cheaperLosers(c) == bit(warned) || warned == y)
 	if c.Suit == led {
 		if w, ok := m.bestWinner(false, false); ok {
 			if last || (m.isBoss(w) && (w.Suit == trump || !m.oppsMayTrump())) {
@@ -1235,7 +1338,9 @@ func (m *mover) roemNames(c game.Card) string {
 	return addedRoemNames(m.t.trick[:m.t.n], c, m.t.trump)
 }
 
-// addedRoemNames names the roem that c adds to the cards before.
+// addedRoemNames names the roem that c adds to the cards before. Roem that
+// c turns into more is named too, so the names add up to the points
+// added: "vierkaart en stuk in plaats van driekaart" (50 + 20 - 20).
 func addedRoemNames(before []game.Card, c game.Card, trump game.Suit) string {
 	had := game.TrickRoem(before, trump)
 	var names []string
@@ -1246,7 +1351,15 @@ func addedRoemNames(before []game.Card, c game.Card, trump game.Suit) string {
 		}
 		names = append(names, r.NameNL())
 	}
-	return joinNL(names)
+	text := joinNL(names)
+	if len(had) > 0 {
+		gone := make([]string, len(had))
+		for i, r := range had {
+			gone[i] = r.NameNL()
+		}
+		text += " in plaats van " + joinNL(gone)
+	}
+	return text
 }
 
 // ExplainTrick describes a finished trick in Dutch: who won it, with what

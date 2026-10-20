@@ -123,7 +123,7 @@ func TestTeachPick(t *testing.T) {
 		{"noise: the low card", 3, 0.5, "8S", "Je kunt de slag niet winnen: speel je laagste schoppen (♠8) en bewaar je punten."},
 		{"within two standard errors", 9, 6, "8S", "Je kunt de slag niet winnen: speel je laagste schoppen (♠8) en bewaar je punten."},
 		{"a clear gain stays, with its size", 9, 1, "AS",
-			"Speel ♠A: je kunt de slag niet winnen, maar reken je de mogelijke kaartverdelingen door, dan levert ♠A hier gemiddeld zo'n 9 punten meer op dan ♠8."},
+			"Speel ♠A: je kunt de slag niet winnen, maar volgens de berekening levert ♠A gemiddeld 9 punten meer op dan ♠8."},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -148,7 +148,7 @@ func TestTeachPick(t *testing.T) {
 	}
 	res := fakeResults(&v, map[string]float64{"KS": 30, "7C": 28, "AH": 22}, 0.5)
 	got, text := teachPick(&v, &tab, &m, res, pref)
-	if got != card("KS") || !strings.Contains(text, "kaartverdelingen") {
+	if got != card("KS") || text != "Speel ♠H: volgens de berekening levert ♠H gemiddeld 2 punten meer op dan ♣7." {
 		t.Errorf("got %v %q, want ♠H with the search's estimate", got, text)
 	}
 }
@@ -177,5 +177,60 @@ func TestPartnerAce(t *testing.T) {
 	e = explainer{mover: newMover(&tab, 0, hand, hand, 0.5), lacks: &[4]cardSet{}}
 	if got := leadText(&e, card("9D")); strings.Contains(got, "maat") {
 		t.Errorf("no evidence, yet %q", got)
+	}
+}
+
+// TestConcreteReason: a card that no rule explains gets a fact that speaks
+// for it against the cheapest other card, when one holds.
+func TestConcreteReason(t *testing.T) {
+	cases := []struct {
+		name, hand, played, c, y, want string
+	}{
+		{"the last trick", "7S 9H", "JH", "7S", "9H",
+			"zo houd je ♥9 over voor de laatste slag, die je daarmee zeker pakt (10 punten extra)"},
+		{"the highest card of a side suit", "7D 9S", "AS TS KS QS JS", "7D", "9S",
+			"zo houd je de hoogste schoppen (♠9) achter de hand"},
+		{"the guard of a ten", "QS 7D TD", "", "QS", "7D",
+			"zo houd je ♦7 bij je ♦10, anders staat die kaal"},
+		{"nothing", "QS 7D 8C", "", "QS", "7D", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tab := newTable(0, game.Hearts, 0, game.Amsterdams)
+			tab.played = setOf(game.MustParseCards(c.played))
+			hand := setOf(game.MustParseCards(c.hand))
+			e := explainer{mover: newMover(&tab, 0, hand, hand, 0.5)}
+			if y, _ := e.cheapestOther(card(c.c)); y != card(c.y) {
+				t.Fatalf("cheapest other card %v, want %v", y, c.y)
+			}
+			if got := e.concreteReason(card(c.c), card(c.y)); got != c.want {
+				t.Errorf("got  %q\nwant %q", got, c.want)
+			}
+			// Without the search: the fact, linked with "en" after a
+			// contrast, or else the plain clause.
+			want := "plain"
+			if c.want != "" {
+				want = "en " + c.want
+			}
+			if got := e.noReason(card(c.c), "plain", "maar "); got != want || !e.generic {
+				t.Errorf("noReason %q (generic %v), want %q", got, e.generic, want)
+			}
+		})
+	}
+}
+
+// TestAddedRoemNames: the names add up to the roem a card adds, also when
+// it turns roem already in the trick into more.
+func TestAddedRoemNames(t *testing.T) {
+	cases := []struct{ before, c, want string }{
+		{"8H 9H", "TH", "driekaart"},
+		{"QS 8D", "KS", "stuk"},
+		{"TS JS QS", "KS", "vierkaart en stuk in plaats van driekaart"},
+		{"TH JH QH", "9H", "vierkaart in plaats van driekaart"},
+	}
+	for _, c := range cases {
+		if got := addedRoemNames(game.MustParseCards(c.before), card(c.c), game.Spades); got != c.want {
+			t.Errorf("%s + %s: got %q, want %q", c.before, c.c, got, c.want)
+		}
 	}
 }
