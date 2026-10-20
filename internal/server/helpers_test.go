@@ -29,14 +29,14 @@ type fakeAI struct {
 }
 
 var fakePersonas = []Persona{
-	{ID: "henk", Name: "Opa Henk", Emoji: "👴", Color: "#8a5a2b", Bio: "Henk.", Chattiness: 0.5, Speed: 1},
+	{ID: "dirk", Name: "Opa Dirk", Emoji: "👴", Color: "#8a5a2b", Bio: "Dirk.", Chattiness: 0.5, Speed: 1},
 	{ID: "truus", Name: "Tante Truus", Emoji: "👵", Color: "#c2477a", Bio: "Truus.", Chattiness: 1, Speed: 1},
 	{ID: "sjaak", Name: "Sjaak", Emoji: "🎲", Color: "#e07b24", Bio: "Sjaak.", Chattiness: 0.5, Speed: 0.8},
 	{ID: "fatima", Name: "Fatima", Emoji: "🧠", Color: "#5b6ee1", Bio: "Fatima.", Chattiness: 0.2, Speed: 0.9},
 	{ID: "kees", Name: "Kees de Visser", Emoji: "🎣", Color: "#2a8c9c", Bio: "Kees.", Chattiness: 0.5, Speed: 1},
 	{ID: "ans", Name: "Juf Ans", Emoji: "👩‍🏫", Color: "#3f9b5a", Bio: "Ans.", Chattiness: 0.5, Speed: 1.2},
 	{ID: "bram", Name: "Bram", Emoji: "🛹", Color: "#9b59b6", Bio: "Bram.", Chattiness: 0.7, Speed: 0.6},
-	{ID: "lies", Name: "Bakker Lies", Emoji: "🥐", Color: "#c9a227", Bio: "Lies.", Chattiness: 0.4, Speed: 0.85},
+	{ID: "vera", Name: "Bakker Vera", Emoji: "🥐", Color: "#c9a227", Bio: "Vera.", Chattiness: 0.4, Speed: 0.85},
 }
 
 func (*fakeAI) Personas() []Persona { return slices.Clone(fakePersonas) }

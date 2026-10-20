@@ -64,6 +64,18 @@ func checkLine(t *testing.T, id, l string) {
 			t.Errorf("%s: line %q mentions cards (%q)", id, l, bad)
 		}
 	}
+	checkTerms(t, l)
+}
+
+// checkTerms: the game's words are spekken, boom and doormars, not
+// smeren, boompje and mars.
+func checkTerms(t *testing.T, l string) {
+	t.Helper()
+	for _, w := range strings.FieldsFunc(strings.ToLower(l), func(r rune) bool { return !unicode.IsLetter(r) }) {
+		if strings.HasPrefix(w, "smeer") || strings.HasPrefix(w, "smeren") || strings.HasPrefix(w, "gesmeerd") || w == "boompje" || w == "mars" {
+			t.Errorf("%q says %q", l, w)
+		}
+	}
 }
 
 func contains(list []string, s string) bool {
@@ -113,7 +125,7 @@ func TestChatEvents(t *testing.T) {
 			}
 		}
 	}
-	if Chat(Persona{ID: "henk"}, ChatEvent{Kind: "pit", Mine: true}, rng) != "" {
+	if Chat(Persona{ID: "dirk"}, ChatEvent{Kind: "pit", Mine: true}, rng) != "" {
 		t.Error("a persona without chattiness spoke")
 	}
 	if Chat(roster[0], ChatEvent{Kind: "greet"}, nil) != "" {
@@ -240,7 +252,7 @@ func TestChatReplies(t *testing.T) {
 		}
 	}
 	fatima, _ := ByID("fatima")
-	henk, _ := ByID("henk")
+	dirk, _ := ByID("dirk")
 	named := 0
 	for range 100 {
 		if line := Chat(fatima, ChatEvent{Kind: "reply", Text: "Fatima, wat denk jij?"}, rng); line != "" {
@@ -249,14 +261,14 @@ func TestChatReplies(t *testing.T) {
 				t.Fatalf("unexpected reply %q", line)
 			}
 		}
-		if line := Chat(henk, ChatEvent{Kind: "reply", Text: "Fatima, wat denk jij?"}, rng); line != "" {
-			t.Fatalf("Henk answered a question for Fatima: %q", line)
+		if line := Chat(dirk, ChatEvent{Kind: "reply", Text: "Fatima, wat denk jij?"}, rng); line != "" {
+			t.Fatalf("Dirk answered a question for Fatima: %q", line)
 		}
 	}
 	if named < 80 {
 		t.Errorf("Fatima answered being named only %d of 100 times", named)
 	}
-	if !mentions(henk, "opa henk, help!") || mentions(henk, "henkie") {
+	if !mentions(dirk, "opa dirk, help!") || mentions(dirk, "dirkje") {
 		t.Error("mentions does not match whole names")
 	}
 }

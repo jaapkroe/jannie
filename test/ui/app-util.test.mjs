@@ -22,7 +22,7 @@ class FakeNode {
 }
 globalThis.Node = FakeNode;
 globalThis.document = { createElement: tag => new FakeNode(tag) };
-const { store, roemText, cap, playerName } = await import('../../web/js/util.js');
+const { store, roemText, cap, playerName, keyboardOpen, textField } = await import('../../web/js/util.js');
 
 test('store keeps values in memory when localStorage is blocked', () => {
   mode = 'blocked';
@@ -82,4 +82,35 @@ test('playerName keeps " (AI)" apart from the name that may shorten', () => {
   // Only a trailing marker is one.
   assert.deepEqual(playerName('(AI) fan').kids.map(k => k.textContent), ['(AI) fan']);
   assert.deepEqual(playerName('').kids.map(k => k.textContent), ['']);
+});
+
+test('the on-screen keyboard counts as open only on an upright touch screen that it makes short', () => {
+  const up = { touch: true, upright: true, focused: true, full: 844, height: 420, wasOn: false, sinceBlur: Infinity };
+  assert.equal(keyboardOpen(up), true);
+  assert.equal(keyboardOpen({ ...up, height: 330 }), true);
+  assert.equal(keyboardOpen({ ...up, touch: false }), false, 'a mouse and a real keyboard');
+  assert.equal(keyboardOpen({ ...up, upright: false }), false, 'a phone on its side keeps its landscape layout');
+  assert.equal(keyboardOpen({ ...up, height: 790 }), false, 'focused, but the keyboard is down (back button, hardware keyboard)');
+  assert.equal(keyboardOpen({ ...up, full: 0 }), true, 'no full height measured yet: a focused field will do');
+  // After a blur the keyboard slides away: the layout holds until the
+  // viewport has grown back, or for a short while at most.
+  const blurred = { ...up, focused: false, wasOn: true, sinceBlur: 150 };
+  assert.equal(keyboardOpen(blurred), true);
+  assert.equal(keyboardOpen({ ...blurred, height: 844 }), false);
+  assert.equal(keyboardOpen({ ...blurred, sinceBlur: 5000 }), false);
+  assert.equal(keyboardOpen({ ...blurred, wasOn: false }), false);
+});
+
+test('textField knows which fields bring up the keyboard', () => {
+  const input = (type, extra = {}) => ({ tagName: 'INPUT', type, ...extra });
+  assert.equal(textField(input('text')), true);
+  assert.equal(textField(input('search')), true);
+  assert.equal(textField(input('text', { readOnly: true })), false, 'the link to copy by hand');
+  assert.equal(textField(input('text', { disabled: true })), false);
+  assert.equal(textField(input('checkbox')), false);
+  assert.equal(textField(input('range')), false);
+  assert.equal(textField({ tagName: 'TEXTAREA' }), true);
+  assert.equal(textField({ tagName: 'DIV', isContentEditable: true }), true);
+  assert.equal(textField({ tagName: 'BUTTON' }), false);
+  assert.equal(textField(null), false);
 });

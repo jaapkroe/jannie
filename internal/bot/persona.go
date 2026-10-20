@@ -6,7 +6,9 @@
 //     card about 30% of the time, and the longest suit as trump;
 //   - normaal: the rule-based policy (policy.go), which sees only public
 //     information plus its own hand: card tracking, void and trump
-//     inference, roem awareness and smearing, and trump choice and bidding
+//     inference, roem awareness, spekken (points on the partner's trick),
+//     the signals of design §8 (kleintje boer, aas voorspelen, laag
+//     bijspelen), given honestly and read, and trump choice and bidding
 //     from a hand value fitted to simulations;
 //   - sterk: determinised Monte Carlo (search.go). It samples the hidden
 //     hands consistent with everything known (sample.go), weighted by the
@@ -65,7 +67,7 @@ type Persona struct {
 
 var roster = []Persona{
 	{
-		ID: "henk", Name: "Opa Henk", Emoji: "👴", Color: "#8a5a2b",
+		ID: "dirk", Name: "Opa Dirk", Emoji: "👴", Color: "#8a5a2b",
 		Bio:        "Speelt al zestig jaar in café De Klaver; voorzichtig, degelijk en altijd een spreekwoord paraat.",
 		Aggression: 0.25, Chattiness: 0.45, Speed: 1.3,
 	},
@@ -100,7 +102,7 @@ var roster = []Persona{
 		Aggression: 0.7, Chattiness: 0.7, Speed: 0.6,
 	},
 	{
-		ID: "lies", Name: "Bakker Lies", Emoji: "🥐", Color: "#c9a227",
+		ID: "vera", Name: "Bakker Vera", Emoji: "🥐", Color: "#c9a227",
 		Bio:        "Staat om vijf uur op voor het brood en speelt scherp, maar altijd vriendelijk.",
 		Aggression: 0.55, Chattiness: 0.4, Speed: 0.85,
 	},

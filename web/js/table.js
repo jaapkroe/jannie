@@ -5,6 +5,7 @@ import { sound } from './sound.js';
 import {
   app, h, clear, prefs, savePrefs, toast, wait, dur, anim, sleep, EASE, POS, posOf, isWij, teamCls, teamName,
   nameOf, suitSym, suitName, suitText, isRed, roemTotal, ROEM_NAMES, fillAvatar, countUp, icon, suitify, cap, playerName,
+  shortLandscape, onKeyboard,
 } from './util.js';
 import * as panels from './panels.js';
 
@@ -65,6 +66,7 @@ export function init() {
   bindHand();
   new ResizeObserver(() => layoutHand()).observe(E.hand);
   addEventListener('resize', fitCoach);
+  onKeyboard(fitCoach); // the landscape layout comes or goes without a resize
   document.addEventListener('keydown', onKey);
 }
 
@@ -372,10 +374,10 @@ function renderPrompt(s) {
 // opened on purpose, it may cover the seat until "Minder" or ✕.
 function fitCoach() {
   E.coach.style.removeProperty('--coach-lines');
-  if (!shortLandscape.matches) E.coach.classList.remove('open'); // turned upright
+  if (!shortLandscape()) E.coach.classList.remove('open'); // turned upright
   const open = E.coach.classList.contains('open');
   let clamped = false;
-  if (shortLandscape.matches && !E.coach.hidden && !open) {
+  if (shortLandscape() && !E.coach.hidden && !open) {
     E.coach.classList.remove('clamped');
     E.coachMore.hidden = true; // measured without it: it goes over the last line
     const over = coachBottom() - (seats.left.ring.getBoundingClientRect().top - COACH_GAP);
@@ -951,10 +953,9 @@ const overlaps = (a, b) => !!a && !!b && a.left < b.right + 2 && b.left < a.righ
 // short of the trick slot in its path (the partner's card above, or the
 // side seat's own card), so it does not cover the trick. '' leaves the CSS
 // maximum.
-const shortLandscape = matchMedia('(orientation: landscape) and (max-height: 520px)');
 function sideBubbleWidth(S, pos) {
   const seat = S.root.getBoundingClientRect();
-  const beside = shortLandscape.matches;
+  const beside = shortLandscape();
   const slot = (beside ? slots[pos] : slots.top).getBoundingClientRect();
   if (!slot.width) return '';
   const from = beside ? (pos === 'left' ? seat.right + 8 : seat.left - 8) : (pos === 'left' ? seat.left + 2 : seat.right - 2);

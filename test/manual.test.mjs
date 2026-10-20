@@ -213,7 +213,7 @@ test('sections match the section 9 contract', () => {
   assert.deepEqual(SECTIONS, [
     { id: 'bediening', title: 'Bediening' }, { id: 'regels', title: 'Spelregels' },
     { id: 'punten', title: 'Kaartwaarden' }, { id: 'roem', title: 'Roem' },
-    { id: 'seinen', title: 'Seinen & voorkaarten' }, { id: 'tips', title: 'Tips' },
+    { id: 'seinen', title: 'Seinen' }, { id: 'tips', title: 'Tips' },
     { id: 'woorden', title: 'Woordenlijst' },
   ]);
   assert.deepEqual(Object.keys(CONTENT), SECTIONS.map((s) => s.id));
@@ -406,7 +406,8 @@ test('numbers in the rules text are right', () => {
   assert.match(regels, /Bij 81 tegen 81 ga je nat/);
   assert.match(regels, /162 \+ 100 = 262/);
   assert.equal(scoreHand([162, 100], [0, 0]).score[0], 262);
-  assert.match(regels, /standaard 16: een boompje/);
+  assert.match(regels, /standaard 16: een boom,/);
+  assert.match(regels, /pit \(ook wel doormars\)/);
   assert.match(regels, /drie, twee en drie/);
   const text = [regels, renderManual('roem').textContent, renderManual('tips').textContent].join('\n');
   assert.match(text, /Elke 20 roem voor de tegenstander kost je 10 punten extra/);
@@ -421,8 +422,8 @@ test('glossary has the required words, sorted, and search filters it', () => {
   assert.deepEqual(terms, sorted, 'alphabetical');
   const lower = terms.join(' | ').toLowerCase();
   const required = ['aas', 'boer', 'jas', 'nel', 'maat', 'voorhand', 'achterhand', 'bekennen', 'troeven',
-    'overtroeven', 'ondertroeven', 'verzaken', 'roem', 'stuk', 'nat', 'pit', 'mars', 'potje', 'boompje',
-    'smeren', 'seinen', 'slag', 'spelende partij', 'gedraaid', 'verplicht'];
+    'overtroeven', 'ondertroeven', 'verzaken', 'roem', 'stuk', 'nat', 'pit', 'doormars', 'potje', 'boom',
+    'spekken (ook wel smeren)', 'seinen', 'slag', 'spelende partij', 'gedraaid', 'verplicht'];
   for (const w of required) assert.ok(lower.includes(w), w);
 
   const el = renderManual('woorden');
@@ -527,10 +528,29 @@ test('card value headers keep "(hier ♠)" together when they wrap', () => {
 test('seinen covers every signal from design section 8', () => {
   const el = renderManual('seinen');
   const heads = byTag(el, 'h3').map((h) => h.textContent.toLowerCase());
-  for (const w of ['aas voorspelen', 'kleintje boer', 'boer over boer', 'hoog of laag', 'tegenkleur', 'smeren', 'maat heeft de slag']) {
+  for (const w of ['aas voorspelen', 'kleintje boer', 'boer over boer', 'hoog of laag', 'tegenkleur', 'spekken (ook wel smeren)', 'maat heeft de slag']) {
     assert.ok(heads.some((h) => h.includes(w)), w);
   }
   assert.match(el.textContent, /geen valsspelen/);
+});
+
+test('seinen explains aas voorspelen and hoog of laag as the house agrees them', () => {
+  const text = renderManual('seinen').textContent;
+  assert.match(text, /ik heb ook de 10 van deze kleur/);
+  assert.match(text, /veilig in die kleur terugkomen/);
+  assert.match(text, /klein kaartje \(7, 8 of 9: kaarten zonder punten\) bijspelen zegt: “speel deze kleur, daar heb ik de hoogste van”/);
+  assert.match(text, /10 of een plaatje .*“ik heb weinig in deze kleur/);
+});
+
+test('the words of the house: spekken, boom and doormars', () => {
+  const home = existsSync(homePath) ? readFileSync(homePath, 'utf8') : '';
+  const text = [...SECTIONS.map(({ id }) => renderManual(id).textContent), home].join('\n');
+  assert.doesNotMatch(text, /boompje/i);
+  assert.doesNotMatch(text, /(?<!door)mars/i);
+  // Smeren only as the other name of spekken.
+  assert.doesNotMatch(text.replaceAll('(ook wel smeren)', ''), /smee?r|gesmeerd/i);
+  assert.match(text, /spek de slag met/);
+  assert.match(home, /Zestien potjes heet een boom\./);
 });
 
 test('cards.js (when present) exports what manual.js imports', { skip: !existsSync(cardsPath) && 'cards.js not written yet' }, () => {

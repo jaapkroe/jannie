@@ -137,7 +137,7 @@ func TestTeachPick(t *testing.T) {
 
 	// The maker's first lead without the trump boer: ♣7 and ♠8 would read
 	// as kleintje boer. ♠H has no reason, but the hint must not move to ♣7.
-	d = build(t, 0, [4]string{"7C KS QS 8S 9D 8D AH KH", "", "", ""}, game.Diamonds, game.Amsterdams, "")
+	d = build(t, 0, [4]string{"7C KS QS 8S 9D 8D AH TH", "", "", ""}, game.Diamonds, game.Amsterdams, "")
 	v = turnView(d)
 	v.Legal = legalCards(v)
 	tab = tableFromView(&v)
@@ -165,7 +165,8 @@ func TestPartnerAce(t *testing.T) {
 	if got := leadText(&e, card("9D")); got != want {
 		t.Errorf("got  %q\nwant %q", got, want)
 	}
-	// Seat 3 only signalled that it lacks the ace (aas voorspelen).
+	// Seat 3 only signalled that it lacks the ace (as by a small lead in
+	// diamonds, see signalHints).
 	tab.excl[3] = 0
 	e = explainer{mover: newMover(&tab, 0, hand, hand, 0.5), lacks: &[4]cardSet{3: bit(card("AD"))}}
 	want = "Speel ♦9: ♦A zit waarschijnlijk bij je maat, dus zo speel je ruiten naar je maat toe."

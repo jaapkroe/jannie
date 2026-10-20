@@ -13,7 +13,7 @@ const OPTS = [
   { key: 'humans', label: 'Spelers', choices: [[1, '1'], [2, '2'], [3, '3'], [4, '4']],
     info: ['Hoeveel mensen er mee kunnen spelen, jij meegerekend.', 'Plaatsen zonder mens krijgen een AI-speler. Met z\'n tweeën zitten jullie tegenover elkaar, als maten.'] },
   { key: 'hands', label: 'Potjes', choices: [[4, '4'], [8, '8'], [12, '12'], [16, '16'], [20, '20'], [24, '24']],
-    info: ['Hoeveel potjes (handen) het spel duurt. Zestien potjes heet een boompje.', 'Wie na het laatste potje de meeste punten heeft, wint.'] },
+    info: ['Hoeveel potjes (handen) het spel duurt. Zestien potjes heet een boom.', 'Wie na het laatste potje de meeste punten heeft, wint.'] },
   { key: 'trumpMode', label: 'Troef', choices: [['utrechts', 'Utrechts'], ['gedraaid', 'Gedraaid']],
     info: ['Utrechts (verplicht): de voorhand moet troef kiezen en speelt.', 'Gedraaid (vrij): er wordt een kleur gedraaid. Om de beurt zeg je spelen of passen. Past iedereen, dan kiest de voorhand een andere kleur.'] },
   { key: 'rules', label: 'Regels', choices: [['amsterdams', 'Amsterdams'], ['rotterdams', 'Rotterdams']],

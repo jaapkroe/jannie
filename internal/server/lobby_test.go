@@ -35,7 +35,7 @@ func TestCreateDefaults(t *testing.T) {
 	if s.Opts != defaultOptions() {
 		t.Errorf("opts %+v, want defaults", s.Opts)
 	}
-	if len(s.Roster) != len(fakePersonas) || s.Roster[0].ID != "henk" || s.Roster[0].Bio == "" {
+	if len(s.Roster) != len(fakePersonas) || s.Roster[0].ID != "dirk" || s.Roster[0].Bio == "" {
 		t.Errorf("roster %+v", s.Roster)
 	}
 	if p := s.Players[0]; p == nil || p.Name != "Piet" || p.Bot || !p.Connected {
@@ -118,21 +118,21 @@ func TestLobbyCommands(t *testing.T) {
 		g.send(m)
 		g.waitError(errNotHost)
 	}
-	h.send(map[string]any{"t": "bot", "seat": 1, "id": "henk"})
+	h.send(map[string]any{"t": "bot", "seat": 1, "id": "dirk"})
 	h.waitError(errInvalid) // a human sits there
 	h.send(map[string]any{"t": "bot", "seat": 2, "id": "nobody"})
 	h.waitError(errInvalid)
-	h.send(map[string]any{"t": "bot", "seat": 2, "id": "henk"})
-	s := h.waitState("henk at 2", func(s *state) bool { return s.Players[2] != nil })
-	if p := s.Players[2]; p.BotID != "henk" || p.Name != "Opa Henk (AI)" || p.Emoji != "👴" || p.Color == "" || !p.Bot {
+	h.send(map[string]any{"t": "bot", "seat": 2, "id": "dirk"})
+	s := h.waitState("dirk at 2", func(s *state) bool { return s.Players[2] != nil })
+	if p := s.Players[2]; p.BotID != "dirk" || p.Name != "Opa Dirk (AI)" || p.Emoji != "👴" || p.Color == "" || !p.Bot {
 		t.Errorf("bot %+v", p)
 	}
-	h.send(map[string]any{"t": "bot", "seat": 3, "id": "henk"})
-	if e := h.waitError(errInvalid); e.errMsg() != "Opa Henk (AI) zit al aan tafel." {
+	h.send(map[string]any{"t": "bot", "seat": 3, "id": "dirk"})
+	if e := h.waitError(errInvalid); e.errMsg() != "Opa Dirk (AI) zit al aan tafel." {
 		t.Errorf("msg %q", e.errMsg())
 	}
 	h.send(map[string]any{"t": "bot", "seat": 2, "id": ""}) // replace with someone else
-	s = h.waitState("replaced", func(s *state) bool { return s.Players[2] != nil && s.Players[2].BotID != "henk" })
+	s = h.waitState("replaced", func(s *state) bool { return s.Players[2] != nil && s.Players[2].BotID != "dirk" })
 	h.send(map[string]any{"t": "unbot", "seat": 1})
 	h.waitError(errInvalid)
 	h.send(map[string]any{"t": "unbot", "seat": 2})
@@ -477,7 +477,7 @@ func TestCleanName(t *testing.T) {
 		"":                            "Speler",
 		" \t\n ":                      "Speler",
 		"Jan\u0000\u001b[31m Klaas":   "Jan[31m Klaas",
-		"Opa Henk (AI)":               "Opa Henk",
+		"Opa Dirk (AI)":               "Opa Dirk",
 		"(ai)":                        "Speler",
 		"Een heel erg lange naam die": "Een heel erg lange n",
 		"Ali‮ba":                      "Aliba",
@@ -487,20 +487,20 @@ func TestCleanName(t *testing.T) {
 
 		// No fake "(AI)": not recreated by the cut to 20, not hidden by
 		// invisible or look-alike characters, nowhere in the name.
-		"Opa Henk Jansen (AI)X":        "Opa Henk Jansen X",
-		"Opa Henk (AI)\u200b":          "Opa Henk",
-		"Opa Henk (AI)\u00ad":          "Opa Henk",
-		"Opa Henk （ＡＩ）":                "Opa Henk",
-		"Opa Henk (\u0410\u0406)":      "Opa Henk", // Cyrillic А and І
-		"Opa Henk (A\u200dI)":          "Opa Henk",
-		"Opa Henk ( a . i )":           "Opa Henk",
-		"Opa Henk (Al)":                "Opa Henk",
-		"Opa (AI) Henk":                "Opa Henk",
+		"Opa Dirk Jansen (AI)X":        "Opa Dirk Jansen X",
+		"Opa Dirk (AI)\u200b":          "Opa Dirk",
+		"Opa Dirk (AI)\u00ad":          "Opa Dirk",
+		"Opa Dirk （ＡＩ）":                "Opa Dirk",
+		"Opa Dirk (\u0410\u0406)":      "Opa Dirk", // Cyrillic А and І
+		"Opa Dirk (A\u200dI)":          "Opa Dirk",
+		"Opa Dirk ( a . i )":           "Opa Dirk",
+		"Opa Dirk (Al)":                "Opa Dirk",
+		"Opa (AI) Dirk":                "Opa Dirk",
 		"((AI)AI)":                     "Speler",
 		"Piet\u3164(AI)":               "Piet",
 		"Ali (Alice)":                  "Ali (Alice)",
 		"AI Bram":                      "AI Bram",
-		"Opa Henk\U000E0041\U000E0049": "Opa Henk",
+		"Opa Dirk\U000E0041\U000E0049": "Opa Dirk",
 
 		// Invisible names become Speler.
 		"\u200b\u200b":             "Speler",

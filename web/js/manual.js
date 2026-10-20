@@ -6,7 +6,7 @@ export const SECTIONS = [
   { id: 'regels', title: 'Spelregels' },
   { id: 'punten', title: 'Kaartwaarden' },
   { id: 'roem', title: 'Roem' },
-  { id: 'seinen', title: 'Seinen & voorkaarten' },
+  { id: 'seinen', title: 'Seinen' },
   { id: 'tips', title: 'Tips' },
   { id: 'woorden', title: 'Woordenlijst' },
 ];
@@ -62,7 +62,7 @@ export const CONTENT = {
     {
       dl: [
         ['Spelers', 'Hoeveel mensen er mogen meespelen, jij meegerekend: 1 tot 4 (standaard **4**). Er zitten altijd vier spelers aan tafel; de andere plaatsen krijgen AI-spelers.'],
-        ['Potjes', '4 tot 24 (standaard **16**, een boompje).'],
+        ['Potjes', '4 tot 24 (standaard **16**, een boom).'],
         ['Troef', '**Utrechts** (standaard): voorhand moet troef kiezen. **Gedraaid**: spelen of passen op een gedraaide kleur.'],
         ['Regels', '**Amsterdams** (standaard) of **Rotterdams**: wanneer je moet troeven. De standaardvariant is dus Utrechts/Amsterdams.'],
         ['AI-sterkte', '**Makkelijk**, **Normaal** (standaard) of **Sterk**: hoe goed de AI-spelers spelen.'],
@@ -78,7 +78,7 @@ export const CONTENT = {
         'Tik op een vrije plaats om daar te gaan zitten.',
         'Hoeveel mensen er mee kunnen doen, staat bij **Spelers**. Zijn die plaatsen bezet, dan kan er niemand meer bij: wie de link dan nog opent, hoort dat de tafel vol is, en de host krijgt een melding. Zet Spelers dan hoger om een plaats vrij te maken.',
         'De **host** (wie het spel heeft gemaakt) kan op een vrije plaats ook een AI-speler zetten: kies een karakter of laat het toeval beslissen. Tik op een AI-speler om een ander karakter te kiezen; met ✕ gaat hij weer weg.',
-        'AI-spelers herken je aan **(AI)** achter de naam, zoals Opa Henk (AI). Ieder heeft een eigen karakter en kletst op zijn eigen manier mee.',
+        'AI-spelers herken je aan **(AI)** achter de naam, zoals Opa Dirk (AI). Ieder heeft een eigen karakter en kletst op zijn eigen manier mee.',
         'Plaatsen die bij de start nog vrij zijn, krijgen vanzelf een willekeurige AI-speler. De host tikt op [Start spel] en er wordt gedeeld.',
         'Alleen de host kan de spelregels veranderen. Gaat de host weg, dan neemt een andere speler het over.',
       ],
@@ -224,7 +224,7 @@ export const CONTENT = {
         hand: ['9S', '8S', 'TD', '7C'],
         note: 'Je hebt geen harten.',
         variants: [
-          { rules: 'amsterdams', allowed: ['9S', '8S', 'TD', '7C'], text: 'Vrije keuze. Je speelt als laatste, dus de slag is zeker van je maat: smeer er {TD} bij.' },
+          { rules: 'amsterdams', allowed: ['9S', '8S', 'TD', '7C'], text: 'Vrije keuze. Je speelt als laatste, dus de slag is zeker van je maat: spek de slag met {TD}.' },
           { rules: 'rotterdams', allowed: ['9S', '8S'], text: 'Je moet troeven, ook al heeft je maat de slag al.' },
         ],
       },
@@ -253,7 +253,7 @@ export const CONTENT = {
         hand: ['JS', '7S', 'AH', '8D'],
         note: 'Je hebt geen klaveren.',
         variants: [
-          { rules: 'amsterdams', allowed: ['JS', 'AH', '8D'], text: 'Smeer {AH} of speel {8D}; overtroeven met {JS} mag ook. Alleen {7S} mag niet: dat is ondertroeven terwijl je iets anders hebt.' },
+          { rules: 'amsterdams', allowed: ['JS', 'AH', '8D'], text: 'Spek de slag met {AH} of speel {8D}; overtroeven met {JS} mag ook. Alleen {7S} mag niet: dat is ondertroeven terwijl je iets anders hebt.' },
           { rules: 'rotterdams', allowed: ['JS'], text: 'Je moet overtroeven als het kan, dus {JS}, ook over je eigen maat heen.' },
         ],
       },
@@ -320,10 +320,10 @@ export const CONTENT = {
     },
 
     { h: 'Pit' },
-    { p: 'Haalt een koppel **alle acht slagen**, dan is dat **pit** (ook wel mars): 100 punten extra roem. Een pit zonder andere roem levert dus 162 + 100 = **262** punten op. Halen de tegenstanders alle slagen, dan is de spelende partij natuurlijk nat en krijgt de tegenpartij die 100 er ook bij.' },
+    { p: 'Haalt een koppel **alle acht slagen**, dan is dat **pit** (ook wel doormars): 100 punten extra roem. Een pit zonder andere roem levert dus 162 + 100 = **262** punten op. Halen de tegenstanders alle slagen, dan is de spelende partij natuurlijk nat en krijgt de tegenpartij die 100 er ook bij.' },
 
     { h: 'De partij' },
-    { p: 'Een partij bestaat uit een aantal potjes, standaard 16: **een boompje**, waarin iedereen vier keer deelt. Het koppel met het hoogste totaal wint. Staat het gelijk, dan is het gelijkspel.' },
+    { p: 'Een partij bestaat uit een aantal potjes, standaard 16: **een boom**, waarin iedereen vier keer deelt. Het koppel met het hoogste totaal wint. Staat het gelijk, dan is het gelijkspel.' },
     { note: '**Verzaken** (een kaart spelen die niet mag) kan in dit spel niet: de computer laat alleen toegestane kaarten toe. Aan de cafétafel kost verzaken je meestal het hele potje.' },
   ],
 
@@ -339,7 +339,7 @@ export const CONTENT = {
         'De troefboer (de **jas**) is de hoogste kaart van het potje en 20 punten waard.',
         'De troefnegen heet de **nel**: 14 punten en de op één na hoogste kaart.',
         'Buiten troef is de boer maar 2 punten en de 9 niets waard.',
-        'Azen en tienen zijn veel waard, waar ze ook vallen. Smeer ze bij je maat en laat ze niet zomaar aftroeven.',
+        'Azen en tienen zijn veel waard, waar ze ook vallen. Spek je maat ermee en laat ze niet zomaar aftroeven.',
         'De laatste slag levert 10 punten extra op.',
       ],
     },
@@ -383,13 +383,15 @@ export const CONTENT = {
   ],
 
   seinen: [
-    { lead: 'Met **seinen** (ook wel **voorkaarten**) vertel je je maat iets over je hand, alleen met de kaart die je speelt.' },
+    { lead: 'Met **seinen** vertel je je maat iets over je hand, alleen met de kaart die je speelt.' },
     { note: 'Seinen is een afspraak tussen maten, geen valsspelen: de kaart zelf is het signaal en iedereen aan tafel mag de afspraken kennen. Praten over je kaarten, knipogen of zuchten bij een slag hoort er niet bij.' },
-    { p: 'De AI-spelers op Normaal en Sterk houden zich aan **aas voorspelen** en **kleintje boer**. Komt een AI-speler van de spelende partij voor het eerst uit met een kleintje, dan heeft die (bijna altijd) de troefboer. Let dus goed op wat zij uitspelen.' },
+    { p: 'De AI-spelers op Normaal en Sterk houden zich aan **aas voorspelen**, **kleintje boer** en **laag bijspelen**. Komt een AI-speler van de spelende partij voor het eerst uit met een kleintje, dan heeft die (bijna altijd) de troefboer. Let dus goed op wat zij uitspelen en bijspelen.' },
 
     { h: 'Aas voorspelen' },
-    { p: 'Kom uit met een aas in een **bijkleur** (een kleur die geen troef is). Vroeg in het potje heeft bijna iedereen die kleur nog, dus die 11 punten zijn veilig binnen. Wacht je te lang, dan wordt je aas misschien afgetroefd.' },
-    { cards: [['AD', 'Uitkomst']], caption: 'Troef {S}: je komt uit met {AD}.' },
+    { p: 'Kom je uit met een **aas** in een **bijkleur** (een kleur die geen troef is), dan zeg je daarmee: “ik heb ook de **10** van deze kleur”. Na het aas is die 10 de hoogste kaart van de kleur. Je maat kan dus veilig in die kleur terugkomen: komt hij er later mee uit, dan pak jij de slag met je 10.' },
+    { p: 'Doe het vroeg in het potje. Dan heeft bijna iedereen die kleur nog, en worden je aas en je 10 niet zo snel afgetroefd.' },
+    { cards: [['AD', 'Uitkomst'], ['TD', 'In je hand']], caption: 'Troef {S}: je komt uit met {AD} en hebt {TD} nog.' },
+    { warn: 'Heb je de 10 er niet bij, dan klopt het sein niet. Je maat denkt dan dat hij veilig in die kleur kan terugkomen, terwijl de tegenpartij de slag met de 10 kan pakken.' },
 
     { h: 'Kleintje boer' },
     { p: 'Ben je de troefmaker of zijn maat, en kom je voor het eerst uit met een **klein kaartje** (7, 8 of 9) van een bijkleur terwijl de troefboer nog niet gevallen is, dan zeg je: “ik heb de troefboer”. Je maat probeert de slag te winnen en speelt daarna **troef terug**. Zo kun jij met je boer de troeven ophalen.' },
@@ -401,34 +403,34 @@ export const CONTENT = {
     { cards: [['JD', 'Uitkomst'], ['JH', 'In je hand']], caption: 'Troef {H}: je komt uit met {JD} en hebt {JH}.' },
 
     { h: 'Hoog of laag bijspelen' },
-    { p: 'Kun je niet bekennen en hoef je niet te troeven, dan vertelt je bijkaart iets:' },
+    { p: 'Kun je niet bekennen en hoef je niet te troeven, dan vertelt de kaart die je bijspeelt je maat iets:' },
     {
       ul: [
-        'Een **10 of een plaatje** (boer, vrouw, heer) bijspelen zegt: “ik heb weinig in deze kleur, speel die niet voor mij”.',
-        'Een **klein kaartje** (7 of 8) bijspelen zegt: “speel deze kleur maar, daar heb ik iets goeds in”, bijvoorbeeld het aas.',
+        'Een **klein kaartje** (7, 8 of 9: kaarten zonder punten) bijspelen zegt: “speel deze kleur, daar heb ik de hoogste van”.',
+        'Een **10 of een plaatje** (boer, vrouw, heer) bijspelen zegt juist: “ik heb weinig in deze kleur, speel die niet voor mij”.',
       ],
     },
-    { cards: [['QS', 'Weinig schoppen'], ['7C', 'Speel klaveren!']] },
+    { cards: [['7C', 'Speel klaveren!'], ['QS', 'Weinig schoppen']] },
 
     { h: 'Tegenkleur seinen' },
     { p: 'Een andere afspraak: met je bijkaart vraag je om de **tegenkleur**, de andere kleur met dezelfde inktkleur: harten ↔ ruiten (rood) en klaveren ↔ schoppen (zwart).' },
     { cards: [['7H', 'Speel ruiten!'], ['8C', 'Speel schoppen!']] },
     { warn: 'Hoog/laag en tegenkleur spreken elkaar tegen. Spreek met je maat af welke van de twee jullie gebruiken.' },
 
-    { h: 'Smeren' },
-    { p: 'Weet je zeker dat je maat de slag wint, leg er dan punten bij: een **10** of een **aas**. Dat heet smeren.' },
+    { h: 'Spekken (ook wel smeren)' },
+    { p: 'Weet je zeker dat je maat de slag wint, leg er dan punten bij: een **10** of een **aas**. Dat heet je maat **spekken**.' },
     {
       trick: {
         trump: 'S',
         cards: [['links', '7S'], ['maat', 'JS'], ['rechts', '8S'], ['jij', 'AH']],
         winner: 'maat',
         points: 31,
-        text: 'Je maat speelt de troefboer: die slag is binnen. Jij hebt geen troef meer en smeert {AH}.',
+        text: 'Je maat speelt de troefboer: die slag is binnen. Jij hebt geen troef meer en spekt de slag met {AH}.',
       },
     },
 
     { h: 'Maat heeft de slag' },
-    { p: 'Bij Amsterdams hoef je niet te troeven als je maat de slag al heeft. Gebruik die vrijheid: smeer een 10 of aas, of gooi een kaart weg die je toch niet nodig hebt. Bij Rotterdams moet je wel troeven (zie de voorbeelden bij Spelregels).' },
+    { p: 'Bij Amsterdams hoef je niet te troeven als je maat de slag al heeft. Gebruik die vrijheid: spek de slag met een 10 of aas, of gooi een kaart weg die je toch niet nodig hebt. Bij Rotterdams moet je wel troeven (zie de voorbeelden bij Spelregels).' },
   ],
 
   tips: [
@@ -453,7 +455,7 @@ export const CONTENT = {
         '**Als tegenpartij** kom je liever niet uit met troef: daarmee help je de spelende partij alleen maar.',
         '**Houd de nel gedekt.** Met de nel en een kleine troef ernaast speel je de kleine bij als de boer komt. Zo blijft je nel staan.',
         '**Pas op met je tienen.** Zolang het aas van die kleur nog niet gevallen is, kan een tegenstander je 10 met dat aas pakken.',
-        '**Smeer naar je maat.** Wint je maat de slag zeker, leg er dan een 10 of een aas bij.',
+        '**Spek je maat.** Wint je maat de slag zeker, leg er dan een 10 of een aas bij.',
         '**Geef geen roem weg.** Leg geen kaart bij die een reeks of stuk maakt in een slag van de tegenstander.',
         '**De laatste slag is 10 punten.** Bewaar zo mogelijk een hoge troef voor het eind.',
         '**Let op wie niet bekent.** Wie een kleur niet heeft, kan daarin troeven.',
@@ -490,7 +492,7 @@ export const CONTENT = {
         ['Bekennen', 'De gevraagde kleur bijspelen. Moet als je die kleur hebt.'],
         ['Bijkleur', 'Een kleur die geen troef is.'],
         ['Boer (jas)', 'In troef de hoogste kaart, 20 punten; de troefboer heet ook **jas**. Buiten troef maar 2 punten.'],
-        ['Boompje', 'Een partij van 16 potjes, waarin iedereen vier keer deelt.'],
+        ['Boom', 'Een partij van 16 potjes, waarin iedereen vier keer deelt.'],
         ['Gedraaid', 'Troef bepalen door een kleur te draaien. Iedereen zegt om de beurt spelen of passen.'],
         ['Gever', 'Wie de kaarten deelt. Schuift elk potje één plaats door.'],
         ['Halen', 'Als spelende partij meer dan de helft van alle punten binnenhalen, roem meegeteld.'],
@@ -501,14 +503,14 @@ export const CONTENT = {
         ['Nel', 'De 9 van troef: 14 punten en de op één na hoogste kaart.'],
         ['Ondertroeven', 'Een troef bijspelen die lager is dan de hoogste troef die al in de slag ligt.'],
         ['Overtroeven', 'Een troef bijspelen die hoger is dan de hoogste troef in de slag.'],
-        ['Pit (mars)', 'Alle acht slagen halen: 100 punten extra roem.'],
+        ['Pit (doormars)', 'Alle acht slagen halen: 100 punten extra roem.'],
         ['Potje', 'Eén spel van acht slagen, van het delen tot de laatste slag.'],
         ['Roem', 'Bonuspunten voor combinaties in één slag: reeksen, stuk, vier gelijke.'],
         ['Roem melden', 'Aan tafel hardop zeggen dat er roem in de slag zit. Hier doet de computer dat.'],
         ['Rotterdams', 'Variant waarin je altijd moet troeven als je niet kunt bekennen, ook als je maat de slag heeft.'],
-        ['Seinen (voorkaarten)', 'Je maat iets vertellen met de kaart die je speelt.'],
+        ['Seinen', 'Je maat iets vertellen met de kaart die je speelt.'],
         ['Slag', 'De vier kaarten van één ronde. Wie de slag wint, komt weer uit.'],
-        ['Smeren', 'Punten (een 10 of aas) bijspelen op een slag die je maat zeker wint.'],
+        ['Spekken (ook wel smeren)', 'Punten (een 10 of aas) bijspelen op een slag die je maat zeker wint.'],
         ['Spelende partij', 'Het koppel dat troef heeft gemaakt en moet halen.'],
         ['Stuk', 'Heer en vrouw van troef in dezelfde slag: 20 roem.'],
         ['Troef', 'De sterkste kleur van het potje. Elke troef wint van elke kaart van een andere kleur.'],

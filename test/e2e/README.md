@@ -25,7 +25,7 @@ podman stop kj-dev-18200
 
 With only a URL it plays the standard suite: one to four humans, both ways of
 choosing trump, both rule sets, all AI levels, a training game with open cards,
-a full *boompje* of 16 hands, and a game where players drop their connection
+a full *boom* of 16 hands, and a game where players drop their connection
 and come back. Any option below plays that one configuration instead:
 
 ```sh

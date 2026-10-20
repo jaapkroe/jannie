@@ -173,7 +173,9 @@ func (m *mover) lead() game.Card {
 			return top
 		}
 	}
-	// Cash a side boss (aas voorspelen) that will not be trumped.
+	// Cash a side boss that will not be trumped. An ace whose 10 is still
+	// out says "ik heb de 10 ook" (aas voorspelen): without the 10 the ace
+	// waits.
 	var best game.Card
 	bestPts := -1
 	for s := game.Suit(0); s < game.NumSuits; s++ {
@@ -181,7 +183,7 @@ func (m *mover) lead() game.Card {
 			continue
 		}
 		top, ok := m.hand.top(s, trump)
-		if !ok || !m.isBoss(top) || m.oppMayRuff(s) {
+		if !ok || !m.isBoss(top) || m.oppMayRuff(s) || m.falseAce(top) {
 			continue
 		}
 		if p := game.Points(top, trump); p > bestPts {
@@ -244,6 +246,36 @@ func (m *mover) fakeSignal(c game.Card) bool {
 	return m.t.signalsBoer(m.seat, c) && !m.hand.has(jackOf(m.t.trump))
 }
 
+// falseAce reports whether leading c, a side ace, would say "ik heb de 10
+// ook" (aas voorspelen) while the mover lacks that 10 and an opponent may
+// hold it: the partner would come back to the suit and lose the trick.
+func (m *mover) falseAce(c game.Card) bool {
+	ten, ok := m.t.aceSignal(c)
+	return ok && !m.hand.has(ten) && m.oppsMayHold(bit(ten)) != 0
+}
+
+// falseLow reports whether discarding c, a 7, 8 or 9, would say "speel deze
+// kleur, daar heb ik de hoogste van" (laag bijspelen) while the mover lacks
+// that card and an opponent may hold it.
+func (m *mover) falseLow(c game.Card) bool {
+	hi, ok := m.t.lowSignal(c)
+	return ok && !m.hand.has(hi) && m.oppsMayHold(bit(hi)) != 0
+}
+
+// partnerHigh returns the card with which the partner said it holds the
+// highest card of side suit s (aas voorspelen or laag bijspelen), when the
+// partner may still hold it and it is still the highest card out: a lead
+// in s is then the partner's trick, unless an opponent trumps it.
+func (m *mover) partnerHigh(s game.Suit) (game.Card, bool) {
+	p := m.partner()
+	for x := m.t.said[p] & m.poss[p] & suitSet(s); x != 0; x &= x - 1 {
+		if c := game.CardFromIndex(trailing(x)); m.isBoss(c) {
+			return c, true
+		}
+	}
+	return game.Card{}, false
+}
+
 // smallCards is the 7, 8 and 9 of suit s: the cards of kleintje boer.
 func smallCards(s game.Suit) cardSet { return 0b111 << (uint(s) * 8) }
 
@@ -300,6 +332,15 @@ func (m *mover) leadCost(c game.Card) int {
 	}
 	if m.fakeSignal(c) {
 		cost += 15 // partner would read kleintje boer and return trump
+	}
+	if m.falseAce(c) {
+		cost += 15 // partner would read aas voorspelen and come back
+	}
+	if c.Rank != game.Ace && m.hand.has(aceOf(s)) {
+		cost += 30 // do not lead under the own ace
+	}
+	if _, ok := m.partnerHigh(s); ok && !m.oppMayRuff(s) {
+		cost -= 20 // partner said it holds the highest card here
 	}
 	return cost
 }
@@ -402,7 +443,8 @@ func (m *mover) bestWinner(needSafe, bank bool) (game.Card, bool) {
 	return best, found
 }
 
-// smear gives the most points (and roem) to a trick the partner wins.
+// smear gives the most points (and roem) to a trick the partner wins
+// (spekken).
 func (m *mover) smear() game.Card {
 	trump := m.t.trump
 	var best game.Card
@@ -470,6 +512,11 @@ func (m *mover) keepValue(c game.Card) int {
 	v += m.guardPenalty(c)
 	if n == 1 && m.hand.inSuit(trump) != 0 && (m.t.n == 0 || c.Suit != m.t.led()) {
 		v -= 3 // creates a void
+	}
+	if hi, ok := m.t.lowSignal(c); ok && m.hand.has(hi) {
+		v -= 2 // laag bijspelen: asks partner to play the suit
+	} else if m.falseLow(c) {
+		v += 25 // partner would read laag bijspelen and play the suit
 	}
 	return v
 }

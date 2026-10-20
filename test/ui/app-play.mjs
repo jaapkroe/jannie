@@ -195,23 +195,23 @@ async function multi() {
     await G.page.keyboard.press('Escape');
     await waitFor(G, () => !document.body.classList.contains('chat-open'), { label: 'guest chat closed' });
 
-    // The host seats Bakker Lies on an empty seat, removes her, and seats her again.
-    const addLies = async () => {
+    // The host seats Bakker Vera on an empty seat, removes her, and seats her again.
+    const addVera = async () => {
       await press(H, '.lseat.empty .ls-main');
       await waitFor(H, () => document.querySelector('.m-bots.open'), { label: 'bot picker' });
       await sleep(300);
       const items = await H.page.$$('.m-bots .bot-item');
       let found = null;
-      for (const it of items) if ((await it.evaluate(e => e.textContent)).includes('Bakker Lies')) found = it;
-      if (!found) throw new Error('Bakker Lies not in the bot picker');
+      for (const it of items) if ((await it.evaluate(e => e.textContent)).includes('Bakker Vera')) found = it;
+      if (!found) throw new Error('Bakker Vera not in the bot picker');
       await pressEl(H, found);
-      await waitFor(H, () => [...document.querySelectorAll('.lseat .ls-name')].some(e => e.textContent === 'Bakker Lies (AI)'), { label: 'bot seated' });
+      await waitFor(H, () => [...document.querySelectorAll('.lseat .ls-name')].some(e => e.textContent === 'Bakker Vera (AI)'), { label: 'bot seated' });
     };
-    await addLies();
+    await addVera();
     await press(H, '.lseat.bot .ls-x');
-    await waitFor(H, () => ![...document.querySelectorAll('.lseat .ls-name')].some(e => e.textContent === 'Bakker Lies (AI)'), { label: 'bot removed' });
-    await addLies();
-    await waitFor(G, () => [...document.querySelectorAll('.lseat .ls-name')].some(e => e.textContent === 'Bakker Lies (AI)'), { label: 'guest sees the bot' });
+    await waitFor(H, () => ![...document.querySelectorAll('.lseat .ls-name')].some(e => e.textContent === 'Bakker Vera (AI)'), { label: 'bot removed' });
+    await addVera();
+    await waitFor(G, () => [...document.querySelectorAll('.lseat .ls-name')].some(e => e.textContent === 'Bakker Vera (AI)'), { label: 'guest sees the bot' });
     const before = await seatNames(H);
     if (before.filter(n => n === 'AI-speler').length !== 1) throw new Error(`want one empty seat before start, host sees ${before}`);
 
@@ -219,7 +219,7 @@ async function multi() {
     await Promise.all([H, G].map(P => waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelectorAll('.seat:not(.empty)').length === 4,
       { label: 'game with four players' })));
     const players = await H.page.$$eval('.seat .nm', els => els.map(e => e.textContent));
-    if (!players.includes('Bakker Lies (AI)') || !players.includes('Gast') || players.filter(n => / \(AI\)$/.test(n)).length !== 2) {
+    if (!players.includes('Bakker Vera (AI)') || !players.includes('Gast') || players.filter(n => / \(AI\)$/.test(n)).length !== 2) {
       throw new Error(`unexpected players at the table: ${players}`);
     }
 

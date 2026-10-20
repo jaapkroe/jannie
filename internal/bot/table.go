@@ -32,6 +32,10 @@ type table struct {
 	// leading a small side card (kleintje boer, see signalsBoer), NoSeat if
 	// none.
 	boerSig [2]game.Seat
+	// said per seat: the side cards the seat said it holds (aceSignal,
+	// lowSignal), and sigBy the cards with which it said so. A card in
+	// said may have fallen since: readers mask out what was played.
+	said, sigBy [4]cardSet
 }
 
 // newTable starts the public state of a hand once trump is known.
@@ -89,6 +93,35 @@ func (t *table) signalsBoer(seat game.Seat, c game.Card) bool {
 		c.Suit != t.trump && c.Rank <= game.Nine && !t.played.has(jackOf(t.trump))
 }
 
+// Signals tell the partner which suit to lead, so they count only while
+// the partner may still choose a lead afterwards: after an ace lead in the
+// sixth trick the partner leads at most the last trick, with one card
+// left, and after a discard in the seventh trick likewise.
+const (
+	aceSignalTricks = 5 // aas voorspelen counts in the first five tricks
+	lowSignalTricks = 6 // laag bijspelen in the first six
+)
+
+// aceSignal reports whether leading c says "ik heb de 10 ook" (aas
+// voorspelen, design §8): c is the ace of a side suit whose 10 is still
+// out, led in time for the partner to come back to the suit. It returns
+// that 10, which makes the suit safe for the partner.
+func (t *table) aceSignal(c game.Card) (game.Card, bool) {
+	ten := tenOf(c.Suit)
+	return ten, t.n == 0 && c.Rank == game.Ace && c.Suit != t.trump && !t.played.has(ten) && t.trickNo < aceSignalTricks
+}
+
+// lowSignal reports whether playing c into the current trick says "speel
+// deze kleur, daar heb ik de hoogste van" (laag bijspelen, design §8): c
+// is a 7, 8 or 9 of a side suit that was not led, so a discard, and a card
+// of that suit is still out besides c. It returns the highest such card.
+func (t *table) lowSignal(c game.Card) (game.Card, bool) {
+	if t.n == 0 || c.Suit == t.trump || c.Suit == t.led() || c.Rank > game.Nine || t.trickNo >= lowSignalTricks {
+		return game.Card{}, false
+	}
+	return (suitSet(c.Suit) &^ t.played &^ bit(c)).top(c.Suit, t.trump)
+}
+
 // apply records that seat played c.
 func (t *table) apply(seat game.Seat, c game.Card) {
 	trump := t.trump
@@ -97,9 +130,17 @@ func (t *table) apply(seat game.Seat, c game.Card) {
 		if t.signalsBoer(seat, c) && !t.boerSig[seat.Team()].Valid() {
 			t.boerSig[seat.Team()] = seat
 		}
+		if ten, ok := t.aceSignal(c); ok {
+			t.said[seat] |= bit(ten)
+			t.sigBy[seat] |= bit(c)
+		}
 		t.leader, t.win, t.best, t.high, t.points = seat, seat, c, -1, 0
 		t.hasLed[seat] = true
 	} else {
+		if hi, ok := t.lowSignal(c); ok {
+			t.said[seat] |= bit(hi)
+			t.sigBy[seat] |= bit(c)
+		}
 		t.infer(seat, c)
 		if game.Beats(c, t.best, t.led(), trump) {
 			t.win, t.best = seat, c

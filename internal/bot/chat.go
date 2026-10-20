@@ -154,7 +154,7 @@ func classifyReply(text string) string {
 	return ""
 }
 
-// mentions reports whether text names the persona ("henk", "ans"): the
+// mentions reports whether text names the persona ("dirk", "ans"): the
 // first word of its name, after a title such as "Opa" or "Juf".
 func mentions(p Persona, text string) bool {
 	name := strings.Fields(strings.ToLower(p.Name))
@@ -224,7 +224,7 @@ var genericVoice = &voice{
 		"roem/opp":     {"Roem voor jullie.", "Hm, {p} roem voor de overkant.", "Dat telt voor jullie.", "Gun ik jullie."},
 		"nat":          {"Au, nat…", "Dat liep niet zoals gehoopt.", "Volgende keer beter.", "Nat. Jammer."},
 		"natOpp":       {"Nat!", "Die gaan nat!", "Nat, goed tegengehouden.", "Nat, mooi verdedigd."},
-		"pit":          {"Pit! Alle slagen!", "Wat een potje!", "Mars, allemaal voor ons!", "Pit!"},
+		"pit":          {"Pit! Alle slagen!", "Wat een potje!", "Doormars, allemaal voor ons!", "Pit!"},
 		"pit/opp":      {"Een pit tegen…", "Alle slagen voor jullie, knap.", "Dat was een pak slaag.", "Pit voor jullie."},
 		"handWon":      {"Mooi potje.", "Zo mag ik het zien.", "Dat ging lekker.", "Netjes."},
 		"handLost":     {"Jammer.", "Die was voor jullie.", "Volgende potje beter.", "Kan gebeuren."},
@@ -249,7 +249,7 @@ var genericVoice = &voice{
 }
 
 var voices = map[string]*voice{
-	"henk": {
+	"dirk": {
 		lines: map[string][]string{
 			"greet": {
 				"Dag allemaal. Zoals we in De Klaver zeggen: eerst de kaarten, dan de praatjes.",
@@ -583,7 +583,7 @@ var voices = map[string]*voice{
 				"PIT! Zie je wel, zie je wel!",
 				"Alle slagen. Hier speel ik voor.",
 				"Pit! Schrijf maar op: Sjaak was hier.",
-				"Mars! Ik zei toch dat ik voor de pit ging.",
+				"Doormars! Ik zei toch dat ik voor de pit ging.",
 			},
 			"pit/opp": {
 				"Een pit tegen? Dat overkomt mij nooit. Behalve nu.",
@@ -917,7 +917,7 @@ var voices = map[string]*voice{
 			"pit": {
 				"Pit! Alle acht slagen, en 100 punten extra!",
 				"Een pit! Wat hebben we dat mooi samen gedaan.",
-				"Alle slagen! Dat heet pit, of mars.",
+				"Alle slagen! Dat heet pit, of doormars.",
 				"Pit! Daar mag je trots op zijn.",
 			},
 			"pit/opp": {
@@ -942,7 +942,7 @@ var voices = map[string]*voice{
 				"Gewonnen! Goed gespeeld allemaal, en bedankt voor het spel.",
 				"We hebben gewonnen! Bedankt voor het fijne spel.",
 				"Gewonnen! Zo zie je maar: goed tellen loont.",
-				"Gewonnen! Een mooi boompje was dat.",
+				"Gewonnen! Een mooie boom was dat.",
 			},
 			"gameLost": {
 				"Verloren, maar wat hebben we veel geleerd!",
@@ -967,7 +967,7 @@ var voices = map[string]*voice{
 				"Je moet altijd bekennen. Kun je dat niet, dan moet je meestal troeven.",
 				"Kijk in de handleiding onder het vraagteken: daar staan de regels en tips.",
 				"Tel de troeven: er zijn er acht. Dan weet je wat er nog zit.",
-				"Heeft je maat de slag? Dan kun je er punten bij smeren, bijvoorbeeld een 10.",
+				"Heeft je maat de slag? Dan kun je hem spekken, bijvoorbeeld met een 10.",
 			},
 			"nat":      {"Nog even afwachten, het potje is nog niet voorbij!", "Wij moeten meer dan de helft halen, en dat kan nog!", "Spannend hè? Tellen maar!"},
 			"nat/maat": {"Goed gezien! Ze moeten meer dan de helft halen.", "Misschien wel! Blijven tellen, maat.", "Samen spelen we ze nat!"},
@@ -991,7 +991,7 @@ var voices = map[string]*voice{
 			"roem/opp":     {"Pff, {p} roem voor jullie 😒", "Roem tegen 😩", "Balen, roem 😬", "Mazzel 🙄"},
 			"nat":          {"Nat 💀", "Oeps, nat 😅", "Nat… 🫠", "Rip 😭"},
 			"natOpp":       {"NAT 😂😂", "Haha nat 💦", "Nat! 🎉", "Nat lol 😆"},
-			"pit":          {"PIT 🔥🔥🔥", "Alle slagen!! 🏆", "Pit, ja toch 😎", "Mars! 🚀🚀"},
+			"pit":          {"PIT 🔥🔥🔥", "Alle slagen!! 🏆", "Pit, ja toch 😎", "Doormars! 🚀🚀"},
 			"pit/opp":      {"Pit tegen 💀", "Allemaal?? 😱", "Oef, pit 😵", "Dat potje mag weg 🫠"},
 			"handWon":      {"Eitje 😎", "Nice 👌", "Binnen 🙌", "Lekker bezig 🔥"},
 			"handLost":     {"Volgende 😤", "Meh 😕", "Balen 😩", "Komt goed 🤞"},
@@ -1014,7 +1014,7 @@ var voices = map[string]*voice{
 			"name":     {"Ja? 👀", "Wat is er 🤔", "Yo? 👋"},
 		},
 	},
-	"lies": {
+	"vera": {
 		lines: map[string][]string{
 			"greet": {
 				"Hallo! Ik sta om vijf uur op, dus ik speel graag een beetje vlot.",

@@ -144,7 +144,7 @@ or 9s are worth nothing. Roem items are reported per kind:
 
 - `points[t]`: card points of tricks won + 10 for the last trick.
 - `roem[t]`: roem of tricks won. A team that wins all 8 tricks gets **pit**
-  (also *mars*): +100 roem.
+  (also *doormars*): +100 roem.
 - Playing team `P`, defenders `D`. `P` must score **strictly more than half** of
   `points[P]+points[D]+roem[P]+roem[D]`, i.e. `points[P]+roem[P] > total/2`.
   A tie is nat.
@@ -152,7 +152,7 @@ or 9s are worth nothing. Roem items are reported per kind:
   took every trick, already in `roem[D]`).
 - Otherwise each team scores its own `points + roem`.
 
-A match is `hands` hands (default 16, *een boompje*); highest total wins; a tie
+A match is `hands` hands (default 16, *een boom*); highest total wins; a tie
 is a draw ("gelijkspel").
 
 ## 3. Options
@@ -370,20 +370,25 @@ Strength levels:
   the boer with another trump, bold ones also play on the nel with two more).
 - **normaal**: rule-based play: win tricks with the cheapest winning card (a
   cheap side-suit trick is ruffed with the lowest trump that wins, not with
-  the boer or nel), smear points (*smeren*: a 10 or ace) when the partner is
-  winning, discard low otherwise, pull trumps when playing team, keep the
-  nel/boer guarded, count trumps played, sensible trump choice
+  the boer or nel), give points (*spekken*, also *smeren*: a 10 or ace) when
+  the partner is winning, discard low otherwise, pull trumps when playing
+  team, keep the nel/boer guarded, count trumps played, sensible trump choice
   (boer/nel/aas/length). Gives and reads kleintje boer (§8) and never leads a
   small side card that would falsely promise the boer when it has another
-  lead.
+  lead. Likewise it holds back a side ace whose 10 it lacks (aas voorspelen,
+  §8, would promise that 10), never leads under its own ace, avoids a low
+  discard that would falsely claim the highest card of its suit (laag
+  bijspelen), and leads into a suit whose highest card the partner signalled.
 - **sterk**: card tracking with inference (voids from not following suit,
   trump obligations), determinised Monte Carlo: sample hidden hands consistent
   with everything known, evaluate each legal move by playouts with the normaal
   policy, ~150–400 samples within ~150 ms; trump choice by simulation; reads the
-  signals of §8 (aas voorspelen, kleintje boer) as soft evidence. It gives
-  kleintje boer when that costs at most a few points, and fakes it (a small
-  side card without the boer) only when that gains clearly (≥ 10 points),
-  since partners and humans read it as a promise. Exactly equal search
+  signals of §8 (aas voorspelen, kleintje boer, laag bijspelen) as soft
+  evidence. It gives kleintje boer when that costs at most a few points, and
+  fakes it (a small side card without the boer) only when that gains clearly
+  (≥ 10 points), a false laag bijspelen only for ≥ 20 points, and a false aas
+  voorspelen never while it has an honest card to lead, since partners and
+  humans read the signals as promises. Exactly equal search
   results go to the rule-based card, then to the cheaper card.
 
 Each persona modulates its level's choices (Aggression shifts thresholds) and
@@ -445,14 +450,14 @@ Display name is always `"<Name> (AI)"`, built by the server into
 
 | ID | Name | Emoji | Character |
 |---|---|---|---|
-| `henk` | Opa Henk | 👴 | Speelt al zestig jaar in café De Klaver. Voorzichtig en degelijk; spreekwoorden. |
+| `dirk` | Opa Dirk | 👴 | Speelt al zestig jaar in café De Klaver. Voorzichtig en degelijk; spreekwoorden. |
 | `truus` | Tante Truus | 👵 | Kletst honderduit en is dol op roem; optimistisch. |
 | `sjaak` | Sjaak | 🎲 | Gokker: speelt op dunne handen en gaat voor de pit. |
 | `fatima` | Fatima | 🧠 | Wiskundestudent die elke kaart telt; kort van stof. |
 | `kees` | Kees de Visser | 🎣 | Mopperkont, maar eerlijk; moppert als hij nat gaat. |
 | `ans` | Juf Ans | 👩‍🏫 | Geduldige juf die graag uitlegt; partner in de oefenmodus. |
 | `bram` | Bram | 🛹 | Jong en snel, speelt op gevoel, chat met emoji. |
-| `lies` | Bakker Lies | 🥐 | Staat om vijf uur op, speelt scherp en vriendelijk. |
+| `vera` | Bakker Vera | 🥐 | Staat om vijf uur op, speelt scherp en vriendelijk. |
 
 Chat lines are Dutch, short, in character, varied (≥ 4 lines per event kind
 per persona where it fits), never revealing a bot's hidden cards. `ChatEvent`
@@ -654,7 +659,7 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
 | `deal` | `handNo`, `dealer` | cards fly from the dealer to each seat, 3-2-3 |
 | `turned` | `suit` | gedraaid: show the turned suit |
 | `bid` | `seat`, `play` | speech bubble "Spelen!"/"Pas" at the seat |
-| `trump` | `seat`, `suit`, `forced` | banner "Opa Henk (AI) kiest ♥ als troef" |
+| `trump` | `seat`, `suit`, `forced` | banner "Opa Dirk (AI) kiest ♥ als troef" |
 | `play` | `seat`, `card` | card flies from the seat to its trick slot |
 | `trick` | `winner`, `points`, `roem` [], `last` bool | highlight winning card; roem burst "+20 Stuk!" |
 | `collect` | `winner` | trick slides to the winner and fades |
@@ -670,11 +675,11 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
   "opts": { "humans":4, "hands":16, "trumpMode":"utrechts", "rules":"amsterdams",
             "ai":"normaal", "tempo":"normaal", "open":false },
   "training": false, "you": 0, "host": 0,
-  "roster": [ {"id":"henk","name":"Opa Henk","emoji":"👴","color":"#8a5a2b","bio":"…"} ],  // lobby only: bot picker
+  "roster": [ {"id":"dirk","name":"Opa Dirk","emoji":"👴","color":"#8a5a2b","bio":"…"} ],  // lobby only: bot picker
   "players": [ // always 4 entries; null = empty seat
     { "name":"Piet", "bot":false, "botId":"", "emoji":"", "color":"",
       "connected":true, "away":false, "cards":8, "ready":false },
-    { "name":"Opa Henk (AI)", "bot":true, "botId":"henk", "emoji":"👴", "color":"#8a5a2b",
+    { "name":"Opa Dirk (AI)", "bot":true, "botId":"dirk", "emoji":"👴", "color":"#8a5a2b",
       "connected":true, "away":false, "cards":8, "ready":false }, null, null ],
   "handNo": 3, "hands": 16, "dealer": 1, "voorhand": 2,
   "turned": null, "bids": [-1,-1,-1,-1], "forced": false,
@@ -716,9 +721,15 @@ Every key above is always present, except `roster` (lobby only) and `legal` and
 - `players[i].cards` is 0 outside a hand; `ready` only counts in `handEnd`.
 - `hint` and `hands4` are null unless they apply; `hint.text` is always set.
 
-## 8. Seinen (signals) — used by sterk bots and explained in the manual
+## 8. Seinen (signals) — used by normaal and sterk bots and explained in the manual
 
-- **Aas voorspelen**: lead an ace of a side suit to take its points safely.
+- **Aas voorspelen**: leading the ace of a side suit says "ik heb ook de
+  10 van deze kleur". After the ace that 10 is the highest card of the suit,
+  so the partner can safely lead the suit back later (*veilig terugkomen*).
+  An ace led without the 10 breaks the promise. Bots read it while the 10 is
+  out, in the first five tricks, and come back in the suit with a low card.
+  Normaal holds back an ace whose 10 it lacks; sterk never leads such an ace
+  while it has an honest card to lead.
 - **Kleintje boer**: leading a small card (7, 8, 9) of a side suit signals "ik heb de
   troefboer"; partner wins and returns trump. It is given by the trump maker
   on its first lead (in utrechts the opening lead of the hand; bots as maker
@@ -729,14 +740,20 @@ Every key above is always present, except `roster` (lobby only) and `legal` and
 - **Boer over boer**: leading a side-suit boer while holding the trump boer.
   Bots do not read it; hints name it, and say when a side-boer lead of the
   playing team is none.
-- **Hoog/laag bijspelen**: discarding a 10 or picture card says "ik heb weinig in
-  deze kleur"; a small card asks for that suit. Bots do not read it; a hint
-  names it for a high discard that tells the truth (at most one other card
-  of the suit left, not its ace).
+- **Hoog/laag bijspelen**: discarding a small card (7, 8 or 9: cards without
+  points) says "speel deze kleur, daar heb ik de hoogste van"; discarding a
+  10 or picture card says the opposite, "ik heb weinig in deze kleur". Bots
+  give and read the low one in the first six tricks (the discarder holds the
+  highest card of that suit still out; sterk fakes it only for ≥ 20 points),
+  not the high one; a hint names the
+  high one for a discard that tells the truth (at most one other card of the
+  suit left, not its ace).
 - **Tegenkleur seinen**: discarding a suit to ask for the suit of the other colour of
   the same shade (harten ↔ ruiten, klaveren ↔ schoppen).
-- **Smeren**: give points (10, aas) to a trick your partner is sure to win.
-- **Maat heeft de slag** (Amsterdams): no need to trump; smear instead.
+- **Spekken (ook wel smeren)**: give points (10, aas) to a trick your partner
+  is sure to win (*je maat spekken*).
+- **Maat heeft de slag** (Amsterdams): no need to trump; give points
+  (spekken) instead.
 
 ## 9. Frontend
 
@@ -800,7 +817,7 @@ export const sound = {
 
 // web/js/manual.js — the in-game handleiding (Dutch content + renderer)
 export const SECTIONS = [ {id:'bediening',title:'Bediening'}, {id:'regels',title:'Spelregels'},
-  {id:'punten',title:'Kaartwaarden'}, {id:'roem',title:'Roem'}, {id:'seinen',title:'Seinen & voorkaarten'},
+  {id:'punten',title:'Kaartwaarden'}, {id:'roem',title:'Roem'}, {id:'seinen',title:'Seinen'},
   {id:'tips',title:'Tips'}, {id:'woorden',title:'Woordenlijst'} ];
 export function renderManual(sectionId, opts = {}) // → HTMLElement with that section's content (uses cards.js for illustrations);
                                                   // opts.icon(name) (util.icon) puts the buttons' pictograms in the Bediening chips
@@ -849,6 +866,19 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
 - **Back button**: every closable overlay (dialog, chat drawer) has a history
   entry, so back (the Android gesture) closes the top one; at a table one more
   entry makes back ask *Spel verlaten?* instead of leaving the page.
+- **On-screen keyboard**: `index.html` sets `interactive-widget=resizes-content`,
+  so an open keyboard shrinks the viewport, and an upright phone turns short
+  and wide. The keyboard counts as open while a text field (not read-only)
+  has the focus on a touch screen (`pointer: coarse`) that is not turned
+  sideways (`screen.orientation`), and the viewport is at least 120 px
+  shorter than its height without a field focused; after a blur the state
+  holds until the viewport grows back (at most 0.9 s), so nothing moves under
+  the finger. Then `html.kb` is set (`watchKeyboard` in util.js): every rule
+  for `(orientation: landscape)` phones starts with `:where(html:not(.kb))`,
+  so the upright layout stays (home, the table behind the chat drawer),
+  the home screen hides its banner and footer, and the focused field is
+  scrolled into view when the keyboard covers it. A phone on its side keeps
+  its landscape layout. `app-checks.mjs --only keyboard` emulates it.
 - **Connection**: a `play`, `trump` or `bid` without any answer within 4 s
   means a dead socket: the client reconnects. Every rejoin drops what was sent
   but unanswered and renders purely from the resync. A tab in the background

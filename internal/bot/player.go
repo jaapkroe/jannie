@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"math"
 	"math/rand/v2"
 	"sync/atomic"
 
@@ -111,14 +112,32 @@ func (b *player) Play(v game.View) (c game.Card) {
 	return sterkChoice(&v, b.cfg, seed, b.persona.Aggression)
 }
 
-// Kleintje boer at sterk: the search alone would rarely give the signal
-// and would sometimes fake it, but partners (and humans following the
-// manual) read it as a promise. The search may break the convention only
-// for a clear gain.
+// Signals at sterk: the search alone would rarely give kleintje boer and
+// would sometimes fake a signal, but partners (and humans following the
+// manual) read the signals of design §8 as promises. The search may break
+// kleintje boer and laag bijspelen only for a clear gain, and aas
+// voorspelen never while an honest card is left: the playouts hold a bare
+// ace for a while (see falseAce), so the search overrates cashing it now.
 const (
-	fakeSignalGain  = 10 // points a false kleintje boer must gain over the best other card
+	fakeSignalGain  = 10 // points a false kleintje boer must gain over the best honest card
+	fakeLowGain     = 20 // the same for a false laag bijspelen
 	signalTolerance = 6  // points a genuine kleintje boer may cost
 )
+
+// lieGain returns how much more than the best honest card c must bring in
+// when playing it would signal something untrue (kleintje boer, aas
+// voorspelen or laag bijspelen), or 0 when c is honest.
+func (m *mover) lieGain(c game.Card) float64 {
+	switch {
+	case m.falseAce(c):
+		return math.Inf(1)
+	case m.fakeSignal(c):
+		return fakeSignalGain
+	case m.falseLow(c):
+		return fakeLowGain
+	}
+	return 0
+}
 
 // sterkChoice is the Monte Carlo card for v (see sterkPick).
 func sterkChoice(v *game.View, cfg searchConfig, seed uint64, aggr float64) game.Card {
@@ -133,17 +152,17 @@ func sterkChoice(v *game.View, cfg searchConfig, seed uint64, aggr float64) game
 // the sterk card. When the rule-based card pref is within a point of the
 // best (signalTolerance for a genuine kleintje boer), it is played instead:
 // the difference is noise, and the rule-based card looks natural. A false
-// kleintje boer needs fakeSignalGain.
+// signal needs its lieGain.
 func sterkPick(m *mover, res []playResult, pref game.Card) int {
 	best := bestResult(res, pref, m.t.trump)
-	if m.fakeSignal(res[best].card) {
+	if gain := m.lieGain(res[best].card); gain > 0 {
 		alt := -1
 		for i, r := range res {
-			if !m.fakeSignal(r.card) && (alt < 0 || r.total > res[alt].total) {
+			if m.lieGain(r.card) == 0 && (alt < 0 || r.total > res[alt].total) {
 				alt = i
 			}
 		}
-		if alt >= 0 && res[best].mean()-res[alt].mean() < fakeSignalGain {
+		if alt >= 0 && res[best].mean()-res[alt].mean() < gain {
 			best = alt
 		}
 	}
@@ -212,8 +231,9 @@ func longestSuit(h cardSet, forced bool, turned game.Suit) game.Suit {
 }
 
 // simpleChoice is the makkelijk heuristic: no card counting, no signals.
-// Lead an ace or (when playing) the trump boer, smear when the partner is
-// winning with a high card, win as cheaply as possible, else play low.
+// Lead an ace or (when playing) the trump boer, give points (spekken) when
+// the partner is winning with a high card, win as cheaply as possible,
+// else play low.
 func simpleChoice(v *game.View, legal []game.Card) game.Card {
 	trump := v.Trump
 	if len(v.Current.Cards) == 0 {

@@ -135,7 +135,7 @@ func TestBotAI(t *testing.T) {
 				}
 				err = d.Play(s, brains[s].Play(v))
 				if tr := d.Current(); tr.Complete() {
-					if text := ai.ExplainTrick(tr, v.Trump, [4]string{"Jij", "Opa Henk (AI)", "Juf Ans (AI)", "Bram (AI)"}); text == "" {
+					if text := ai.ExplainTrick(tr, v.Trump, [4]string{"Jij", "Opa Dirk (AI)", "Juf Ans (AI)", "Bram (AI)"}); text == "" {
 						t.Errorf("no explanation for trick %+v", tr)
 					}
 				}

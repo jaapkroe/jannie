@@ -741,34 +741,38 @@ body.busy::after {
   animation: kj-busy 1s linear infinite;
 }
 
+/* A phone on its side: logo beside the buttons. Every landscape rule
+   starts with :where(html:not(.kb)) (no extra specificity): an upright
+   phone whose on-screen keyboard makes it short and wide keeps its upright
+   layout (html.kb, see watchKeyboard in util.js). */
 @media (orientation: landscape) and (max-height: 520px) {
-  .home-inner {
+  :where(html:not(.kb)) .home-inner {
     max-width: 860px;
     flex-direction: row;
     align-items: center;
     gap: 28px;
   }
 
-  .logo {
+  :where(html:not(.kb)) .logo {
     flex: 1;
   }
 
-  .logo-suits span {
+  :where(html:not(.kb)) .logo-suits span {
     width: 38px;
     height: 48px;
     font-size: 24px;
   }
 
-  .home-card {
+  :where(html:not(.kb)) .home-card {
     flex: 1.25;
     min-width: 0;
   }
 
-  .btn-hero {
+  :where(html:not(.kb)) .btn-hero {
     min-height: 64px;
   }
 
-  .btn-tile {
+  :where(html:not(.kb)) .btn-tile {
     min-height: 0;
     flex-direction: row;
     flex-wrap: wrap;
@@ -776,17 +780,29 @@ body.busy::after {
     column-gap: 10px;
   }
 
-  .btn-tile .icon {
+  :where(html:not(.kb)) .btn-tile .icon {
     margin: 0;
   }
 
-  .btn-tile small {
+  :where(html:not(.kb)) .btn-tile small {
     flex-basis: 100%;
   }
 
-  .home-foot {
+  :where(html:not(.kb)) .home-foot {
     display: none;
   }
+}
+
+/* On-screen keyboard open (html.kb): the banner and the footer make way,
+   so the field and the buttons under it stay in view. */
+.kb .screen-home {
+  padding-top: calc(var(--sat) + 12px);
+  padding-bottom: calc(var(--sab) + 12px);
+}
+
+.kb .screen-home .logo,
+.kb .home-foot {
+  display: none;
 }
 
 /* ---------- lobby ---------- */
@@ -1077,8 +1093,16 @@ body.busy::after {
   color: var(--ink-2);
 }
 
-@media (min-width: 860px), (orientation: landscape) and (min-width: 640px) {
+@media (min-width: 860px) {
   .lobby-main {
+    grid-template-columns: 1fr 1fr;
+    padding-top: 18px;
+  }
+}
+
+/* Not while an on-screen keyboard makes a tall screen wide (html.kb). */
+@media (orientation: landscape) and (min-width: 640px) {
+  :where(html:not(.kb)) .lobby-main {
     grid-template-columns: 1fr 1fr;
     padding-top: 18px;
   }
@@ -3934,77 +3958,79 @@ body.chat-open .chat-scrim {
 
 /* ---------- responsive table ---------- */
 
-/* Phones in landscape: short screens, wide sides. */
+/* Phones in landscape: short screens, wide sides. Every rule starts with
+   :where(html:not(.kb)): not for an upright phone made short by its
+   on-screen keyboard (see the home screen's landscape rules). */
 @media (orientation: landscape) and (max-height: 520px) {
-  :root {
+  :root:where(:not(.kb)) {
     --tb-h: calc(var(--sat) + 48px);
   }
 
-  .topbar,
-  .lobby-bar {
+  :where(html:not(.kb)) .topbar,
+  :where(html:not(.kb)) .lobby-bar {
     padding-top: calc(var(--sat) + 3px);
     padding-bottom: 3px;
   }
 
-  .trump-badge,
-  .tb {
+  :where(html:not(.kb)) .trump-badge,
+  :where(html:not(.kb)) .tb {
     min-height: 40px;
     height: 40px;
   }
 
   /* Still a 44 px target: the bar's padding takes the rest. */
-  .tb::before {
+  :where(html:not(.kb)) .tb::before {
     content: "";
     position: absolute;
     inset: -2px 0;
   }
 
-  .score-pill {
+  :where(html:not(.kb)) .score-pill {
     min-height: 40px;
   }
 
-  .sp {
+  :where(html:not(.kb)) .sp {
     min-height: 40px;
     flex-direction: row;
     gap: 5px;
     padding: 0 10px;
   }
 
-  .roem-burst {
+  :where(html:not(.kb)) .roem-burst {
     align-self: center;
     margin: 0;
     padding: 4px 16px 7px;
     translate: calc(var(--trick-w) * 1.4 + 50%) 0;
   }
 
-  .roem-burst b {
+  :where(html:not(.kb)) .roem-burst b {
     font-size: clamp(34px, 11dvh, 56px);
   }
 
-  .m-summary > .dialog {
+  :where(html:not(.kb)) .m-summary > .dialog {
     width: min(100%, 860px);
   }
 
-  .m-summary .dlg-body {
+  :where(html:not(.kb)) .m-summary .dlg-body {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
     column-gap: 18px;
     align-items: start;
   }
 
-  .m-summary .sum-head,
-  .m-summary .sum-table,
-  .m-summary .sum-why {
+  :where(html:not(.kb)) .m-summary .sum-head,
+  :where(html:not(.kb)) .m-summary .sum-table,
+  :where(html:not(.kb)) .m-summary .sum-why {
     grid-column: 1;
   }
 
-  .m-summary .sum-review {
+  :where(html:not(.kb)) .m-summary .sum-review {
     grid-column: 2;
     grid-row: 1 / span 4;
     margin-top: 0;
   }
 
-  .m-summary .sum-foot {
+  :where(html:not(.kb)) .m-summary .sum-foot {
     grid-column: 1;
     position: static;
     margin: 0;
@@ -4012,82 +4038,82 @@ body.chat-open .chat-scrim {
     background: none;
   }
 
-  .m-summary .dlg-body {
+  :where(html:not(.kb)) .m-summary .dlg-body {
     padding-top: 10px;
   }
 
   /* The heading already says who went nat; keep the button on screen. */
-  .m-summary .sum-why {
+  :where(html:not(.kb)) .m-summary .sum-why {
     display: none;
   }
 
-  .m-summary .sum-sub {
+  :where(html:not(.kb)) .m-summary .sum-sub {
     margin-top: 2px;
     font-size: 14px;
   }
 
-  .m-summary .sum-foot .btn-big {
+  :where(html:not(.kb)) .m-summary .sum-foot .btn-big {
     min-height: 46px;
   }
 
-  .m-summary .sum-meta {
+  :where(html:not(.kb)) .m-summary .sum-meta {
     display: none;
   }
 
-  .sum-table th,
-  .sum-table td {
+  :where(html:not(.kb)) .sum-table th,
+  :where(html:not(.kb)) .sum-table td {
     padding: 1px 8px;
   }
 
-  .sum-table .sum-score td b {
+  :where(html:not(.kb)) .sum-table .sum-score td b {
     font-size: 21px;
   }
 
-  .sum-title {
+  :where(html:not(.kb)) .sum-title {
     font-size: 34px;
   }
 
-  .m-over .dlg-body {
+  :where(html:not(.kb)) .m-over .dlg-body {
     padding-top: 10px;
   }
 
-  .over-emoji,
-  .over-last {
+  :where(html:not(.kb)) .over-emoji,
+  :where(html:not(.kb)) .over-last {
     display: none;
   }
 
-  .over-title {
+  :where(html:not(.kb)) .over-title {
     font-size: 40px;
   }
 
-  .over-score {
+  :where(html:not(.kb)) .over-score {
     margin: 10px 0;
   }
 
-  .os {
+  :where(html:not(.kb)) .os {
     padding: 6px 12px;
   }
 
-  .os b {
+  :where(html:not(.kb)) .os b {
     font-size: 30px;
   }
 
-  .m-over .btn-col {
+  :where(html:not(.kb)) .m-over .btn-col {
     grid-template-columns: 1.2fr 2fr;
     align-items: center;
   }
 
   /* Under the other two, across both columns. */
-  .m-over .btn-setup {
+  :where(html:not(.kb)) .m-over .btn-setup {
     grid-column: 1 / -1;
     order: 1;
   }
 
-  .m-over .btn-big {
+  :where(html:not(.kb)) .m-over .btn-big {
     min-height: 50px;
   }
 
-  .table {
+  :where(html:not(.kb)) .table {
     --side-w: clamp(120px, 20vw, 190px);
     --hand-w: clamp(50px, 16.5dvh, 86px);
     --trick-w: clamp(40px, 12.4dvh, 70px);
@@ -4096,93 +4122,93 @@ body.chat-open .chat-scrim {
     --hand-row: calc(var(--hand-h) * 0.78 + 10px + var(--sab));
   }
 
-  .seat-top {
+  :where(html:not(.kb)) .seat-top {
     padding-top: 12px;
   }
 
-  .seat-left,
-  .seat-right {
+  :where(html:not(.kb)) .seat-left,
+  :where(html:not(.kb)) .seat-right {
     flex-direction: row;
     gap: 6px;
   }
 
-  .seat-right {
+  :where(html:not(.kb)) .seat-right {
     flex-direction: row-reverse;
   }
 
-  .seat-left .seat-id,
-  .seat-right .seat-id {
+  :where(html:not(.kb)) .seat-left .seat-id,
+  :where(html:not(.kb)) .seat-right .seat-id {
     flex: none;
     max-width: 96px;
     gap: 3px;
   }
 
-  .seat-left .backs.open,
-  .seat-right .backs.open {
+  :where(html:not(.kb)) .seat-left .backs.open,
+  :where(html:not(.kb)) .seat-right .backs.open {
     --card-w: clamp(24px, 7.5dvh, 32px);
     flex-direction: row;
   }
 
-  .seat-left .backs.open > .card,
-  .seat-right .backs.open > .card {
+  :where(html:not(.kb)) .seat-left .backs.open > .card,
+  :where(html:not(.kb)) .seat-right .backs.open > .card {
     margin-top: 0;
     margin-left: calc(var(--card-w) * -0.55);
   }
 
-  .seat-left .backs.open > .card:first-child,
-  .seat-right .backs.open > .card:first-child {
+  :where(html:not(.kb)) .seat-left .backs.open > .card:first-child,
+  :where(html:not(.kb)) .seat-right .backs.open > .card:first-child {
     margin-left: 0;
   }
 
-  .prompt {
+  :where(html:not(.kb)) .prompt {
     min-height: 36px;
     padding-bottom: 2px;
   }
 
-  .felt {
+  :where(html:not(.kb)) .felt {
     top: 6px;
   }
 
-  .panel {
+  :where(html:not(.kb)) .panel {
     padding: 10px 12px;
   }
 
-  .panel-title {
+  :where(html:not(.kb)) .panel-title {
     margin-bottom: 6px;
     font-size: 16px;
   }
 
-  .panel-sub {
+  :where(html:not(.kb)) .panel-sub {
     display: none;
   }
 
-  .suit-btn {
+  :where(html:not(.kb)) .suit-btn {
     min-height: 62px;
   }
 
-  .suit-btn .sym {
+  :where(html:not(.kb)) .suit-btn .sym {
     font-size: 32px;
   }
 
-  .panel-bid {
+  :where(html:not(.kb)) .panel-bid {
     display: grid;
     grid-template-columns: auto auto;
     align-items: center;
     column-gap: 14px;
   }
 
-  .panel-bid .turned {
+  :where(html:not(.kb)) .panel-bid .turned {
     grid-row: span 2;
     margin: 0;
   }
 
   /* The coach goes to the free top-left corner of the table instead of
      above the hand, where it would cover the trick on a short screen. */
-  .prompt {
+  :where(html:not(.kb)) .prompt {
     position: static;
   }
 
-  .coach {
+  :where(html:not(.kb)) .coach {
     top: 8px;
     bottom: auto;
     left: max(14px, calc(var(--sal) + 10px));
@@ -4197,15 +4223,15 @@ body.chat-open .chat-scrim {
      the lines that fit there (fitCoach). The label and the ring colour
      tell a tip from an explanation; the icon would take a fifth of the
      width. */
-  .coach-ico {
+  :where(html:not(.kb)) .coach-ico {
     display: none;
   }
 
-  .coach-body {
+  :where(html:not(.kb)) .coach-body {
     position: relative;
   }
 
-  .coach-txt {
+  :where(html:not(.kb)) .coach-txt {
     display: -webkit-box;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: var(--coach-lines);
@@ -4215,7 +4241,7 @@ body.chat-open .chat-scrim {
 
   /* "Lees verder" over the end of the last line shown, not on a line of
      its own; opened, "Minder" goes below the text. */
-  .coach.clamped .coach-more {
+  :where(html:not(.kb)) .coach.clamped .coach-more {
     position: absolute;
     right: 0;
     bottom: 0;
@@ -4227,18 +4253,18 @@ body.chat-open .chat-scrim {
 
   /* There is room for the coach beside a trump or bid panel here, and
      none in the panel. */
-  .coach.on-stage {
+  :where(html:not(.kb)) .coach.on-stage {
     display: flex;
   }
 
-  .panel-hint {
+  :where(html:not(.kb)) .panel-hint {
     display: none;
   }
 
   /* Short tables talk sideways, never into the trick: the top seat to
      the left of its name (its cards are on the right), the side seats
      towards the middle, where table.js stops them short of the trick. */
-  .seat-top .bubble {
+  :where(html:not(.kb)) .seat-top .bubble {
     top: 50%;
     right: calc(100% + 10px);
     left: auto;
@@ -4247,13 +4273,13 @@ body.chat-open .chat-scrim {
     transform-origin: 100% 50%;
   }
 
-  .seat-top .bubble::after {
+  :where(html:not(.kb)) .seat-top .bubble::after {
     top: calc(50% - 6px);
     right: -5px;
     left: auto;
   }
 
-  .seat-left .bubble {
+  :where(html:not(.kb)) .seat-left .bubble {
     top: 50%;
     bottom: auto;
     left: calc(100% + 8px);
@@ -4261,13 +4287,13 @@ body.chat-open .chat-scrim {
     transform-origin: 0 50%;
   }
 
-  .seat-left .bubble::after {
+  :where(html:not(.kb)) .seat-left .bubble::after {
     top: calc(50% - 6px);
     bottom: auto;
     left: -5px;
   }
 
-  .seat-right .bubble {
+  :where(html:not(.kb)) .seat-right .bubble {
     top: 50%;
     bottom: auto;
     right: calc(100% + 8px);
@@ -4275,7 +4301,7 @@ body.chat-open .chat-scrim {
     transform-origin: 100% 50%;
   }
 
-  .seat-right .bubble::after {
+  :where(html:not(.kb)) .seat-right .bubble::after {
     top: calc(50% - 6px);
     bottom: auto;
     right: -5px;

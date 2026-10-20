@@ -13,7 +13,7 @@ import (
 var quickSearch = searchConfig{playWorlds: 16, trumpWorlds: 16, workers: 1}
 
 func TestRoster(t *testing.T) {
-	ids := []string{"henk", "truus", "sjaak", "fatima", "kees", "ans", "bram", "lies"}
+	ids := []string{"dirk", "truus", "sjaak", "fatima", "kees", "ans", "bram", "vera"}
 	r := Roster()
 	if len(r) != len(ids) {
 		t.Fatalf("roster has %d personas, want %d", len(r), len(ids))
@@ -205,6 +205,7 @@ func TestAdviseAlwaysValid(t *testing.T) {
 			if a.Text == "" || strings.Contains(a.Text, "%") {
 				t.Fatalf("advice without text: %+v", a)
 			}
+			checkTerms(t, a.Text)
 			var err error
 			switch d.Phase() {
 			case game.PhaseBid:

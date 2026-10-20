@@ -11,9 +11,9 @@ Dutch. It runs at <https://klaverjas.kroes.dev>.
   typing the code or opening the link, and only need to give a name.
 - **The rules as played in Dutch cafés**: Utrechts (voorhand chooses trump) or
   gedraaid (a turned suit to play or pass), with Amsterdams or Rotterdams
-  trumping; roem on the table, nat and pit, scored over a *boompje* of 16 hands
+  trumping; roem on the table, nat and pit, scored over a *boom* of 16 hands
   or another length. Illegal cards cannot be played, and the game says why.
-- **Eight bots with a character of their own**, from Opa Henk to Bakker Lies,
+- **Eight bots with a character of their own**, from Opa Dirk to Bakker Vera,
   shown as "Naam (AI)", at three strengths. The strongest counts cards, infers
   voids and gives and reads signals. They fill empty seats and chat in
   character.

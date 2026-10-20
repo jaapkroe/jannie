@@ -186,6 +186,108 @@ export function anim(el, frames, ms, opts = {}) {
   return a.finished.catch(() => {});
 }
 
+// ---------- on-screen keyboard ----------
+
+// index.html asks for interactive-widget=resizes-content, so an on-screen
+// keyboard shrinks the layout viewport. A phone held upright then looks
+// short and wide, and the rules for landscape phones would kick in: the
+// banner beside the name field, the table in its landscape layout behind
+// the chat drawer. While the keyboard is open, html.kb is set: app.css
+// gates its landscape rules on :where(html:not(.kb)) and hides the banner,
+// and the focused field is scrolled into view. A phone really turned
+// sideways keeps its landscape layout.
+const touchMQ = matchMedia('(pointer: coarse)');
+const shortLandscapeMQ = matchMedia('(orientation: landscape) and (max-height: 520px)');
+const KB_MIN = 120;      // px: a keyboard takes at least this much height
+const KB_CLOSE_MS = 900; // after a blur the keyboard slides away: keep the layout still
+const NOT_TEXT = new Set(['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']);
+const kb = { on: false, blurAt: -Infinity, full: {}, subs: [] };
+
+// A field the on-screen keyboard opens for.
+export function textField(el) {
+  if (!el || el.disabled || el.readOnly) return false;
+  if (el.tagName === 'TEXTAREA') return true;
+  if (el.tagName === 'INPUT') return !NOT_TEXT.has(el.type);
+  return el.isContentEditable === true;
+}
+
+// Whether the keyboard counts as open: a text field has the focus (or
+// just lost it, while the viewport has not grown back yet) on an upright
+// touch screen, and the viewport is clearly shorter than without a field
+// focused (full: that height; 0 when not measured yet).
+export function keyboardOpen({ touch, upright, focused, full, height, wasOn, sinceBlur }) {
+  if (!touch || !upright) return false;
+  if (full && full - height < KB_MIN) return false;
+  return focused || (wasOn && sinceBlur < KB_CLOSE_MS);
+}
+
+function screenUpright() {
+  const type = screen.orientation?.type;
+  if (type) return type.startsWith('portrait');
+  if (typeof window.orientation === 'number') return window.orientation % 180 === 0;
+  return screen.height >= screen.width;
+}
+
+// Unzoomed height of what is visible: the visual viewport also shrinks for
+// the keyboard where the layout viewport does not (iOS).
+const viewHeight = () => (window.visualViewport ? visualViewport.height * visualViewport.scale : innerHeight);
+
+function syncKeyboard(e) {
+  const upright = screenUpright();
+  const key = upright ? 'portrait' : 'landscape';
+  const field = document.activeElement;
+  const focused = textField(field);
+  const height = viewHeight();
+  const on = keyboardOpen({
+    touch: touchMQ.matches, upright, focused, full: kb.full[key] || 0, height,
+    wasOn: kb.on, sinceBlur: performance.now() - kb.blurAt,
+  });
+  // The full height is taken on a resize with no field focused: a blur
+  // alone does not close the keyboard yet.
+  if (e?.type === 'resize' && !focused && !on) kb.full[key] = height;
+  if (on !== kb.on) {
+    kb.on = on;
+    document.documentElement.classList.toggle('kb', on);
+    for (const fn of kb.subs) fn(on);
+  }
+  if (on && focused && e?.type !== 'focusout') revealField(field);
+}
+
+// Keeps the focused field (and the button beside or below it) in view.
+let revealFrame = 0;
+function revealField(el) {
+  cancelAnimationFrame(revealFrame);
+  revealFrame = requestAnimationFrame(() => {
+    if (document.activeElement !== el) return;
+    const r = el.getBoundingClientRect();
+    const top = window.visualViewport?.offsetTop ?? 0;
+    const bottom = top + (window.visualViewport?.height ?? innerHeight);
+    if (r.top < top + 8 || r.bottom > bottom - 8) el.scrollIntoView({ block: 'center', inline: 'nearest' });
+  });
+}
+
+// Starts watching for the keyboard (main.js, before the table listens to
+// resizes). fn(open) hears every change.
+export function watchKeyboard() {
+  if (!Object.keys(kb.full).length && !textField(document.activeElement)) kb.full[screenUpright() ? 'portrait' : 'landscape'] = viewHeight();
+  addEventListener('resize', syncKeyboard);
+  window.visualViewport?.addEventListener('resize', syncKeyboard);
+  screen.orientation?.addEventListener?.('change', syncKeyboard);
+  touchMQ.addEventListener?.('change', syncKeyboard);
+  document.addEventListener('focusin', syncKeyboard);
+  document.addEventListener('focusout', e => {
+    kb.blurAt = performance.now();
+    setTimeout(() => syncKeyboard(e)); // the next field, if any, has the focus by then
+    setTimeout(syncKeyboard, KB_CLOSE_MS + 20);
+  });
+}
+
+export const onKeyboard = fn => kb.subs.push(fn);
+
+// The short landscape layout of app.css applies: a phone on its side, and
+// not an upright one made short by its keyboard.
+export const shortLandscape = () => shortLandscapeMQ.matches && !kb.on;
+
 export function vibrate(ms) {
   // Before the first tap (e.g. a rejoin after a reload) Chrome blocks it and logs an error.
   if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;

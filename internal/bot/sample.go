@@ -90,6 +90,20 @@ func knowledgeFromView(v *game.View, tab *table) knowledge {
 		if sig := tab.boerSig[k.me.Team()]; sig.Valid() && sig != k.me {
 			k.hints = append(k.hints, hint{sig, jackOf(v.Trump), boerSigHeld, boerSigNotHeld})
 		}
+		for p := range tab.said {
+			seat := game.Seat(p)
+			if seat == k.me {
+				continue
+			}
+			for x := tab.said[p]; x != 0; x &= x - 1 {
+				c := game.CardFromIndex(trailing(x))
+				if c == tenOf(c.Suit) && tab.sigBy[p].has(aceOf(c.Suit)) {
+					k.hints = append(k.hints, hint{seat, c, aceSigHeld, aceSigNotHeld})
+				} else {
+					k.hints = append(k.hints, hint{seat, c, lowSigHeld, lowSigNotHeld})
+				}
+			}
+		}
 		if len(k.hints) > 0 {
 			k.anySoft = true
 		}
@@ -97,12 +111,26 @@ func knowledgeFromView(v *game.View, tab *table) knowledge {
 	return k
 }
 
-// signalHints reads the signals of the play so far (design §8):
-//   - aas voorspelen: a player who leads a small card in a side suit whose
-//     ace is still out probably does not hold that ace;
-//   - smeren: a player who smears a side 10 on the partner's trick while
+// Aas voorspelen and laag bijspelen (table.aceSignal, table.lowSignal) as
+// soft evidence that the signaller holds the card it said. Measured in
+// self-play (TestSignalsHonest): nearly every ace lead that the table
+// reads comes with the 10, but only about three in four small discards
+// come with the highest card, since a discard often has no honest choice.
+// So the low signal weighs less. Humans get the same weights.
+const (
+	aceSigHeld, aceSigNotHeld = 2.0, 0.125
+	lowSigHeld, lowSigNotHeld = 2.0, 0.4
+)
+
+// signalHints reads what the play so far says about the aces (design §8):
+//   - a player who leads a small card in a side suit whose ace is still
+//     out probably does not hold that ace (with it, one leads the ace);
+//   - spekken: a player who gives a side 10 to the partner's trick while
 //     that ace is out probably does not hold the ace either (with both,
-//     one keeps the ace and smears something else).
+//     one keeps the ace and gives something else).
+//
+// The cards that players said they hold (table.said) are read in
+// knowledgeFromView.
 func signalHints(v *game.View, me game.Seat) []hint {
 	var hints []hint
 	var played cardSet

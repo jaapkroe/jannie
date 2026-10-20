@@ -1,7 +1,7 @@
 // Entry point: routing, connection handling and the update queue that
 // animates every server event before rendering the new state.
 import { sound } from './sound.js';
-import { app, store, toast, vibrate } from './util.js';
+import { app, store, toast, vibrate, watchKeyboard } from './util.js';
 import { createNet } from './net.js';
 import * as table from './table.js';
 import * as panels from './panels.js';
@@ -392,6 +392,7 @@ function onChat(msg) {
 // ---------- boot ----------
 
 function boot() {
+  watchKeyboard(); // before the table listens to resizes: it reads the result
   panels.applyPrefs();
   table.init();
   home.init();

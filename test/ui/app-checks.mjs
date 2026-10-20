@@ -1143,6 +1143,172 @@ CHECKS.hidden = async browser => {
   });
 };
 
+// The on-screen keyboard, emulated by shrinking the viewport while a field
+// has the focus (index.html: interactive-widget=resizes-content). An
+// upright phone keeps its upright layout although the viewport turns short
+// and wide: the banner makes way, the field and its button stay in view,
+// and the table behind the chat does not switch to its landscape layout.
+// A phone on its side keeps its landscape layout.
+const KB_STATE = sels => {
+  const where = s => {
+    const el = document.querySelector(s);
+    if (!el) return 'missing';
+    const b = el.getBoundingClientRect();
+    if (!b.width || !b.height) return 'hidden';
+    if (b.top < -1 || b.bottom > innerHeight + 1 || b.left < -1 || b.right > innerWidth + 1) {
+      return `outside [${Math.round(b.left)},${Math.round(b.top)}..${Math.round(b.right)},${Math.round(b.bottom)}] of ${innerWidth}×${innerHeight}`;
+    }
+    const hit = document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height / 2, 20));
+    return hit && (hit === el || el.contains(hit)) ? 'ok' : `covered by ${hit ? `${hit.tagName}.${[...hit.classList].join('.')}` : 'nothing'}`;
+  };
+  const css = (s, prop) => {
+    const el = document.querySelector(s);
+    return el ? getComputedStyle(el)[prop] : '';
+  };
+  return {
+    kb: document.documentElement.classList.contains('kb'),
+    focus: document.activeElement === document.body ? '' : document.activeElement?.className || '',
+    logo: css('.logo', 'display'),
+    home: css('.home-inner', 'flexDirection'),
+    seat: css('.seat-left', 'flexDirection'),
+    tbh: getComputedStyle(document.documentElement).getPropertyValue('--tb-h').trim(),
+    seen: Object.fromEntries(sels.map(s => [s, where(s)])),
+  };
+};
+
+CHECKS.keyboard = async browser => {
+  const iphone = VP.iphone;
+  const kbSizes = [[390, 420], [360, 330]];
+  const state = (P, sels = []) => P.page.evaluate(KB_STATE, sels);
+  const resize = async (P, width, height, extra = {}) => {
+    await P.page.setViewport({ ...P.vp, width, height, ...extra });
+    await sleep(350);
+  };
+  const expectOpen = (st, sels, label) => {
+    const bad = [];
+    if (!st.kb) bad.push('no html.kb');
+    if (st.logo !== 'none') bad.push(`banner shows (${st.logo})`);
+    if (st.home !== 'column') bad.push(`home layout ${st.home}`);
+    for (const s of sels) if (st.seen[s] !== 'ok') bad.push(`${s}: ${st.seen[s]}`);
+    if (bad.length) throw new Error(`${label}: ${bad.join('; ')}\n  ${JSON.stringify(st)}`);
+  };
+
+  // Home: the name, then the code field, as the keyboard comes and goes.
+  const P = await page(browser, iphone, 'keyboard-home');
+  await run(P, async () => {
+    await P.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
+    await waitFor(P, () => document.querySelector('#name'), { label: 'home' });
+    await press(P, '#name');
+    let st = await state(P);
+    if (st.kb || st.logo === 'none' || !st.focus.includes('field-name')) throw new Error(`focused, keyboard not up yet: ${JSON.stringify(st)}`);
+    for (const [w, hgt] of kbSizes) {
+      await resize(P, w, hgt);
+      expectOpen(await state(P, ['#name', '#btn-quick']), ['#name', '#btn-quick'], `name field at ${w}×${hgt}`);
+      await shot(P, `name-${w}x${hgt}`);
+    }
+    await P.page.keyboard.type('Toetsje');
+    await press(P, '#join-code');
+    st = await state(P, ['#join-code', '.btn-join']);
+    expectOpen(st, ['#join-code', '.btn-join'], 'code field');
+    await shot(P, 'code-360x330');
+    // A blur does not close the keyboard at once: the layout holds still
+    // (no jump under the finger) until the viewport grows back.
+    await P.page.evaluate(() => document.activeElement.blur());
+    await sleep(150);
+    st = await state(P);
+    if (!st.kb || st.logo !== 'none') throw new Error(`layout moved before the keyboard went down: ${JSON.stringify(st)}`);
+    await resize(P, iphone.width, iphone.height);
+    st = await state(P, ['.logo', '#name', '#btn-quick']);
+    if (st.kb || st.logo === 'none' || st.home !== 'column' || st.seen['.logo'] !== 'ok') throw new Error(`keyboard down, upright layout back: ${JSON.stringify(st)}`);
+    await shot(P, 'closed');
+  });
+
+  // The invite of a join link asks only for the name.
+  const I = await page(browser, iphone, 'keyboard-invite');
+  await run(I, async () => {
+    await I.page.goto(BASE + '/ABCD', { waitUntil: 'networkidle0' });
+    await waitFor(I, () => !document.querySelector('.invite').hidden, { label: 'invite' });
+    await press(I, '#name');
+    await resize(I, ...kbSizes[1]);
+    expectOpen(await state(I, ['#name', '.invite .btn-hero']), ['#name', '.invite .btn-hero'], 'invite');
+    await shot(I, 'invite-360x330');
+    await I.page.evaluate(() => document.activeElement.blur());
+    await resize(I, iphone.width, iphone.height);
+    // The glossary's search field in the handleiding.
+    await press(I, '.invite .btn-link');
+    await press(I, '#btn-help');
+    await waitFor(I, () => document.querySelector('.m-manual.open'), { label: 'manual' });
+    await I.page.$eval('.m-manual .tab[data-id="woorden"]', e => e.click());
+    await sleep(400); // the sheet slides up
+    await press(I, '.m-manual .man-search input');
+    await resize(I, ...kbSizes[1]);
+    const st = await state(I, ['.m-manual .man-search input']);
+    if (!st.kb || st.seen['.m-manual .man-search input'] !== 'ok') throw new Error(`glossary search with keyboard: ${JSON.stringify(st)}`);
+    await shot(I, 'glossary-360x330');
+  });
+
+  // A phone on its side: the landscape layout stays, keyboard or not.
+  const L = await page(browser, VP.landscape, 'keyboard-landscape');
+  await run(L, async () => {
+    await L.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
+    await waitFor(L, () => document.querySelector('#name'), { label: 'home' });
+    let st = await state(L, ['.logo']);
+    if (st.kb || st.home !== 'row' || st.seen['.logo'] !== 'ok') throw new Error(`landscape home: ${JSON.stringify(st)}`);
+    await shot(L, 'home');
+    await press(L, '#name');
+    await resize(L, 844, 200);
+    st = await state(L, ['#name']);
+    if (st.kb || st.home !== 'row' || st.seen['#name'] !== 'ok') throw new Error(`landscape with keyboard: ${JSON.stringify(st)}`);
+    await shot(L, 'keyboard');
+  });
+
+  // At the table: chat and settings. The table behind them keeps its
+  // upright layout while the keyboard is up.
+  const T = await page(browser, iphone, 'keyboard-table');
+  await run(T, async () => {
+    await home(T, 'Typist');
+    await quick(T);
+    await sleep(500);
+    const upright = await state(T);
+    await press(T, '.topbar .tb-chat');
+    await waitFor(T, () => document.body.classList.contains('chat-open'), { label: 'chat' });
+    await sleep(400);
+    await press(T, '.chat-input');
+    await resize(T, ...kbSizes[1]);
+    let st = await state(T, ['.chat-input', '.chat-send']);
+    if (!st.kb || st.seat !== upright.seat || st.tbh !== upright.tbh || st.seen['.chat-input'] !== 'ok' || st.seen['.chat-send'] !== 'ok') {
+      throw new Error(`chat with keyboard: ${JSON.stringify(st)}, upright ${JSON.stringify(upright)}`);
+    }
+    await shot(T, 'chat-360x330');
+    await T.page.evaluate(() => document.activeElement.blur());
+    await resize(T, iphone.width, iphone.height);
+    await T.page.keyboard.press('Escape');
+    await waitFor(T, () => !document.body.classList.contains('chat-open'), { label: 'chat closed' });
+    // Settings: the name field is at the bottom of the sheet.
+    if (await T.page.$eval('.topbar .tb-settings', e => !!e.getClientRects().length).catch(() => false)) await press(T, '.topbar .tb-settings');
+    else {
+      await press(T, '.topbar .tb-menu');
+      await waitFor(T, () => document.querySelector('.m-menu.open'), { label: 'menu' });
+      await sleep(300);
+      const items = await T.page.$$('.m-menu .menu-item');
+      let item = null;
+      for (const it of items) if ((await it.evaluate(e => e.textContent)).includes('Instellingen')) item = it;
+      if (!item) throw new Error('no Instellingen in the menu');
+      await pressEl(T, item);
+    }
+    await waitFor(T, () => document.querySelector('.m-settings.open'), { label: 'settings' });
+    await sleep(400);
+    const field = '.m-settings .set-group:last-of-type .field, .m-settings input[autocomplete="nickname"]';
+    await press(T, field);
+    await resize(T, ...kbSizes[1]);
+    st = await state(T, ['.m-settings input[autocomplete="nickname"]']);
+    if (!st.kb || st.seat !== upright.seat || st.seen['.m-settings input[autocomplete="nickname"]'] !== 'ok') {
+      throw new Error(`settings name with keyboard: ${JSON.stringify(st)}`);
+    }
+    await shot(T, 'settings-360x330');
+  });
+};
+
 // ---------- runner ----------
 
 let failures = [];
