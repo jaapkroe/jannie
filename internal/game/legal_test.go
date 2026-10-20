@@ -90,15 +90,22 @@ var legalCases = []legalCase{
 			"7H": "Ondertroeven mag niet: je moet overtroeven (hoger dan ♥9).",
 			"AD": "Je kunt niet bekennen, dus je moet overtroeven (hoger dan ♥9).",
 		}},
-	{name: "opponent trumped: cannot overtrump, play another suit", rules: both, leader: 0, trick: "KS 9H", hand: "AH 7H AD 8C", want: "AD 8C",
+	{name: "amsterdams: opponent trumped, cannot overtrump, play another suit", rules: Amsterdams, leader: 0, trick: "KS 9H", hand: "AH 7H AD 8C", want: "AD 8C",
 		rule:    "Je kunt niet overtroeven: speel een andere kleur (ondertroeven mag niet)",
 		illegal: map[string]string{"AH": "Ondertroeven mag niet: je kunt niet overtroeven, dus speel een andere kleur."}},
+	{name: "rotterdams: opponent trumped, cannot overtrump, must undertrump", rules: Rotterdams, leader: 0, trick: "KS 9H", hand: "AH 7H AD 8C", want: "AH 7H",
+		rule:    "Rotterdams: je kunt niet overtroeven, maar je moet wel troeven: speel een lagere troef (♥)",
+		illegal: map[string]string{"AD": "Bij Rotterdams moet je troeven (♥) als je niet kunt bekennen, ook als dat ondertroeven is."}},
+	{name: "rotterdams: the reviewer's position", rules: Rotterdams, leader: 1, trick: "AS 9H 7S", hand: "7H 8H 8C", want: "7H 8H",
+		rule: "Rotterdams: je kunt niet overtroeven, maar je moet wel troeven: speel een lagere troef (♥)"},
 	{name: "opponent trumped: only lower trumps, undertrump", rules: both, leader: 0, trick: "KS 9H", hand: "AH 7H", want: "AH 7H",
 		rule: "Je hebt alleen nog lagere troef: je moet ondertroeven"},
 	{name: "opponent trumped: only trumps, some higher", rules: both, leader: 0, trick: "KS 9H", hand: "JH AH", want: "JH",
 		rule: "Je kunt niet bekennen: je moet overtroeven (♥)"},
-	{name: "opponent overtrumped my partner", rules: both, leader: 0, trick: "KS 9H JH", hand: "AH 7D", want: "7D",
+	{name: "amsterdams: opponent overtrumped my partner", rules: Amsterdams, leader: 0, trick: "KS 9H JH", hand: "AH 7D", want: "7D",
 		rule: "Je kunt niet overtroeven: speel een andere kleur (ondertroeven mag niet)"},
+	{name: "rotterdams: opponent overtrumped my partner", rules: Rotterdams, leader: 0, trick: "KS 9H JH", hand: "AH 7D", want: "AH",
+		rule: "Rotterdams: je kunt niet overtroeven, maar je moet wel troeven: speel een lagere troef (♥)"},
 	{name: "last hand, opponent trumped low", rules: both, leader: 0, trick: "KS 7S 8H", hand: "QH 7H AD", want: "QH",
 		rule: "Je kunt niet bekennen: je moet overtroeven (♥)"},
 
@@ -114,8 +121,9 @@ var legalCases = []legalCase{
 		}},
 	{name: "amsterdams: partner trumped, lower trumps only besides a side card", rules: Amsterdams, leader: 1, trick: "KS 9H 7S", hand: "AH 7H AD", want: "AD",
 		rule: "Je maat heeft de slag: vrije keuze (ondertroeven mag niet)"},
-	{name: "rotterdams: partner trumped, cannot overtrump, play another suit", rules: Rotterdams, leader: 1, trick: "KS 9H 7S", hand: "AH 7H AD", want: "AD",
-		rule: "Je kunt niet overtroeven: speel een andere kleur (ondertroeven mag niet)"},
+	{name: "rotterdams: partner trumped, cannot overtrump, must undertrump", rules: Rotterdams, leader: 1, trick: "KS 9H 7S", hand: "AH 7H AD", want: "AH 7H",
+		rule:    "Rotterdams: je kunt niet overtroeven, maar je moet wel troeven: speel een lagere troef (♥)",
+		illegal: map[string]string{"AD": "Bij Rotterdams moet je troeven (♥) als je niet kunt bekennen, ook als dat ondertroeven is."}},
 	{name: "partner trumped, only lower trumps", rules: both, leader: 1, trick: "KS 9H 7S", hand: "AH 7H", want: "AH 7H",
 		rule: "Je hebt alleen nog lagere troef: je moet ondertroeven"},
 	{name: "amsterdams: partner trumped, only trumps, one higher", rules: Amsterdams, leader: 1, trick: "KS 9H 7S", hand: "JH 7H", want: "JH",
@@ -242,7 +250,7 @@ func TestLegalCoversEveryReason(t *testing.T) {
 			seen[s.why] = true
 		}
 	}
-	for r := rLead; r <= rPartnerFree; r++ {
+	for r := rLead; r <= rRotterdamsUnder; r++ {
 		if !seen[r] {
 			t.Errorf("no test case for reason %d", r)
 		}

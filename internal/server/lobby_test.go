@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"klaverjas/internal/game"
 )
@@ -191,6 +192,79 @@ func TestJoinErrors(t *testing.T) {
 	y.waitError(errStarted)
 }
 
+// TestRefusedJoin: a join turned away from a full lobby tells the joiner
+// what to ask for, and the host (a system line for the table, a refused
+// message for the host only), at most once per refusedGap per room. Back
+// in the lobby with every human seat taken, nobody is invited to join.
+func TestRefusedJoin(t *testing.T) {
+	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
+	h := dial(t, ts)
+	h.create("Host", map[string]any{"humans": 2, "hands": 4}, false, false)
+	g := dial(t, ts)
+	g.join(h.code, "Gast", "")
+	h.waitEvent("join")
+	r := roomOf(t, s, h.code)
+
+	y := dial(t, ts)
+	y.send(map[string]any{"t": "join", "code": h.code, "name": "Yara"})
+	if m := y.waitError(errFull); !strings.Contains(m.errMsg(), "bij Spelers een plaats vrij te maken") {
+		t.Errorf("refusal text %q", m.errMsg())
+	}
+	if m := h.waitType("refused"); m.Name != "Yara" {
+		t.Errorf("refused notice for %q", m.Name)
+	}
+	line := "Yara wilde aanschuiven, maar de tafel is vol."
+	g.until(5*time.Second, "refusal line", func(m *msg) bool {
+		return m.T == "chat" && slices.ContainsFunc(g.chats, func(c chatMsg) bool { return c.Sys && c.Text == line })
+	})
+	if !slices.ContainsFunc(h.chats, func(c chatMsg) bool { return c.Sys && c.Text == line }) {
+		t.Errorf("host has no refusal line: %+v", h.chats)
+	}
+
+	// Within the gap: refused again, but nobody is told.
+	call(r, func() { r.refusedAt = time.Now() })
+	y.send(map[string]any{"t": "join", "code": h.code, "name": "Zeno"})
+	y.waitError(errFull)
+	call(r, func() {}) // the join is handled: a notice would be queued before the pong
+	h.send(map[string]any{"t": "ping"})
+	h.until(5*time.Second, "pong", func(m *msg) bool {
+		if m.T == "refused" {
+			t.Errorf("second notice within the gap: %q", m.Name)
+		}
+		return m.T == "pong"
+	})
+
+	// A free seat taken by a bot: the host can remove it.
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"humans": 3}})
+	h.waitState("humans 3, seat 1 free", func(s *state) bool { return s.Opts.Humans == 3 && s.Players[1] == nil })
+	h.send(map[string]any{"t": "bot", "seat": 1, "id": ""})
+	h.waitState("bot at 1", func(s *state) bool { return s.Players[1] != nil && s.Players[1].Bot })
+	call(r, func() { r.refusedAt = time.Time{} })
+	y.send(map[string]any{"t": "join", "code": h.code, "name": "Yara"})
+	if m := y.waitError(errFull); !strings.Contains(m.errMsg(), "AI-speler weg te halen") {
+		t.Errorf("refusal text with every seat taken: %q", m.errMsg())
+	}
+	h.waitType("refused")
+
+	// Game over, back to the lobby with 2 of 3 humans: room for one more.
+	// With the third seat for humans gone again, no invitation.
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"humans": 2}})
+	h.waitState("humans 2", func(s *state) bool { return s.Opts.Humans == 2 })
+	h.send(map[string]any{"t": "start"})
+	h.waitEvent("deal")
+	call(r, func() {
+		r.pending = stepNone
+		r.handNo = r.opts.Hands
+		r.nextHand()
+	})
+	h.waitEvent("gameOver")
+	h.send(map[string]any{"t": "lobby"})
+	h.waitState("lobby", func(s *state) bool { return s.Phase == phaseLobby }) // the line comes first
+	if !slices.ContainsFunc(h.chats, func(c chatMsg) bool { return c.Sys && c.Text == "Host zet de tafel opnieuw klaar." }) {
+		t.Errorf("lobby line with a full table: %+v", h.chats)
+	}
+}
+
 func TestLeaveAndTakeOver(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
@@ -362,7 +436,7 @@ func TestBotsGreetAndReply(t *testing.T) {
 	})
 	var cm chatMsg
 	json.Unmarshal(m.Msg, &cm)
-	if cm.Text != "Hallo allemaal!" || !strings.HasSuffix(cm.Name, " (AI)") || cm.Seat < 1 || cm.Sys {
+	if !slices.Contains(fakeGreetings, cm.Text) || !strings.HasSuffix(cm.Name, " (AI)") || cm.Seat < 1 || cm.Sys {
 		t.Errorf("greeting %+v", cm)
 	}
 }
@@ -410,9 +484,127 @@ func TestCleanName(t *testing.T) {
 		"👩‍🏫 Ans":                     "👩‍🏫 Ans",
 		"a  \t b":                     "a b",
 		"\xff\xfeMarie":               "Marie",
+
+		// No fake "(AI)": not recreated by the cut to 20, not hidden by
+		// invisible or look-alike characters, nowhere in the name.
+		"Opa Henk Jansen (AI)X":        "Opa Henk Jansen X",
+		"Opa Henk (AI)\u200b":          "Opa Henk",
+		"Opa Henk (AI)\u00ad":          "Opa Henk",
+		"Opa Henk （ＡＩ）":                "Opa Henk",
+		"Opa Henk (\u0410\u0406)":      "Opa Henk", // Cyrillic А and І
+		"Opa Henk (A\u200dI)":          "Opa Henk",
+		"Opa Henk ( a . i )":           "Opa Henk",
+		"Opa Henk (Al)":                "Opa Henk",
+		"Opa (AI) Henk":                "Opa Henk",
+		"((AI)AI)":                     "Speler",
+		"Piet\u3164(AI)":               "Piet",
+		"Ali (Alice)":                  "Ali (Alice)",
+		"AI Bram":                      "AI Bram",
+		"Opa Henk\U000E0041\U000E0049": "Opa Henk",
+
+		// Invisible names become Speler.
+		"\u200b\u200b":             "Speler",
+		"\u200d":                   "Speler",
+		"\ufeff":                   "Speler",
+		"\u3164":                   "Speler",
+		"\u2800":                   "Speler",
+		"\U000E0041":               "Speler",
+		"\u0301\u0301":             "Speler",
+		"\u115f\u1160 \uffa0":      "Speler",
+		"\u2065\ufff0\ufdd0\uffff": "Speler",
+
+		// Marks: at most three on a letter; real text keeps them.
+		"H" + strings.Repeat("\u0301", 199): "H\u0301\u0301\u0301",
+		"Zoe\u0308":                         "Zoe\u0308",
+		"Nguyê\u0303n":                      "Nguyê\u0303n",
+
+		// Joiners stay between visible characters only.
+		"🏳️‍🌈 Kim":         "🏳️‍🌈 Kim",
+		"👨‍👩‍👧 Fam":        "👨‍👩‍👧 Fam",
+		"1️⃣ Eva":          "1️⃣ Eva",
+		"Ans\u200d":        "Ans",
+		"\u200dAns":        "Ans",
+		"An\u200d\u200ds":  "An\u200ds",
+		"An\u200d s":       "An s",
+		"می\u200cخواهم":    "می\u200cخواهم",
+		"Kees\u202e\u2066": "Kees",
 	} {
 		if got := cleanName(in); got != want {
 			t.Errorf("cleanName(%q) = %q, want %q", in, got, want)
 		}
+	}
+	// The cut to 20 characters keeps whole characters and no joiner at the end.
+	long := strings.Repeat("a", 19) + "👩‍🏫"
+	if got := cleanName(long); got != strings.Repeat("a", 19)+"👩" {
+		t.Errorf("cleanName(%q) = %q", long, got)
+	}
+}
+
+func TestCleanChat(t *testing.T) {
+	for in, want := range map[string]string{
+		"  hallo\n\tdaar  ":                 "hallo daar",
+		"\u200b\u200b\u200b":                "",
+		"\u3164":                            "",
+		"\u2800 \u2800":                     "",
+		"\u0301\u0301":                      "",
+		"hoi 👋\u200d":                       "hoi 👋",
+		"gg\U000E0067\U000E0062":            "gg",
+		"(AI) mag in de chat":               "(AI) mag in de chat",
+		"H" + strings.Repeat("\u0300", 199): "H\u0300\u0300\u0300",
+	} {
+		if got := cleanChat(in); got != want {
+			t.Errorf("cleanChat(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := cleanChat(strings.Repeat("ab ", 100)); utf8.RuneCountInString(got) != 200 || strings.HasSuffix(got, " ") {
+		t.Errorf("long line: %d characters %q", utf8.RuneCountInString(got), got[len(got)-4:])
+	}
+}
+
+// TestBotChatNoRepeats: a bot does not say one of its latest lines for an
+// event again (numbers aside), and stays silent rather than repeat itself.
+func TestBotChatNoRepeats(t *testing.T) {
+	s, _, _ := newTestServer(t, func(s *Server) { s.scale = 1 })
+	r := newRoom(s, "ECHO")
+	t.Cleanup(r.stop) // lines are posted to a room loop that does not run
+	r.seats[1] = r.newBot(fakePersonas[1])
+	var said []string
+	for k := range 300 {
+		st := &r.seats[1]
+		st.lastChat = time.Now().Add(-time.Minute)
+		r.trickNo++
+		if r.botSay(1, ChatEvent{Kind: "roem", Mine: true, Points: 20 + 30*(k%2)}, 0) {
+			lines := st.said["roem"]
+			said = append(said, lines[len(lines)-1])
+		}
+	}
+	if len(said) < 250 {
+		t.Errorf("the bot spoke %d times out of 300 with lines left to say", len(said))
+	}
+	for k := range said {
+		for back := 1; back <= botChatMemory && back <= k; back++ {
+			if said[k] == said[k-back] {
+				t.Fatalf("line %d %q repeats line %d", k, said[k], k-back)
+			}
+		}
+	}
+	if !slices.Contains(said, "# roem. Niet slecht.") {
+		t.Errorf("numbers not folded: %q", said[:8])
+	}
+	// A new persona on the seat starts afresh.
+	r.seats[1] = r.newBot(fakePersonas[2])
+	if r.seats[1].said != nil {
+		t.Errorf("new bot remembers %v", r.seats[1].said)
+	}
+	// With only lines said lately to choose from (the fake has one answer
+	// to "hoi"), the bot keeps quiet.
+	hoi := ChatEvent{Kind: "reply", Text: "hoi"}
+	if !r.botSay(1, hoi, 0) {
+		t.Fatal("no answer to hoi")
+	}
+	r.seats[1].lastChat = time.Now().Add(-time.Minute)
+	r.trickNo++
+	if r.botSay(1, hoi, 0) {
+		t.Error("the bot repeated itself instead of keeping quiet")
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -195,17 +196,22 @@ func (r *room) thinkTime(i game.Seat) time.Duration {
 
 // drive schedules whatever happens next: the end of a pause, a bot's move,
 // or a substitute for a human who is away. It cancels everything scheduled
-// before, so it is called after every state change.
+// before, so it is called after every state change. A bot decides once per
+// turn however often drive runs (see botMove).
 func (r *room) drive() {
 	r.gen++
+	if r.timer != nil {
+		r.timer.Stop()
+		r.timer = nil
+	}
 	if !r.inHand() && r.phase != phaseHandEnd {
 		return
 	}
-	live := r.alwaysOn || r.connectedHumans() > 0
+	live := r.live()
 	if r.pending != stepNone {
-		// The hand summary waits for the players; the other pauses are part of
-		// the animation and always end.
-		if r.pending == stepNextHand && !live {
+		// The hand summary waits for the players (in training only for
+		// ready); the other pauses are part of the animation and always end.
+		if r.pending == stepNextHand && (!live || r.training) {
 			return
 		}
 		r.after(time.Until(r.pendingAt), r.runPending)
@@ -280,38 +286,65 @@ func (r *room) viewFor(i game.Seat) game.View {
 	return v
 }
 
-// botMove lets the brain of seat i decide in the background and applies
-// the decision at due, unless the room moved on meanwhile.
+// botTurn is the decision of a bot (or of a substitute) for one turn. A
+// strong bot searches for a while on all cores, so it decides once per
+// turn, whatever happens meanwhile (joins, windows, a seat changing hands);
+// drive only schedules when the decision is played.
+type botTurn struct {
+	step  int // r.step of the turn; 0: none
+	seat  game.Seat
+	ready bool      // the decision is in
+	act   action    // the decision, once ready
+	view  game.View // what it was decided on, for the fallback
+}
+
+// botMove makes sure seat i, played by a bot, moves at due: it starts the
+// turn's decision in the background, or schedules the decision once it is
+// in. When the brain finishes, it drives again.
 func (r *room) botMove(i game.Seat, due time.Time) {
-	gen := r.gen
+	b := &r.bot
+	if b.step != r.step || b.seat != i {
+		r.decide(i)
+		return
+	}
+	if b.ready {
+		r.after(time.Until(due), func() { r.applyBot(i) })
+	}
+}
+
+// decide asks the brain of seat i for the decision of this turn.
+func (r *room) decide(i game.Seat) {
 	st := &r.seats[i]
 	if st.brain == nil { // the substitute of a human
 		st.brain = r.newBrain("", "normaal")
 	}
-	bb, v := st.brain, r.viewFor(i)
+	bb, v, step := st.brain, r.viewFor(i), r.step
+	r.bot = botTurn{step: step, seat: i, view: v}
 	go func() {
 		a := bb.decide(v)
-		if wait := time.Until(due); wait > 0 {
-			t := time.NewTimer(wait)
-			select {
-			case <-t.C:
-			case <-r.done:
-				t.Stop()
-				return
-			}
-		}
 		r.post(func() {
-			if r.gen != gen {
-				return
-			}
-			if err := r.act(i, a); err != nil {
-				r.log.Error("bot move rejected", "seat", int(i), "err", err.Error())
-				if err := r.act(i, fallback(v)); err != nil {
-					r.log.Error("fallback move rejected", "seat", int(i), "err", err.Error())
-				}
+			if b := &r.bot; b.step == step && b.seat == i && !b.ready {
+				b.act, b.ready = a, true
+				r.drive()
 			}
 		})
 	}()
+}
+
+// applyBot plays the decision of this turn for seat i, if the turn is still
+// theirs and a bot still plays it.
+func (r *room) applyBot(i game.Seat) {
+	b := r.bot
+	if !b.ready || b.step != r.step || b.seat != i || r.pending != stepNone || !r.inHand() ||
+		r.deal.Turn() != i || !r.botPlays(i) || !r.live() {
+		return
+	}
+	if err := r.act(i, b.act); err != nil {
+		r.log.Error("bot move rejected", "seat", int(i), "err", err.Error())
+		if err := r.act(i, fallback(b.view)); err != nil {
+			r.log.Error("fallback move rejected", "seat", int(i), "err", err.Error())
+		}
+	}
 }
 
 // goAway lets a substitute play for a human who is still disconnected on
@@ -323,7 +356,7 @@ func (r *room) goAway(i game.Seat) {
 	}
 	st.away = true
 	st.awayAt = time.Now()
-	r.sysChat("%s is even weg; een AI-speler speelt zolang voor %s.", st.name, st.name)
+	r.sysChat("%s is even weg; een AI-speler neemt zolang de beurten over.", st.name)
 	r.emit(evSeat{Type: "away", Seat: i})
 	r.drive()
 }
@@ -336,7 +369,13 @@ func (r *room) humanAct(c *client, i game.Seat, a action) {
 		c.sendError(errInvalid, "Dat kan nu niet.")
 		return
 	}
+	if a.kind == actPlay {
+		r.missed = r.missedHintFor(i, a.card) // explained with the trick
+	}
 	err := r.act(i, a)
+	if err != nil {
+		r.missed = nil
+	}
 	switch {
 	case err == nil:
 	case errors.Is(err, game.ErrNotYourTurn), errors.Is(err, errPaused):
@@ -365,7 +404,7 @@ func (r *room) act(i game.Seat, a action) error {
 		r.phase = phasePlay
 		r.pause(stepAnnounced, p.announce)
 		r.emit(evTrump{Type: "trump", Seat: i, Suit: a.suit, Forced: forced})
-		r.botSay(i, ChatEvent{Kind: "trump", Mine: true}, 700*time.Millisecond)
+		r.chatTrump(i)
 	case actBid:
 		if err := d.Bid(i, a.play); err != nil {
 			return err
@@ -375,7 +414,7 @@ func (r *room) act(i game.Seat, a action) error {
 			r.pause(stepAnnounced, p.announce)
 			r.emit(evBid{Type: "bid", Seat: i, Play: true})
 			r.emit(evTrump{Type: "trump", Seat: i, Suit: d.Turned()})
-			r.botSay(i, ChatEvent{Kind: "trump", Mine: true}, 700*time.Millisecond)
+			r.chatTrump(i)
 		} else {
 			r.phase = string(d.Phase())
 			r.openTurn()
@@ -414,8 +453,29 @@ func (r *room) act(i game.Seat, a action) error {
 	return nil
 }
 
-// sendTips explains a finished trick to the player in training.
+// missedHint is a training hint for a card the player did not play.
+type missedHint struct {
+	seat game.Seat
+	card game.Card
+	text string
+}
+
+// missedHintFor returns the hint seat i saw this turn when card is not the
+// advised one, else nil.
+func (r *room) missedHintFor(i game.Seat, card game.Card) *missedHint {
+	h := r.hintVal
+	if !r.training || r.hintStep != r.step || h == nil || h.Card == nil || *h.Card == card ||
+		r.deal == nil || r.deal.Turn() != i {
+		return nil
+	}
+	return &missedHint{seat: i, card: *h.Card, text: h.Text}
+}
+
+// sendTips explains a finished trick to the player in training, and what
+// the hint was when they played another card.
 func (r *room) sendTips(t game.Trick) {
+	missed := r.missed
+	r.missed = nil
 	if !r.training {
 		return
 	}
@@ -430,10 +490,31 @@ func (r *room) sendTips(t game.Trick) {
 			names[k] = r.displayName(game.Seat(k))
 		}
 		names[i] = "Jij"
-		if text := r.explainTrick(t, trump, names); text != "" {
+		text := r.explainTrick(t, trump, names)
+		if missed != nil && missed.seat == game.Seat(i) {
+			text = strings.TrimSpace(text + " " + r.missedText(game.Seat(i), missed))
+		}
+		if text != "" {
 			st.client.send(mustJSON(tipMsg{T: "tip", Text: text}))
 		}
 	}
+}
+
+// missedText says which card the hint advised: "Juf Ans had ♣9 aangeraden:
+// …" with the reason of the hint.
+func (r *room) missedText(i game.Seat, m *missedHint) string {
+	who := "De tip"
+	if p := &r.seats[i.Partner()]; p.kind == seatBot {
+		who = p.persona.Name
+	}
+	cs := game.CardShortNL(m.card)
+	if why, ok := strings.CutPrefix(m.text, "Speel "+cs+": "); ok && why != "" {
+		return fmt.Sprintf("%s had %s aangeraden: %s", who, cs, why)
+	}
+	if m.text == "" {
+		return fmt.Sprintf("%s had %s aangeraden.", who, cs)
+	}
+	return fmt.Sprintf("%s had %s aangeraden. %s", who, cs, m.text)
 }
 
 func (r *room) explainTrick(t game.Trick, trump game.Suit, names [4]string) (text string) {
@@ -510,6 +591,10 @@ func (r *room) endHand() {
 	}
 	r.pause(stepNextHand, r.pace().summary)
 	r.nextAt = r.pendingAt
+	if r.training {
+		// The learner looks back at the hand at leisure and goes on with ready.
+		r.pendingAt, r.nextAt = time.Time{}, time.Time{}
+	}
 	r.emit(evHandEnd{Type: "handEnd", Result: res})
 	r.chatHandEnd(res)
 	r.drive()

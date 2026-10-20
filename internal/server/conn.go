@@ -37,18 +37,20 @@ type client struct {
 	mu   sync.Mutex
 	room *room // the room this connection plays in, if any
 
-	bucket tokenBucket // reader only
+	bucket     tokenBucket // reader only: all messages
+	joinBucket tokenBucket // reader only: joins
 }
 
 func newClient(s *Server, conn *websocket.Conn, ip string) *client {
 	return &client{
-		srv:    s,
-		conn:   conn,
-		ip:     ip,
-		out:    make(chan []byte, sendQueueLen),
-		quit:   make(chan struct{}),
-		code:   websocket.StatusNormalClosure,
-		bucket: tokenBucket{tokens: s.msgRate, max: s.msgRate, rate: s.msgRate},
+		srv:        s,
+		conn:       conn,
+		ip:         ip,
+		out:        make(chan []byte, sendQueueLen),
+		quit:       make(chan struct{}),
+		code:       websocket.StatusNormalClosure,
+		bucket:     tokenBucket{tokens: s.msgRate, max: s.msgRate, rate: s.msgRate},
+		joinBucket: tokenBucket{tokens: s.joinBurst, max: s.joinBurst, rate: s.joinRate},
 	}
 }
 

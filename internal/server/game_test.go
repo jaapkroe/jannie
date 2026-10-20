@@ -3,6 +3,7 @@ package server
 import (
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -470,7 +471,7 @@ func TestAwaySubstitute(t *testing.T) {
 	if !slices.Contains(b.events, "away") {
 		t.Errorf("no away event: %v", b.events)
 	}
-	want := "Anna is even weg; een AI-speler speelt zolang voor Anna."
+	want := "Anna is even weg; een AI-speler neemt zolang de beurten over."
 	if !slices.ContainsFunc(b.chats, func(m chatMsg) bool { return m.Sys && m.Seat == -1 && m.Text == want }) {
 		t.Errorf("no system line about the substitute in %+v", b.chats)
 	}
@@ -590,4 +591,473 @@ func TestTrainingHintsAndTips(t *testing.T) {
 	d := dial(t, ts)
 	d.send(map[string]any{"t": "join", "code": c.code, "name": "Indringer"})
 	d.waitError(errFull)
+}
+
+// TestBotDecidesOncePerTurn: however often drive runs, a bot decides each
+// turn once (a strong bot's search costs real CPU time).
+func TestBotDecidesOncePerTurn(t *testing.T) {
+	ai := newCountAI(true)
+	s, _ := newTestServerWith(t, ai)
+	r := newRoom(s, "ONCE")
+	r.alwaysOn = true
+	r.opts.Hands = 4
+	s.mu.Lock()
+	s.rooms[r.code] = r
+	s.mu.Unlock()
+	go r.loop()
+	t.Cleanup(func() { call(r, func() { r.close("test") }) })
+	call(r, func() {
+		r.fillSeats()
+		r.startMatch()
+	})
+	// The first decision is under way (the gate holds it); driving again
+	// and again must start no second one. (Those would queue on the brain's
+	// lock and show up as turns decided twice below.)
+	waitFor(t, "first decision", func() bool { n, _ := ai.decisions(); return n == 1 })
+	for range 50 {
+		call(r, r.drive)
+	}
+	close(ai.gate)
+
+	// The bots play the match while something drives the room all the time.
+	stop := make(chan struct{})
+	defer close(stop)
+	go func() {
+		for {
+			select {
+			case <-stop:
+				return
+			case <-time.After(time.Millisecond):
+				r.post(r.drive)
+			}
+		}
+	}()
+	deadline := time.Now().Add(60 * time.Second)
+	for {
+		var phase string
+		call(r, func() { phase = r.phase })
+		if phase == phaseGameOver {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the match did not finish (phase %s)", phase)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	n, twice := ai.decisions()
+	if len(twice) > 0 {
+		t.Errorf("turns decided more than once: %v", twice)
+	}
+	if n < 4*32 {
+		t.Errorf("%d decisions in 4 hands", n)
+	}
+}
+
+// TestRejoinSpamDecidesOnce: a player who keeps rejoining from two windows,
+// or keeps leaving and joining again, does not make the bots think again.
+func TestRejoinSpamDecidesOnce(t *testing.T) {
+	ai := newCountAI(false)
+	_, ts := newTestServerWith(t, ai, func(s *Server) { s.scale = 0.1 }) // a bot turn: about 90 ms
+	a := dial(t, ts)
+	a.create("Anna", map[string]any{"humans": 2, "hands": 4}, false, false)
+	d := dial(t, ts) // stays at the table all along
+	d.join(a.code, "Dirk", "")
+	a.send(map[string]any{"t": "start"})
+	rng := rand.New(rand.NewPCG(8, 8))
+	acted := map[*tclient]int{}
+	// play lets a window holding a seat make its own decisions, so the bots
+	// get turns during the spam.
+	play := func(cs ...*tclient) {
+		for _, c := range cs {
+			for m := c.poll(); m != nil; m = c.poll() {
+			}
+			if c.myTurn() && c.seq > acted[c] {
+				acted[c] = c.seq
+				c.actRandom(rng)
+			}
+		}
+	}
+	join := func(c *tclient, token string) {
+		acted[c] = -1 // a play sent just before another window took over is lost
+		c.send(map[string]any{"t": "join", "code": a.code, "name": "Anna", "token": token})
+	}
+	// Two windows take Anna's seat from each other, 40 times a second.
+	b := dial(t, ts)
+	for k := range 40 {
+		c := []*tclient{b, a}[k%2]
+		join(c, a.token)
+		time.Sleep(25 * time.Millisecond)
+		play(c, d)
+	}
+	n1, _ := ai.decisions()
+	// A window leaves and joins again: the seat is vacated, then taken over.
+	c := dial(t, ts)
+	join(c, a.token)
+	for k := range 40 {
+		if k%2 == 0 {
+			c.send(map[string]any{"t": "leave"})
+		} else {
+			join(c, "")
+		}
+		time.Sleep(25 * time.Millisecond)
+		play(c, d)
+	}
+	n, twice := ai.decisions()
+	if len(twice) > 0 {
+		t.Errorf("turns decided more than once: %v", twice)
+	}
+	if n1 < 2 || n-n1 < 2 {
+		t.Errorf("only %d and %d bot decisions during the spam", n1, n-n1)
+	}
+}
+
+// toHandEnd starts a two-player game with the hand summary held open.
+func toHandEnd(t *testing.T) (*Server, *tclient, *tclient) {
+	t.Helper()
+	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
+	h := dial(t, ts)
+	h.create("Host", map[string]any{"humans": 2, "hands": 4}, false, false)
+	g := dial(t, ts)
+	g.join(h.code, "Gast", "")
+	h.send(map[string]any{"t": "start"})
+	drive(t, func() bool { return h.phase() == phaseHandEnd }, h, g)
+	holdSummary(t, s, h.code)
+	g.waitState("hand end", func(s *state) bool { return s.Phase == phaseHandEnd })
+	g.send(map[string]any{"t": "ready"})
+	g.waitState("ready", func(s *state) bool { return s.Players[g.seat].Ready })
+	return s, h, g
+}
+
+// TestHostDropsAtHandEnd: the host's connection goes while the others are
+// ready: the next hand starts and the host role still moves on.
+func TestHostDropsAtHandEnd(t *testing.T) {
+	_, h, g := toHandEnd(t)
+	h.conn.CloseNow()
+	g.waitEvent("away")
+	if s := g.waitEvent("deal").state; s.HandNo != 2 {
+		t.Errorf("deal of hand %d", s.HandNo)
+	}
+	s := g.waitState("host handover", func(s *state) bool { return s.Host == g.seat })
+	if s.Players[h.seat].Connected {
+		t.Errorf("old host still connected: %+v", s.Players[h.seat])
+	}
+}
+
+// TestLeaveAtHandEnd: a player leaving the hand summary counts like one
+// dropping out: when everyone left is ready, the next hand starts.
+func TestLeaveAtHandEnd(t *testing.T) {
+	_, h, g := toHandEnd(t)
+	h.send(map[string]any{"t": "leave"})
+	g.waitEvent("leave")
+	if s := g.waitEvent("deal").state; s.HandNo != 2 || s.Host != g.seat {
+		t.Errorf("deal of hand %d, host %d", s.HandNo, s.Host)
+	}
+}
+
+// TestRematchByNewHost: a non-host's rematch hands the role over first when
+// the host has been gone longer than the grace period.
+func TestRematchByNewHost(t *testing.T) {
+	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
+	h := dial(t, ts)
+	h.create("Host", map[string]any{"humans": 2, "hands": 4}, false, false)
+	g := dial(t, ts)
+	g.join(h.code, "Gast", "")
+	h.send(map[string]any{"t": "start"})
+	h.waitEvent("deal")
+	r := roomOf(t, s, h.code)
+	h.conn.CloseNow()
+	g.waitEvent("away")
+	call(r, func() {
+		// The grace period is over, but nothing checked the host since.
+		r.seats[h.seat].leftAt = time.Now().Add(-time.Hour)
+		r.pending = stepNone
+		r.handNo = r.opts.Hands
+		r.nextHand()
+	})
+	g.waitEvent("gameOver")
+	g.send(map[string]any{"t": "rematch"})
+	s2 := g.waitState("rematch", func(s *state) bool { return s.Phase != phaseGameOver && s.HandNo == 1 })
+	if s2.Host != g.seat {
+		t.Errorf("host %d after the rematch by %d", s2.Host, g.seat)
+	}
+}
+
+// TestBackToLobby: after game over the host takes the table back to the
+// lobby under the same code and options. The bot that filled the free seat
+// at the start leaves, the bots placed in the lobby stay, a late friend
+// joins in the free seat, and the next match starts from the lobby.
+func TestBackToLobby(t *testing.T) {
+	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
+	h := dial(t, ts)
+	h.create("Host", map[string]any{"humans": 2, "hands": 4, "rules": "rotterdams"}, false, false)
+	h.send(map[string]any{"t": "lobby"})
+	h.waitError(errInvalid)
+	h.send(map[string]any{"t": "start"})
+	h.waitEvent("deal")
+	r := roomOf(t, s, h.code)
+	call(r, func() {
+		r.pending = stepNone
+		r.handNo = r.opts.Hands
+		r.nextHand()
+	})
+	h.waitEvent("gameOver")
+
+	f := dial(t, ts)
+	f.send(map[string]any{"t": "join", "code": h.code, "name": "Vriend"})
+	if m := f.waitError(errStarted); !strings.Contains(m.errMsg(), "net afgelopen") {
+		t.Errorf("join after game over: %q", m.errMsg())
+	}
+	// The host hears of it, and can make room with lobby.
+	if m := h.waitType("refused"); m.Name != "Vriend" {
+		t.Errorf("refused notice for %q", m.Name)
+	}
+	h.send(map[string]any{"t": "lobby"})
+	st := h.waitState("lobby", func(s *state) bool { return s.Phase == phaseLobby })
+	if !slices.ContainsFunc(h.chats, func(c chatMsg) bool {
+		return c.Sys && c.Text == "Host zet de tafel opnieuw klaar. Wie wil, kan nu aanschuiven."
+	}) {
+		t.Errorf("no invitation in the lobby line: %+v", h.chats)
+	}
+	if st.HandNo != 0 || len(st.Scores) != 0 || st.Total != [2]int{} || st.PrevHand != nil {
+		t.Errorf("lobby keeps the old match: hand %d, %d scores, total %v", st.HandNo, len(st.Scores), st.Total)
+	}
+	if st.Opts.Rules != game.Rotterdams || st.Opts.Hands != 4 || st.Opts.Humans != 2 || st.Code != h.code {
+		t.Errorf("lobby changed the options: %+v", st.Opts)
+	}
+	// humans 2: bots at 1 and 3 in the lobby; seat 2 was filled at the start.
+	if p := st.Players; p[0] == nil || p[0].Bot || p[1] == nil || !p[1].Bot || p[2] != nil || p[3] == nil || !p[3].Bot {
+		t.Errorf("lobby seats %+v %+v %+v %+v", p[0], p[1], p[2], p[3])
+	}
+	f.join(h.code, "Vriend", "")
+	if f.seat != 2 {
+		t.Errorf("friend at seat %d, want 2", f.seat)
+	}
+	f.send(map[string]any{"t": "lobby"})
+	f.waitError(errInvalid) // not over any more
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"rules": "amsterdams"}})
+	h.waitState("amsterdams", func(s *state) bool { return s.Opts.Rules == game.Amsterdams })
+	h.send(map[string]any{"t": "start"})
+	f.waitEvent("deal")
+}
+
+// TestBotReplyContext: a bot answering a chat line learns whether it is the
+// speaker's partner and, while tricks are played, whether its team plays.
+func TestBotReplyContext(t *testing.T) {
+	ai := &replyAI{}
+	s, ts := newTestServerWith(t, ai)
+	h := dial(t, ts)
+	h.create("Host", map[string]any{"humans": 2, "hands": 4}, false, false)
+	g := dial(t, ts)
+	g.join(h.code, "Gast", "")
+	r := roomOf(t, s, h.code)
+	ask := func() []ChatEvent {
+		var got []ChatEvent
+		for range 40 {
+			call(r, func() {
+				for i := range r.seats {
+					r.seats[i].chatAt, r.seats[i].lastChat = -1, time.Time{} // no chat limits
+				}
+				ai.got = nil
+				r.botReply(2, "Nat!")
+				got = ai.got
+			})
+			if len(got) > 0 {
+				return got
+			}
+		}
+		t.Fatal("no bot was asked to reply")
+		return nil
+	}
+	for _, ev := range ask() {
+		if ev.Mine || ev.InHand || ev.Playing {
+			t.Errorf("lobby reply %+v", ev)
+		}
+	}
+	h.send(map[string]any{"t": "start"})
+	playing := -1
+	rng := rand.New(rand.NewPCG(1, 2))
+	acted := map[*tclient]*state{}
+	for deadline := time.Now().Add(10 * time.Second); playing < 0; time.Sleep(5 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the hand never reached phase play")
+		}
+		call(r, func() {
+			if r.phase == phasePlay {
+				playing = r.deal.PlayingTeam()
+			}
+		})
+		for _, c := range []*tclient{h, g} {
+			for c.poll() != nil {
+			}
+			if c.myTurn() && acted[c] != c.s {
+				acted[c] = c.s
+				c.actRandom(rng)
+			}
+		}
+	}
+	for _, ev := range ask() {
+		// Seats 1 and 3 (team 1) are the bots; the speaker sits at 2 (team 0).
+		if ev.Mine || !ev.InHand || ev.Playing != (playing == 1) {
+			t.Errorf("reply %+v while team %d plays", ev, playing)
+		}
+	}
+}
+
+// replyAI is the fake AI that records the reply events it is offered.
+type replyAI struct {
+	fakeAI
+	got []ChatEvent
+}
+
+func (a *replyAI) Chat(id string, ev ChatEvent, rng *rand.Rand) string {
+	if ev.Kind == "reply" {
+		a.got = append(a.got, ev)
+		return ""
+	}
+	return a.fakeAI.Chat(id, ev, rng)
+}
+
+// TestTrainingSummaryWaits: in training the hand summary has no countdown;
+// the learner goes on with ready, also after coming back.
+func TestTrainingSummaryWaits(t *testing.T) {
+	_, ts, _ := newTestServer(t)
+	c := dial(t, ts)
+	c.create("Leerling", map[string]any{"hands": 4}, true, true)
+	drive(t, func() bool { return c.phase() == phaseHandEnd }, c)
+	if c.s.NextAt != 0 {
+		t.Errorf("training summary with nextAt %d", c.s.NextAt)
+	}
+	// Ten times the summary time of rustig at this scale: still there.
+	time.Sleep(750 * time.Millisecond)
+	for m := c.poll(); m != nil; m = c.poll() {
+	}
+	if c.phase() != phaseHandEnd || slices.Contains(c.events, "deal") && c.s.HandNo != 1 {
+		t.Fatalf("summary went on by itself: phase %s hand %d", c.phase(), c.s.HandNo)
+	}
+	// Back after a drop: the summary still waits.
+	c.conn.CloseNow()
+	c2 := dial(t, ts)
+	c2.join(c.code, "Leerling", c.token)
+	if c2.s.Phase != phaseHandEnd || c2.s.NextAt != 0 {
+		t.Errorf("after return: phase %s nextAt %d", c2.s.Phase, c2.s.NextAt)
+	}
+	time.Sleep(200 * time.Millisecond)
+	for m := c2.poll(); m != nil; m = c2.poll() {
+	}
+	if c2.phase() != phaseHandEnd {
+		t.Fatalf("summary went on after the return: %s", c2.phase())
+	}
+	c2.send(map[string]any{"t": "ready"})
+	if s := c2.waitEvent("deal").state; s.HandNo != 2 {
+		t.Errorf("deal of hand %d", s.HandNo)
+	}
+}
+
+// TestTrainingMissedHint: a learner who plays another card than the hint
+// hears with the trick which card was advised, and why.
+func TestTrainingMissedHint(t *testing.T) {
+	_, ts, _ := newTestServer(t)
+	c := dial(t, ts)
+	c.create("Leerling", map[string]any{"hands": 4}, true, true)
+	rng := rand.New(rand.NewPCG(4, 4))
+	acted, followed, missed := 0, false, false
+	for !followed || !missed {
+		c.until(10*time.Second, "my turn", func(m *msg) bool { return c.myTurn() && c.seq > acted })
+		acted = c.seq
+		s := c.s
+		if s.Phase != phasePlay {
+			c.actRandom(rng)
+			continue
+		}
+		hinted := *s.Hint.Card
+		play := hinted
+		if !missed && len(s.Legal) > 1 {
+			play = s.Legal[len(s.Legal)-1] // fakeAI advises the first
+		}
+		c.send(map[string]any{"t": "play", "card": play.String()})
+		tip := c.waitType("tip") // the trick completes before my next turn
+		advice := "Juf Ans had " + game.CardShortNL(hinted) + " aangeraden: de eerste kaart die mag."
+		if play == hinted {
+			followed = true
+			if strings.Contains(tip.Text, "aangeraden") {
+				t.Errorf("followed the hint, tip %q", tip.Text)
+			}
+		} else {
+			missed = true
+			if !strings.HasSuffix(tip.Text, " wint de slag. "+advice) {
+				t.Errorf("tip %q, want the trick and %q", tip.Text, advice)
+			}
+		}
+	}
+}
+
+func TestMissedText(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	r := newRoom(s, "TEXT")
+	r.seats[2] = r.newBot(fakePersonas[5]) // Juf Ans
+	nine := game.Card{Rank: game.Nine, Suit: game.Clubs}
+	cs := game.CardShortNL(nine)
+	for text, want := range map[string]string{
+		"Speel " + cs + ": je maat heeft de slag al.": "Juf Ans had " + cs + " aangeraden: je maat heeft de slag al.",
+		"Trek troef met " + cs + ".":                  "Juf Ans had " + cs + " aangeraden. Trek troef met " + cs + ".",
+		"":                                            "Juf Ans had " + cs + " aangeraden.",
+	} {
+		if got := r.missedText(0, &missedHint{seat: 0, card: nine, text: text}); got != want {
+			t.Errorf("missedText(%q) = %q, want %q", text, got, want)
+		}
+	}
+	r.seats[2] = newHuman("Bob")
+	if got := r.missedText(0, &missedHint{card: nine}); got != "De tip had "+cs+" aangeraden." {
+		t.Errorf("without a bot partner: %q", got)
+	}
+}
+
+// TestReclaimSeatByName: a player who lost the seat token gets the seat
+// back by joining under the same name, once it has been empty a while; the
+// old token is then refused.
+func TestReclaimSeatByName(t *testing.T) {
+	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.002 }) // 3 min → 360 ms
+	a := dial(t, ts)
+	a.create("Anna", map[string]any{"humans": 2, "hands": 4}, false, false)
+	b := dial(t, ts)
+	b.join(a.code, "Bob", "")
+	a.send(map[string]any{"t": "start"})
+	a.waitEvent("deal")
+	b.conn.CloseNow()
+	a.until(5*time.Second, "Bob away", func(m *msg) bool { return m.T == "update" && m.evType() == "away" })
+
+	// Not right away: a phone that locks keeps its seat.
+	n := dial(t, ts)
+	n.send(map[string]any{"t": "join", "code": a.code, "name": "Bob"})
+	n.waitError(errStarted)
+
+	time.Sleep(400 * time.Millisecond)
+	x := dial(t, ts)
+	x.send(map[string]any{"t": "join", "code": a.code, "name": "Bobby"})
+	x.waitError(errStarted) // only the same name
+	n2 := dial(t, ts)
+	n2.join(a.code, "Bob", "")
+	if n2.seat != b.seat || n2.token == b.token || n2.token == "" {
+		t.Fatalf("reclaimed seat %d token %q (old seat %d)", n2.seat, n2.token, b.seat)
+	}
+	if p := n2.s.Players[b.seat]; p.Name != "Bob" || !p.Connected || p.Away {
+		t.Errorf("seat after reclaim: %+v", p)
+	}
+	a.waitEvent("back")
+	if !slices.ContainsFunc(a.chats, func(m chatMsg) bool { return m.Sys && m.Text == "Bob speelt verder op een ander apparaat." }) {
+		t.Errorf("no system line in %+v", a.chats)
+	}
+	// The old device comes back with its token: it is told why.
+	o := dial(t, ts)
+	o.send(map[string]any{"t": "join", "code": a.code, "name": "Bob", "token": b.token})
+	if e := o.waitError(errUnknown); !strings.Contains(e.errMsg(), "ander apparaat") {
+		t.Errorf("old token: %q", e.errMsg())
+	}
+	// The new token works.
+	n2.conn.CloseNow()
+	n3 := dial(t, ts)
+	n3.join(a.code, "Bob", n2.token)
+	if n3.seat != b.seat {
+		t.Errorf("new token at seat %d", n3.seat)
+	}
 }

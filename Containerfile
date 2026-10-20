@@ -3,11 +3,15 @@
 #   web     nginx serving web/ and proxying /ws and /api/ to the server
 # The server binary is built only after go vet and the short tests pass; the
 # web image only with an nginx configuration that passes `nginx -t`.
-#   podman build --target server --build-arg GIT_SHA=$(git rev-parse HEAD) -t localhost/klaverjas-server:current .
+#   podman build --target server --build-arg GIT_SHA=$(git rev-parse HEAD) -t localhost/klaverjas-server:test .
 #   podman build --target web --build-arg GIT_SHA=$(git rev-parse HEAD) \
-#                --build-arg SITE=klaverjas.kroes.dev -t localhost/klaverjas-web:current .
-# (`make image` builds both.)
+#                --build-arg SITE=klaverjas.kroes.dev -t localhost/klaverjas-web:test .
+# (`make image` builds both, with -dirty after the commit when the tree is not
+# that commit, and a tag of its own for each build; `make deploy` then points
+# :current, which the units run, at that build.)
 
+# scripts/go takes its toolchain image from this line, so keep its form:
+# FROM <golang image> AS build.
 FROM docker.io/library/golang:1.27-alpine AS build
 ENV CGO_ENABLED=0 GOFLAGS=-buildvcs=false GOTOOLCHAIN=local
 WORKDIR /src
@@ -28,11 +32,14 @@ ENTRYPOINT ["/klaverjas"]
 CMD ["-addr", "127.0.0.1:8081"]
 
 # The nginx configuration with the public host name filled in, checked here so
-# a broken one never reaches the web image.
+# a broken one never reaches the web image; and index.html with it, for the
+# link preview's og:image, which must be an absolute URL.
 FROM docker.io/nginxinc/nginx-unprivileged:1.31-alpine AS web-conf
 ARG SITE=klaverjas.kroes.dev
 COPY deploy/nginx.conf /tmp/nginx.conf.in
-RUN sed "s|@SITE@|${SITE}|g" /tmp/nginx.conf.in > /tmp/nginx.conf && nginx -t -q -c /tmp/nginx.conf
+COPY web/index.html /tmp/index.html.in
+RUN sed "s|@SITE@|${SITE}|g" /tmp/nginx.conf.in > /tmp/nginx.conf && nginx -t -q -c /tmp/nginx.conf && \
+    sed "s|@SITE@|${SITE}|g" /tmp/index.html.in > /tmp/index.html && ! grep -q @SITE@ /tmp/index.html
 
 FROM docker.io/nginxinc/nginx-unprivileged:1.31-alpine AS web
 ARG GIT_SHA=dev
@@ -44,4 +51,5 @@ RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
 USER 101
 COPY --from=web-conf --chown=0:0 /tmp/nginx.conf /etc/nginx/nginx.conf
 COPY web/ /usr/share/nginx/html/
+COPY --from=web-conf --chown=0:0 /tmp/index.html /usr/share/nginx/html/index.html
 EXPOSE 8080

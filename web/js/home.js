@@ -1,7 +1,7 @@
 // Home screen (name, quick play, new game, join, training), the join-link
 // invite, and the lobby where seats and options are arranged.
 import { sound } from './sound.js';
-import { app, h, clear, icon, store, toast, POS, posOf, isWij, teamCls, avatar, variantText, copyText, anim } from './util.js';
+import { app, h, clear, icon, store, toast, POS, posOf, isWij, teamCls, avatar, playerName, variantText, copyText, anim } from './util.js';
 import * as panels from './panels.js';
 
 const E = {};
@@ -25,6 +25,9 @@ const OPTS = [
 ];
 
 const LABELS = Object.fromEntries(OPTS.map(o => [o.key, Object.fromEntries(o.choices)]));
+// The lobby's start button ignores taps this long after it first shows: a
+// double tap on "Maak spel" lands on it and would start without friends.
+const START_GUARD_MS = 800;
 
 function optionsForm(opts, onChange, keys = OPTS.map(o => o.key)) {
   return h('div', { class: 'opts' }, OPTS.filter(o => keys.includes(o.key)).map(o =>
@@ -37,6 +40,30 @@ function optsSummary(o) {
   return [`${o.hands} potjes`, variantText(o), `AI ${LABELS.ai[o.ai]?.toLowerCase() || o.ai}`, `tempo ${LABELS.tempo[o.tempo]?.toLowerCase() || o.tempo}`];
 }
 
+// Snel spelen uses the options last chosen for a new game (kj.opts), alone
+// with three bots.
+function quickOpts() {
+  const stored = store.json('opts', {});
+  const o = {};
+  for (const key of ['hands', 'trumpMode', 'rules', 'ai', 'tempo']) {
+    if (stored?.[key] != null && LABELS[key][stored[key]] !== undefined) o[key] = stored[key];
+  }
+  o.humans = 1;
+  return o;
+}
+
+// The quick-play subtitle names whatever differs from the defaults.
+function quickSub() {
+  const o = { ...DEFAULTS, ...quickOpts() };
+  const parts = [];
+  if (o.hands !== DEFAULTS.hands) parts.push(`${o.hands} potjes`);
+  if (o.trumpMode !== DEFAULTS.trumpMode) parts.push(LABELS.trumpMode[o.trumpMode]);
+  if (o.rules !== DEFAULTS.rules) parts.push(LABELS.rules[o.rules]);
+  if (o.ai !== DEFAULTS.ai) parts.push(`AI ${LABELS.ai[o.ai].toLowerCase()}`);
+  if (o.tempo !== DEFAULTS.tempo) parts.push(`tempo ${LABELS.tempo[o.tempo].toLowerCase()}`);
+  return parts.length ? `Drie AI-spelers · ${parts.join(' · ')}` : 'Meteen aan tafel met drie AI-spelers';
+}
+
 // ---------- home ----------
 
 export function init() {
@@ -46,6 +73,22 @@ export function init() {
     autocapitalize: 'words', spellcheck: false, enterKeyHint: 'done', value: store.get('name', ''), 'aria-label': 'Je naam',
   });
   E.name.addEventListener('change', saveName);
+  // Enter (the keyboard's go key) does what the name was asked for: join
+  // the invite, or the code already typed; otherwise it just closes the
+  // keyboard.
+  E.name.addEventListener('keydown', e => {
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    if (document.body.classList.contains('busy')) return; // already joining
+    if (!E.invite.hidden) {
+      sound.unlock();
+      if (currentName()) app.join(E.inviteCode);
+    } else if (CODE_RE.test(E.code.value)) joinCode(E.code.value);
+    else {
+      saveName();
+      E.name.blur();
+    }
+  });
   E.code = h('input', {
     class: 'field field-code', type: 'text', maxLength: 4, placeholder: 'CODE', autocomplete: 'off', autocapitalize: 'characters',
     spellcheck: false, enterKeyHint: 'go', 'aria-label': 'Spelcode van vier letters',
@@ -61,7 +104,7 @@ export function init() {
   E.main = h('div', { class: 'home-main' },
     h('button', { class: 'btn btn-hero', type: 'button', id: 'btn-quick', onclick: quick },
       h('span', { class: 'hero-ico', 'aria-hidden': 'true' }, icon('bolt')),
-      h('span', { class: 'hero-txt' }, h('b', { text: 'Snel spelen' }), h('small', { text: 'Meteen aan tafel met drie AI-spelers' }))),
+      h('span', { class: 'hero-txt' }, h('b', { text: 'Snel spelen' }), E.quickSub = h('small', { id: 'quick-sub', text: quickSub() }))),
     h('div', { class: 'tiles' },
       h('button', { class: 'btn btn-tile', type: 'button', id: 'btn-new', onclick: openNewGame },
         icon('users'), h('b', { text: 'Nieuw spel' }), h('small', { text: 'Speel met vrienden' })),
@@ -103,22 +146,33 @@ export function currentName() {
 export function show() {
   E.invite.hidden = true;
   E.main.hidden = false;
+  E.name.enterKeyHint = 'done';
+  E.quickSub.textContent = quickSub();
   E.name.value = store.get('name', '') || E.name.value;
   setBusy(false);
   if (!E.name.value && matchMedia('(pointer: fine)').matches) setTimeout(() => E.name.focus(), 50);
 }
 
-// Join link without a stored name: ask only for the name.
+// Join link without a stored name: ask only for the name. The keyboard's
+// go key joins as well (see init).
 export function showInvite(code) {
   E.main.hidden = true;
   E.invite.hidden = false;
+  E.inviteCode = code;
+  E.name.enterKeyHint = 'go';
   E.invite.replaceChildren(
     h('p', { class: 'invite-txt' }, 'Je bent uitgenodigd voor spel ', h('b', { class: 'code-inline', text: code })),
     h('button', { class: 'btn btn-hero', type: 'button', onclick: () => { if (currentName()) app.join(code); } },
       h('span', { class: 'hero-ico', 'aria-hidden': 'true' }, icon('enter')),
       h('span', { class: 'hero-txt' }, h('b', { text: 'Meedoen' }), h('small', { text: 'Vul je naam in en schuif aan' }))),
-    h('button', { class: 'btn btn-link', type: 'button', onclick: () => { history.replaceState(null, '', '/'); show(); } }, 'Liever zelf een spel beginnen'));
+    h('button', { class: 'btn btn-link', type: 'button', onclick: () => { history.replaceState(history.state, '', '/'); show(); } }, 'Liever zelf een spel beginnen'));
   setTimeout(() => E.name.focus(), 50);
+}
+
+// Puts a code in the join field without joining (the field joins on
+// input): a refused join that may work later is one tap on Meedoen.
+export function setCode(code) {
+  E.code.value = CODE_RE.test(code) ? code : '';
 }
 
 export function setBusy(on) {
@@ -130,7 +184,7 @@ function quick() {
   sound.unlock();
   sound.play('click');
   if (!currentName()) return;
-  app.create({ opts: { humans: 1 }, start: true });
+  app.create({ opts: quickOpts(), start: true });
 }
 
 function joinCode(v) {
@@ -152,7 +206,7 @@ function openNewGame() {
   delete opts.open;
   const m = panels.openModal({
     id: 'new', title: 'Nieuw spel', cls: 'm-sheet m-new', body: [
-      optionsForm(opts, (k, v) => { opts[k] = v; store.setJSON('opts', opts); }),
+      optionsForm(opts, (k, v) => { opts[k] = v; store.setJSON('opts', opts); E.quickSub.textContent = quickSub(); }),
       h('p', { class: 'sheet-note', text: 'Je krijgt een code en een link om te delen. Lege plaatsen worden aangevuld met AI-spelers.' }),
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-create', onclick: () => {
         if (!currentName()) { m.close(); return; }
@@ -200,7 +254,7 @@ function buildLobby() {
     h('div', { class: 'btn-row' },
       h('button', { class: 'btn btn-ghost', type: 'button', onclick: copyLink }, icon('copy'), 'Kopieer link'),
       h('button', { class: 'btn btn-ghost', type: 'button', onclick: shareLink }, icon('share'), 'Delen')),
-    h('p', { class: 'lb-hint', text: 'Stuur de link of de code naar wie mee wil doen.' }));
+    E.lbHint = h('p', { class: 'lb-hint' }));
   E.lbTable = h('div', { class: 'mini-table' }, h('div', { class: 'mini-felt' }));
   E.lbSeats = {};
   for (const pos of POS) E.lbTable.append(E.lbSeats[pos] = h('div', { class: 'lseat ls-' + pos }));
@@ -216,7 +270,19 @@ const link = () => `${location.origin}/${app.code}`;
 
 async function copyLink() {
   sound.play('click');
-  toast(await copyText(link()) ? 'Link gekopieerd' : `Kopiëren lukte niet: ${link()}`, { sub: 'Plak hem in een appje naar je vrienden.' });
+  if (await copyText(link())) {
+    toast('Link gekopieerd', { sub: 'Plak hem in een appje naar je vrienden.' });
+    return;
+  }
+  // The clipboard is off limits: show the link where it can be copied by hand.
+  const field = h('input', { type: 'text', class: 'field link-field', readOnly: true, value: link(), 'aria-label': 'Link naar dit spel', onfocus: e => e.target.select() });
+  panels.openModal({
+    id: 'link', title: 'Kopieer de link', cls: 'm-info', body: [
+      h('p', { text: 'Kopiëren lukte niet vanzelf. Selecteer de link en kopieer hem zelf, of geef de code door.' }),
+      field,
+    ],
+  });
+  setTimeout(() => { field.focus(); field.select(); }, 60);
 }
 
 async function shareLink() {
@@ -233,19 +299,30 @@ async function shareLink() {
 }
 
 let lastOptsKey = '';
+let lobbyCode = '';  // the room the lobby was last shown for
+let lobbyAt = 0;     // when it first showed (performance.now)
+let armTimer = 0;
 
-export function renderLobby(s) {
+// fresh: the room just came (back) to the lobby, so the start guard runs
+// again, as for a new room.
+export function renderLobby(s, fresh = false) {
   const host = s.host === s.you;
   const hostName = s.players[s.host]?.name || 'de host';
+  if (s.code !== lobbyCode || fresh) {
+    lobbyCode = s.code;
+    lobbyAt = performance.now();
+  }
   E.lbTitle.textContent = host ? 'Klaarzetten' : 'Even wachten';
   E.lbCode.replaceChildren(...[...s.code].map(ch => h('span', { text: ch })));
   for (let seat = 0; seat < 4; seat++) renderLobbySeat(s, seat, host);
   const humans = s.players.filter(p => p && !p.bot).length;
   const free = s.players.some(p => !p);
+  const bots = s.players.some(p => p?.bot);
   const tip = host
-    ? (free ? 'tik op een lege plaats voor een AI-speler' : 'tik op een AI-speler om te wisselen')
+    ? (free ? 'tik op een lege plaats voor een AI-speler' : bots ? 'tik op een AI-speler om te wisselen' : 'iedereen zit klaar')
     : (free ? 'tik op een lege plaats om daar te gaan zitten' : 'de tafel is vol');
   E.lbCount.textContent = `${humans} van ${s.opts.humans} ${s.opts.humans === 1 ? 'mens' : 'mensen'} · ${tip}`;
+  E.lbHint.textContent = codeHint(s, host, humans, free, bots);
 
   const key = JSON.stringify([s.opts, host]);
   if (key !== lastOptsKey) {
@@ -260,10 +337,40 @@ export function renderLobby(s) {
     }
   }
   const empty = s.players.filter(p => !p).length;
+  const guard = Math.max(0, START_GUARD_MS - (performance.now() - lobbyAt));
   E.lbFoot.replaceChildren(host
-    ? h('button', { class: 'btn btn-go btn-big btn-start', type: 'button', id: 'btn-start', onclick: e => { e.currentTarget.disabled = true; sound.play('click'); app.send({ t: 'start' }); } },
-      icon('play'), h('span', {}, h('b', { text: 'Start spel' }), h('small', { text: empty ? `${empty === 1 ? 'De lege plaats krijgt' : 'Lege plaatsen krijgen'} een AI-speler` : 'Iedereen zit klaar' })))
+    ? h('button', {
+      class: 'btn btn-go btn-big btn-start', type: 'button', id: 'btn-start', disabled: guard > 0,
+      onclick: e => {
+        if (performance.now() - lobbyAt < START_GUARD_MS) return;
+        e.currentTarget.disabled = true;
+        sound.play('click');
+        app.send({ t: 'start' });
+      },
+    }, icon('play'), h('span', {}, h('b', { text: 'Start spel' }), h('small', { text: empty ? `${empty === 1 ? 'De lege plaats krijgt' : 'Lege plaatsen krijgen'} een AI-speler` : 'Iedereen zit klaar' })))
     : h('div', { class: 'lb-wait' }, h('span', { class: 'dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')), ` Wachten tot ${hostName} het spel start`));
+  if (guard > 0) {
+    clearTimeout(armTimer);
+    armTimer = setTimeout(() => {
+      const b = document.getElementById('btn-start');
+      if (b) b.disabled = false;
+    }, guard + 20);
+  }
+}
+
+// Under the code: who can still join. A friend who opens the link of a
+// full table is turned away, so say so, and how the host makes room.
+function codeHint(s, host, humans, free, bots) {
+  if (humans >= s.opts.humans) {
+    if (s.opts.humans >= 4) return 'Alle vier de plaatsen zijn bezet.';
+    return host ? 'Alle plaatsen voor spelers zijn bezet. Zet Spelers hoger als er nog iemand mee wil doen.'
+      : 'Alle plaatsen voor spelers zijn bezet.';
+  }
+  if (!free && bots) {
+    return host ? 'Alle plaatsen zijn bezet. Haal een AI-speler weg als er nog iemand mee wil doen.'
+      : 'Alle plaatsen zijn bezet.';
+  }
+  return 'Stuur de link of de code naar wie mee wil doen.';
 }
 
 function renderLobbySeat(s, seat, host) {
@@ -280,7 +387,7 @@ function renderLobbySeat(s, seat, host) {
       class: 'ls-main', type: 'button', disabled: !(host && p.bot),
       title: host && p.bot ? 'Tik om een andere AI-speler te kiezen' : p.name,
       onclick: host && p.bot ? () => panels.openBotPicker(seat, s) : null,
-    }, avatar(p), h('span', { class: 'ls-name', text: p.name }), h('span', { class: 'ls-tag', text: tag })));
+    }, avatar(p), playerName(p.name, { cls: 'ls-name' }), h('span', { class: 'ls-tag', text: tag })));
     if (host && p.bot) kids.push(h('button', { class: 'ls-x', type: 'button', title: 'AI-speler weghalen', 'aria-label': `${p.name} weghalen`, onclick: () => { sound.play('click'); app.send({ t: 'unbot', seat }); } }, icon('close')));
   } else {
     kids.push(h('button', {

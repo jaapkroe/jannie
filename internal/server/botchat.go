@@ -2,7 +2,10 @@ package server
 
 import (
 	"fmt"
+	"slices"
+	"strings"
 	"time"
+	"unicode"
 
 	"klaverjas/internal/game"
 )
@@ -11,9 +14,15 @@ import (
 // Chattiness: chatty bots talk more often.
 const botChatGap = 8 * time.Second
 
+const (
+	botChatMemory = 2 // lines per event kind a bot does not repeat
+	botChatTries  = 6 // asks for a line it did not say just now
+)
+
 // botSay lets the bot at seat i react to ev, within its limits: one line
-// per trick and one per gap. The line appears after delay (scaled). It
-// reports whether the bot speaks.
+// per trick and one per gap, and not one of its latest lines for this kind
+// of event (it stays silent rather than repeat itself). The line appears
+// after delay (scaled). It reports whether the bot speaks.
 func (r *room) botSay(i game.Seat, ev ChatEvent, delay time.Duration) bool {
 	st := &r.seats[i]
 	if st.kind != seatBot {
@@ -26,8 +35,16 @@ func (r *room) botSay(i game.Seat, ev ChatEvent, delay time.Duration) bool {
 	}
 	text := cleanChat(r.aiChat(st.persona.ID, ev))
 	if text == "" {
-		return false
+		return false // nothing to say about this
 	}
+	// The bot chose to speak; a later "" only means its dice said no again.
+	for try := 1; st.saidLately(ev.Kind, text); try++ {
+		if try == botChatTries {
+			return false
+		}
+		text = cleanChat(r.aiChat(st.persona.ID, ev))
+	}
+	st.remember(ev.Kind, text)
 	st.lastChat, st.chatAt = now, r.trickNo
 	m := chatMsg{Seat: int(i), Name: botName(st.persona), Text: text, Bot: true}
 	r.later(r.scaled(delay), func() {
@@ -35,6 +52,47 @@ func (r *room) botSay(i game.Seat, ev ChatEvent, delay time.Duration) bool {
 		r.addChat(m)
 	})
 	return true
+}
+
+// saidLately reports whether text is one of the bot's latest lines for
+// kind ("" counts as said, so it is asked again). Numbers do not count:
+// "20 roem. Niet slecht." and "50 roem. Niet slecht." are the same line.
+func (st *seat) saidLately(kind, text string) bool {
+	if text == "" {
+		return true
+	}
+	return slices.Contains(st.said[kind], lineKey(text))
+}
+
+// remember keeps text among the bot's latest lines for kind. A new persona
+// starts with an empty memory (newBot).
+func (st *seat) remember(kind, text string) {
+	if st.said == nil {
+		st.said = make(map[string][]string)
+	}
+	lines := append(st.said[kind], lineKey(text))
+	if len(lines) > botChatMemory {
+		lines = lines[len(lines)-botChatMemory:]
+	}
+	st.said[kind] = lines
+}
+
+// lineKey is a chat line with every number replaced by #.
+func lineKey(text string) string {
+	var b strings.Builder
+	digits := false
+	for _, r := range text {
+		if unicode.IsDigit(r) {
+			if !digits {
+				b.WriteByte('#')
+			}
+			digits = true
+			continue
+		}
+		digits = false
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 func (r *room) aiChat(id string, ev ChatEvent) (text string) {
@@ -74,6 +132,17 @@ func (r *room) greet() {
 	})
 }
 
+// chatTrump: the bot that made trump comments on it; if it says nothing (or
+// a human chose), a bot of the other team may comment instead.
+func (r *room) chatTrump(maker game.Seat) {
+	if r.botSay(maker, ChatEvent{Kind: "trump", Mine: true}, 700*time.Millisecond) {
+		return
+	}
+	r.botsReact(1, 1200*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
+		return ChatEvent{Kind: "trump"}, i.Team() != maker.Team()
+	})
+}
+
 // chatTrick: comments on roem, a big trick, or a partner's good trick.
 func (r *room) chatTrick(t game.Trick) {
 	team := t.Winner.Team()
@@ -90,8 +159,13 @@ func (r *room) chatTrick(t game.Trick) {
 		r.botSay(t.Winner, ChatEvent{Kind: "wonTrick", Mine: true, Points: t.Points}, 700*time.Millisecond)
 		return
 	}
-	partner := t.Winner.Partner()
-	r.botSay(partner, ChatEvent{Kind: "partnerGood", Mine: true, Points: t.Points}, 700*time.Millisecond)
+	// A human took it: the partner praises it, or else an opponent sighs.
+	if r.botSay(t.Winner.Partner(), ChatEvent{Kind: "partnerGood", Mine: true, Points: t.Points}, 700*time.Millisecond) {
+		return
+	}
+	r.botsReact(1, 900*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
+		return ChatEvent{Kind: "wonTrick", Points: t.Points}, i.Team() != team
+	})
 }
 
 // chatHandEnd: one bot comments on pit, nat or the result.
@@ -126,12 +200,20 @@ func (r *room) chatGameOver() {
 	})
 }
 
-// botReply: now and then a bot answers a human's chat line.
+// botReply: now and then a bot answers a human's chat line. The event says
+// whether the bot is the speaker's partner and, while tricks are played,
+// whether the bot's team made trump: "Nat!" means something else then.
 func (r *room) botReply(from game.Seat, text string) {
 	if r.rng.Float64() > 0.6 {
 		return
 	}
+	inHand := r.phase == phasePlay && r.deal != nil
+	playing := -1
+	if inHand {
+		playing = r.deal.PlayingTeam()
+	}
 	r.botsReact(1, 1400*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
-		return ChatEvent{Kind: "reply", Text: text}, i != from
+		return ChatEvent{Kind: "reply", Text: text, Mine: i.Team() == from.Team(),
+			InHand: inHand, Playing: i.Team() == playing}, i != from
 	})
 }

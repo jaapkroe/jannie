@@ -9,10 +9,12 @@
 // The rigged mock (or a lucky deal on the real server) makes the first trick
 // contain roem; on the real server the roem shot is taken when roem happens.
 import {
-  args, connect, openPage, VIEWPORTS, press, type, shot, checkOverflow, waitFor, sleep, playLegal,
+  args, connect, openPage, VIEWPORTS, press, type, shot, checkOverflow, waitFor, sleep, playLegal, addressProxy, ownAddress,
 } from './app-lib.mjs';
 
 const A = args();
+const proxy = await addressProxy(A.url);
+const BASE = proxy.url;
 const names = A.only ? A.only.split(',') : Object.keys(VIEWPORTS);
 
 const isNarrow = P => P.vp.width < 600;
@@ -97,7 +99,7 @@ async function newGame(P, { humans = 1, hands = 4, tempo = 'snel', trumpMode = '
 }
 
 async function home(P) {
-  await P.page.goto(A.url + '/', { waitUntil: 'networkidle0' });
+  await P.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
   await waitFor(P, () => document.querySelector('#btn-quick'), { label: 'home' });
   await type(P, '#name', 'Piet');
 }
@@ -106,6 +108,7 @@ async function home(P) {
 // browser context so leftovers of a previous game never interfere.
 async function scenario(browser, name, fn) {
   const P = await openPage(browser, VIEWPORTS[name], name, A.dpr);
+  await ownAddress(P, BASE);
   try {
     await fn(P);
   } catch (e) {
@@ -120,11 +123,13 @@ async function scenario(browser, name, fn) {
 // Home, new game, lobby, a full short game with all overlays.
 async function mainFlow(P) {
   const { page } = P;
-  // Request budget (design §9): at most 16 requests per page load.
+  // Request budget (design §9): at most 17 requests per page load with the
+  // websocket, so 16 over HTTP (a headed browser adds the favicon and a PNG
+  // icon for its install check; headless fetches neither).
   const requests = [];
   const count = r => { if (!r.url().includes('/ws')) requests.push(r.url()); };
   page.on('request', count);
-  await page.goto(A.url + '/', { waitUntil: 'networkidle0' });
+  await page.goto(BASE + '/', { waitUntil: 'networkidle0' });
   await waitFor(P, () => document.querySelector('#btn-quick'), { label: 'home' });
   page.off('request', count);
   if (requests.length > 16) throw new Error(`${requests.length} requests on page load:\n${requests.join('\n')}`);
@@ -135,7 +140,7 @@ async function mainFlow(P) {
   await newGame(P, { humans: 1, hands: 4, tempo: 'snel' }, '02-new-game');
   await sleep(300);
   await snap(P, '03-lobby');
-  await press(P, '#btn-start');
+  await press(P, '#btn-start:not(:disabled)');
 
   // Trump choice: at once on the rigged mock; on the real server when we are voorhand.
   await playUntil(P, '.panel-trump .suit-btn:not(:disabled)');
@@ -199,7 +204,7 @@ async function mainFlow(P) {
 async function bidFlow(P) {
   await home(P);
   await newGame(P, { humans: 1, hands: 4, tempo: 'snel', trumpMode: 'Gedraaid' });
-  await press(P, '#btn-start');
+  await press(P, '#btn-start:not(:disabled)');
   await playUntil(P, '.panel-bid .btn-go:not(:disabled)');
   await sleep(500);
   await snap(P, '15-bid');
@@ -235,8 +240,10 @@ for (let i = 0; i < names.length; i += parallel) {
   const batch = await Promise.all(names.slice(i, i + parallel).map(run));
   errors.push(...batch.flat());
 }
+proxy.close();
 if (errors.length) {
   console.error('FAILED:\n' + errors.join('\n'));
   process.exit(1);
 }
 console.log(`ok: ${names.length} viewports, screenshots in test/ui/out/`);
+process.exit(0); // the proxy may still hold keep-alive connections

@@ -93,6 +93,11 @@ func refLegal(hand []Card, trick []Played, seat Seat, trump Suit, rules Rules) [
 	if len(over) > 0 {
 		return over
 	}
+	if rules == Rotterdams {
+		// Rotterdams: always trump when you cannot follow, undertrumping if
+		// you must; a side card only without trumps.
+		return filter(isTrump)
+	}
 	if len(nonTrump) > 0 {
 		return nonTrump
 	}

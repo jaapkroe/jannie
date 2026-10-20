@@ -1,10 +1,10 @@
 // The game table: top bar, seats, trick, centre stage, prompt and hand, plus
 // the animation for every server event (deal, play, trick, collect, ...).
-import { createCard, createBack } from './cards.js';
+import { createCard, createBack, cardShort } from './cards.js';
 import { sound } from './sound.js';
 import {
-  app, h, clear, prefs, toast, wait, dur, anim, sleep, EASE, POS, posOf, isWij, teamCls, teamName,
-  nameOf, suitSym, suitName, suitText, isRed, roemTotal, ROEM_NAMES, fillAvatar, countUp, icon, suitify,
+  app, h, clear, prefs, savePrefs, toast, wait, dur, anim, sleep, EASE, POS, posOf, isWij, teamCls, teamName,
+  nameOf, suitSym, suitName, suitText, isRed, roemTotal, ROEM_NAMES, fillAvatar, countUp, icon, suitify, cap, playerName,
 } from './util.js';
 import * as panels from './panels.js';
 
@@ -14,14 +14,21 @@ const slots = {};         // pos → trick slot
 const handEls = new Map(); // card code → element in the hand
 let handOrder = [];       // codes in display order
 let selected = '';        // lifted card (touch, keyboard)
-let pending = null;       // {card, flight, placed} our play awaiting the server
+let selectedBy = '';      // 'tap' or 'key': how it was lifted
+let pending = null;       // {card, flight, placed, at} our play awaiting the server
 let pendingAction = false; // trump/bid sent, awaiting the server
+let actionAt = 0;         // when pendingAction was sent
 let heldTrick = null;     // completed trick kept on the table until "collect"
-let tip = '';             // training explanation after a trick
+let tip = '';             // training explanation after a trick, until our next card
+let dismissed = '';       // training hint closed with ✕ (JSON of s.hint)
 let drag = null;
 let stageKey = '';
 
 const PLAYING = new Set(['trump', 'bid', 'play']);
+// A move still unanswered this long after it was sent did not arrive.
+const STUCK_MS = 1500;
+const LIFT_HINTS = 3;     // times the swipe is mentioned after lifting a card
+const touch = matchMedia('(pointer: coarse)');
 
 // ---------- build ----------
 
@@ -45,8 +52,10 @@ export function init() {
 
   E.coach = h('div', { class: 'coach', hidden: true },
     E.coachIcon = h('span', { class: 'coach-ico', 'aria-hidden': 'true', text: '💡' }),
-    h('div', { class: 'coach-body' }, E.coachLbl = h('b', { class: 'coach-lbl' }), E.coachText = h('span')),
-    h('button', { class: 'coach-x', type: 'button', 'aria-label': 'Sluiten', onclick: () => { tip = ''; renderPrompt(app.s); } }, icon('close')));
+    h('div', { class: 'coach-body' },
+      E.coachTxt = h('div', { class: 'coach-txt' }, E.coachLbl = h('b', { class: 'coach-lbl' }), E.coachText = h('span')),
+      E.coachMore = h('button', { class: 'coach-more', type: 'button', hidden: true, 'aria-expanded': 'false', onclick: toggleCoach })),
+    h('button', { class: 'coach-x', type: 'button', 'aria-label': 'Sluiten', onclick: closeCoach }, icon('close')));
   E.rule = h('div', { class: 'rule', 'aria-live': 'polite' });
   E.prompt = h('div', { class: 'prompt' }, seats.bottom.root, E.rule, ...panels.toolButtons(['last']), E.coach);
   E.hand = h('div', { class: 'hand', role: 'group', 'aria-label': 'Jouw kaarten' });
@@ -55,6 +64,7 @@ export function init() {
   root.append(E.top, E.table);
   bindHand();
   new ResizeObserver(() => layoutHand()).observe(E.hand);
+  addEventListener('resize', fitCoach);
   document.addEventListener('keydown', onKey);
 }
 
@@ -96,6 +106,7 @@ function buildSeat(pos) {
 
 export function render(s, o = {}) {
   if (!s) return;
+  app.view = s;
   if (!PLAYING.has(s.phase)) { selected = ''; pendingAction = false; }
   renderTop(s);
   for (let seat = 0; seat < 4; seat++) renderSeat(s, seat, o);
@@ -105,22 +116,23 @@ export function render(s, o = {}) {
   renderHand(s, o);
 }
 
-function teamNames(s, team) {
+// The team's two names in the score pill; each shortens on its own and
+// keeps its "(AI)".
+function setTeamNames(el, s, team) {
   const names = [];
-  for (let seat = 0; seat < 4; seat++) {
-    if (seat % 2 !== team) continue;
-    const p = s.players[seat];
-    names.push(seat === s.you ? 'jij' : (p?.name || 'vrij').replace(/ \(AI\)$/, ''));
-  }
-  return names.join(' & ');
+  for (let seat = team; seat < 4; seat += 2) names.push(seat === s.you ? 'jij' : s.players[seat]?.name || 'vrij');
+  const all = names.join(' & ');
+  if (el.title === all) return;
+  el.title = all;
+  el.replaceChildren(playerName(names[0]), h('span', { class: 'pname-sep', text: ' & ' }), playerName(names[1]));
 }
 
 function renderTop(s) {
   const w = s.you % 2;
   countUp(E.wijNum, s.total?.[w] ?? 0);
   countUp(E.zijNum, s.total?.[1 - w] ?? 0);
-  E.wijNames.textContent = teamNames(s, w);
-  E.zijNames.textContent = teamNames(s, 1 - w);
+  setTeamNames(E.wijNames, s, w);
+  setTeamNames(E.zijNames, s, 1 - w);
   E.potjeN.textContent = s.handNo || 1;
   E.potjeT.textContent = s.hands || s.opts?.hands || 16;
 
@@ -244,6 +256,24 @@ function renderStage(s) {
   if (!key) return;
   if (s.phase === 'trump') E.stage.append(my ? trumpPanel(s) : waitPanel(s, 'kiest troef'));
   else E.stage.append(bidPanel(s, my));
+  if (my && !pendingAction) focusStage();
+}
+
+// Keyboard users land on the choice at once (the advised one in training);
+// on touch screens a focus ring would only distract.
+function focusStage() {
+  if (touch.matches || panels.isOpen() || !panels.focusFree()) return;
+  const btn = E.stage.querySelector('button.advised:not(:disabled)') || E.stage.querySelector('button:not(:disabled)');
+  btn?.focus({ preventScroll: true });
+}
+
+// The training hint for a trump or bid choice, inside the panel: the coach
+// bubble above the hand would sit underneath it.
+function panelHint(s) {
+  if (!s.hint?.text) return null;
+  return h('div', { class: 'panel-hint' },
+    h('span', { class: 'ph-ico', 'aria-hidden': 'true', text: '💡' }),
+    h('span', {}, h('b', { text: 'Tip ' }), suitify(s.hint.text)));
 }
 
 function waitText(s, what) {
@@ -269,6 +299,7 @@ function trumpPanel(s) {
   return h('div', { class: 'panel panel-trump' },
     h('div', { class: 'panel-title', text: forced ? 'Iedereen paste: kies een andere troef' : 'Kies troef' }),
     h('div', { class: 'suit-btns' }, btns),
+    panelHint(s),
     h('div', { class: 'panel-sub', text: forced ? `${suitText(s.turned)} mag niet meer. Jullie spelen en moeten de meeste punten halen.` : 'Jij komt uit. Jullie moeten daarna meer dan de helft van de punten halen.' }));
 }
 
@@ -284,13 +315,15 @@ function bidPanel(s, my) {
     h('div', { class: 'panel-title', text: `Spelen op ${suitName(c)}?` }),
     h('div', { class: 'bid-btns' },
       h('button', { class: 'btn btn-go' + (adv === true ? ' advised' : ''), type: 'button', disabled: pendingAction, onclick: () => sendAction({ t: 'bid', play: true }) }, 'Spelen'),
-      h('button', { class: 'btn btn-pass' + (adv === false ? ' advised' : ''), type: 'button', disabled: pendingAction, onclick: () => sendAction({ t: 'bid', play: false }) }, 'Passen')));
+      h('button', { class: 'btn btn-pass' + (adv === false ? ' advised' : ''), type: 'button', disabled: pendingAction, onclick: () => sendAction({ t: 'bid', play: false }) }, 'Passen')),
+    panelHint(s));
 }
 
 function sendAction(m) {
   if (pendingAction) return;
   sound.play('click');
   pendingAction = true;
+  actionAt = performance.now();
   app.send(m);
   stageKey = '';
   renderStage(app.s);
@@ -300,7 +333,9 @@ function renderPrompt(s) {
   const my = s.turn === s.you;
   let text = '';
   let cls = 'rule';
-  if (s.phase === 'play' && my && !pending) { text = s.rule || 'Jouw beurt: speel een kaart'; cls += ' mine'; }
+  const lifted = s.phase === 'play' && my && !pending && selected && (s.legal || []).includes(selected) ? selected : '';
+  if (lifted) { text = liftedText(lifted); cls += ' mine'; }
+  else if (s.phase === 'play' && my && !pending) { text = s.rule || 'Jouw beurt: speel een kaart'; cls += ' mine'; }
   else if (s.phase === 'play' && s.turn >= 0 && !my) text = `${nameOf(s, s.turn)} is aan de beurt`;
   else if (s.phase === 'trump' && my) { text = 'Jij mag troef kiezen'; cls += ' mine'; }
   else if (s.phase === 'bid' && my) { text = 'Spelen of passen?'; cls += ' mine'; }
@@ -310,9 +345,14 @@ function renderPrompt(s) {
     E.rule.replaceChildren(suitify(text));
   }
 
-  const hint = s.hint?.text && PLAYING.has(s.phase) && my ? s.hint.text : '';
+  const key = s.hint?.text && PLAYING.has(s.phase) && my ? JSON.stringify(s.hint) : '';
+  if (dismissed !== key) dismissed = ''; // a new hint shows again
+  const hint = key && !dismissed ? s.hint.text : '';
   const show = hint || tip;
   E.coach.hidden = !show;
+  // Trump and bid hints are in the panel; only short landscape screens,
+  // where the coach sits in a free corner, keep the bubble (see app.css).
+  E.coach.classList.toggle('on-stage', !!hint && s.phase !== 'play');
   if (show) {
     E.coach.classList.toggle('is-tip', !hint);
     E.coachIcon.textContent = hint ? '💡' : '👩‍🏫';
@@ -320,8 +360,62 @@ function renderPrompt(s) {
     if (E.coachText.dataset.text !== show) {
       E.coachText.dataset.text = show;
       E.coachText.replaceChildren(suitify(show));
+      E.coach.classList.remove('open'); // a new text starts short again
     }
   }
+  fitCoach();
+}
+
+// On a short landscape screen the coach sits in the top-left corner, above
+// the left seat: the player after you, whose turn ring must stay in view.
+// A text too long for that room shows the lines that fit and "Lees verder";
+// opened on purpose, it may cover the seat until "Minder" or ✕.
+function fitCoach() {
+  E.coach.style.removeProperty('--coach-lines');
+  if (!shortLandscape.matches) E.coach.classList.remove('open'); // turned upright
+  const open = E.coach.classList.contains('open');
+  let clamped = false;
+  if (shortLandscape.matches && !E.coach.hidden && !open) {
+    E.coach.classList.remove('clamped');
+    E.coachMore.hidden = true; // measured without it: it goes over the last line
+    const over = coachBottom() - (seats.left.ring.getBoundingClientRect().top - COACH_GAP);
+    if (over > 0) {
+      const lh = parseFloat(getComputedStyle(E.coachTxt).lineHeight) || 16;
+      E.coach.style.setProperty('--coach-lines', Math.max(2, Math.floor((E.coachTxt.clientHeight - over) / lh)));
+      clamped = E.coachTxt.scrollHeight > E.coachTxt.clientHeight + 1;
+    }
+  }
+  E.coach.classList.toggle('clamped', clamped);
+  E.coachMore.hidden = !clamped && !open;
+  E.coachMore.textContent = open ? 'Minder' : 'Lees verder';
+  E.coachMore.setAttribute('aria-expanded', String(open));
+}
+const COACH_GAP = 8; // px kept free above the left seat's ring
+
+// The coach's bottom edge as laid out, without its rise-in animation.
+function coachBottom() {
+  const par = E.coach.offsetParent;
+  if (!par) return E.coach.getBoundingClientRect().bottom;
+  return par.getBoundingClientRect().top + par.clientTop + E.coach.offsetTop + E.coach.offsetHeight;
+}
+
+function toggleCoach() {
+  E.coach.classList.toggle('open');
+  fitCoach();
+}
+
+// What the second tap does, once a card is lifted.
+function liftedText(code) {
+  const c = cardShort(code);
+  if (selectedBy === 'key') return `Enter speelt ${c}`;
+  return (prefs.lifts || 0) <= LIFT_HINTS ? `Tik nog eens om ${c} te spelen, of veeg hem omhoog` : `Tik nog eens om ${c} te spelen`;
+}
+
+function closeCoach() {
+  const s = app.s;
+  if (s?.hint?.text && !E.coach.classList.contains('is-tip')) dismissed = JSON.stringify(s.hint);
+  tip = '';
+  if (s) renderPrompt(s);
 }
 
 function renderHand(s, o = {}) {
@@ -411,9 +505,17 @@ function tap(code, type) {
   const playing = s.phase === 'play' && s.turn === s.you && !pending;
   const legal = (s.legal || []).includes(code);
   if (playing && !legal) return illegal(code, s);
-  if (type === 'mouse' || prefs.tap === 'one' || selected === code) return tryPlay(code);
+  // A forced card needs no second tap: there is nothing to get wrong.
+  const forced = playing && s.legal.length === 1;
+  if (type === 'mouse' || prefs.tap === 'one' || selected === code || forced) return tryPlay(code);
   selected = code;
+  selectedBy = 'tap';
+  if (playing && (prefs.lifts || 0) <= LIFT_HINTS) {
+    prefs.lifts = (prefs.lifts || 0) + 1;
+    savePrefs();
+  }
   renderHand(s);
+  renderPrompt(s);
 }
 
 function illegal(code, s) {
@@ -430,6 +532,11 @@ function tryPlay(code) {
   const s = app.s;
   if (!s || pending) return;
   const el = handEls.get(code);
+  if (s.phase === 'play' && s.turn < 0) {
+    // A pause: the trick is being collected, or play is about to start.
+    toast(shownTrick(s)?.cards?.length === 4 ? 'Even geduld, de slag wordt opgehaald' : 'Even geduld, het spel gaat zo verder');
+    return;
+  }
   if (s.phase !== 'play' || s.turn !== s.you) {
     shake(el);
     toast(s.phase === 'play' ? `Wacht even: ${nameOf(s, s.turn)} is aan de beurt` : 'Je kunt nu nog geen kaart spelen');
@@ -438,8 +545,11 @@ function tryPlay(code) {
   if (!(s.legal || []).includes(code)) return illegal(code, s);
   const from = el.getBoundingClientRect();
   const rot = parseFloat(el.style.getPropertyValue('--rot')) || 0;
-  pending = { card: code, placed: false };
+  pending = { card: code, placed: false, at: performance.now() };
   selected = '';
+  // The previous trick's explanation has done its job: once the hint has
+  // gone it must not come back over the new trick as if about this card.
+  tip = '';
   sound.play('card');
   app.send({ t: 'play', card: code });
   const p = pending;
@@ -463,13 +573,16 @@ function onKey(e) {
     let i = pool.indexOf(selected);
     i = i < 0 ? (e.key === 'ArrowLeft' ? pool.length - 1 : 0) : (i + (e.key === 'ArrowLeft' ? -1 : 1) + pool.length) % pool.length;
     selected = pool[i];
+    selectedBy = 'key';
     renderHand(s);
+    renderPrompt(s);
   } else if ((e.key === 'Enter' || e.key === ' ') && selected) {
     e.preventDefault();
     tryPlay(selected);
   } else if (e.key === 'Escape' && selected) {
     selected = '';
     renderHand(s);
+    renderPrompt(s);
   }
 }
 
@@ -558,6 +671,7 @@ async function animDeal(ev, next) {
   pendingAction = false;
   selected = '';
   tip = '';
+  dismissed = '';
   clear(E.fx);
   for (const pos of POS) clear(slots[pos]);
   const you = next.you;
@@ -627,7 +741,7 @@ async function animTrump(ev, next) {
   const text = ev.forced ? `${who} moest kiezen` : next.bids?.[ev.seat] === 1 ? `${who} speelt` : `${who} kiest`;
   const ban = h('div', { class: 'banner ' + teamCls(next, ev.seat) },
     h('span', { class: 'banner-sym' + (isRed(ev.suit) ? ' red' : ''), text: suitSym(ev.suit) }),
-    h('span', { class: 'banner-text' }, h('small', { text }), h('b', { text: `${suitName(ev.suit)} is troef` })));
+    h('span', { class: 'banner-text' }, h('small', { text }), h('b', { text: cap(`${suitName(ev.suit)} is troef`) })));
   E.fx.append(ban);
   anim(E.badge, [{ transform: 'scale(1)' }, { transform: 'scale(1.35)' }, { transform: 'scale(1)' }], 600, { delay: 500 });
   await anim(ban, [{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1.06)', opacity: 1, offset: 0.6 }, { transform: 'scale(1)', opacity: 1 }], 420);
@@ -638,6 +752,8 @@ async function animTrump(ev, next) {
 
 async function animPlay(ev, prev, next) {
   const pos = posOf(ev.seat, next.you);
+  // Our card (sent here, or played for us while away): as in tryPlay.
+  if (ev.seat === next.you) tip = '';
   if (ev.seat === next.you && pending?.card === ev.card) {
     await pending.flight;
     pending = null;
@@ -769,20 +885,81 @@ function seatToast(ev, prev, next) {
   else if (ev.type === 'back') toast(`${name} is terug`);
 }
 
-// Speech bubble at a seat (bids, chat lines).
+// Speech bubble at a seat (bids, chat lines). Bubbles never pile up (on a
+// short portrait screen the top seat's and a side seat's meet in between):
+// a chat line in the way of another bubble waits until there is room (it
+// is in the chat log meanwhile), and is dropped once it is old news. A bid
+// ("Ik speel!", "Pas": in gedraaid the table's only record of it) shows at
+// once; a chat bubble in its way ends early.
+const BID_KINDS = new Set(['go', 'pass']);
+const BUBBLE_WAIT_MS = 6000;
+let waitingBubbles = []; // {pos, text, kind, ms, at}
+
 export function bubble(s, seat, text, kind = '', ms = 0) {
   if (!s || seat == null || seat < 0 || document.body.dataset.screen !== 'game') return;
-  const S = seats[posOf(seat, s.you)];
-  S.bubble.textContent = text;
-  S.bubble.className = 'bubble' + (kind ? ' bubble-' + kind : '');
-  S.bubble.hidden = false;
-  S.root.classList.add('talking');
+  const pos = posOf(seat, s.you);
+  waitingBubbles = waitingBubbles.filter(b => b.pos !== pos); // the newer line wins
+  showBubble({ pos, text, kind, ms, at: performance.now() });
+}
+
+function showBubble(b) {
+  const S = seats[b.pos];
   clearTimeout(S.bubbleTimer);
+  for (const a of S.bubble.getAnimations()) a.cancel();
+  S.bubble.textContent = b.text;
+  S.bubble.className = 'bubble' + (b.kind ? ' bubble-' + b.kind : '');
+  S.bubble.style.maxWidth = b.pos === 'left' || b.pos === 'right' ? sideBubbleWidth(S, b.pos) : '';
+  S.bubble.hidden = false;
+  S.bubbleKind = b.kind;
+  // Measured before the pop-in scales it; the others' rects were stored
+  // the same way, so a bubble still popping in counts at full size.
+  S.bubbleRect = S.bubble.getBoundingClientRect();
+  const inWay = POS.filter(p => p !== b.pos && !seats[p].bubble.hidden && overlaps(S.bubbleRect, seats[p].bubbleRect));
+  if (!BID_KINDS.has(b.kind) && inWay.length) {
+    endBubble(S);
+    waitingBubbles.push(b);
+    return;
+  }
+  for (const p of inWay) if (!BID_KINDS.has(seats[p].bubbleKind)) endBubble(seats[p]);
+  S.root.classList.add('talking');
   anim(S.bubble, [{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], 220);
   S.bubbleTimer = setTimeout(() => {
-    S.bubble.hidden = true;
-    S.root.classList.remove('talking');
-  }, ms || Math.min(6000, 2200 + text.length * 45));
+    endBubble(S);
+    showWaitingBubbles();
+  }, b.ms || Math.min(6000, 2200 + b.text.length * 45));
+}
+
+function endBubble(S) {
+  clearTimeout(S.bubbleTimer);
+  S.bubble.hidden = true;
+  S.root.classList.remove('talking');
+}
+
+// A bubble ended: the lines waiting for room get their turn, oldest first.
+function showWaitingBubbles() {
+  const now = performance.now();
+  const list = waitingBubbles;
+  waitingBubbles = [];
+  if (document.body.dataset.screen !== 'game') return;
+  for (const b of list) if (now - b.at < BUBBLE_WAIT_MS) showBubble(b);
+}
+
+const overlaps = (a, b) => !!a && !!b && a.left < b.right + 2 && b.left < a.right + 2 && a.top < b.bottom + 2 && b.top < a.bottom + 2;
+
+// A side seat talks upwards from its outer edge, or on a short landscape
+// table sideways towards the middle (app.css). Either way the bubble stops
+// short of the trick slot in its path (the partner's card above, or the
+// side seat's own card), so it does not cover the trick. '' leaves the CSS
+// maximum.
+const shortLandscape = matchMedia('(orientation: landscape) and (max-height: 520px)');
+function sideBubbleWidth(S, pos) {
+  const seat = S.root.getBoundingClientRect();
+  const beside = shortLandscape.matches;
+  const slot = (beside ? slots[pos] : slots.top).getBoundingClientRect();
+  if (!slot.width) return '';
+  const from = beside ? (pos === 'left' ? seat.right + 8 : seat.left - 8) : (pos === 'left' ? seat.left + 2 : seat.right - 2);
+  const room = (pos === 'left' ? slot.left - from : from - slot.right) - 10;
+  return room < 200 ? Math.max(96, Math.floor(room)) + 'px' : '';
 }
 
 // Training explanation after a trick.
@@ -791,21 +968,43 @@ export function setTip(text) {
   if (app.s) renderPrompt(app.s);
 }
 
-// After every update: an action we sent has been processed.
-export function settle(next) {
-  if (pendingAction && (next.turn !== next.you || !['trump', 'bid'].includes(next.phase))) {
+// After every update: an action we sent has been processed. A resync (ev
+// null) can also show that it never arrived: then the table gives it back.
+export function settle(next, ev = null) {
+  const lost = !ev && next.turn === next.you;
+  if (pending && !ev) {
+    const inHand = (next.hand || []).includes(pending.card);
+    if (!inHand || (lost && next.phase === 'play' && performance.now() - pending.at > STUCK_MS)) pending = null;
+  }
+  if (pendingAction && (next.turn !== next.you || !['trump', 'bid'].includes(next.phase) || (lost && performance.now() - actionAt > STUCK_MS))) {
     pendingAction = false;
     stageKey = '';
   }
 }
 
+// After a rejoin: forget everything sent but unanswered, so the resync
+// that follows renders the table purely from the server's state.
+export function resync() {
+  pending = null;
+  pendingAction = false;
+  selected = '';
+  stageKey = '';
+  heldTrick = null;
+  for (const pos of POS) clear(slots[pos]);
+  for (const [, el] of handEls) el.style.visibility = '';
+}
+
 export function resetRoom() {
+  app.view = null;
   heldTrick = null;
   pending = null;
   pendingAction = false;
   selected = '';
   tip = '';
+  dismissed = '';
   stageKey = '';
+  waitingBubbles = [];
+  for (const pos of POS) endBubble(seats[pos]);
   clear(E.fx);
   for (const pos of POS) clear(slots[pos]);
   for (const [, el] of handEls) el.remove();

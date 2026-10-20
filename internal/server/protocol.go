@@ -75,6 +75,12 @@ type chatlogMsg struct {
 	Msgs []chatMsg `json:"msgs"`
 }
 
+// refusedMsg tells the host that name could not join: the table is full.
+type refusedMsg struct {
+	T    string `json:"t"`
+	Name string `json:"name"`
+}
+
 type tipMsg struct {
 	T    string `json:"t"`
 	Text string `json:"text"`

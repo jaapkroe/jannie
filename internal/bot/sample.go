@@ -37,6 +37,14 @@ type knowledge struct {
 	anySoft bool
 }
 
+// Kleintje boer (table.signalsBoer) as soft evidence that the signaller
+// holds the trump boer. Measured in sterk self-play: it is given on about
+// 31% of first leads with the boer, and a small side card is led on about
+// 4% of first leads without it, a likelihood ratio of about 8 (normaal
+// bots almost never lead one without the boer). The game does not tell
+// bots which seats are human, so humans get the same weight.
+const boerSigHeld, boerSigNotHeld = 2.0, 0.25
+
 // knowledgeFromView collects what v.Seat knows; tab must be tableFromView(v)
 // for a view in phase play, or nil before trump is known.
 func knowledgeFromView(v *game.View, tab *table) knowledge {
@@ -77,10 +85,10 @@ func knowledgeFromView(v *game.View, tab *table) knowledge {
 	if tab != nil {
 		k.hints = signalHints(v, k.me)
 		if sig := tab.boerSig[k.me.Team()^1]; sig.Valid() {
-			k.hints = append(k.hints, hint{sig, jackOf(v.Trump), 2.5, 0.5})
+			k.hints = append(k.hints, hint{sig, jackOf(v.Trump), boerSigHeld, boerSigNotHeld})
 		}
 		if sig := tab.boerSig[k.me.Team()]; sig.Valid() && sig != k.me {
-			k.hints = append(k.hints, hint{sig, jackOf(v.Trump), 2.5, 0.5})
+			k.hints = append(k.hints, hint{sig, jackOf(v.Trump), boerSigHeld, boerSigNotHeld})
 		}
 		if len(k.hints) > 0 {
 			k.anySoft = true

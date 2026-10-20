@@ -6,9 +6,7 @@ set -eu
 port=${1:?usage: dev-server PORT [flags]}; shift
 root=$(cd "$(dirname "$0")/.." && pwd)
 podman rm -f "kj-dev-$port" >/dev/null 2>&1 || true
-podman run -d --rm --name "kj-dev-$port" --network host \
-  -v "$root":/src -v klaverjas-gocache:/go -v klaverjas-gobuild:/root/.cache \
-  -e GOFLAGS=-buildvcs=false -e GOTOOLCHAIN=local -e CGO_ENABLED=0 -w /src \
-  docker.io/library/golang:1.27-alpine \
-  go run ./cmd/klaverjas -addr "127.0.0.1:$port" -static /src/web "$@" >/dev/null
+cd "$root"
+KJ_GO_NAME="kj-dev-$port" KJ_GO_DETACH=1 scripts/go \
+  run ./cmd/klaverjas -addr "127.0.0.1:$port" -static /src/web "$@" >/dev/null
 echo "kj-dev-$port starting on http://127.0.0.1:$port/ (compiling; poll /api/health)"

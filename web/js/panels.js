@@ -5,11 +5,14 @@ import { sound } from './sound.js';
 import { SECTIONS, renderManual } from './manual.js';
 import {
   app, h, $$, icon, prefs, savePrefs, store, toast, dur, posOf, isWij, teamCls, teamName,
-  nameOf, suitSym, suitName, suitText, isRed, roemTotal, roemText, variantText, countUp, avatar, suitify,
+  nameOf, suitSym, suitName, suitText, isRed, roemTotal, roemText, variantText, countUp, avatar, playerName, suitify, cap,
 } from './util.js';
 
 const PLAYING = new Set(['trump', 'bid', 'play']);
 const stack = [];
+const fine = matchMedia('(pointer: fine)');
+const touch = matchMedia('(pointer: coarse)');
+const FOCUSABLE = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 // ---------- modal stack ----------
 
@@ -33,29 +36,133 @@ export function openModal({ id = '', title = '', body = [], cls = '', closable =
     setTimeout(() => m.root.remove(), dur(240) + 10);
     if (!quiet) m.onClose?.();
     if (back?.isConnected && !stack.length) back.focus?.({ preventScroll: true });
+    syncHistory();
   };
   document.getElementById('modals').append(m.root);
   stack.push(m);
   requestAnimationFrame(() => {
+    if (!stack.includes(m)) return; // closed again within the frame
     m.root.classList.add('open');
     if (!m.root.classList.contains('passive')) m.dlg.focus({ preventScroll: true });
   });
+  syncHistory();
   return m;
 }
 
 const byId = id => stack.find(m => m.id === id);
-export const isOpen = () => stack.some(m => !m.root.classList.contains('passive')) || chatOpen;
+const passive = m => m.root.classList.contains('passive');
+export const isOpen = () => stack.some(m => !passive(m)) || chatOpen;
 export function closeAll() {
   for (const m of [...stack]) m.close(true);
   setChat(false);
 }
 
 document.addEventListener('keydown', e => {
+  if (e.key === 'Tab') { trapFocus(e); return; }
   if (e.key !== 'Escape') return;
   const top = [...stack].reverse().find(m => m.closable);
   if (top) { top.close(); e.preventDefault(); return; }
   if (chatOpen) { setChat(false); e.preventDefault(); }
 });
+
+// Tab and Shift+Tab stay inside the top dialog; the table behind the
+// backdrop is out of reach until it closes. Passive overlays (hand summary,
+// game over) leave the chat beside them usable.
+function trapFocus(e) {
+  const top = [...stack].reverse().find(m => !passive(m));
+  if (!top) return;
+  const items = [...top.dlg.querySelectorAll(FOCUSABLE)].filter(el => !el.disabled && el.getClientRects().length);
+  const ae = document.activeElement;
+  if (!items.length) { e.preventDefault(); top.dlg.focus(); return; }
+  const first = items[0];
+  const last = items[items.length - 1];
+  if (!top.dlg.contains(ae)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+  else if (e.shiftKey && (ae === first || ae === top.dlg)) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && ae === last) { e.preventDefault(); first.focus(); }
+}
+
+// Focuses the main button of an overlay for keyboard users (not on touch
+// screens: no focus ring there), unless they are busy elsewhere (typing in
+// the chat beside it, another dialog).
+function focusMain(btn) {
+  if (touch.matches) return;
+  requestAnimationFrame(() => {
+    if (btn.closest('.modal.open') && !btn.disabled && !isOpen() && focusFree()) btn.focus({ preventScroll: true });
+  });
+}
+
+// Nothing has the focus, or only something on its way out (the button of
+// the hand summary that is closing as the next overlay opens).
+export function focusFree() {
+  const ae = document.activeElement;
+  return !ae || ae === document.body || !ae.isConnected || !!ae.closest('#modals .modal:not(.open)');
+}
+
+// ---------- back button ----------
+
+// Every closable overlay (modal or chat drawer) and, while at a table, one
+// sentinel entry get a history entry: the Android back gesture then closes
+// the top overlay, and at the table asks before leaving, instead of leaving
+// the page (or the installed app). history.state.kj is an entry's depth.
+let depth = 0;      // our entries above the page's own
+let expect = -1;    // depth a traversal we started will arrive at
+let expectTimer = 0;
+let syncTimer = 0;
+
+const inRoom = () => document.body.classList.contains('in-room');
+const overlays = () => stack.filter(m => m.closable).length + (chatOpen ? 1 : 0);
+const wanted = () => (inRoom() ? 1 : 0) + overlays();
+
+// Brings the history in line with what is open, once the current task is
+// done (closing the menu and opening the score sheet is no change).
+export function syncHistory() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(applyHistory, 0);
+}
+
+function applyHistory() {
+  if (expect >= 0) return; // our own traversal is still under way
+  const want = wanted();
+  while (depth < want) history.pushState({ kj: ++depth }, '');
+  if (depth > want) {
+    expect = want;
+    clearTimeout(expectTimer);
+    expectTimer = setTimeout(() => { expect = -1; }, 1500); // the browser had nothing to go back to
+    history.go(want - depth);
+    depth = want;
+  }
+}
+
+// The entries share the URL they were pushed with; keep it right for now.
+function fixUrl() {
+  const path = app.code ? '/' + app.code : '/';
+  if (location.pathname !== path) history.replaceState(history.state, '', path);
+}
+
+addEventListener('popstate', e => {
+  const d = Number(e.state?.kj) || 0;
+  if (expect >= 0 && d === expect) {
+    expect = -1;
+    clearTimeout(expectTimer);
+  } else {
+    // The user went back (or forward): close overlays from the top until
+    // what is open fits; back past the sentinel at the table asks first.
+    expect = -1;
+    depth = d;
+    while (wanted() > d && overlays()) closeTop();
+    if (inRoom() && d === 0 && !overlays()) confirmLeave();
+  }
+  fixUrl();
+  syncHistory();
+});
+
+function closeTop() {
+  const top = [...stack].reverse().find(m => m.closable);
+  if (top) top.close();
+  else setChat(false);
+}
+
+history.replaceState({ kj: 0 }, '');
 
 // Small explanation popover for ⓘ buttons.
 export function info(title, text) {
@@ -125,7 +232,7 @@ function openMenu() {
   });
 }
 
-function confirmLeave() {
+export function confirmLeave() {
   const s = app.s;
   const running = s && s.phase !== 'lobby' && s.phase !== 'gameOver';
   const m = openModal({
@@ -146,17 +253,52 @@ function mini(code, cls = '') {
   return c;
 }
 
-function trickTile(s, t, i) {
+// One trick of a finished hand: the cards in play order (the first came
+// out), each underlined in its team's colour. Tapping it shows who played
+// what at the seats, as for the last trick.
+function trickTile(s, t, i, owner) {
   const wij = isWij(s, t.winner);
   const roem = roemTotal(t.roem);
-  return h('div', { class: 'mt ' + (wij ? 'wij' : 'zij'), title: `Slag ${i + 1}: ${nameOf(s, t.winner)} neemt de slag${roem ? `, roem ${roemText(t.roem)}` : ''}` },
+  const what = `Slag ${i + 1}: ${nameOf(s, t.winner)} nam de slag${roem ? `, roem: ${roemText(t.roem)}` : ''}`;
+  return h('button', {
+    class: 'mt ' + (wij ? 'wij' : 'zij'), type: 'button', title: `${what}. Tik om te zien wie wat speelde.`, 'aria-label': what,
+    onclick: () => openTrick(s, t, i, owner),
+  },
     h('span', { class: 'mt-n', text: i + 1 }),
-    h('span', { class: 'mt-cards' }, t.cards.map(pc => mini(pc.card, pc.seat === t.winner ? 'winner' : ''))),
+    h('span', { class: 'mt-cards' }, t.cards.map(pc => {
+      const c = mini(pc.card, pc.seat === t.winner ? 'winner' : '');
+      c.dataset.team = teamCls(s, pc.seat);
+      return c;
+    })),
     h('span', { class: 'mt-pts' }, h('b', { text: t.points ?? '' }), roem ? h('i', { text: `+${roem}` }) : null));
 }
 
-function review(s, tricks) {
-  return h('div', { class: 'review' }, (tricks || []).map((t, i) => trickTile(s, t, i)));
+function review(s, tricks, owner) {
+  return h('div', { class: 'review' }, (tricks || []).map((t, i) => trickTile(s, t, i, owner)));
+}
+
+// A trick laid out at the seats: whose card is whose, who came out, who won.
+function trickCross(s, t) {
+  const cross = h('div', { class: 'cross' });
+  for (const pc of t.cards) {
+    const pos = posOf(pc.seat, s.you);
+    cross.append(h('div', { class: `cross-slot cs-${pos} ${teamCls(s, pc.seat)}` + (pc.seat === t.winner ? ' win' : '') },
+      mini(pc.card, pc.seat === t.winner ? 'winner' : ''),
+      playerName(nameOf(s, pc.seat), { cls: 'cs-name', title: true }),
+      pc.seat === t.leader ? h('span', { class: 'cs-lead', text: 'kwam uit' }) : null));
+  }
+  const roem = roemTotal(t.roem);
+  return [cross,
+    h('p', { class: 'last-sum ' + teamCls(s, t.winner) },
+      h('b', { text: `${nameOf(s, t.winner)} nam de slag` }),
+      h('span', { text: ` · ${t.points} punten` }),
+      roem ? h('span', { class: 'gold', text: ` · roem: ${roemText(t.roem)}` }) : null)];
+}
+
+function openTrick(s, t, i, owner) {
+  sound.play('click');
+  const m = openModal({ id: 'trick', title: `Slag ${i + 1}`, cls: 'm-last', body: trickCross(s, t) });
+  m.owner = owner;
 }
 
 // ---------- score sheet ----------
@@ -166,14 +308,24 @@ export function openScoreSheet() {
   if (!s) return;
   sound.play('click');
   const m = openModal({ id: 'score', title: 'Scorebord', cls: 'm-score', body: [] });
-  m.refresh = () => { m.body.replaceChildren(scoreBody(app.s, m)); };
+  m.view = 'score';
+  // Runs on every update; the review of a hand stays put until "Terug".
+  m.refresh = () => {
+    if (m.view !== 'score') return;
+    m.titleEl.textContent = 'Scorebord';
+    m.body.replaceChildren(scoreBody(app.s, m));
+  };
   m.refresh();
 }
 
 function scoreBody(s, m) {
   const w = s.you % 2;
+  const run = [0, 0]; // the stand after each potje
   const rows = (s.scores || []).map((r, i, all) => {
     const last = i === all.length - 1 && s.prevHand?.tricks?.length;
+    run[0] += r.score[0];
+    run[1] += r.score[1];
+    const stand = [...run];
     const cell = team => {
       const nat = r.nat && r.playingTeam === team;
       const pit = r.pit && (r.nat ? 1 - r.playingTeam : r.playingTeam) === team;
@@ -181,7 +333,8 @@ function scoreBody(s, m) {
         nat ? h('span', { class: 'tag tag-nat', text: 'nat' }) : null,
         pit ? h('span', { class: 'tag tag-pit', text: 'pit' }) : null,
         h('b', { text: r.score[team] }),
-        r.roem?.[team] && !r.nat ? h('small', { text: `+${r.roem[team]} roem` }) : null);
+        r.roem?.[team] && !r.nat ? h('small', { text: `+${r.roem[team]} roem` }) : null,
+        h('small', { class: 'stand', text: `stand ${stand[team]}` }));
     };
     return h('tr', { class: last ? 'tap' : '', onclick: last ? () => showReview(s, m, r) : null, title: last ? 'Tik om de slagen van dit potje te zien' : '' },
       h('td', { class: 'n', text: r.hand }),
@@ -207,8 +360,8 @@ function scoreBody(s, m) {
     h('table', { class: 'scoresheet' },
       h('thead', {}, h('tr', {},
         h('th', { class: 'n', text: '#' }), h('th', { text: 'Troef' }),
-        h('th', { class: 'wij' }, 'Wij', h('small', { text: teamNamesShort(s, w) })),
-        h('th', { class: 'zij' }, 'Zij', h('small', { text: teamNamesShort(s, 1 - w) })))),
+        h('th', { class: 'wij' }, 'Wij', teamNamesEl(s, w)),
+        h('th', { class: 'zij' }, 'Zij', teamNamesEl(s, 1 - w)))),
       h('tbody', {}, rows, live,
         empty ? h('tr', {}, h('td', { colSpan: 4, class: 'empty', text: 'Nog geen potjes gespeeld.' })) : null),
       h('tfoot', {}, h('tr', {},
@@ -221,19 +374,22 @@ function scoreBody(s, m) {
       s.prevHand?.tricks?.length ? ' Tik op het laatste potje om de slagen te zien.' : ''));
 }
 
-function teamNamesShort(s, team) {
-  const out = [];
-  for (let seat = team; seat < 4; seat += 2) out.push(seat === s.you ? 'jij' : (s.players[seat]?.name || 'vrij').replace(/ \(AI\)$/, ''));
-  return out.join(' & ');
+// The two names of a team, one per line, AI players as "Naam (AI)".
+function teamNamesEl(s, team) {
+  const names = [];
+  for (let seat = team; seat < 4; seat += 2) names.push(seat === s.you ? 'jij' : s.players[seat]?.name || 'vrij');
+  return h('small', { class: 'team-names', title: names.join(' & ') }, names.map(n => h('span', { text: n })));
 }
 
 function showReview(s, m, r) {
   sound.play('click');
+  m.view = 'review';
   m.titleEl.textContent = `Potje ${r.hand}: de slagen`;
   m.body.replaceChildren(
-    h('button', { class: 'btn btn-ghost btn-sm back-btn', type: 'button', onclick: () => { m.titleEl.textContent = 'Scorebord'; m.refresh(); } }, icon('back'), 'Terug naar scorebord'),
+    h('button', { class: 'btn btn-ghost btn-sm back-btn', type: 'button', onclick: () => { m.view = 'score'; m.refresh(); } }, icon('back'), 'Terug naar scorebord'),
     resultLine(s, s.prevHand.result),
-    review(s, s.prevHand.tricks));
+    review(s, s.prevHand.tricks, 'score'),
+    h('p', { class: 'legend', text: 'De kaarten liggen in speelvolgorde, gekleurd per koppel. Tik op een slag om te zien wie wat speelde.' }));
 }
 
 function resultLine(s, r) {
@@ -255,30 +411,15 @@ export function openLastTrick() {
   const t = s.lastTrick;
   if (!t?.cards?.length) { toast('Er is nog geen slag gespeeld'); return; }
   sound.play('click');
-  const cross = h('div', { class: 'cross' });
-  for (const pc of t.cards) {
-    const pos = posOf(pc.seat, s.you);
-    cross.append(h('div', { class: `cross-slot cs-${pos} ${teamCls(s, pc.seat)}` + (pc.seat === t.winner ? ' win' : '') },
-      mini(pc.card, pc.seat === t.winner ? 'winner' : ''),
-      h('span', { class: 'cs-name', text: nameOf(s, pc.seat) }),
-      pc.seat === t.leader ? h('span', { class: 'cs-lead', text: 'kwam uit' }) : null));
-  }
-  const roem = roemTotal(t.roem);
-  openModal({
-    id: 'last', title: 'Laatste slag', cls: 'm-last', body: [
-      cross,
-      h('p', { class: 'last-sum ' + teamCls(s, t.winner) },
-        h('b', { text: `${nameOf(s, t.winner)} nam de slag` }),
-        h('span', { text: ` · ${t.points} punten` }),
-        roem ? h('span', { class: 'gold', text: ` · roem: ${roemText(t.roem)}` }) : null),
-    ],
-  });
+  openModal({ id: 'last', title: 'Laatste slag', cls: 'm-last', body: trickCross(s, t) });
 }
 
 // ---------- trump / variant info ----------
 
+// Reads what the badge shows: during the trump banner the table already
+// shows the new trump, while app.s follows once the banner is done.
 export function openTrumpInfo() {
-  const s = app.s;
+  const s = app.view || app.s;
   if (!s) return;
   sound.play('click');
   const o = s.opts || {};
@@ -287,7 +428,7 @@ export function openTrumpInfo() {
   if (s.trump && s.playingTeam >= 0) {
     parts.push(h('div', { class: 'ti-trump' + (isRed(s.trump) ? ' red' : '') },
       h('span', { class: 'ti-sym', text: suitSym(s.trump) }),
-      h('div', {}, h('b', { text: `${suitName(s.trump)} is troef` }),
+      h('div', {}, h('b', { text: cap(`${suitName(s.trump)} is troef`) }),
         h('span', { text: `Gekozen door ${nameOf(s, s.trumpBy, false)}${s.trumpBy === s.you ? ' (jij)' : ''}. ${teamName(s, s.playingTeam)} spelen en moeten meer dan de helft halen.` }))));
   } else {
     parts.push(h('p', { text: s.turned ? `Gedraaid: ${suitText(s.turned)}. Nog niemand speelt.` : 'Er is nog geen troef gekozen.' }));
@@ -381,18 +522,32 @@ export function openManual(tab) {
     class: 'tab', type: 'button', role: 'tab', dataset: { id: sec.id }, onclick: () => show(sec.id),
   }, sec.title));
   tabs.append(...btns);
+  // On a phone only a few tabs fit: faded edges show that the bar scrolls,
+  // and every section ends with a button to the next one.
+  const edges = () => {
+    const max = tabs.scrollWidth - tabs.clientWidth;
+    tabs.classList.toggle('more-l', tabs.scrollLeft > 4);
+    tabs.classList.toggle('more-r', tabs.scrollLeft < max - 4);
+  };
+  tabs.addEventListener('scroll', edges, { passive: true });
   function show(id) {
     for (const b of btns) b.setAttribute('aria-selected', String(b.dataset.id === id));
     content.replaceChildren();
     try {
-      content.append(renderManual(id));
+      content.append(renderManual(id, { icon }));
     } catch {
       content.append(h('p', { text: 'Dit deel van de handleiding kon niet worden geladen.' }));
+    }
+    const next = SECTIONS[SECTIONS.findIndex(x => x.id === id) + 1];
+    if (next) {
+      content.append(h('div', { class: 'man-next' },
+        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => show(next.id) }, `Volgende: ${next.title}`, icon('forward'))));
     }
     content.scrollTop = 0;
     prefs.tab = id;
     savePrefs();
     btns.find(b => b.dataset.id === id)?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    requestAnimationFrame(edges);
   }
   openModal({ id: 'manual', title: 'Handleiding', cls: 'm-manual', body: [tabs, content] });
   const start = tab || prefs.tab;
@@ -423,7 +578,10 @@ export function openBotPicker(seat, s, { canSit = false } = {}) {
 
 export function sync(s, ev) {
   if (s.phase === 'handEnd') showSummary(s, ev);
-  else byId('summary')?.close(true);
+  else {
+    byId('summary')?.close(true);
+    if (byId('trick')?.owner === 'summary') byId('trick').close(true);
+  }
   if (s.phase === 'gameOver') showGameOver(s, ev);
   else byId('over')?.close(true);
   if (s.phase === 'lobby') { byId('score')?.close(true); byId('last')?.close(true); }
@@ -474,7 +632,7 @@ function showSummary(s, ev) {
           'De spelende partij moet meer dan de helft van alle punten plus roem halen. Lukt dat niet, dan gaan ze nat.',
           'Bij nat krijgt de tegenpartij alle 162 punten en alle roem van beide partijen.',
         ]), r.playingTeam === w ? ' Waarom nat? Wij haalden niet meer dan de helft.' : ' Zij haalden niet meer dan de helft.') : null,
-        tricks.length ? h('div', { class: 'sum-review' }, h('h3', { text: 'De slagen' }), review(s, tricks)) : null,
+        tricks.length ? h('div', { class: 'sum-review' }, h('h3', {}, 'De slagen', h('small', { text: ' · tik voor wie wat speelde' })), review(s, tricks, 'summary')) : null,
         h('div', { class: 'sum-foot' }, go, ready),
       ],
     });
@@ -482,8 +640,10 @@ function showSummary(s, ev) {
     m.ready = ready;
     m.ring = ring;
     if (fresh) setTimeout(() => nums.forEach(([el, v]) => countUp(el, v, 1100)), dur(350));
+    focusMain(go);
   }
   m.ring.set(s.nextAt);
+  m.ring.el.toggleAttribute('hidden', !s.nextAt); // training: no countdown
   const mine = s.players[s.you]?.ready;
   if (mine) { m.go.disabled = true; m.go.lastChild.textContent = 'Wachten op de rest'; }
   m.ready.replaceChildren(...s.players.map((p, seat) => p && !p.bot ? h('span', { class: 'ready-chip ' + (p.ready ? 'on ' : '') + teamCls(s, seat) },
@@ -532,22 +692,36 @@ function showGameOver(s, ev) {
   const won = winner === w;
   const draw = winner === -1;
   const title = draw ? 'Gelijkspel' : won ? 'Gewonnen!' : 'Verloren';
-  const sub = draw ? 'Precies gelijk. Dat zie je niet vaak!' : won ? 'Wat een spel. Gefeliciteerd!' : 'Volgende keer beter. Nog een potje?';
+  const sub = draw ? 'Precies gelijk. Dat zie je niet vaak!' : won ? 'Wat een spel. Gefeliciteerd!' : 'Volgende keer beter. Nog een partij?';
   const host = s.host === s.you;
-  const again = h('button', { class: 'btn btn-go btn-big', type: 'button', disabled: !host, onclick: () => { sound.play('click'); app.send({ t: 'rematch' }); } },
-    host ? 'Nog een potje' : 'Wachten op de host');
+  // A rematch is a whole new partij of potjes; sent once, until it is refused.
+  // "lobby" takes the table back to Klaarzetten (same code) to change seats
+  // or rules; training has no lobby.
+  let sent = false;
+  const label = hst => (sent ? 'Even wachten…' : hst ? 'Nog een partij' : 'Wachten op de host');
+  const send = t => {
+    if (sent) return;
+    sent = true;
+    sound.play('click');
+    app.send({ t });
+    m.refresh(app.s);
+  };
+  const again = h('button', { class: 'btn btn-go btn-big', type: 'button', disabled: !host, onclick: () => send('rematch') }, label(host));
+  const setup = h('button', { class: 'btn btn-ghost btn-block btn-setup', type: 'button', hidden: !host || s.training, onclick: () => send('lobby') },
+    icon('users'), 'Spelers of regels wijzigen');
   const m = openModal({
     id: 'over', cls: 'm-over passive' + (won ? ' won' : draw ? ' draw' : ' lost'), closable: false, label: title, body: [
       h('div', { class: 'over-emoji', 'aria-hidden': 'true', text: draw ? '🤝' : won ? '🏆' : '🃏' }),
       h('div', { class: 'over-title', text: title }),
       h('div', { class: 'over-sub', text: sub }),
       h('div', { class: 'over-score' },
-        h('div', { class: 'os wij' + (winner === w ? ' top' : '') }, h('span', { text: 'Wij' }), h('b', { text: total[w] }), h('small', { text: teamNamesShort(s, w) })),
+        h('div', { class: 'os wij' + (winner === w ? ' top' : '') }, h('span', { text: 'Wij' }), h('b', { text: total[w] }), teamNamesEl(s, w)),
         h('div', { class: 'os-vs', text: '–' }),
-        h('div', { class: 'os zij' + (winner === 1 - w ? ' top' : '') }, h('span', { text: 'Zij' }), h('b', { text: total[1 - w] }), h('small', { text: teamNamesShort(s, 1 - w) }))),
+        h('div', { class: 'os zij' + (winner === 1 - w ? ' top' : '') }, h('span', { text: 'Zij' }), h('b', { text: total[1 - w] }), teamNamesEl(s, 1 - w))),
       s.prevHand?.result ? h('div', { class: 'over-last' }, h('small', { text: 'Laatste potje' }), resultLine(s, s.prevHand.result)) : null,
       h('div', { class: 'btn-col' },
         again,
+        setup,
         h('div', { class: 'btn-row' },
           h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => openScoreSheet() }, icon('score'), 'Scorebord'),
           h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => app.leave() }, icon('leave'), 'Naar start'))),
@@ -555,10 +729,22 @@ function showGameOver(s, ev) {
   });
   m.refresh = st => {
     const hst = st.host === st.you;
-    again.disabled = !hst;
-    again.textContent = hst ? 'Nog een potje' : 'Wachten op de host';
+    again.disabled = !hst || sent;
+    again.textContent = label(hst);
+    setup.hidden = !hst || st.training;
+    setup.disabled = sent;
+  };
+  m.reset = () => {
+    sent = false;
+    if (app.s) m.refresh(app.s);
   };
   if (won && ev?.type === 'gameOver') confetti(m.root);
+  if (host) focusMain(again);
+}
+
+// The server refused something: a rematch in flight can be tried again.
+export function onError() {
+  byId('over')?.reset?.();
 }
 
 // Confetti burst for a few seconds: small paper strips thrown up from the
@@ -650,8 +836,9 @@ export function setChat(open) {
   if (open) {
     clearUnread();
     C.list.scrollTop = C.list.scrollHeight;
-    if (matchMedia('(pointer: fine)').matches) setTimeout(() => C.input.focus(), 50);
+    if (fine.matches) setTimeout(() => C.input.focus(), 50);
   }
+  syncHistory();
 }
 
 function clearUnread() {
@@ -686,7 +873,9 @@ export function chatAdd(m, live = true) {
   const mine = app.s && m.seat === app.s.you && !m.sys;
   if (!mine) {
     if (!m.sys) sound.play('chat');
-    if (!chatVisible()) { unread++; badge(); }
+    // The badge means a person wrote: system lines do not count, and bot
+    // chatter already shows as a speech bubble at the table.
+    if (!m.sys && !m.bot && m.seat >= 0 && !chatVisible()) { unread++; badge(); }
   }
 }
 

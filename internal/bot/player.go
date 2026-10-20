@@ -69,8 +69,7 @@ func (b *player) Bid(v game.View) (play bool) {
 	normal := trumpValue(h, v.Turned) >= bidThreshold(b.persona.Aggression)
 	switch {
 	case b.level == Makkelijk:
-		t := h.inSuit(v.Turned)
-		return t.has(jackOf(v.Turned)) || t.count() >= 4
+		return makkelijkBid(h.inSuit(v.Turned), v.Turned, b.persona.Aggression)
 	case b.level == Normaal || v.Phase != game.PhaseBid || v.Turn != v.Seat:
 		return normal
 	}
@@ -112,21 +111,50 @@ func (b *player) Play(v game.View) (c game.Card) {
 	return sterkChoice(&v, b.cfg, seed, b.persona.Aggression)
 }
 
-// sterkChoice is the Monte Carlo card for v. When the rule-based card is
-// within a point of the best, it is played instead: the difference is
-// noise, and the rule-based card looks natural.
+// Kleintje boer at sterk: the search alone would rarely give the signal
+// and would sometimes fake it, but partners (and humans following the
+// manual) read it as a promise. The search may break the convention only
+// for a clear gain.
+const (
+	fakeSignalGain  = 10 // points a false kleintje boer must gain over the best other card
+	signalTolerance = 6  // points a genuine kleintje boer may cost
+)
+
+// sterkChoice is the Monte Carlo card for v (see sterkPick).
 func sterkChoice(v *game.View, cfg searchConfig, seed uint64, aggr float64) game.Card {
 	tab := tableFromView(v)
 	m := newMover(&tab, v.Seat, setOf(v.Hand), setOf(v.Legal), aggr)
 	pref := m.choose()
 	res := searchPlay(v, &tab, cfg, seed, aggr)
-	best := bestResult(res, pref)
-	for _, r := range res {
-		if r.card == pref && res[best].mean()-r.mean() < 1 {
-			return pref
+	return res[sterkPick(&m, res, pref)].card
+}
+
+// sterkPick returns the index in res (the search of m's legal cards) of
+// the sterk card. When the rule-based card pref is within a point of the
+// best (signalTolerance for a genuine kleintje boer), it is played instead:
+// the difference is noise, and the rule-based card looks natural. A false
+// kleintje boer needs fakeSignalGain.
+func sterkPick(m *mover, res []playResult, pref game.Card) int {
+	best := bestResult(res, pref, m.t.trump)
+	if m.fakeSignal(res[best].card) {
+		alt := -1
+		for i, r := range res {
+			if !m.fakeSignal(r.card) && (alt < 0 || r.total > res[alt].total) {
+				alt = i
+			}
+		}
+		if alt >= 0 && res[best].mean()-res[alt].mean() < fakeSignalGain {
+			best = alt
 		}
 	}
-	return res[best].card
+	tol := 1.0
+	if m.t.signalsBoer(m.seat, pref) && !m.fakeSignal(pref) {
+		tol = signalTolerance
+	}
+	if i := resultIndex(res, pref); i >= 0 && res[best].mean()-res[i].mean() < tol {
+		return i
+	}
+	return best
 }
 
 // normalChoice is the rule-based card for v.
@@ -145,6 +173,23 @@ func legalCards(v game.View) []game.Card {
 		return l
 	}
 	return v.Hand
+}
+
+// makkelijkBid is the naive bid on the turned suit s, given the hand's
+// cards t in it: play on the boer or on length, ignoring the side suits.
+// The persona's aggression moves the bar: cautious players want the boer
+// with another trump (or five trumps), bold ones also play on the nel with
+// two more.
+func makkelijkBid(t cardSet, s game.Suit, aggr float64) bool {
+	n := t.count()
+	jack, nine := t.has(jackOf(s)), t.has(nineOf(s))
+	switch {
+	case aggr < 0.5:
+		return (jack && n >= 2) || n >= 5
+	case aggr >= 0.7:
+		return jack || (nine && n >= 3) || n >= 4
+	}
+	return jack || n >= 4
 }
 
 // longestSuit is the naive trump choice: the longest suit, ties broken by

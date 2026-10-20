@@ -196,3 +196,30 @@ func TestSoftEvidence(t *testing.T) {
 		t.Errorf("maker holds %.2f trumps more than uniform on average, want clearly more", avg)
 	}
 }
+
+// TestKleintjeBoerEvidence: after the maker's kleintje boer, the other
+// seats' samples mostly give the maker the trump boer.
+func TestKleintjeBoerEvidence(t *testing.T) {
+	rng := rand.New(rand.NewPCG(27, 28))
+	d := build(t, 0, [4]string{"JH KH 7C 8C AS KS AD QD", "", "", ""}, game.Hearts, game.Amsterdams, "7C")
+	for _, obs := range []game.Seat{1, 2} {
+		v := d.View(obs)
+		tab := tableFromView(&v)
+		if tab.boerSig[0] != 0 {
+			t.Fatalf("the maker's kleintje boer was not read: %v", tab.boerSig)
+		}
+		k := knowledgeFromView(&v, &tab)
+		const n = 2000
+		held := 0
+		for _, w := range k.worlds(newSampler(&k), rng, n) {
+			if w[0].has(jackOf(game.Hearts)) {
+				held++
+			}
+		}
+		f := float64(held) / n
+		t.Logf("seat %d: maker holds the boer in %.2f of samples", obs, f)
+		if f < 0.75 {
+			t.Errorf("seat %d: the signalling maker holds the boer in %.2f of samples, want most", obs, f)
+		}
+	}
+}

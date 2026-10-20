@@ -13,9 +13,12 @@ type ChatEvent struct {
 	// "nat", "natOpp", "pit", "handWon", "handLost", "gameWon", "gameLost",
 	// "partnerGood", "reply".
 	Kind   string
-	Mine   bool   // about the bot itself / its team
+	Mine   bool   // about the bot itself / its team; for "reply": the bot is the speaker's partner
 	Text   string // for "reply": the human chat line being answered
 	Points int    // roem/points involved
+	// For "reply": InHand while tricks are being played, and Playing when
+	// the bot's team made trump in that hand.
+	InHand, Playing bool
 }
 
 // Chat returns a line for p in reaction to ev, or "" to stay silent. Lines
@@ -30,7 +33,7 @@ func Chat(p Persona, ev ChatEvent, rng *rand.Rand) string {
 		v = genericVoice
 	}
 	if ev.Kind == "reply" {
-		return reply(p, v, ev.Text, rng)
+		return reply(p, v, ev, rng)
 	}
 	if rng.Float64() >= chatChance(p, ev.Kind) {
 		return ""
@@ -39,10 +42,16 @@ func Chat(p Persona, ev ChatEvent, rng *rand.Rand) string {
 	if !ev.Mine {
 		if _, ok := v.lines[key+"/opp"]; ok {
 			key += "/opp"
+		} else if sided[key] {
+			return "" // the bot's own side of the event does not fit
 		}
 	}
 	return pick(v.lines[key], ev.Points, rng)
 }
+
+// sided are the event kinds that happen to one team: a bot of the other
+// team uses the "/opp" lines, or says nothing.
+var sided = map[string]bool{"trump": true, "wonTrick": true, "roem": true, "pit": true}
 
 // chatChance is how likely p comments on an event of this kind.
 func chatChance(p Persona, kind string) float64 {
@@ -163,14 +172,27 @@ func mentions(p Persona, text string) bool {
 	return false
 }
 
-func reply(p Persona, v *voice, text string, rng *rand.Rand) string {
-	kind := classifyReply(text)
-	named := mentions(p, text)
+func reply(p Persona, v *voice, ev ChatEvent, rng *rand.Rand) string {
+	kind := classifyReply(ev.Text)
+	named := mentions(p, ev.Text)
 	if kind == "" {
 		if !named {
 			return ""
 		}
 		kind = "name"
+	}
+	if kind == "nat" {
+		// "Nat!" taunts the playing team during a hand: the bot's partner
+		// joins in, a bot of the playing team protests. Anything else (after
+		// the hand, or a player lamenting their own team) gets no answer.
+		switch {
+		case !ev.InHand:
+			return ""
+		case ev.Mine && !ev.Playing:
+			kind = "nat/maat"
+		case ev.Mine || !ev.Playing:
+			return ""
+		}
 	}
 	chance := 0.2 + 0.7*p.Chattiness
 	if named {
@@ -191,8 +213,9 @@ type voice struct {
 
 var genericVoice = &voice{
 	lines: map[string][]string{
-		"greet":        {"Hallo allemaal!", "Goedenavond, zullen we?", "Daar gaan we, veel plezier!", "Schud ze maar goed!"},
+		"greet":        {"Hallo allemaal!", "Daar zijn we weer, zullen we?", "Daar gaan we, veel plezier!", "Schud ze maar goed!"},
 		"trump":        {"Die durf ik wel aan.", "Laten we het proberen.", "Daar gaan we voor.", "Ik speel."},
+		"trump/opp":    {"Daar wordt gespeeld.", "We zullen zien.", "Gedurfd.", "Succes ermee."},
 		"pass":         {"Pas.", "Niks voor mij.", "Ik laat hem lopen.", "Pas, volgende."},
 		"play":         {"Hmm, even denken…", "Daar is ie.", "Die moet maar.", "Hop."},
 		"wonTrick":     {"Die is voor ons.", "Mooi zo.", "Die nemen we mee.", "Kijk eens aan."},
@@ -200,27 +223,28 @@ var genericVoice = &voice{
 		"roem":         {"Roem!", "Kijk eens aan, roem op tafel.", "Dat telt mooi mee.", "{p} roem erbij!"},
 		"roem/opp":     {"Roem voor jullie.", "Hm, {p} roem voor de overkant.", "Dat telt voor jullie.", "Gun ik jullie."},
 		"nat":          {"Au, nat…", "Dat liep niet zoals gehoopt.", "Volgende keer beter.", "Nat. Jammer."},
-		"natOpp":       {"Nat!", "Die gaan nat!", "Dat was te gewaagd.", "Nat, mooi verdedigd."},
+		"natOpp":       {"Nat!", "Die gaan nat!", "Nat, goed tegengehouden.", "Nat, mooi verdedigd."},
 		"pit":          {"Pit! Alle slagen!", "Wat een potje!", "Mars, allemaal voor ons!", "Pit!"},
 		"pit/opp":      {"Een pit tegen…", "Alle slagen voor jullie, knap.", "Dat was een pak slaag.", "Pit voor jullie."},
 		"handWon":      {"Mooi potje.", "Zo mag ik het zien.", "Dat ging lekker.", "Netjes."},
 		"handLost":     {"Jammer.", "Die was voor jullie.", "Volgende potje beter.", "Kan gebeuren."},
-		"gameWon":      {"Gewonnen! Bedankt voor het spel.", "Wat een avond, goed gespeeld allemaal!", "Gezellig was het, en gewonnen ook.", "Gewonnen!"},
+		"gameWon":      {"Gewonnen! Bedankt voor het spel.", "Wat een potje, goed gespeeld allemaal!", "Gezellig was het, en gewonnen ook.", "Gewonnen!"},
 		"gameLost":     {"Gefeliciteerd, jullie waren beter.", "Goed gespeeld, revanche?", "Volgende keer pakken we jullie.", "Verloren, maar gezellig."},
 		"partnerGood":  {"Goed gespeeld, maat!", "Mooi gedaan!", "Zo, die zat.", "Netjes, maat."},
 	},
 	replies: map[string][]string{
-		"hello":  {"Hoi!", "Hallo!", "Hé, gezellig!"},
-		"praise": {"Dank je!", "Jij ook!", "Dank je wel."},
-		"gg":     {"gg!", "Goed gespeeld!", "Dank je, jij ook."},
-		"laugh":  {"Haha!", "😄", "Gezellig!"},
-		"help":   {"Kijk even in de handleiding.", "Eerst bekennen, anders troeven.", "Vraag maar raak."},
-		"nat":    {"Dat zien we nog wel!", "Niet te vroeg juichen.", "Het potje is nog niet uit."},
-		"pech":   {"Volgende keer beter.", "Jammer!", "Kop op!"},
-		"sorry":  {"Geeft niks.", "Geen probleem.", "Zand erover."},
-		"thanks": {"Graag gedaan.", "Geen dank.", "Alsjeblieft."},
-		"bye":    {"Dag!", "Doei!", "Tot de volgende keer!"},
-		"name":   {"Ja?", "Zeg het maar.", "Ik ben er."},
+		"hello":    {"Hoi!", "Hallo!", "Hé, gezellig!"},
+		"praise":   {"Dank je!", "Jij ook!", "Dank je wel."},
+		"gg":       {"gg!", "Goed gespeeld!", "Dank je, jij ook."},
+		"laugh":    {"Haha!", "😄", "Gezellig!"},
+		"help":     {"Kijk even in de handleiding.", "Eerst bekennen, anders troeven.", "Vraag maar raak."},
+		"nat":      {"Dat zien we nog wel!", "Niet te vroeg juichen.", "Het potje is nog niet uit."},
+		"nat/maat": {"Zeker weten, die gaan nat!", "Dat zou mooi zijn!", "Nat, nat, nat!"},
+		"pech":     {"Volgende keer beter.", "Jammer!", "Kop op!"},
+		"sorry":    {"Geeft niks.", "Geen probleem.", "Zand erover."},
+		"thanks":   {"Graag gedaan.", "Geen dank.", "Alsjeblieft."},
+		"bye":      {"Dag!", "Doei!", "Tot de volgende keer!"},
+		"name":     {"Ja?", "Zeg het maar.", "Ik ben er."},
 	},
 }
 
@@ -228,10 +252,10 @@ var voices = map[string]*voice{
 	"henk": {
 		lines: map[string][]string{
 			"greet": {
-				"Goedenavond allemaal. Zoals we in De Klaver zeggen: eerst de kaarten, dan de praatjes.",
+				"Dag allemaal. Zoals we in De Klaver zeggen: eerst de kaarten, dan de praatjes.",
 				"Zo, daar zijn we weer. Wie het kleine niet eert, is het grote niet weerd.",
-				"Avond! Zestig jaar klaverjassen en nog steeds zin in een potje.",
-				"Goedenavond. Rustig aan en goed tellen, dan komt het goed.",
+				"Dag! Zestig jaar klaverjassen en nog steeds zin in een potje.",
+				"Daar gaan we. Rustig aan en goed tellen, dan komt het goed.",
 				"Welkom aan tafel. Oefening baart kunst, zeg ik altijd.",
 			},
 			"trump": {
@@ -244,7 +268,7 @@ var voices = map[string]*voice{
 			"trump/opp": {
 				"Zo zo, daar wordt gespeeld. We zullen zien.",
 				"Hoogmoed komt voor de val, maar misschien heb je gelijk.",
-				"Gedurfd. Het is nog geen avond.",
+				"Gedurfd. Maar je moet de dag niet prijzen voor het avond is.",
 				"Goed, dan weten we waar we aan toe zijn.",
 			},
 			"pass": {
@@ -290,7 +314,7 @@ var voices = map[string]*voice{
 				"Tja. Wie zijn billen brandt, moet op de blaren zitten.",
 				"Nat gegaan. Volgende keer beter, zoals mijn vrouw altijd zei.",
 				"Dat was te veel gevraagd. Ik ben er stil van.",
-				"Nat. Je moet geen hooi op je vork nemen, en dat deed ik wel.",
+				"Nat. Je moet niet te veel hooi op je vork nemen, en dat deed ik wel.",
 			},
 			"natOpp": {
 				"Nat! Wie het onderste uit de kan wil hebben, krijgt het lid op de neus.",
@@ -325,7 +349,7 @@ var voices = map[string]*voice{
 			"gameWon": {
 				"Gewonnen! Bedankt voor het gezellige potje.",
 				"Het spel is uit en wij staan voor. Dank jullie wel.",
-				"Zo, dat was een mooie avond. Gewonnen ook nog.",
+				"Zo, dat was een mooi spel. Gewonnen ook nog.",
 				"Gewonnen. Oude liefde roest niet.",
 			},
 			"gameLost": {
@@ -342,27 +366,28 @@ var voices = map[string]*voice{
 			},
 		},
 		replies: map[string][]string{
-			"hello":  {"Goedenavond!", "Hallo, welkom aan tafel.", "Dag! Ga zitten, de kaarten liggen klaar.", "Hoi. Gezellig dat je er bent."},
-			"praise": {"Dank je. Oefening baart kunst.", "Dat leer je na zestig jaar vanzelf.", "Dank je wel, jij ook.", "Mooi dat je het ziet."},
-			"gg":     {"Goed gespeeld, allemaal.", "gg, zoals de jongelui zeggen.", "Dank je, het was me een genoegen."},
-			"laugh":  {"Hè hè, gezellig zo.", "Lachen is gezond.", "Haha, ja hoor."},
-			"help":   {"Kijk in de handleiding, daar staat het netjes uitgelegd.", "Eerst bekennen, dan pas troeven. Dat is het halve werk.", "Rustig tellen: hoeveel troeven zijn er al geweest?"},
-			"nat":    {"Niet te vroeg juichen, het potje is nog niet uit.", "Nat? Dat zien we straks wel.", "Wie het laatst lacht, lacht het best."},
-			"pech":   {"Dat hoort erbij. Na regen komt zonneschijn.", "Volgende keer beter.", "Pech bestaat, maar tellen helpt."},
-			"sorry":  {"Geeft niks, het is maar een spelletje.", "Zand erover.", "Ach, iedereen maakt fouten."},
-			"thanks": {"Graag gedaan.", "Geen dank.", "Alsjeblieft hoor."},
-			"bye":    {"Dag! Tot de volgende keer.", "Welterusten, en kom goed thuis.", "Tot ziens, het was gezellig."},
-			"name":   {"Ja? Ik zit hier hoor.", "Zeg het maar.", "Ik ben er nog, hoor. Ik denk alleen wat langzamer."},
+			"hello":    {"Dag!", "Hallo, welkom aan tafel.", "Dag! Ga zitten, de kaarten liggen klaar.", "Hoi. Gezellig dat je er bent."},
+			"praise":   {"Dank je. Oefening baart kunst.", "Dat leer je na zestig jaar vanzelf.", "Dank je wel, jij ook.", "Mooi dat je het ziet."},
+			"gg":       {"Goed gespeeld, allemaal.", "gg, zoals de jongelui zeggen.", "Dank je, het was me een genoegen."},
+			"laugh":    {"Hè hè, gezellig zo.", "Lachen is gezond.", "Haha, ja hoor."},
+			"help":     {"Kijk in de handleiding, daar staat het netjes uitgelegd.", "Eerst bekennen, dan pas troeven. Dat is het halve werk.", "Rustig tellen: hoeveel troeven zijn er al geweest?"},
+			"nat":      {"Niet te vroeg juichen, het potje is nog niet uit.", "Nat? Dat zien we straks wel.", "Wie het laatst lacht, lacht het best."},
+			"nat/maat": {"Zo is het, maat. Die gaan nat.", "Niet te hard roepen, maar je hebt gelijk.", "Geduld, maat. Wie wacht, die wint."},
+			"pech":     {"Dat hoort erbij. Na regen komt zonneschijn.", "Volgende keer beter.", "Pech bestaat, maar tellen helpt."},
+			"sorry":    {"Geeft niks, het is maar een spelletje.", "Zand erover.", "Ach, iedereen maakt fouten."},
+			"thanks":   {"Graag gedaan.", "Geen dank.", "Alsjeblieft hoor."},
+			"bye":      {"Dag! Tot de volgende keer.", "Het ga je goed, en kom goed thuis.", "Tot ziens, het was gezellig."},
+			"name":     {"Ja? Ik zit hier hoor.", "Zeg het maar.", "Ik ben er nog, hoor. Ik denk alleen wat langzamer."},
 		},
 	},
 	"truus": {
 		lines: map[string][]string{
 			"greet": {
-				"Hallo hallo! Wat gezellig, zullen we er een mooi avondje van maken?",
+				"Hallo hallo! Wat gezellig, zullen we er een mooi potje van maken?",
 				"Ha, daar zijn jullie! Ik heb er zó'n zin in.",
-				"Goedenavond schatjes! Ik voel het, vanavond valt de roem op tafel.",
+				"Hallo schatjes! Ik voel het, vandaag valt de roem op tafel.",
 				"Hoi allemaal! Heeft iedereen koffie? Dan beginnen we.",
-				"Daar zijn we weer! Ik zei net nog tegen de buurvrouw: vanavond ga ik klaverjassen.",
+				"Daar zijn we weer! Ik zei net nog tegen de buurvrouw: ik ga lekker klaverjassen.",
 			},
 			"trump": {
 				"Ik waag het erop! Het komt vast goed.",
@@ -406,7 +431,7 @@ var voices = map[string]*voice{
 				"{p} roem, dat is genieten!",
 				"Kijk dan, roem op tafel! Hebben jullie dat gezien?",
 				"Heerlijk, {p} roem erbij. Dit is mijn favoriete moment.",
-				"Ooh, roem! Ik zei het toch, vanavond valt de roem.",
+				"Ooh, roem! Ik zei het toch, vandaag valt de roem.",
 			},
 			"roem/opp": {
 				"Ach, {p} roem voor jullie. Ook leuk om te zien hoor.",
@@ -418,7 +443,7 @@ var voices = map[string]*voice{
 				"Oei, nat! Nou ja, het was het proberen waard.",
 				"Nat… Volgende keer zit het mee, ik voel het.",
 				"Ach, nat gegaan. Daar maken we ons niet druk om.",
-				"Hè, jammer! Maar de avond is nog jong.",
+				"Hè, jammer! Maar niet getreurd hoor.",
 			},
 			"natOpp": {
 				"Nat! Oh, sorry hoor, maar ik moet er wel om lachen.",
@@ -451,7 +476,7 @@ var voices = map[string]*voice{
 				"Volgende keer beter, ik heb er alle vertrouwen in.",
 			},
 			"gameWon": {
-				"Gewonnen! Wat een heerlijke avond, dank jullie wel!",
+				"Gewonnen! Wat een heerlijk spel, dank jullie wel!",
 				"Joepie, gewonnen! Zullen we er nog een doen?",
 				"Gewonnen! Ik ga dit morgen aan iedereen vertellen.",
 				"Wat een feest! Bedankt allemaal, het was supergezellig.",
@@ -470,26 +495,27 @@ var voices = map[string]*voice{
 			},
 		},
 		replies: map[string][]string{
-			"hello":  {"Hoi hoi! Wat leuk dat je er bent!", "Hallo! Ga lekker zitten.", "Goedenavond! Zin in een potje?", "Hé, daar ben je! Gezellig!"},
-			"praise": {"Ach, dankjewel! Jij ook hoor!", "Wat lief van je!", "Dankjewel! Ik doe gewoon maar wat hoor.", "Haha, dank je, ik geniet ervan."},
-			"gg":     {"gg! Wat was het gezellig.", "Goed gespeeld, allemaal!", "Dank je! Nog eentje?"},
-			"laugh":  {"Hahaha! Gezellig hè?", "Hihi!", "Haha, ik lig dubbel."},
-			"help":   {"Kijk even in de handleiding, daar staat het mooi in.", "Gewoon bekennen als het kan, en anders troeven. Het komt goed!", "Geeft niks hoor, je leert het vanzelf."},
-			"nat":    {"Ach, nat of niet, gezellig is het toch!", "Nou nou, niet te hard roepen hoor!", "We zien wel, het potje is nog niet voorbij."},
-			"pech":   {"Ach, volgende keer zit het mee!", "Jammer hè? Maar we hebben plezier.", "Kop op, het komt goed!"},
-			"sorry":  {"Ach, geeft toch niks!", "Geen probleem, schat.", "Overkomt de besten!"},
-			"thanks": {"Graag gedaan!", "Geen dank, lieverd!", "Alsjeblieft!"},
-			"bye":    {"Dag! Tot de volgende keer!", "Doei! Slaap lekker straks.", "Dag dag, het was gezellig!"},
-			"name":   {"Ja, wat is er, lieverd?", "Hier ben ik!", "Ja? Ik zat net even te kletsen."},
+			"hello":    {"Hoi hoi! Wat leuk dat je er bent!", "Hallo! Ga lekker zitten.", "Hallo! Zin in een potje?", "Hé, daar ben je! Gezellig!"},
+			"praise":   {"Ach, dankjewel! Jij ook hoor!", "Wat lief van je!", "Dankjewel! Ik doe gewoon maar wat hoor.", "Haha, dank je, ik geniet ervan."},
+			"gg":       {"gg! Wat was het gezellig.", "Goed gespeeld, allemaal!", "Dank je! Nog eentje?"},
+			"laugh":    {"Hahaha! Gezellig hè?", "Hihi!", "Haha, ik lig dubbel."},
+			"help":     {"Kijk even in de handleiding, daar staat het mooi in.", "Gewoon bekennen als het kan, en anders troeven. Het komt goed!", "Geeft niks hoor, je leert het vanzelf."},
+			"nat":      {"Ach, nat of niet, gezellig is het toch!", "Nou nou, niet te hard roepen hoor!", "We zien wel, het potje is nog niet voorbij."},
+			"nat/maat": {"Oh, wat zou dat mooi zijn!", "Ja hè? Die gaan nat!", "Spannend! Ik duim met je mee."},
+			"pech":     {"Ach, volgende keer zit het mee!", "Jammer hè? Maar we hebben plezier.", "Kop op, het komt goed!"},
+			"sorry":    {"Ach, geeft toch niks!", "Geen probleem, schat.", "Overkomt de besten!"},
+			"thanks":   {"Graag gedaan!", "Geen dank, lieverd!", "Alsjeblieft!"},
+			"bye":      {"Dag! Tot de volgende keer!", "Doei! Het ga je goed.", "Dag dag, het was gezellig!"},
+			"name":     {"Ja, wat is er, lieverd?", "Hier ben ik!", "Ja? Ik zat net even te kletsen."},
 		},
 	},
 	"sjaak": {
 		lines: map[string][]string{
 			"greet": {
-				"Mannen, dames. Ik voel me vanavond onoverwinnelijk.",
+				"Mannen, dames. Ik voel me vandaag onoverwinnelijk.",
 				"Hé! De inzet is een pit, verder niks.",
 				"Daar is Sjaak. Wie durft?",
-				"Avond! Ik heb geluk meegenomen, genoeg voor iedereen.",
+				"Hé! Ik heb geluk meegenomen, genoeg voor iedereen.",
 				"Zo. Laat de kaarten maar komen, ik ben in vorm.",
 			},
 			"trump": {
@@ -521,7 +547,7 @@ var voices = map[string]*voice{
 				"Zie je wel. Geluk is ook een vak.",
 				"Hebbes.",
 				"Die wist ik gewoon.",
-				"Nog een paar en het is pit.",
+				"Kassa! Zo gaan we het doen.",
 			},
 			"wonTrick/opp": {
 				"Mag je hebben. Die had ik ingecalculeerd.",
@@ -550,7 +576,7 @@ var voices = map[string]*voice{
 			"natOpp": {
 				"Nat! Dat zei ik toch?",
 				"Hahaha, nat! Voorspeld.",
-				"Nat. Had je maar moeten passen.",
+				"Nat. Daar had ik op gegokt.",
 				"Nat. Kom maar op met dat volgende potje.",
 			},
 			"pit": {
@@ -597,17 +623,18 @@ var voices = map[string]*voice{
 			},
 		},
 		replies: map[string][]string{
-			"hello":  {"Hé! Kom je verliezen?", "Yo. Klaar voor een gokje?", "Hallo! Ik voel me goed vanavond.", "Hoi. De inzet is een pit."},
-			"praise": {"Weet ik.", "Dank je. Een kwestie van lef.", "Ha, dat is nog niks.", "Wacht maar tot de pit."},
-			"gg":     {"gg. Volgende keer pak ik ze allemaal.", "Goed gespeeld. Revanche?", "gg, mazzelaars."},
-			"laugh":  {"Haha, lach maar, ik heb nog wat achter de hand.", "Lach jij maar.", "Ha!"},
-			"help":   {"Gewoon durven. En de handleiding lezen, als je van saai houdt.", "Tip van Sjaak: speel nooit te voorzichtig.", "Bekennen, troeven, en verder op je gevoel."},
-			"nat":    {"Nat? Wij? Nooit.", "Wacht maar af.", "Roep maar niet te hard."},
-			"pech":   {"Pech bestaat niet, alleen gokken die nog niet goed vielen.", "Volgende keer beter. Zeker weten.", "Kop op, het draait altijd."},
-			"sorry":  {"Geeft niks. Ik zit er ook weleens naast.", "Vergeven en vergeten.", "Zand erover."},
-			"thanks": {"Graag gedaan.", "Geen dank. Ik win toch wel.", "Altijd."},
-			"bye":    {"Doei! Volgende keer de pit.", "Ga je al? Net nu het leuk wordt.", "Ciao!"},
-			"name":   {"Ja? Wil je een gokje wagen?", "Sjaak luistert.", "Wat is er? Ik zit te rekenen. Grapje."},
+			"hello":    {"Hé! Kom je verliezen?", "Yo. Klaar voor een gokje?", "Hallo! Ik voel me goed vandaag.", "Hoi. De inzet is een pit."},
+			"praise":   {"Weet ik.", "Dank je. Een kwestie van lef.", "Ha, dat is nog niks.", "Wacht maar tot de pit."},
+			"gg":       {"gg. Volgende keer pak ik ze allemaal.", "Goed gespeeld. Revanche?", "gg, mazzelaars."},
+			"laugh":    {"Haha, lach maar, ik heb nog wat achter de hand.", "Lach jij maar.", "Ha!"},
+			"help":     {"Gewoon durven. En de handleiding lezen, als je van saai houdt.", "Tip van Sjaak: speel nooit te voorzichtig.", "Bekennen, troeven, en verder op je gevoel."},
+			"nat":      {"Nat? Wij? Nooit.", "Wacht maar af.", "Roep maar niet te hard."},
+			"nat/maat": {"Nat! Daar zet ik alles op.", "Zeker weten. Ik voel het.", "Dat zei ik toch!"},
+			"pech":     {"Pech bestaat niet, alleen gokken die nog niet goed vielen.", "Volgende keer beter. Zeker weten.", "Kop op, het draait altijd."},
+			"sorry":    {"Geeft niks. Ik zit er ook weleens naast.", "Vergeven en vergeten.", "Zand erover."},
+			"thanks":   {"Graag gedaan.", "Geen dank. Ik win toch wel.", "Altijd."},
+			"bye":      {"Doei! Volgende keer de pit.", "Ga je al? Net nu het leuk wordt.", "Ciao!"},
+			"name":     {"Ja? Wil je een gokje wagen?", "Sjaak luistert.", "Wat is er? Ik zit te rekenen. Grapje."},
 		},
 	},
 	"fatima": {
@@ -615,12 +642,12 @@ var voices = map[string]*voice{
 			"greet": {
 				"Hoi. 32 kaarten, 4 spelers. Beginnen.",
 				"Hallo. Succes, allemaal.",
-				"Goedenavond. Ik tel mee.",
+				"Hallo. Ik tel mee.",
 				"Hoi. 162 punten per potje. Laten we gaan.",
 				"Hallo. Zin in wat kansrekening.",
 			},
 			"trump": {
-				"Spelen. Verwachtingswaarde positief.",
+				"Gekozen. Kansen berekend.",
 				"Ik speel. Kans is groot genoeg.",
 				"Deze. Doorgerekend.",
 				"Spelen.",
@@ -679,27 +706,28 @@ var voices = map[string]*voice{
 			"partnerGood": {"Goed.", "Precies goed.", "Optimaal gespeeld, maat.", "Klopt helemaal."},
 		},
 		replies: map[string][]string{
-			"hello":  {"Hoi.", "Hallo.", "Hoi. Succes.", "Hallo. Tellen jullie mee?"},
-			"praise": {"Dank je.", "Gewoon tellen.", "Dank je. Jij ook.", "Klopt."},
-			"gg":     {"gg.", "gg. Goed gespeeld.", "gg, wp."},
-			"laugh":  {"Haha.", ":)", "Grappig."},
-			"help":   {"Handleiding, onder het vraagteken.", "Tel de troeven. Er zijn er 8.", "Eerst bekennen. Dan troeven."},
-			"nat":    {"Eerst tellen.", "Nog niet. Reken maar na.", "Kans is klein."},
-			"pech":   {"Variantie.", "Kansen middelen uit.", "Volgende keer beter."},
-			"sorry":  {"Geeft niks.", "Oké.", "Geen probleem."},
-			"thanks": {"Graag gedaan.", "Geen dank.", "👍"},
-			"bye":    {"Doei.", "Dag.", "Tot ziens."},
-			"name":   {"Ja?", "Ik tel.", "Zeg het maar."},
+			"hello":    {"Hoi.", "Hallo.", "Hoi. Succes.", "Hallo. Tellen jullie mee?"},
+			"praise":   {"Dank je.", "Gewoon tellen.", "Dank je. Jij ook.", "Klopt."},
+			"gg":       {"gg.", "gg. Goed gespeeld.", "gg, wp."},
+			"laugh":    {"Haha.", ":)", "Grappig."},
+			"help":     {"Handleiding, onder het vraagteken.", "Tel de troeven. Er zijn er 8.", "Eerst bekennen. Dan troeven."},
+			"nat":      {"Eerst tellen.", "Nog niet. Reken maar na.", "Kans is klein."},
+			"nat/maat": {"Klopt. Ze komen tekort.", "Waarschijnlijk, ja.", "Eens. Nat."},
+			"pech":     {"Variantie.", "Kansen middelen uit.", "Volgende keer beter."},
+			"sorry":    {"Geeft niks.", "Oké.", "Geen probleem."},
+			"thanks":   {"Graag gedaan.", "Geen dank.", "👍"},
+			"bye":      {"Doei.", "Dag.", "Tot ziens."},
+			"name":     {"Ja?", "Ik tel.", "Zeg het maar."},
 		},
 	},
 	"kees": {
 		lines: map[string][]string{
 			"greet": {
-				"Ja ja, goedenavond. Laten we maar beginnen.",
-				"Avond. Ik hoop dat de kaarten vandaag beter zijn dan vorige week.",
+				"Ja ja, hallo. Laten we maar beginnen.",
+				"Dag. Ik hoop dat de kaarten vandaag beter zijn dan vorige week.",
 				"Daar zitten we weer. Schud ze maar goed, anders krijg ik weer niks.",
 				"Hallo. Ik had liever aan de waterkant gezeten, maar goed.",
-				"Avond. Geen gezeur, gewoon spelen.",
+				"Dag. Geen gezeur, gewoon spelen.",
 			},
 			"trump": {
 				"Ik speel wel. Iemand moet het doen.",
@@ -717,7 +745,7 @@ var voices = map[string]*voice{
 			"pass": {
 				"Pas. Met deze rommel ga ik niet spelen.",
 				"Pas. Wat een kaarten weer.",
-				"Pas, natuurlijk. Het zit me niet mee vanavond.",
+				"Pas, natuurlijk. Het zit me niet mee vandaag.",
 				"Pas. Ik krijg ook nooit wat.",
 			},
 			"play": {"Vooruit dan.", "Daar.", "Mwah. Deze maar.", "Niet best, maar goed."},
@@ -759,7 +787,7 @@ var voices = map[string]*voice{
 				"Nat. Dat zag ik al aankomen.",
 			},
 			"pit": {
-				"Pit. Dat had ik vanavond niet meer verwacht.",
+				"Pit. Dat had ik vandaag niet meer verwacht.",
 				"Alle slagen. Nou, mag ik ook eens.",
 				"Een pit. Kijk, zo kan het ook.",
 				"Pit! Ik zeg het niet vaak, maar dat was mooi.",
@@ -768,7 +796,7 @@ var voices = map[string]*voice{
 				"Een pit tegen. Typisch.",
 				"Alle slagen voor jullie. Ja hoor.",
 				"Pit. Ik ga maar weer vissen.",
-				"Pfff. Pit tegen. Wat een avond.",
+				"Pfff. Pit tegen. Wat een dag.",
 			},
 			"handWon": {
 				"Kijk. Zo kan het ook.",
@@ -802,27 +830,28 @@ var voices = map[string]*voice{
 			},
 		},
 		replies: map[string][]string{
-			"hello":  {"Ja ja, hallo.", "Avond.", "Hoi. Ga zitten, dan kunnen we beginnen.", "Hallo. Schud ze maar."},
-			"praise": {"Ja, nou ja. Dank je.", "Het ging toevallig goed.", "Mwah. Dank je.", "Zeldzaam, maar het gebeurt."},
-			"gg":     {"gg. Al zat het niet mee.", "Ja, goed gespeeld.", "gg. Volgende keer betere kaarten graag."},
-			"laugh":  {"Ja, lach maar.", "Haha. Heel grappig.", "Lachen jullie maar."},
-			"help":   {"Bekennen als je kan. Anders troeven. Zo moeilijk is het niet.", "Kijk in de handleiding. Daar staat alles.", "Tel de troeven, dan weet je wat er nog zit."},
-			"nat":    {"Nat? Dat zullen we nog wel eens zien.", "Ja ja, roep maar.", "Het is nog niet voorbij."},
-			"pech":   {"Pech? Ik heb de hele avond al pech.", "Welkom bij de club.", "Ja, dat ken ik."},
-			"sorry":  {"Ja, nou ja. Geeft niks.", "Gebeurd is gebeurd.", "Volgende keer beter opletten."},
-			"thanks": {"Ja, graag gedaan.", "Mwah, geen dank.", "Ja ja."},
-			"bye":    {"Dag.", "Ga je al? Nou, doei.", "Tot ziens. Ik ga vissen."},
-			"name":   {"Wat?", "Ja, wat is er?", "Ik zit hier, hoor."},
+			"hello":    {"Ja ja, hallo.", "Dag.", "Hoi. Ga zitten, dan kunnen we beginnen.", "Hallo. Schud ze maar."},
+			"praise":   {"Ja, nou ja. Dank je.", "Het ging toevallig goed.", "Mwah. Dank je.", "Zeldzaam, maar het gebeurt."},
+			"gg":       {"gg. Al zat het niet mee.", "Ja, goed gespeeld.", "gg. Volgende keer betere kaarten graag."},
+			"laugh":    {"Ja, lach maar.", "Haha. Heel grappig.", "Lachen jullie maar."},
+			"help":     {"Bekennen als je kan. Anders troeven. Zo moeilijk is het niet.", "Kijk in de handleiding. Daar staat alles.", "Tel de troeven, dan weet je wat er nog zit."},
+			"nat":      {"Nat? Dat zullen we nog wel eens zien.", "Ja ja, roep maar.", "Het is nog niet voorbij."},
+			"nat/maat": {"Mooi zo. Dat werd tijd.", "Ja, die gaan nat, let maar op.", "Eindelijk eens wat goeds."},
+			"pech":     {"Pech? Ik heb de hele dag al pech.", "Welkom bij de club.", "Ja, dat ken ik."},
+			"sorry":    {"Ja, nou ja. Geeft niks.", "Gebeurd is gebeurd.", "Volgende keer beter opletten."},
+			"thanks":   {"Ja, graag gedaan.", "Mwah, geen dank.", "Ja ja."},
+			"bye":      {"Dag.", "Ga je al? Nou, doei.", "Tot ziens. Ik ga vissen."},
+			"name":     {"Wat?", "Ja, wat is er?", "Ik zit hier, hoor."},
 		},
 	},
 	"ans": {
 		lines: map[string][]string{
 			"greet": {
-				"Goedenavond allemaal! Fijn dat jullie er zijn. Veel plezier!",
+				"Hallo allemaal! Fijn dat jullie er zijn. Veel plezier!",
 				"Hallo! Vragen staat vrij, hoor. Daar zijn we voor.",
 				"Welkom! Neem rustig de tijd voor elke kaart.",
 				"Hoi! Weet je nog? Eerst bekennen, dan pas troeven. Zet 'm op!",
-				"Goedenavond! Ik heb er zin in. Samen komen we er wel uit.",
+				"Daar zijn we! Ik heb er zin in. Samen komen we er wel uit.",
 			},
 			"trump": {
 				"Ik speel. Nu moeten we wel meer dan de helft van de punten halen, hè.",
@@ -832,7 +861,7 @@ var voices = map[string]*voice{
 				"Ik waag het. Help je mee, maat?",
 			},
 			"trump/opp": {
-				"Goed zo, je durft te spelen!",
+				"Goed zo, een duidelijke keuze!",
 				"Mooi. Nu moeten ze meer dan de helft halen.",
 				"Spannend! Wij gaan proberen ze nat te spelen.",
 				"Prima keuze, volgens mij.",
@@ -844,9 +873,9 @@ var voices = map[string]*voice{
 				"Pas. Even afwachten wat de anderen doen.",
 			},
 			"play": {
-				"Kijk, zo houd je je hoge kaarten achter de hand.",
+				"Eens kijken wat er al gevallen is…",
 				"Even goed tellen…",
-				"Deze. Bekennen gaat voor alles.",
+				"Goed opletten wat er nog zit.",
 				"Zo. Rustig aan.",
 			},
 			"wonTrick": {
@@ -876,7 +905,7 @@ var voices = map[string]*voice{
 			"nat": {
 				"Nat. We haalden niet meer dan de helft. Daar leren we van!",
 				"Oei, nat. Dan krijgen de anderen alle punten.",
-				"Nat gegaan. Geeft niks, zo leer je wanneer je beter kunt passen.",
+				"Nat gegaan. Geeft niks, zo leer je welke troef sterk genoeg is.",
 				"Nat. Volgende keer iets voorzichtiger.",
 			},
 			"natOpp": {
@@ -904,15 +933,15 @@ var voices = map[string]*voice{
 				"Goed gespeeld, dit potje is voor ons.",
 			},
 			"handLost": {
-				"Dit potje was voor hen. Bekijk de laatste slag gerust nog eens.",
+				"Dit potje was voor hen. Bekijk de slagen van dit potje gerust nog eens.",
 				"Geeft niks, van verliezen leer je het meest.",
 				"Volgende potje nieuwe kansen.",
 				"Jammer. Maar je deed het goed hoor.",
 			},
 			"gameWon": {
-				"Gewonnen! Wat hebben jullie goed gespeeld. Trots op jullie!",
+				"Gewonnen! Goed gespeeld allemaal, en bedankt voor het spel.",
 				"We hebben gewonnen! Bedankt voor het fijne spel.",
-				"Gewonnen! Zie je hoeveel je al geleerd hebt?",
+				"Gewonnen! Zo zie je maar: goed tellen loont.",
 				"Gewonnen! Een mooi boompje was dat.",
 			},
 			"gameLost": {
@@ -930,7 +959,7 @@ var voices = map[string]*voice{
 			},
 		},
 		replies: map[string][]string{
-			"hello":  {"Hallo! Fijn dat je er bent.", "Goedenavond! Klaar om te leren?", "Hoi! Welkom aan tafel.", "Hallo! Vragen mag altijd, hoor."},
+			"hello":  {"Hallo! Fijn dat je er bent.", "Hoi! Klaar om te leren?", "Hoi! Welkom aan tafel.", "Hallo! Vragen mag altijd, hoor."},
 			"praise": {"Dank je wel! Jij doet het ook heel goed.", "Wat lief! Je leert snel.", "Dank je! Goed opletten, dat is het geheim.", "Dank je! Samen spelen we sterk."},
 			"gg":     {"Goed gespeeld, allemaal!", "gg! Wat was het leerzaam.", "Goed gedaan! Nog een potje?"},
 			"laugh":  {"Haha! Leuk hè?", "Gezellig zo!", "Hihi, lachen mag altijd."},
@@ -940,56 +969,58 @@ var voices = map[string]*voice{
 				"Tel de troeven: er zijn er acht. Dan weet je wat er nog zit.",
 				"Heeft je maat de slag? Dan kun je er punten bij smeren, bijvoorbeeld een 10.",
 			},
-			"nat":    {"Nog even afwachten, het potje is nog niet voorbij!", "Ze moeten meer dan de helft halen. We zullen zien!", "Spannend hè? Tellen maar!"},
-			"pech":   {"Pech hoort erbij. Volgende keer beter!", "Geeft niks hoor, zo leer je.", "Kop op, je doet het goed!"},
-			"sorry":  {"Geeft helemaal niks! Zo leer je het.", "Niks aan de hand.", "Fouten maken mag, daar leer je van."},
-			"thanks": {"Graag gedaan!", "Geen dank, daar ben ik voor.", "Alsjeblieft!"},
-			"bye":    {"Dag! Goed gespeeld vandaag.", "Tot de volgende keer!", "Doei! Blijf oefenen hoor."},
-			"name":   {"Ja? Vraag maar.", "Ik ben er! Wat wil je weten?", "Ja, zeg het maar."},
+			"nat":      {"Nog even afwachten, het potje is nog niet voorbij!", "Wij moeten meer dan de helft halen, en dat kan nog!", "Spannend hè? Tellen maar!"},
+			"nat/maat": {"Goed gezien! Ze moeten meer dan de helft halen.", "Misschien wel! Blijven tellen, maat.", "Samen spelen we ze nat!"},
+			"pech":     {"Pech hoort erbij. Volgende keer beter!", "Geeft niks hoor, zo leer je.", "Kop op, je doet het goed!"},
+			"sorry":    {"Geeft helemaal niks! Zo leer je het.", "Niks aan de hand.", "Fouten maken mag, daar leer je van."},
+			"thanks":   {"Graag gedaan!", "Geen dank, daar ben ik voor.", "Alsjeblieft!"},
+			"bye":      {"Dag! Goed gespeeld vandaag.", "Tot de volgende keer!", "Doei! Blijf oefenen hoor."},
+			"name":     {"Ja? Vraag maar.", "Ik ben er! Wat wil je weten?", "Ja, zeg het maar."},
 		},
 	},
 	"bram": {
 		lines: map[string][]string{
-			"greet":        {"Yo! 👋 Let's go", "Hoi allemaal 😎", "Klaar? 🃏🔥", "Ey! Zin in 🙌", "Hallo hallo 👋 lekker vlot spelen hè"},
-			"trump":        {"Spelen 💪", "Yes, deze 🔥", "Gevoel zegt spelen 🤙", "Ik ga ervoor 🚀", "Easy 😎"},
+			"greet":        {"Yo! 👋 Gaan met die banaan 🍌", "Hoi allemaal 😎", "Klaar? 🃏🔥", "Ey! Zin in 🙌", "Hallo hallo 👋 lekker vlot spelen hè"},
+			"trump":        {"Spelen 💪", "Yes, deze 🔥", "Gevoel zegt spelen 🤙", "Ik ga ervoor 🚀", "Makkie 😎"},
 			"trump/opp":    {"Oeh 👀", "Spannend 😬", "Durf 😏", "Oké oké 👀"},
-			"pass":         {"Pas 🤷", "Nope 🙅", "Pas, volgende 😴", "Nah, pas ✌️"},
+			"pass":         {"Pas 🤷", "Nee joh 🙅", "Pas, volgende 😴", "Nah, pas ✌️"},
 			"play":         {"👀", "Hop 🃏", "Deze 🤙", "Boem 💥"},
 			"wonTrick":     {"Hebbes 😎", "💪💪", "Lekker 🔥", "Yes! 🙌"},
-			"wonTrick/opp": {"Oké 😅", "Damn 😩", "Mag je hebben 🤷", "Pff 😤"},
+			"wonTrick/opp": {"Oké 😅", "Balen 😩", "Mag je hebben 🤷", "Pff 😤"},
 			"roem":         {"ROEM 🎉", "+{p} 🔥🔥", "Roem! 🤑", "Lekker, {p} roem 😎"},
-			"roem/opp":     {"Pff, {p} roem voor jullie 😒", "Roem tegen 😩", "Damn, roem 😬", "Mazzel 🙄"},
+			"roem/opp":     {"Pff, {p} roem voor jullie 😒", "Roem tegen 😩", "Balen, roem 😬", "Mazzel 🙄"},
 			"nat":          {"Nat 💀", "Oeps, nat 😅", "Nat… 🫠", "Rip 😭"},
 			"natOpp":       {"NAT 😂😂", "Haha nat 💦", "Nat! 🎉", "Nat lol 😆"},
-			"pit":          {"PIT 🔥🔥🔥", "Alle slagen!! 🏆", "Pit baby 😎", "Mars! 🚀🚀"},
+			"pit":          {"PIT 🔥🔥🔥", "Alle slagen!! 🏆", "Pit, ja toch 😎", "Mars! 🚀🚀"},
 			"pit/opp":      {"Pit tegen 💀", "Allemaal?? 😱", "Oef, pit 😵", "Dat potje mag weg 🫠"},
-			"handWon":      {"Ez 😎", "Nice 👌", "Binnen 🙌", "Lekker bezig 🔥"},
-			"handLost":     {"Volgende 😤", "Meh 😕", "Damn 😩", "Komt goed 🤞"},
-			"gameWon":      {"GG! Gewonnen 🏆🎉", "Ez win 😎🔥", "Gewonnen!! 🙌 nog een?", "Winnaars 🏆 gg allemaal"},
-			"gameLost":     {"gg, jullie waren beter 🫡", "Verloren 😭 revanche?", "gg wp 👏", "Next time 😤"},
+			"handWon":      {"Eitje 😎", "Nice 👌", "Binnen 🙌", "Lekker bezig 🔥"},
+			"handLost":     {"Volgende 😤", "Meh 😕", "Balen 😩", "Komt goed 🤞"},
+			"gameWon":      {"GG! Gewonnen 🏆🎉", "Makkelijk gewonnen 😎🔥", "Gewonnen!! 🙌 nog een?", "Winnaars 🏆 gg allemaal"},
+			"gameLost":     {"gg, jullie waren beter 🫡", "Verloren 😭 revanche?", "gg wp 👏", "Volgende keer beter 😤"},
 			"partnerGood":  {"Nice maat 🔥", "👏👏👏", "Goed bezig! 💪", "Sick zet 🤯"},
 		},
 		replies: map[string][]string{
-			"hello":  {"Yo! 👋", "Hoi 😎", "Hé 🙌", "Hallo 👋"},
-			"praise": {"Thx 😎", "🙏", "Haha dank je 🔥", "Jij ook 👊"},
-			"gg":     {"gg 🫡", "gg wp 👏", "ggg 🏆"},
-			"laugh":  {"😂😂", "lol 😆", "🤣"},
-			"help":   {"Handleiding zit onder het vraagteken 👆", "Bekennen, anders troeven 🃏", "Gewoon op gevoel 🤙 (en tellen)"},
-			"nat":    {"Nat? 👀 we gaan het zien", "Nooit 😤", "😬"},
-			"pech":   {"Rip 😢", "Volgende keer 🤞", "Oef 😅"},
-			"sorry":  {"Geen stress 😎", "All good 👍", "Np 🤙"},
-			"thanks": {"Np 🤙", "👍", "Graag 😎"},
-			"bye":    {"Doei 👋", "Later ✌️", "Bye 👋"},
-			"name":   {"Ja? 👀", "Wat is er 🤔", "Yo? 👋"},
+			"hello":    {"Yo! 👋", "Hoi 😎", "Hé 🙌", "Hallo 👋"},
+			"praise":   {"Dankje 😎", "🙏", "Haha dank je 🔥", "Jij ook 👊"},
+			"gg":       {"gg 🫡", "gg wp 👏", "ggg 🏆"},
+			"laugh":    {"😂😂", "lol 😆", "🤣"},
+			"help":     {"Handleiding zit onder het vraagteken 👆", "Bekennen, anders troeven 🃏", "Gewoon op gevoel 🤙 (en tellen)"},
+			"nat":      {"Nat? 👀 we gaan het zien", "Nooit 😤", "😬"},
+			"nat/maat": {"Nat 💦", "Jaaa nat 😂", "Nat nat nat 🔥"},
+			"pech":     {"Rip 😢", "Volgende keer 🤞", "Oef 😅"},
+			"sorry":    {"Geen stress 😎", "Komt goed 👍", "Maakt niet uit 🤙"},
+			"thanks":   {"Geen dank 🤙", "👍", "Graag 😎"},
+			"bye":      {"Doei 👋", "Tot later ✌️", "Doeg 👋"},
+			"name":     {"Ja? 👀", "Wat is er 🤔", "Yo? 👋"},
 		},
 	},
 	"lies": {
 		lines: map[string][]string{
 			"greet": {
-				"Goedenavond! Ik sta om vijf uur op, dus ik speel graag een beetje vlot.",
+				"Hallo! Ik sta om vijf uur op, dus ik speel graag een beetje vlot.",
 				"Hallo allemaal! Vers van de bakkerij en klaar om te spelen.",
 				"Hoi! Ik heb nog een krentenbol bewaard voor de winnaar.",
-				"Goedenavond. Gezellig, maar ik geef niks cadeau hoor!",
+				"Dag allemaal. Gezellig, maar ik geef niks cadeau hoor!",
 				"Daar zijn we! Laten we er een mooi potje van maken.",
 			},
 			"trump": {
@@ -1075,7 +1106,7 @@ var voices = map[string]*voice{
 			"gameWon": {
 				"Gewonnen! De krentenbol is voor ons.",
 				"Gewonnen. Dank jullie wel, het was gezellig.",
-				"Gewonnen! En nu snel naar bed, morgen om vijf uur op.",
+				"Gewonnen! En nu snel naar huis, morgen om vijf uur op.",
 				"Wij winnen! Goed gespeeld, allemaal.",
 			},
 			"gameLost": {
@@ -1092,17 +1123,18 @@ var voices = map[string]*voice{
 			},
 		},
 		replies: map[string][]string{
-			"hello":  {"Hoi! Gezellig dat je er bent.", "Goedenavond! Zin in een potje?", "Hallo! Ga lekker zitten.", "Hé, welkom!"},
-			"praise": {"Dank je wel! Jij ook.", "Ach, gewoon goed opletten.", "Dank je! Vakwerk, hè?", "Dat hoor ik graag."},
-			"gg":     {"Goed gespeeld allemaal!", "gg! Dank jullie wel.", "Mooi spel, dank je."},
-			"laugh":  {"Haha, gezellig!", "Hihi!", "Haha, ja hoor."},
-			"help":   {"Altijd eerst bekennen. Kan dat niet, dan troeven.", "In de handleiding staat het heel duidelijk, kijk maar.", "Let op wat er al gespeeld is, dan weet je wat er nog zit."},
-			"nat":    {"Dat zullen we nog wel eens zien!", "Niet zo snel, het potje loopt nog.", "Hm, eerst maar eens tellen."},
-			"pech":   {"Kan gebeuren. Morgen is er weer vers brood.", "Jammer! Volgende keer beter.", "Kop op!"},
-			"sorry":  {"Geeft niks hoor.", "Niks aan de hand.", "Ach, dat gebeurt."},
-			"thanks": {"Graag gedaan!", "Geen dank.", "Alsjeblieft!"},
-			"bye":    {"Dag! Ik moet ook zo naar bed.", "Doei! Tot de volgende keer.", "Welterusten!"},
-			"name":   {"Ja? Zeg het maar.", "Hier! Wat is er?", "Ja, lieverd?"},
+			"hello":    {"Hoi! Gezellig dat je er bent.", "Dag! Zin in een potje?", "Hallo! Ga lekker zitten.", "Hé, welkom!"},
+			"praise":   {"Dank je wel! Jij ook.", "Ach, gewoon goed opletten.", "Dank je! Vakwerk, hè?", "Dat hoor ik graag."},
+			"gg":       {"Goed gespeeld allemaal!", "gg! Dank jullie wel.", "Mooi spel, dank je."},
+			"laugh":    {"Haha, gezellig!", "Hihi!", "Haha, ja hoor."},
+			"help":     {"Altijd eerst bekennen. Kan dat niet, dan troeven.", "In de handleiding staat het heel duidelijk, kijk maar.", "Let op wat er al gespeeld is, dan weet je wat er nog zit."},
+			"nat":      {"Dat zullen we nog wel eens zien!", "Niet zo snel, het potje loopt nog.", "Hm, eerst maar eens tellen."},
+			"nat/maat": {"Die rijzen niet meer, maat!", "Zou zomaar kunnen, maat.", "Mooi, zo wil ik het zien."},
+			"pech":     {"Kan gebeuren. Morgen is er weer vers brood.", "Jammer! Volgende keer beter.", "Kop op!"},
+			"sorry":    {"Geeft niks hoor.", "Niks aan de hand.", "Ach, dat gebeurt."},
+			"thanks":   {"Graag gedaan!", "Geen dank.", "Alsjeblieft!"},
+			"bye":      {"Dag! Ik moet er ook zo vandoor.", "Doei! Tot de volgende keer.", "Dag, het ga je goed!"},
+			"name":     {"Ja? Zeg het maar.", "Hier! Wat is er?", "Ja, lieverd?"},
 		},
 	},
 }

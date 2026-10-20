@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Full-bleed favicon.svg for home-screen icons that the platform masks
+       itself: felt to every edge, no frame, nothing transparent (iOS would
+       fill it black), clover and heart inside the central 80% circle (the
+       maskable safe zone). The PNGs are rendered once and committed:
+         rsvg-convert -b '#0f4a2d' -w 180 -h 180 web/icon-full.svg -o web/apple-touch-icon.png
+         rsvg-convert -b '#0f4a2d' -w 512 -h 512 web/icon-full.svg -o web/icon-maskable-512.png
+         rsvg-convert -w 192 -h 192 web/favicon.svg -o web/icon-192.png
+         rsvg-convert -w 512 -h 512 web/favicon.svg -o web/icon-512.png
+       test/ui/app-icons.test.mjs checks the result. -->
+  <defs>
+    <radialGradient id="felt" cx="50%" cy="40%" r="75%">
+      <stop offset="0" stop-color="#2f9a62"/>
+      <stop offset="1" stop-color="#0f4a2d"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe08a"/>
+      <stop offset="1" stop-color="#d79b28"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" fill="url(#felt)"/>
+  <g transform="translate(32 32) scale(0.82) translate(-32 -32)">
+    <g fill="url(#gold)">
+      <circle cx="32" cy="20" r="9.5"/>
+      <circle cx="21" cy="35" r="9.5"/>
+      <circle cx="43" cy="35" r="9.5"/>
+      <path d="M29 34h6l3 18H26z"/>
+    </g>
+    <path d="M50 9c-2.6 0-4 2.4-4 4.3 0 3.5 4 5.9 4 7.7 0-1.8 4-4.2 4-7.7C54 11.4 52.6 9 50 9z" fill="#ef6f5a"/>
+  </g>
+</svg>

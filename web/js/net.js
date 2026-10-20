@@ -76,6 +76,41 @@ export function createNet({ onMessage, onOpen, onClose }) {
   // Drops queued messages (e.g. after leaving a room).
   function flushOutbox() { outbox = []; }
 
+  // Sends `msgs` over a short-lived connection of its own, beside the main
+  // one (e.g. a leave for a room this page has already left). done(true)
+  // once they went out, done(false) when no connection could be made.
+  function oneShot(msgs, done) {
+    let sock;
+    try {
+      sock = new WebSocket(url());
+    } catch {
+      done(false);
+      return;
+    }
+    let sent = false;
+    let timer = 0;
+    const finish = () => {
+      clearTimeout(timer);
+      try { sock.close(); } catch { /* already closed */ }
+    };
+    timer = setTimeout(finish, 8000);
+    sock.onopen = () => {
+      try {
+        for (const m of msgs) sock.send(JSON.stringify(m));
+        sent = true;
+      } catch {
+        finish();
+      }
+    };
+    // The first answer shows the server has read them; the close follows them out.
+    sock.onmessage = () => { clearTimeout(timer); timer = setTimeout(finish, 300); };
+    sock.onerror = () => {};
+    sock.onclose = () => {
+      clearTimeout(timer);
+      done(sent);
+    };
+  }
+
   // Forces a fresh connection (stale socket or server restart).
   function reconnect(ms = 0) {
     const old = ws;
@@ -112,5 +147,5 @@ export function createNet({ onMessage, onOpen, onClose }) {
   addEventListener('online', wake);
   addEventListener('pageshow', wake);
 
-  return { connect, send, reconnect, isOpen, flushOutbox, raw: m => isOpen() && raw(m) };
+  return { connect, send, reconnect, isOpen, flushOutbox, oneShot, raw: m => isOpen() && raw(m) };
 }

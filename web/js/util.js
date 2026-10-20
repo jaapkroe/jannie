@@ -5,8 +5,11 @@ import { SUITS } from './cards.js';
 // Mutable application context shared by all modules (filled by main.js).
 export const app = {
   s: null,        // last rendered server state
+  view: null,     // state the table shows: during an event's animation that is
+                  // already the next one (the trump badge after a choice)
   code: '',       // room code we are in (or joining)
   ff: false,      // fast-forward: skip animations while the queue catches up
+  backlog: false, // many updates are waiting: they are history, no turn cue
   hurry: false,   // a few updates are waiting: animate faster
   send: () => false,
   leave: () => {},
@@ -63,6 +66,7 @@ const ICONS = {
   copy: ['M9 9h10v11H9z', 'M5 15V4h10'],
   share: ['M12 3v12', 'M8 7l4-4 4 4', 'M5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7'],
   back: ['M15 18l-6-6 6-6'],
+  forward: ['M9 18l6-6-6-6'],
   plus: ['M12 5v14', 'M5 12h14'],
   info: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M12 11v5', 'M12 7.8h.01'],
   check: ['M5 12.5l4.5 4.5L19 7.5'],
@@ -94,14 +98,27 @@ export function icon(name, cls = '') {
 
 // ---------- storage (all keys prefixed kj.) ----------
 
+// Values that could not be written to localStorage (blocked or full) live
+// on in memory for the life of the page, so the name and the seat tokens
+// still survive a reconnect. They win over whatever localStorage holds.
+const unsaved = new Map();
+
 export const store = {
   get(key, def = null) {
+    if (unsaved.has(key)) return unsaved.get(key);
     try { const v = localStorage.getItem('kj.' + key); return v == null ? def : v; } catch { return def; }
   },
   set(key, val) {
-    try { localStorage.setItem('kj.' + key, String(val)); } catch { /* storage unavailable */ }
+    const v = String(val);
+    try {
+      localStorage.setItem('kj.' + key, v);
+      unsaved.delete(key);
+    } catch {
+      unsaved.set(key, v);
+    }
   },
   del(key) {
+    unsaved.delete(key);
     try { localStorage.removeItem('kj.' + key); } catch { /* storage unavailable */ }
   },
   json(key, def) {
@@ -170,6 +187,8 @@ export function anim(el, frames, ms, opts = {}) {
 }
 
 export function vibrate(ms) {
+  // Before the first tap (e.g. a rejoin after a reload) Chrome blocks it and logs an error.
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return;
   try { navigator.vibrate?.(ms); } catch { /* not supported */ }
 }
 
@@ -189,6 +208,17 @@ export function nameOf(s, seat, jij = true) {
   return s.players?.[seat]?.name || 'Speler';
 }
 
+// A name for a tight spot: a long name shortens with an ellipsis, but the
+// " (AI)" of a bot always stays readable ("Kees de Vi… (AI)"). The width
+// limit goes on cls (see .pname in app.css); title gives the full name.
+const AI_MARK = /^(.*?)( \(AI\))$/;
+export function playerName(name, { cls = '', title = false } = {}) {
+  const m = AI_MARK.exec(name || '');
+  return h('span', { class: 'pname' + (cls ? ' ' + cls : ''), title: title ? name : null },
+    h('span', { class: 'pname-base', text: m ? m[1] : name || '' }),
+    m ? h('span', { class: 'pname-ai', text: m[2] }) : null);
+}
+
 export const suitSym = c => SUITS[c]?.symbol ?? '';
 export const suitName = c => SUITS[c]?.name ?? '';
 export const suitText = c => `${suitSym(c)} ${suitName(c)}`;
@@ -206,9 +236,13 @@ export function suitify(text) {
   return frag;
 }
 
+// Capitalised for headings ("+20 Stuk!"); roemText is for use mid-sentence.
 export const ROEM_NAMES = { drie: 'Driekaart', vier: 'Vierkaart', stuk: 'Stuk', vierGelijk: 'Vier gelijke', vierBoeren: 'Vier boeren' };
 export const roemTotal = roem => (roem || []).reduce((n, r) => n + (r.points || 0), 0);
-export const roemText = roem => (roem || []).map(r => `${ROEM_NAMES[r.kind] || r.kind} ${r.points}`).join(', ');
+export const roemText = roem => (roem || []).map(r => `${(ROEM_NAMES[r.kind] || r.kind).toLowerCase()} (${r.points})`).join(', ');
+
+// First letter upper case: "harten is troef" → "Harten is troef".
+export const cap = text => (text ? text[0].toUpperCase() + text.slice(1) : '');
 
 export const variantText = o =>
   `${o.trumpMode === 'gedraaid' ? 'Gedraaid' : 'Utrechts'}/${o.rules === 'rotterdams' ? 'Rotterdams' : 'Amsterdams'}`;

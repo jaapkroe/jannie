@@ -168,15 +168,36 @@ func TestForcedTrumpNeverTurned(t *testing.T) {
 	}
 }
 
-// TestAdviseAlwaysValid asks for advice at every decision of some deals.
+// Phrases of play hints that claim the trick for the mover's team, or
+// that the mover cannot win it, and of hints that name no reason.
+var (
+	sureClaims = []string{"zo pak je de slag", "niemand na je kan hier nog overheen", "de slag is zeker", "slag al zeker", "slag zeker voor jullie"}
+	loseClaims = []string{"Je kunt de slag niet winnen", "je kunt de slag niet winnen"}
+	noReasons  = []string{"naar verwachting het meeste op", "naar verwachting meer", "kaartverdelingen door"}
+)
+
+func containsAny(s string, subs []string) bool {
+	return slices.ContainsFunc(subs, func(sub string) bool { return strings.Contains(s, sub) })
+}
+
+// TestAdviseAlwaysValid asks for advice at every decision of some deals,
+// with every seat following it. Play hints must be true to what happens in
+// the trick, and few may lack a reason (training hints teach, design §4.2).
 func TestAdviseAlwaysValid(t *testing.T) {
 	deals := 16
 	if testing.Short() {
 		deals = 3
 	}
 	rng := rand.New(rand.NewPCG(7, 8))
+	choices, generic := 0, 0
 	for i := range deals {
 		d := game.NewDeal(game.Seat(rng.IntN(4)), game.Shuffle(rng), game.TrumpMode(i%2), game.Rules(i/2%2), game.Suit(rng.IntN(4)))
+		type claim struct {
+			seat game.Seat
+			sure bool // else: the mover cannot win the trick
+			text string
+		}
+		var claims []claim
 		for d.Phase() != game.PhaseDone {
 			s := d.Turn()
 			v := d.View(s)
@@ -206,12 +227,41 @@ func TestAdviseAlwaysValid(t *testing.T) {
 				if again := Advise(v); again.Text != a.Text || *again.Card != *a.Card {
 					t.Fatalf("advice not deterministic: %+v then %+v", a, again)
 				}
+				if strings.Contains(a.Text, "houd je hoge troeven achter de hand") && setOf(v.Hand).higher(*a.Card, v.Trump) == 0 {
+					t.Errorf("%q, but %v is the highest trump in hand %v", a.Text, *a.Card, v.Hand)
+				}
+				if len(v.Legal) > 1 {
+					choices++
+					if containsAny(a.Text, noReasons) {
+						generic++
+					}
+				}
+				switch {
+				case containsAny(a.Text, sureClaims):
+					claims = append(claims, claim{s, true, a.Text})
+				case containsAny(a.Text, loseClaims):
+					claims = append(claims, claim{s, false, a.Text})
+				}
+				n := d.TrickCount()
 				err = d.Play(s, *a.Card)
+				if d.TrickCount() > n {
+					w := d.Tricks()[n].Winner
+					for _, c := range claims {
+						if c.sure && w.Team() != c.seat.Team() || !c.sure && w == c.seat {
+							t.Errorf("seat %d was told %q, and seat %d won the trick", c.seat, c.text, w)
+						}
+					}
+					claims = claims[:0]
+				}
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
+	}
+	t.Logf("%d of %d play hints with a choice name no reason", generic, choices)
+	if choices >= 200 && float64(generic) > 0.04*float64(choices) {
+		t.Errorf("%d of %d play hints name no reason, want at most 4%%", generic, choices)
 	}
 	// Not your turn: no advice.
 	d := game.NewDeal(0, game.Shuffle(rng), game.Utrechts, game.Amsterdams, 0)
@@ -275,9 +325,14 @@ func TestExplainTrick(t *testing.T) {
 		{trick(0, 1, 37, "QH JH KH 7H", stuk, drie),
 			"Fatima (AI) wint de slag met ♥B, de hoogste troef. 37 punten (met 10 voor de laatste slag), roem: stuk (20) en driekaart (20)."},
 		{trick(2, 3, 21, "AS 8H TS 7S"),
-			"Bram (AI) troeft de ♠ in met ♥8 en wint de slag. 21 punten."},
+			"Bram (AI) troeft in met ♥8 (geen ♠) en wint de slag. 21 punten."},
 		{trick(2, 0, 35, "AS 8H 9H TS"),
 			"Piet wint de slag met ♥9: overgetroefd met de hoogste troef. 35 punten."},
+		// Trumping in first is no overtrump, also when someone undertrumps after.
+		{trick(0, 1, 35, "AS 9H 7H TS"),
+			"Fatima (AI) troeft in met ♥9 (geen ♠) en wint de slag; Klaas moest ondertroeven. 35 punten."},
+		{trick(0, 1, 31, "AS JH 7S 7H"),
+			"Fatima (AI) troeft in met ♥B (geen ♠) en wint de slag; Bram (AI) moest ondertroeven. 31 punten."},
 		{trick(1, 2, 15, "KD AD 7D 7C"),
 			"Klaas wint de slag met ♦A, de hoogste kaart in de gevraagde kleur (♦). 15 punten."},
 		{trick(3, 0, 2, "8C JC 7C 9S"),
@@ -287,6 +342,11 @@ func TestExplainTrick(t *testing.T) {
 		if got := ExplainTrick(c.tr, game.Hearts, names); got != c.want {
 			t.Errorf("got  %q\nwant %q", got, c.want)
 		}
+	}
+	// Clubs, the suit of the zero Card, as trump.
+	if got, want := ExplainTrick(trick(0, 1, 35, "AS 9C 7C TS"), game.Clubs, names),
+		"Fatima (AI) troeft in met ♣9 (geen ♠) en wint de slag; Klaas moest ondertroeven. 35 punten."; got != want {
+		t.Errorf("got  %q\nwant %q", got, want)
 	}
 	if got := ExplainTrick(game.Trick{Winner: game.NoSeat}, game.Hearts, names); got != "" {
 		t.Errorf("incomplete trick explained as %q", got)

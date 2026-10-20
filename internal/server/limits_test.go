@@ -105,14 +105,128 @@ func TestPerIPLimits(t *testing.T) {
 }
 
 func TestMaxRooms(t *testing.T) {
-	_, ts, _ := newTestServer(t, func(s *Server) { s.cfg.MaxRooms = 2 })
-	for range 2 {
-		dial(t, ts).create("Piet", nil, false, false)
-	}
+	s, ts, _ := newTestServer(t, func(s *Server) {
+		s.cfg.MaxRooms = 2
+		s.evictAfter = time.Hour
+	})
+	a := dial(t, ts)
+	a.create("Piet", nil, false, false)
+	b := dial(t, ts)
+	b.create("Piet", nil, false, false)
 	c := dial(t, ts)
 	c.send(map[string]any{"t": "create", "name": "Piet"})
 	if e := c.waitError(errTooMany); !strings.Contains(e.errMsg(), "te veel spellen") {
 		t.Errorf("msg %q", e.errMsg())
+	}
+	// A room nobody has been in for a while makes way for a new game.
+	r := roomOf(t, s, a.code)
+	a.conn.CloseNow()
+	waitFor(t, "room a idle", func() bool { return r.idle.Load() != 0 })
+	c.send(map[string]any{"t": "create", "name": "Piet"})
+	c.waitError(errTooMany) // not idle long enough
+	s.mu.Lock()
+	s.evictAfter = 0
+	s.mu.Unlock()
+	c.create("Piet", nil, false, false)
+	x := dial(t, ts)
+	x.send(map[string]any{"t": "join", "code": a.code, "name": "X"})
+	x.waitError(errUnknown)
+	roomOf(t, s, b.code) // the rooms with a player stay
+	roomOf(t, s, c.code)
+	select {
+	case <-r.done:
+	case <-time.After(5 * time.Second):
+		t.Error("the evicted room did not stop")
+	}
+}
+
+func TestLiveRoomsPerAddress(t *testing.T) {
+	s, ts, _ := newTestServer(t, func(s *Server) { s.liveMax = 2 })
+	c := dialIP(t, ts, "192.0.2.20")
+	c.create("Piet", nil, false, false)
+	c.create("Piet", nil, false, false) // the first lobby stays, empty
+	c.send(map[string]any{"t": "create", "name": "Piet"})
+	if e := c.waitError(errTooMany); !strings.Contains(e.errMsg(), "Vanaf jouw adres") {
+		t.Errorf("msg %q", e.errMsg())
+	}
+	dialIP(t, ts, "192.0.2.21").create("Piet", nil, false, false) // per address
+	// Leaving the lobby as the last player removes it: room for a new one.
+	c.send(map[string]any{"t": "leave"})
+	waitFor(t, "lobby removed", func() bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.live["192.0.2.20"] == 1
+	})
+	c.create("Piet", nil, false, false)
+}
+
+func TestJoinRate(t *testing.T) {
+	_, ts, _ := newTestServer(t, func(s *Server) { s.joinRate, s.joinBurst = 1, 3 })
+	x := dial(t, ts)
+	for range 3 {
+		x.send(map[string]any{"t": "join", "code": "ZZZZ", "name": "X"})
+		x.waitError(errUnknown)
+	}
+	x.send(map[string]any{"t": "join", "code": "ZZZZ", "name": "X"})
+	x.waitError(errLimit)
+	x.send(map[string]any{"t": "ping"}) // still connected
+	x.waitType("pong")
+	time.Sleep(1100 * time.Millisecond)
+	x.send(map[string]any{"t": "join", "code": "ZZZZ", "name": "X"})
+	x.waitError(errUnknown)
+}
+
+// TestFailedJoinsBlock: an address that keeps failing to join (guessing
+// codes) is refused for a while; a seat token still works.
+func TestFailedJoinsBlock(t *testing.T) {
+	s, ts, _ := newTestServer(t, func(s *Server) {
+		s.joinFailMax = 3
+		s.joinBlock = 300 * time.Millisecond
+	})
+	h := dial(t, ts)
+	h.create("Host", map[string]any{"humans": 2}, false, false)
+	const ip = "192.0.2.30"
+	g := dialIP(t, ts, ip)
+	g.join(h.code, "Gast", "")
+
+	x := dialIP(t, ts, ip)
+	x.send(map[string]any{"t": "join", "code": "ZZZZ", "name": "X"})
+	x.waitError(errUnknown)
+	x.send(map[string]any{"t": "join", "code": "YYYY", "name": "X"})
+	x.waitError(errUnknown)
+	y := dialIP(t, ts, ip)
+	y.send(map[string]any{"t": "join", "code": h.code, "name": "Y"})
+	y.waitError(errFull) // the third failure: the address is blocked now
+	for _, m := range []map[string]any{
+		{"t": "join", "code": "ZZZZ", "name": "X"},
+		{"t": "join", "code": h.code, "name": "X"},
+		{"t": "join", "code": h.code, "name": "X", "token": "verkeerd"},
+		{"t": "join", "code": "ZZZZ", "name": "X", "token": "verkeerd"},
+	} {
+		x.send(m)
+		if e := x.waitError(errLimit); e.errMsg() != msgJoinBlocked {
+			t.Errorf("%v: %q", m, e.errMsg())
+		}
+	}
+	// The seated guest gets back in with the token.
+	g.conn.CloseNow()
+	g2 := dialIP(t, ts, ip)
+	g2.join(h.code, "Gast", g.token)
+	if g2.seat != g.seat {
+		t.Errorf("back at seat %d, want %d", g2.seat, g.seat)
+	}
+	// Other addresses are not affected; the block ends.
+	z := dial(t, ts)
+	z.send(map[string]any{"t": "join", "code": "ZZZZ", "name": "Z"})
+	z.waitError(errUnknown)
+	time.Sleep(350 * time.Millisecond)
+	x.send(map[string]any{"t": "join", "code": "ZZZZ", "name": "X"})
+	x.waitError(errUnknown)
+	s.mu.Lock()
+	n := len(s.joins[ip].fails)
+	s.mu.Unlock()
+	if n != 1 {
+		t.Errorf("%d failures counted after the block", n)
 	}
 }
 
@@ -206,6 +320,52 @@ func TestJanitor(t *testing.T) {
 		t.Errorf("msg %q", e.errMsg())
 	}
 	waitFor(t, "finished room removed", func() bool { return rooms() == 0 })
+}
+
+// TestJanitorAbandoned: with nobody connected, a lobby, a finished game and
+// a game everyone left go after the short timeout; a running game someone
+// may return to stays.
+func TestJanitorAbandoned(t *testing.T) {
+	s, ts, _ := newTestServer(t, func(s *Server) {
+		s.idleTimeout = time.Hour
+		s.overTimeout = time.Hour
+		s.abandonTimeout = 100 * time.Millisecond
+		s.janitorEvery = 20 * time.Millisecond
+	})
+	registered := func(code string) bool {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		return s.rooms[code] != nil
+	}
+	running := dial(t, ts)
+	running.create("Piet", map[string]any{"humans": 1}, false, true)
+	running.conn.CloseNow()
+	left := dial(t, ts)
+	left.create("Piet", map[string]any{"humans": 1}, false, true)
+	left.send(map[string]any{"t": "leave"})
+	lobby := dial(t, ts)
+	lobby.create("Piet", map[string]any{"humans": 2}, false, false)
+	lobby.conn.CloseNow()
+	over := dial(t, ts)
+	over.create("Piet", map[string]any{"humans": 1, "hands": 4}, false, true)
+	r := roomOf(t, s, over.code)
+	call(r, func() {
+		r.pending = stepNone
+		r.handNo = r.opts.Hands
+		r.nextHand()
+	})
+	over.waitEvent("gameOver")
+	if !registered(over.code) {
+		t.Fatal("finished game with a player removed")
+	}
+	over.conn.CloseNow()
+	waitFor(t, "abandoned rooms removed", func() bool {
+		return !registered(left.code) && !registered(lobby.code) && !registered(over.code)
+	})
+	time.Sleep(100 * time.Millisecond)
+	if !registered(running.code) {
+		t.Error("a running game with a human seat went after the short timeout")
+	}
 }
 
 func waitFor(t *testing.T, what string, cond func() bool) {

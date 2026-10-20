@@ -145,8 +145,11 @@ func (m *mover) lead() game.Card {
 			c, _ := trumps.bottom(trump, trump)
 			return c
 		}
-		// Kleintje boer: tell the maker we hold the boer.
-		if t.trumpBy == m.partner() && !t.hasLed[m.seat] && trumps.has(jackOf(trump)) && m.oppsMayTrump() {
+		// Kleintje boer: tell partner we hold the boer. The maker does so
+		// only when it opens the hand with little else in trump; otherwise
+		// it pulls trump itself.
+		if trumps.has(jackOf(trump)) && !t.hasLed[m.seat] && !t.boerSig[team].Valid() && m.oppsMayTrump() &&
+			(t.trumpBy != m.seat || (t.trickNo == 0 && m.thinTrumps())) {
 			if c, ok := m.smallSignalCard(); ok {
 				return c
 			}
@@ -190,6 +193,9 @@ func (m *mover) lead() game.Card {
 	}
 
 	// Otherwise the cheapest sensible lead, possibly a ruff for partner.
+	// A small card may promise a boer we lack (kleintje boer): then a
+	// higher card of the suit is a candidate too, and trump replaces a
+	// small card that is still the cheapest.
 	bestCost := 1 << 30
 	for s := game.Suit(0); s < game.NumSuits; s++ {
 		if s == trump || m.hand.inSuit(s) == 0 {
@@ -199,6 +205,16 @@ func (m *mover) lead() game.Card {
 		if cost := m.leadCost(c); cost < bestCost {
 			best, bestCost = c, cost
 		}
+		if hi := m.hand.inSuit(s) &^ smallCards(s); m.fakeSignal(c) && hi != 0 {
+			c, _ = hi.bottom(s, trump)
+			if cost := m.leadCost(c); cost < bestCost {
+				best, bestCost = c, cost
+			}
+		}
+	}
+	if bestCost < 1<<30 && m.fakeSignal(best) && trumps != 0 && m.oppsMayTrump() {
+		c, _ := trumps.bottom(trump, trump)
+		return c
 	}
 	if bestCost < 1<<30 {
 		return best
@@ -211,6 +227,25 @@ func (m *mover) lead() game.Card {
 	c, _ := trumps.bottom(trump, trump)
 	return c
 }
+
+// thinTrumps reports whether the maker holds the boer with little else in
+// trump (no nel, at most one other trump): opening the hand, it then leads
+// kleintje boer and lets partner play trump to it, rather than pulling
+// trump with a bare boer. (Measured in self-play: about even at normaal;
+// giving it on a later first lead costs points.)
+func (m *mover) thinTrumps() bool {
+	trumps := m.hand.inSuit(m.t.trump)
+	return trumps.has(jackOf(m.t.trump)) && !trumps.has(nineOf(m.t.trump)) && trumps.count() <= 2
+}
+
+// fakeSignal reports whether leading c now would promise the trump boer
+// (kleintje boer) that the mover does not hold.
+func (m *mover) fakeSignal(c game.Card) bool {
+	return m.t.signalsBoer(m.seat, c) && !m.hand.has(jackOf(m.t.trump))
+}
+
+// smallCards is the 7, 8 and 9 of suit s: the cards of kleintje boer.
+func smallCards(s game.Suit) cardSet { return 0b111 << (uint(s) * 8) }
 
 // smallSignalCard returns the lowest side 7, 8 or 9 to lead as kleintje boer.
 func (m *mover) smallSignalCard() (game.Card, bool) {
@@ -263,6 +298,9 @@ func (m *mover) leadCost(c game.Card) int {
 	if m.unk.has(aceOf(s)) && m.unk.has(tenOf(s)) && !m.ourTeamPlays() {
 		cost -= 2 // defenders: lead where the opponents' points are
 	}
+	if m.fakeSignal(c) {
+		cost += 15 // partner would read kleintje boer and return trump
+	}
 	return cost
 }
 
@@ -294,19 +332,21 @@ func (m *mover) follow() game.Card {
 		return m.discard(true)
 	}
 	if c, ok := m.bestWinner(true, false); ok {
+		// A trump is "safe" only when nobody behind can overtrump it, which
+		// often leaves just the boer or nel. On a cheap side-suit trick the
+		// cheapest trump that wins now is worth the risk: keep the boer and
+		// nel for the tricks that matter.
+		if c.Suit == trump && led != trump && t.points < 15 {
+			if low, ok := m.bestWinner(false, false); ok {
+				return low
+			}
+		}
 		return c
 	}
 	// No safe winner: play an unsafe one only when nothing else is allowed
 	// or when it costs little (a trump that must be played anyway).
 	if c, ok := m.bestWinner(false, false); ok {
-		allWin := true
-		for l := m.legal; l != 0; l &= l - 1 {
-			if !game.Beats(game.CardFromIndex(trailing(l)), t.best, led, trump) {
-				allWin = false
-				break
-			}
-		}
-		if allWin || (c.Suit == trump && led != trump) {
+		if m.allLegalBeat() || (c.Suit == trump && led != trump) {
 			return c
 		}
 	}

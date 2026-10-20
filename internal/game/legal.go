@@ -24,9 +24,10 @@ const (
 	rVoidNoTrump                   // cannot follow, no trump
 	rMustTrump                     // cannot follow, no trump in the trick yet
 	rMustOvertrump                 // cannot follow, beat the trick's trump
-	rCannotOvertrump               // cannot follow or overtrump: play another suit
+	rCannotOvertrump               // Amsterdams: cannot follow or overtrump: play another suit
 	rOnlyLowerTrumps               // nothing but lower trumps left: undertrump
 	rPartnerFree                   // Amsterdams: partner wins, free choice (no undertrump)
+	rRotterdamsUnder               // Rotterdams: cannot overtrump, must still trump (undertrump)
 )
 
 // situation is the rules' verdict for one player at one moment.
@@ -90,6 +91,10 @@ func judge(hand []Card, ti *trickInfo, seat Seat, trump Suit, rules Rules) situa
 		s.need, s.why = needTrump, rMustTrump
 	case hasHigher:
 		s.need, s.why = needHigherTrump, rMustOvertrump
+	case rules == Rotterdams && s.hasOther:
+		// Rotterdams: whoever cannot follow must trump, also below the
+		// trick's trump; a side card only without trumps (design §2).
+		s.need, s.why = needTrump, rRotterdamsUnder
 	case s.hasOther:
 		s.need, s.why = needNonTrump, rCannotOvertrump
 	default:
@@ -202,6 +207,8 @@ func (s *situation) constraint() string {
 		return "Je kunt niet overtroeven: speel een andere kleur (ondertroeven mag niet)"
 	case rOnlyLowerTrumps:
 		return "Je hebt alleen nog lagere troef: je moet ondertroeven"
+	case rRotterdamsUnder:
+		return "Rotterdams: je kunt niet overtroeven, maar je moet wel troeven: speel een lagere troef (" + t + ")"
 	case rPartnerFree:
 		switch {
 		case !s.hasLower:
@@ -246,6 +253,8 @@ func (s *situation) illegal(card Card) string {
 		return msg
 	case rCannotOvertrump:
 		return "Ondertroeven mag niet: je kunt niet overtroeven, dus speel een andere kleur."
+	case rRotterdamsUnder:
+		return "Bij Rotterdams moet je troeven (" + t + ") als je niet kunt bekennen, ook als dat ondertroeven is."
 	case rPartnerFree:
 		if !s.hasOther {
 			return "Ondertroeven mag niet: je hebt alleen troef, dus je moet overtroeven" + above + "."

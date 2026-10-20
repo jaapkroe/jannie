@@ -49,5 +49,6 @@ func (botAI) Chat(personaID string, ev server.ChatEvent, rng *rand.Rand) string 
 	if !ok {
 		return ""
 	}
-	return bot.Chat(p, bot.ChatEvent{Kind: ev.Kind, Mine: ev.Mine, Text: ev.Text, Points: ev.Points}, rng)
+	return bot.Chat(p, bot.ChatEvent{Kind: ev.Kind, Mine: ev.Mine, Text: ev.Text, Points: ev.Points,
+		InHand: ev.InHand, Playing: ev.Playing}, rng)
 }

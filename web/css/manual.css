@@ -98,6 +98,14 @@
   white-space: nowrap;
 }
 
+/* The button's own pictogram in front of its name (Bediening). */
+.man-ui .icon {
+  width: 1.15em;
+  height: 1.15em;
+  margin: 0 0.35em 0 -0.15em;
+  vertical-align: -0.2em;
+}
+
 /* In-section quick links */
 .man-toc {
   display: flex;
@@ -231,6 +239,9 @@
 .man-values { --card-w: 30px; }
 .man-values .man-table th,
 .man-values .man-table td { padding: 0.32em 0.55em; }
+/* The cards and points set the column widths; the headers wrap under them
+   ("Geen troef / (hier ♠)") instead of pushing the table past a phone's width. */
+.man-values .man-table thead th { white-space: normal; }
 .man-rank { width: 1.8em; color: var(--man-muted); text-align: center !important; font-variant-numeric: tabular-nums; }
 .man-values tbody .man-rank { font-weight: 400; }
 
@@ -490,6 +501,16 @@
   .man-ex, .man-cards, .man-roemex { --card-w: 48px; }
   .man-cards-many > .man-row { gap: 0.55rem; }
   .man-values { --card-w: 32px; }
+}
+
+/* Phones up to about 375 px: the card value table still fits without a
+   sideways scroll, down to a 320 px screen. */
+@container man (max-width: 21rem) {
+  .man-values { --card-w: 26px; }
+  .man-values .man-table th,
+  .man-values .man-table td { padding: 0.32em 0.4em; }
+  .man-values .man-vcell { gap: 0.4em; }
+  .man-values .man-vcell .man-pts { min-width: 1.2em; }
 }
 
 @media (prefers-reduced-motion: reduce) {

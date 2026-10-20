@@ -8,10 +8,14 @@
 // --multi: a host (desktop) and a guest who opens the /CODE link (phone)
 // chat, the host seats a bot, and both play one game to the end.
 // --training: two potjes of Oefenen, checking hints and tips.
-import { args, connect, openPage, VIEWPORTS, press, pressEl, type, shot, waitFor, sleep, playLegal } from './app-lib.mjs';
+import {
+  args, connect, openPage, VIEWPORTS, press, pressEl, type, shot, waitFor, sleep, playLegal, addressProxy, ownAddress,
+} from './app-lib.mjs';
 
 const A = args();
 const names = A.only ? A.only.split(',') : ['phone', 'desktop'];
+const proxy = await addressProxy(A.url);
+const BASE = proxy.url;
 
 async function pick(P, row, value) {
   const btns = await P.page.$$(`.m-new .opt-row:nth-child(${row}) .seg-btn`);
@@ -74,8 +78,8 @@ async function playLoop(P, stats, reloadAfter = 0) {
     } else if (st.summary && Date.now() - lastSummary > 1500) {
       lastSummary = Date.now();
       await sleep(700);
-      await press(P, '.m-summary .btn-go');
-      stats.hands++;
+      // With -fast pacing the summary may already have moved on by itself.
+      if (await press(P, '.m-summary .btn-go:not(:disabled)', { timeout: 1500 }).catch(() => null)) stats.hands++;
     }
     await sleep(120);
   }
@@ -111,13 +115,14 @@ const newStats = () => ({ plays: 0, trumps: 0, bids: 0, hands: 0 });
 async function run(name) {
   const browser = await connect(A.cdp);
   const P = await openPage(browser, VIEWPORTS[name], 'play-' + name);
+  await ownAddress(P, BASE);
   const t0 = Date.now();
   const stats = newStats();
   try {
-    await P.page.goto(A.url + '/', { waitUntil: 'networkidle0' });
+    await P.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
     await type(P, '#name', 'Tester');
     await newGame(P, 1);
-    await press(P, '#btn-start');
+    await press(P, '#btn-start:not(:disabled)');
     await playLoop(P, stats, 3);
     await sleep(800);
     await shot(P, 'game-over');
@@ -150,6 +155,8 @@ async function multi() {
   const browser = await connect(A.cdp);
   const H = await openPage(browser, VIEWPORTS.desktop, 'multi-host');
   const G = await openPage(browser, VIEWPORTS.phone, 'multi-guest');
+  await ownAddress(H, BASE);
+  await ownAddress(G, BASE);
   const t0 = Date.now();
   const hs = newStats();
   const gs = newStats();
@@ -157,7 +164,7 @@ async function multi() {
     { label }, text);
   const seatNames = P => P.page.$$eval('.lseat .ls-name', els => els.map(e => e.textContent));
   try {
-    await H.page.goto(A.url + '/', { waitUntil: 'networkidle0' });
+    await H.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
     await type(H, '#name', 'Host');
     await newGame(H, 4);
     const code = await H.page.$$eval('.code-big span', els => els.map(e => e.textContent).join(''));
@@ -165,7 +172,7 @@ async function multi() {
     const path = await H.page.evaluate(() => location.pathname);
     if (path !== '/' + code) throw new Error(`host url ${path}, want /${code}`);
 
-    await G.page.goto(`${A.url}/${code}`, { waitUntil: 'networkidle0' });
+    await G.page.goto(`${BASE}/${code}`, { waitUntil: 'networkidle0' });
     await waitFor(G, () => document.querySelector('.invite:not([hidden]) .btn-hero'), { label: 'invite card' });
     await type(G, '#name', 'Gast');
     await press(G, '.invite .btn-hero');
@@ -208,7 +215,7 @@ async function multi() {
     const before = await seatNames(H);
     if (before.filter(n => n === 'AI-speler').length !== 1) throw new Error(`want one empty seat before start, host sees ${before}`);
 
-    await press(H, '#btn-start');
+    await press(H, '#btn-start:not(:disabled)');
     await Promise.all([H, G].map(P => waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelectorAll('.seat:not(.empty)').length === 4,
       { label: 'game with four players' })));
     const players = await H.page.$$eval('.seat .nm', els => els.map(e => e.textContent));
@@ -254,15 +261,29 @@ async function multi() {
   return [...H.errors, ...G.errors];
 }
 
-// Training: Juf Ans as partner, a hint on every own turn (advised suit or
-// glowing card plus text) and an explanation after tricks. Two potjes, then
-// leave through the menu.
+// Training: Juf Ans as partner, a hint on every own turn (advised suit plus
+// text in the trump panel, or glowing card plus text in the coach bubble) and
+// an explanation after tricks, which is done with once you play your next
+// card: it must not come back over the new trick. Two potjes, then leave
+// through the menu.
 async function training() {
   const browser = await connect(A.cdp);
   const P = await openPage(browser, VIEWPORTS.iphone, 'train-iphone');
-  const seen = { turns: 0, hinted: 0, tips: new Set() };
+  await ownAddress(P, BASE);
+  // Counts the "tip" messages as they arrive.
+  await P.page.evaluateOnNewDocument(() => {
+    window.__tips = 0;
+    const Native = window.WebSocket;
+    window.WebSocket = class extends Native {
+      constructor(...a) {
+        super(...a);
+        this.addEventListener('message', e => { if (String(e.data).startsWith('{"t":"tip"')) window.__tips++; });
+      }
+    };
+  });
+  const seen = { turns: 0, hinted: 0, tips: new Set(), after: 0, stale: [] };
   try {
-    await P.page.goto(A.url + '/', { waitUntil: 'networkidle0' });
+    await P.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
     await type(P, '#name', 'Leerling');
     await press(P, '#btn-train');
     await waitFor(P, () => document.querySelector('.m-train.open'), { label: 'training sheet' });
@@ -281,24 +302,40 @@ async function training() {
         advisedSuit: !!document.querySelector('.panel-trump .suit-btn.advised'),
         play: !!document.querySelector('.hand.my-turn .card.legal'),
         hintCard: !!document.querySelector('.hand.my-turn .card.hint.legal'),
-        coach: document.querySelector('.coach:not([hidden]):not(.is-tip) .coach-body > span')?.textContent || '',
-        tip: document.querySelector('.coach.is-tip:not([hidden]) .coach-body > span')?.textContent || '',
+        coach: document.querySelector('.coach:not([hidden]):not(.is-tip) .coach-txt > span')?.textContent || '',
+        // Trump advice is inside the panel (the coach bubble would be under it).
+        panelHint: [...document.querySelectorAll('.panel-trump .panel-hint')].find(e => e.getClientRects().length)?.textContent || '',
+        tip: document.querySelector('.coach.is-tip:not([hidden]) .coach-txt > span')?.textContent || '',
         summary: !!document.querySelector('.m-summary.open .btn-go:not(:disabled)'),
       }));
       if (st.tip) seen.tips.add(st.tip);
       if (st.summary && st.potje >= 2) break;
       if (st.trump) {
         seen.turns++;
-        if (st.advisedSuit && st.coach) seen.hinted++;
+        if (st.advisedSuit && st.panelHint) seen.hinted++;
         await press(P, '.panel-trump .suit-btn.advised:not(:disabled), .panel-trump .suit-btn:not(:disabled)');
       } else if (st.play) {
         await sleep(150); // the hint arrives with the state that opens the turn
         const ok = await P.page.evaluate(() => !!document.querySelector('.hand.my-turn .card.hint.legal')
-          && !!document.querySelector('.coach:not([hidden]):not(.is-tip) .coach-body > span')?.textContent);
+          && !!document.querySelector('.coach:not([hidden]):not(.is-tip) .coach-txt > span')?.textContent);
         seen.turns++;
         if (ok) seen.hinted++;
+        const tips = await P.page.evaluate(() => window.__tips);
         const code = await playLegal(P);
-        if (code) await waitFor(P, c => !document.querySelector(`.hand .card[data-card="${c}"]`), { label: `card ${code} played`, timeout: 10000 }, code);
+        if (code) {
+          await waitFor(P, c => !document.querySelector(`.hand .card[data-card="${c}"]`), { label: `card ${code} played`, timeout: 10000 }, code);
+          // No explanation from before this card, until the next one arrives.
+          const stale = await P.page.evaluate(async n => {
+            for (let t = 0; t < 14; t++) {
+              const el = document.querySelector('.coach.is-tip:not([hidden]) .coach-txt > span');
+              if (el && window.__tips === n) return el.textContent;
+              await new Promise(ok => setTimeout(ok, 50));
+            }
+            return '';
+          }, tips);
+          seen.after++;
+          if (stale) seen.stale.push(`after ${code}: "${stale.slice(0, 70)}"`);
+        }
       } else if (st.summary) {
         await press(P, '.m-summary .btn-go');
       }
@@ -307,13 +344,14 @@ async function training() {
     if (seen.turns < 8) throw new Error(`only ${seen.turns} own turns in two potjes`);
     if (seen.hinted !== seen.turns) throw new Error(`hints on ${seen.hinted} of ${seen.turns} turns`);
     if (seen.tips.size < 4) throw new Error(`only ${seen.tips.size} different tips after tricks`);
+    if (seen.stale.length) throw new Error(`the previous trick's explanation came back after ${seen.stale.length} of ${seen.after} own cards: ${seen.stale.slice(0, 3).join('; ')}`);
     await shot(P, 'training');
     await press(P, '.topbar .tb-menu');
     await waitFor(P, () => document.querySelector('.m-menu.open'), { label: 'menu' });
     await press(P, '.m-menu .menu-item.danger');
     await press(P, '.m-confirm .btn-danger');
     await waitFor(P, () => document.body.dataset.screen === 'home' && location.pathname === '/', { label: 'back home after leaving' });
-    console.log(`  training: hints on all ${seen.turns} own turns, ${seen.tips.size} tips, e.g. "${[...seen.tips][0]}"`);
+    console.log(`  training: hints on all ${seen.turns} own turns, ${seen.tips.size} tips, none stale after ${seen.after} own cards, e.g. "${[...seen.tips][0]}"`);
   } catch (e) {
     await shot(P, 'zz-failure').catch(() => {});
     P.errors.push(`[training] ${e.message || e}`);
@@ -328,8 +366,10 @@ const errors = [];
 if (A.has('multi')) errors.push(...(await multi()));
 else if (A.has('training')) errors.push(...(await training()));
 else for (const n of names) errors.push(...(await run(n)));
+proxy.close();
 if (errors.length) {
   console.error('FAILED:\n' + errors.join('\n'));
   process.exit(1);
 }
 console.log('ok: complete games played');
+process.exit(0); // the proxy may still hold keep-alive connections

@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -24,6 +25,7 @@ import (
 type fakeAI struct {
 	advised   atomic.Int64
 	explained atomic.Int64
+	greets    atomic.Int64
 }
 
 var fakePersonas = []Persona{
@@ -52,7 +54,7 @@ func (a *fakeAI) Advise(v game.View) Advice {
 		return Advice{Play: &p, Text: "Passen."}
 	}
 	c := v.Legal[0]
-	return Advice{Card: &c, Text: "Speel " + game.CardShortNL(c) + "."}
+	return Advice{Card: &c, Text: "Speel " + game.CardShortNL(c) + ": de eerste kaart die mag."}
 }
 
 func (a *fakeAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
@@ -60,10 +62,23 @@ func (a *fakeAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) st
 	return names[t.Winner] + " wint de slag."
 }
 
-func (*fakeAI) Chat(id string, ev ChatEvent, rng *rand.Rand) string {
+// fakeGreetings are said in turn; fakeRoem is a pool of four, as for the
+// real bots.
+var (
+	fakeGreetings = []string{"Hallo allemaal!", "Hallo, daar gaan we!", "Hallo en veel plezier!"}
+	fakeRoem      = []string{"%d roem. Niet slecht.", "Roem! Wat zei ik nou?", "Oei, die roem had ik zelf wel gewild.", "Mooi zo."}
+)
+
+func (a *fakeAI) Chat(id string, ev ChatEvent, rng *rand.Rand) string {
 	switch ev.Kind {
 	case "greet":
-		return "Hallo allemaal!"
+		return fakeGreetings[(a.greets.Add(1)-1)%int64(len(fakeGreetings))]
+	case "roem":
+		line := fakeRoem[rng.IntN(len(fakeRoem))]
+		if strings.Contains(line, "%d") {
+			line = fmt.Sprintf(line, ev.Points)
+		}
+		return line
 	case "reply":
 		if strings.HasPrefix(strings.ToLower(ev.Text), "hoi") {
 			return "Hoi!"
@@ -94,9 +109,17 @@ func (fakeBrain) Play(v game.View) game.Card { return v.Legal[0] }
 func newTestServer(t *testing.T, tweak ...func(*Server)) (*Server, *httptest.Server, *fakeAI) {
 	t.Helper()
 	ai := &fakeAI{}
+	s, ts := newTestServerWith(t, ai, tweak...)
+	return s, ts, ai
+}
+
+// newTestServerWith is newTestServer with another AI.
+func newTestServerWith(t *testing.T, ai AI, tweak ...func(*Server)) (*Server, *httptest.Server) {
+	t.Helper()
 	s := New(Config{AI: ai, Fast: true, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	s.scale = 0.005
 	s.msgRate = 1000 // the test clients act at 200 times the normal pace
+	s.joinRate, s.joinBurst = 1000, 1000
 	for _, f := range tweak {
 		f(s)
 	}
@@ -107,7 +130,85 @@ func newTestServer(t *testing.T, tweak ...func(*Server)) (*Server, *httptest.Ser
 		s.Shutdown(ctx)
 		ts.Close()
 	})
-	return s, ts, ai
+	return s, ts
+}
+
+// countAI is the fake AI with brains that count their decisions per turn.
+// With a gate, every decision waits until the gate is closed.
+type countAI struct {
+	fakeAI
+	gate  chan struct{}
+	mu    sync.Mutex
+	turns map[string]int
+}
+
+func newCountAI(gated bool) *countAI {
+	a := &countAI{turns: make(map[string]int)}
+	if gated {
+		a.gate = make(chan struct{})
+	}
+	return a
+}
+
+func (a *countAI) NewBrain(id, level string, seed uint64) Brain { return countBrain{a} }
+
+// decisions is the number of decisions made, and the turns decided more
+// than once.
+func (a *countAI) decisions() (n int, twice []string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for k, c := range a.turns {
+		n += c
+		if c > 1 {
+			twice = append(twice, fmt.Sprintf("%s ×%d", k, c))
+		}
+	}
+	return n, twice
+}
+
+type countBrain struct{ a *countAI }
+
+// note counts a decision for the turn of v: the hand, phase, seat, cards
+// left and bids tell turns apart.
+func (b countBrain) note(v game.View) {
+	b.a.mu.Lock()
+	b.a.turns[fmt.Sprintf("hand %d %s seat %d cards %d bids %v", v.HandNo, v.Phase, v.Seat, len(v.Hand), v.Bids)]++
+	b.a.mu.Unlock()
+	if b.a.gate != nil {
+		<-b.a.gate
+	}
+}
+
+func (b countBrain) ChooseTrump(v game.View) game.Suit { b.note(v); return fakeBrain{}.ChooseTrump(v) }
+func (b countBrain) Bid(v game.View) bool              { b.note(v); return fakeBrain{}.Bid(v) }
+func (b countBrain) Play(v game.View) game.Card        { b.note(v); return fakeBrain{}.Play(v) }
+
+// roomOf returns the registered room with code.
+func roomOf(t *testing.T, s *Server, code string) *room {
+	t.Helper()
+	s.mu.Lock()
+	r := s.rooms[code]
+	s.mu.Unlock()
+	if r == nil {
+		t.Fatalf("no room %s", code)
+	}
+	return r
+}
+
+// holdSummary keeps the hand summary of room code up for an hour, so only
+// ready (or a player going) ends it.
+func holdSummary(t *testing.T, s *Server, code string) {
+	t.Helper()
+	r := roomOf(t, s, code)
+	call(r, func() {
+		if r.pending != stepNextHand {
+			t.Errorf("holdSummary in phase %s", r.phase)
+			return
+		}
+		r.pendingAt = time.Now().Add(time.Hour)
+		r.nextAt = r.pendingAt
+		r.drive()
+	})
 }
 
 // msg is any server message as the tests see it.
@@ -122,6 +223,7 @@ type msg struct {
 	Msg   json.RawMessage `json:"msg"`
 	Msgs  []chatMsg       `json:"msgs"`
 	Text  string          `json:"text"`
+	Name  string          `json:"name"`
 
 	ev    map[string]any
 	state *state

@@ -33,10 +33,11 @@ type Advice struct {
 
 // ChatEvent is something a bot may comment on (see bot.ChatEvent).
 type ChatEvent struct {
-	Kind   string
-	Mine   bool
-	Text   string
-	Points int
+	Kind            string
+	Mine            bool
+	Text            string
+	Points          int
+	InHand, Playing bool // for "reply": tricks are being played; the bot's team made trump
 }
 
 // AI is what the server needs from the bot package; cmd/klaverjas adapts

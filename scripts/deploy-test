@@ -1,0 +1,139 @@
+#!/bin/sh
+# Tests the deployment files without building, installing or starting anything:
+# - the three units, as `make install` renders them, pass podman's own quadlet
+#   generator and come out with the settings the pod depends on;
+# - `make deploy` refuses a working tree with uncommitted changes, and every
+#   image build gets a tag of its own, with the commit (-dirty when the tree is
+#   not one) as its revision.
+# The Makefile runs in a throwaway git repository with podman, systemctl,
+# loginctl, curl and pod-check replaced by stubs that only record their calls.
+#   scripts/deploy-test       `make test` runs it
+# Prints the failures and a summary; exits 1 if anything failed.
+set -eu
+root=$(cd "$(dirname "$0")/.." && pwd)
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+# A `make test` that runs this must not pass its flags (-n, -k) on.
+unset MAKEFLAGS MFLAGS MAKELEVEL
+n=0 failed=0
+
+expect() { # what, wanted, got
+  n=$((n + 1))
+  [ "$2" = "$3" ] && return 0
+  failed=$((failed + 1))
+  echo "FAIL  $1: expected '$2', got '${3:-nothing}'" >&2
+}
+# 1 when the text $1 is in file $2, else 0.
+has() { if grep -qF -- "$1" "$2"; then echo 1; else echo 0; fi; }
+
+# ---- the throwaway repository and the stubs ---------------------------------
+repo=$tmp/repo calls=$tmp/calls
+mkdir -p "$repo/deploy" "$repo/scripts" "$tmp/bin"
+cp "$root/Makefile" "$repo/"
+cp "$root"/deploy/*.in "$repo/deploy/"
+for stub in podman systemctl curl scripts/pod-check; do
+  case $stub in scripts/*) f=$repo/$stub ;; *) f=$tmp/bin/$stub ;; esac
+  printf '#!/bin/sh\necho "%s $*" >> "%s"\n' "${stub#scripts/}" "$calls" > "$f"
+  chmod +x "$f"
+done
+printf '#!/bin/sh\necho Linger=yes\n' > "$tmp/bin/loginctl"
+chmod +x "$tmp/bin/loginctl"
+git() { command git -C "$repo" -c init.defaultBranch=main -c user.name=deploy-test \
+  -c user.email=deploy-test@localhost -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
+git init -q
+git add -A
+git commit -q --no-verify -m test
+head=$(git rev-parse HEAD)
+# Runs make in the repository with the stubs first on PATH; $calls holds what it called.
+mk() { : > "$calls"; PATH=$tmp/bin:$PATH make -s -C "$repo" "$@" > "$tmp/out" 2>&1; }
+# The tag given to image $1 by the last build.
+tag() { sed -n "s|^podman build .* -t localhost/klaverjas-$1:\([^ ]*\) \.\$|\1|p" "$calls"; }
+# The line of $calls where text $1 first appears, 0 if nowhere.
+line() { grep -n -F -m 1 -- "$1" "$calls" | cut -d: -f1 | grep . || echo 0; }
+stamp='[0-9]\{8\}-[0-9]\{6\}'
+
+# ---- the units, through podman's quadlet generator ----------------------------
+units=$tmp/units
+if mk install QUADLET_DIR="$units"; then status=0; else status=$?; fi
+expect "make install, exit status" 0 "$status"
+quadlet=
+for q in /usr/lib/podman/quadlet /usr/libexec/podman/quadlet; do
+  [ -x "$q" ] && { quadlet=$q; break; }
+done
+if [ -z "$quadlet" ]; then
+  echo "deploy-test: podman's quadlet generator not found; the unit checks are skipped" >&2
+else
+  if QUADLET_UNIT_DIRS=$units "$quadlet" -dryrun -user > "$tmp/gen" 2> "$tmp/gen.err"; then
+    status=0
+  else
+    status=$?
+    sed -n 's/^quadlet-generator[^:]*: //p' "$tmp/gen.err" | grep -v '^Loading' >&2 || true
+  fi
+  expect "quadlet generator, exit status" 0 "$status"
+  for svc in klaverjas-pod klaverjas-web klaverjas-server; do
+    awk -v s="---$svc.service---" '$0 == s { p = 1; next } /^---.*---$/ { p = 0 } p' \
+      "$tmp/gen" > "$tmp/$svc"
+    expect "$svc: Restart=on-failure" 1 "$(has 'Restart=on-failure' "$tmp/$svc")"
+  done
+  pod=$tmp/klaverjas-pod
+  # With podman's default (stop), both containers dying at once stops the pod for good.
+  expect "pod: --exit-policy continue" 1 "$(has ' --exit-policy continue ' "$pod")"
+  expect "pod: published on loopback only" 1 "$(has ' --publish 127.0.0.1:8093:8080 ' "$pod")"
+  expect "pod: NPM's connections arrive from 127.0.0.1" 1 \
+    "$(has ' --network pasta:--host-lo-to-ns-lo ' "$pod")"
+  for c in web server; do
+    f=$tmp/klaverjas-$c
+    for flag in ' --pod klaverjas ' ' --pull never ' ' --read-only ' ' --cap-drop all ' \
+                'no-new-privileges' ' --health-on-failure kill ' " localhost/klaverjas-$c:current"; do
+      expect "klaverjas-$c:$flag" 1 "$(has "$flag" "$f")"
+    done
+    expect "klaverjas-$c: BindsTo the pod" 1 "$(has 'BindsTo=klaverjas-pod.service' "$f")"
+  done
+fi
+
+# ---- make deploy and the image tags -------------------------------------------
+# A committed tree: deployed, labelled with the commit, tagged with it and the time.
+if mk deploy; then status=0; else status=$?; fi
+expect "make deploy from a committed tree, exit status" 0 "$status"
+expect "revision of a committed tree" 2 "$(grep -c -- "--build-arg GIT_SHA=$head --build-arg" "$calls")"
+first=$(tag server)
+expect "tag of the server image" 1 "$(printf '%s\n' "$first" | grep -c "^$head-$stamp\$")"
+expect "web image, same tag as the server image" "$first" "$(tag web)"
+expect "make deploy restarts the pod" 1 "$(has 'systemctl --user restart klaverjas-pod.service' "$calls")"
+for c in server web; do
+  t=$(line "podman tag localhost/klaverjas-$c:$first localhost/klaverjas-$c:current")
+  expect "make deploy points klaverjas-$c:current at the build, before the restart" 1 \
+    "$(if [ "$t" -gt 0 ] && [ "$t" -lt "$(line 'systemctl --user restart')" ]; then echo 1; else echo 0; fi)"
+done
+expect "make deploy runs pod-check" 1 "$(has 'pod-check 127.0.0.1:8093' "$calls")"
+# A rebuild of the same commit (a Trivy finding) keeps the build before it.
+sleep 1
+mk image || true
+expect "a rebuild of the same commit gets a tag of its own" 1 \
+  "$(if [ -n "$(tag server)" ] && [ "$(tag server)" != "$first" ]; then echo 1; else echo 0; fi)"
+# A build alone must not change what the running pod restarts into.
+expect "make image leaves :current alone" 0 "$(has ':current' "$calls")"
+
+# An untracked file: the build would copy it, so the tree is not the commit.
+touch "$repo/untracked"
+if mk deploy; then status=0; else status=$?; fi
+expect "make deploy with an untracked file, exit status" 2 "$status"
+expect "make deploy with an untracked file says why" 1 "$(has 'ALLOW_DIRTY=1' "$tmp/out")"
+expect "make deploy with an untracked file builds nothing" 0 "$(has 'podman ' "$calls")"
+expect "make deploy with an untracked file restarts nothing" 0 "$(has 'systemctl' "$calls")"
+if mk deploy ALLOW_DIRTY=1; then status=0; else status=$?; fi
+expect "make deploy ALLOW_DIRTY=1, exit status" 0 "$status"
+expect "revision with ALLOW_DIRTY=1" 2 "$(grep -c -- "--build-arg GIT_SHA=$head-dirty --build-arg" "$calls")"
+expect "tag with ALLOW_DIRTY=1" 1 "$(tag server | grep -c "^$head-dirty-$stamp\$")"
+rm "$repo/untracked"
+
+# A changed file that is tracked.
+echo '# changed' >> "$repo/deploy/klaverjas.pod.in"
+mk image || true
+expect "revision of a tree with a changed file" 2 "$(grep -c -- "--build-arg GIT_SHA=$head-dirty --build-arg" "$calls")"
+
+if [ "$failed" -gt 0 ]; then
+  echo "deploy-test: $failed of $n checks failed" >&2
+  exit 1
+fi
+echo "deploy-test: all $n checks passed"

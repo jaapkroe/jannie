@@ -1,6 +1,7 @@
 // Opens the handleiding inside the real app (home screen → Handleiding), walks
 // every tab and checks that the manual fits the help modal: no sideways scroll,
-// cards drawn, quick links scroll inside the modal. Writes one screenshot per tab.
+// tables fit their box without scrolling (down to a 320 px phone), cards drawn,
+// quick links scroll inside the modal. Writes one screenshot per tab.
 //
 //   cd test/ui && node manual-app.mjs [OUTDIR]
 //
@@ -20,7 +21,13 @@ const webRoot = join(repo, 'web');
 const out = process.argv[2] || join(repo, 'test/ui/out/manual-app');
 const cdpPort = process.env.CDP_PORT || '9321';
 const httpPort = Number(process.env.HTTP_PORT || 18121);
-const VIEWPORTS = [{ width: 390, height: 844, isMobile: true, hasTouch: true }, { width: 1440, height: 900 }];
+const VIEWPORTS = [
+  { width: 320, height: 568, isMobile: true, hasTouch: true },
+  { width: 360, height: 640, isMobile: true, hasTouch: true },
+  { width: 375, height: 667, isMobile: true, hasTouch: true },
+  { width: 390, height: 844, isMobile: true, hasTouch: true },
+  { width: 1440, height: 900 },
+];
 mkdirSync(out, { recursive: true });
 
 const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.html': 'text/html' };
@@ -97,6 +104,11 @@ try {
         const wide = [...man.querySelectorAll('*')]
           .filter((el) => !inScroller(el) && el.getBoundingClientRect().right > box.right + 1)
           .map((el) => `${el.tagName.toLowerCase()}.${el.className}`.slice(0, 60));
+        // A table may scroll inside its own box as a last resort, but nobody
+        // expects that: every table has to fit the panel as it is.
+        const tables = [...man.querySelectorAll('.man-tablewrap')]
+          .filter((t) => t.scrollWidth > t.clientWidth + 1)
+          .map((t) => `${t.className} ${t.scrollWidth}px in ${t.clientWidth}px`);
         const cards = [...man.querySelectorAll('.card')];
         let scroller = man.parentElement;
         while (scroller && !['auto', 'scroll'].includes(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
@@ -104,6 +116,7 @@ try {
           pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
           manWidth: Math.round(box.width),
           wide: [...new Set(wide)].slice(0, 5),
+          tables,
           blankCards: cards.filter((c) => c.getBoundingClientRect().width < 10 || !c.querySelector('svg')).length,
           cards: cards.length,
           textColor: getComputedStyle(man).color,
@@ -115,6 +128,7 @@ try {
       notes.push(`${tag}: panel ${facts.manWidth}px, ${facts.cards} cards, scroll box ${facts.scroller}`);
       if (facts.pageOverflow > 0) problems.push(`${tag}: page scrolls sideways by ${facts.pageOverflow}px`);
       if (facts.wide.length) problems.push(`${tag}: wider than the panel: ${facts.wide.join(', ')}`);
+      if (facts.tables.length) problems.push(`${tag}: table scrolls sideways: ${facts.tables.join(', ')}`);
       if (facts.blankCards) problems.push(`${tag}: ${facts.blankCards} cards not drawn`);
 
       // Quick links must scroll the modal to the heading.

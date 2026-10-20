@@ -11,7 +11,7 @@ containers:
 
 | Container | Image | Role |
 |---|---|---|
-| `klaverjas-web` | `localhost/klaverjas-web:current`, from `nginxinc/nginx-unprivileged:1.31-alpine` | Serves `web/` on `:8080`; proxies `/ws` and `/api/` to the server |
+| `klaverjas-web` | `localhost/klaverjas-web:current`, from `nginxinc/nginx-unprivileged` (Alpine; tag in the `Containerfile`) | Serves `web/` on `:8080`; proxies `/ws` and `/api/` to the server |
 | `klaverjas-server` | `localhost/klaverjas-server:current`, `FROM scratch`, static Go binary | Game server on `127.0.0.1:8081` inside the pod |
 
 No database, no accounts, no persistence: games live in memory and vanish on
@@ -27,20 +27,29 @@ internal/game/             pure rules engine: cards, legal moves, tricks, roem, 
 internal/bot/              bot personalities, play levels, hints/advice, chat lines
 internal/server/           rooms, codes, websocket protocol, pacing, chat, limits
 web/                       static frontend, vanilla ES modules, no build step
-  index.html  favicon.svg  manifest.webmanifest
+  index.html  favicon.svg  manifest.webmanifest  og.png (link preview)
+  icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
   css/app.css  css/cards.css  css/manual.css
   js/main.js … (app modules)  js/cards.js  js/sound.js  js/manual.js
 test/e2e/                  node scripts that play full games over the websocket
-test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored)
+test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
+                           and og-image.mjs, which renders web/og.png
 deploy/                    nginx.conf, quadlet templates (*.in), npm-advanced.conf, README-deploy.md
 scripts/go                 Go toolchain in a container: `scripts/go test ./...`
 scripts/dev-server PORT    run the server from source on 127.0.0.1:PORT serving web/ (flags after PORT)
 scripts/chrome PORT        headless Chromium with CDP on 127.0.0.1:PORT
+scripts/pod-check [ADDR [SITE]]  check a running pod without NPM: pages, websocket, link preview,
+                           security headers (`make check`)
+scripts/deploy-test        `make test`: the units through podman's quadlet generator, and how
+                           `make deploy` labels, tags and refuses builds (stubbed podman/systemd)
 Containerfile  Makefile  README.md
 ```
 
-There is no Go toolchain on the host: always use `scripts/go`. No `-race`
-(no cgo in the image). Node 26 is on the host for JS tests (`node --test`).
+There is no Go toolchain on the host: always use `scripts/go`. It has no
+`-race` (no cgo in the Alpine image); for that, use the Debian image:
+`podman run --rm --network host -v $PWD:/src -w /src -e GOFLAGS=-buildvcs=false
+docker.io/library/golang:1.27 go test -race ./...`. Node 26 is on the host for
+JS tests (`node --test`).
 
 ## 2. Rules as implemented
 
@@ -96,9 +105,12 @@ Let `led` be the suit of the first card in the trick.
 4. **Other suit led, you don't have it, you have trumps**:
    - `rotterdams`: you must trump, always (also when your partner is winning).
      Must overtrump if you can beat the highest trump in the trick; if you cannot,
-     play a non-trump card; only if you hold nothing but lower trumps, undertrump
-     (Wikipedia: "Ondertroeven mag alléén als men geen andere kleur kaarten dan
-     lagere troeven in handen heeft").
+     you must still trump: any trump, so *ondertroeven* is then compulsory. A
+     non-trump card only when you hold no trump at all. (Wikipedia's
+     "Schematisch overzicht" for Rotterdams: 1 kleur bekennen, 2 in-/overtroeven,
+     3 ondertroeven, 4 anders spelen; pagat.com agrees. Wikipedia's general
+     sentence "Ondertroeven mag alléén als men geen andere kleur kaarten dan
+     lagere troeven in handen heeft" is the Amsterdams rule below.)
    - `amsterdams` (default):
      - partner currently winning the trick: free choice among non-trump cards and
        trumps that beat the highest trump in the trick; *ondertroeven* (a trump
@@ -322,7 +334,13 @@ type Player interface {
 }
 func New(p Persona, lvl Level, seed uint64) Player
 
-// Advice for the training hints (always at Sterk strength), Dutch text
+// Advice for the training hints, Dutch text. Trump and bid advice is the
+// sterk choice. A play hint is the sterk card, unless the hint can name no
+// reason for it beyond the search's estimate: then it is the rule-based or
+// the cheapest card, if that card has a reason of its own and the search
+// cannot tell the two apart (gap under max(5 points, 2 paired SE)), never a
+// card that falsely signals kleintje boer. A hint that still has no reason
+// says by how much the search rates the card above the cheapest one.
 type Advice struct {
     Card *game.Card; Suit *game.Suit; Play *bool
     Text string     // e.g. "Speel ♥A: je maat heeft de slag nog niet en de aas is hoog."
@@ -336,9 +354,10 @@ func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
 type ChatEvent struct {
     Kind string   // "greet","trump","pass","play","wonTrick","roem","nat","natOpp","pit","handWon",
                   // "handLost","gameWon","gameLost","partnerGood","reply"
-    Mine bool     // about the bot itself / its team
+    Mine bool     // about the bot itself / its team; "reply": the bot is the speaker's partner
     Text string   // for "reply": the human chat line being answered
     Points int    // roem/points involved
+    InHand, Playing bool // "reply": tricks are being played; the bot's team made trump
 }
 func Chat(p Persona, ev ChatEvent, rng *rand.Rand) string
 ```
@@ -346,16 +365,26 @@ func Chat(p Persona, ev ChatEvent, rng *rand.Rand) string
 Strength levels:
 
 - **makkelijk**: legal moves with simple heuristics and deliberate mistakes
-  (~30% random legal card), naive trump choice.
-- **normaal**: rule-based play: win tricks with the cheapest winning card, smear
-  points (*smeren*: a 10 or ace) when the partner is winning, discard low
-  otherwise, pull trumps when playing team, keep the nel/boer guarded, count
-  trumps played, sensible trump choice (boer/nel/aas/length).
+  (~30% random legal card), naive trump choice (longest suit) and bidding (on
+  the boer or on length; Aggression moves the bar, e.g. cautious personas want
+  the boer with another trump, bold ones also play on the nel with two more).
+- **normaal**: rule-based play: win tricks with the cheapest winning card (a
+  cheap side-suit trick is ruffed with the lowest trump that wins, not with
+  the boer or nel), smear points (*smeren*: a 10 or ace) when the partner is
+  winning, discard low otherwise, pull trumps when playing team, keep the
+  nel/boer guarded, count trumps played, sensible trump choice
+  (boer/nel/aas/length). Gives and reads kleintje boer (§8) and never leads a
+  small side card that would falsely promise the boer when it has another
+  lead.
 - **sterk**: card tracking with inference (voids from not following suit,
   trump obligations), determinised Monte Carlo: sample hidden hands consistent
   with everything known, evaluate each legal move by playouts with the normaal
-  policy, ~150–400 samples within ~150 ms; trump choice by simulation; reads and
-  gives the signals of §8 (aas voorspelen, kleintje boer).
+  policy, ~150–400 samples within ~150 ms; trump choice by simulation; reads the
+  signals of §8 (aas voorspelen, kleintje boer) as soft evidence. It gives
+  kleintje boer when that costs at most a few points, and fakes it (a small
+  side card without the boer) only when that gains clearly (≥ 10 points),
+  since partners and humans read it as a promise. Exactly equal search
+  results go to the rule-based card, then to the cheaper card.
 
 Each persona modulates its level's choices (Aggression shifts thresholds) and
 chat. `internal/bot` has an arena test (skipped with `-short`) that plays many
@@ -375,7 +404,7 @@ type Brain interface {
     Play(v game.View) game.Card
 }
 type Advice struct{ Card *game.Card; Suit *game.Suit; Play *bool; Text string }
-type ChatEvent struct{ Kind string; Mine bool; Text string; Points int } // as bot.ChatEvent
+type ChatEvent struct{ Kind string; Mine bool; Text string; Points int; InHand, Playing bool } // as bot.ChatEvent
 type AI interface {
     Personas() []Persona
     NewBrain(personaID, level string, seed uint64) Brain   // level "makkelijk"|"normaal"|"sterk";
@@ -426,12 +455,23 @@ Display name is always `"<Name> (AI)"`, built by the server into
 | `lies` | Bakker Lies | 🥐 | Staat om vijf uur op, speelt scherp en vriendelijk. |
 
 Chat lines are Dutch, short, in character, varied (≥ 4 lines per event kind
-per persona where it fits), never revealing a bot's hidden cards. Bots greet
-on game start, react to roem, nat, pit and game end, and occasionally reply to
-human chat ("hoi", "goed gespeeld", "gg", "haha"…). The server allows a bot at
-most one line per trick and one per 8 s, scaled by Chattiness (the gap is
-8 s / max(Chattiness, 0.2)); per event at most one bot speaks (two for the
-greeting and game end), and about 60% of human lines get a reply attempt.
+per persona where it fits), never revealing a bot's hidden cards. `ChatEvent`
+carries no time of day and no trump mode, so lines fit any hour (no
+"goedenavond") and both modes (no passing outside "pass" lines: utrechts has
+none). Bots greet on game start, react to roem, nat, pit and game end, and
+occasionally reply to human chat ("hoi", "goed gespeeld", "gg", "haha"…). For
+a trump choice or a big trick the bot that made it speaks (`Mine`); if it says
+nothing, or a human made it, a bot of the other team may (`Mine: false`, the
+"/opp" lines; for these sided kinds a voice without "/opp" lines stays
+silent). A reply knows whether the bot is the speaker's partner and, while
+tricks are played, whether its team made trump: "Nat!" is answered only then,
+by the partner agreeing ("nat/maat") or by a bot of the playing team
+protesting; after the hand, or from a player whose own team plays, it gets no
+answer. The
+server allows a bot at most one line per trick and one per 8 s, scaled by
+Chattiness (the gap is 8 s / max(Chattiness, 0.2)); per event at most one bot
+speaks (two for the greeting and game end), and about 60% of human lines get a
+reply attempt.
 
 ## 6. Server behaviour
 
@@ -440,10 +480,16 @@ greeting and game end), and about 60% of human lines get a reply attempt.
 - Code: 4 letters from `ABCDEFGHJKLMNPQRSTUVWXYZ` (no I, O), unique among live
   rooms, case-insensitive on input. Join link: `https://klaverjas.kroes.dev/ABCD`.
 - Creator sits at seat 0 and is host. If the host leaves, or stays disconnected
-  for 30 s while another human is connected, the next human becomes host. A room
-  is removed after 30 min with no connected human, or 30 min after game over
-  (players still connected get `onbekend`), and at once when the last human
-  leaves its lobby; max 500 rooms (`Config.MaxRooms`), error when full.
+  for 30 s while another human is connected, the next human becomes host
+  (checked when the 30 s are up, and again when someone else gives a host
+  command such as `rematch` or `lobby`). A room is removed 30 min after game over (players
+  still connected get `onbekend`) and at once when the last human leaves its
+  lobby. With no human connected it is removed after 30 min while a game runs
+  that still has a human seat, and after 5 min in the lobby, after game over,
+  or once every human has left (bots play all seats; a vacated seat can be taken
+  over until then). Max 500 rooms (`Config.MaxRooms`): when full, a new game
+  replaces the room that has had no human connected for longest (at least
+  2 min), else error `te-veel-spellen`.
 - Bots in the lobby: when `humans < 4`, seats are prefilled with random distinct
   personas so that remaining human seats are partners where possible
   (`humans`=2 → bots at 1 and 3; 3 → bot at 3; 1 → bots at 1,2,3). Changing
@@ -452,10 +498,31 @@ greeting and game end), and about 60% of human lines get a reply attempt.
   any empty seat and remove bots. Humans may move to any empty seat. At start,
   empty seats get random distinct bots.
 - Joining a lobby: first empty seat, unless `humans` humans are already seated
-  → error `vol`. Joining a running game: allowed only to take over a *vacated*
-  seat (a human left; a bot plays it meanwhile), else error `gestart`.
+  → error `vol`, whose text says what to ask the host: a seat more under
+  *Spelers*, or, when bots the host placed fill every seat, one bot less
+  (with four people seated, nothing can be done). Joining a
+  running game: allowed only to take over a *vacated* seat (a human left; a
+  bot plays it meanwhile), else error `gestart` (after game over its text asks
+  the host to set the table up again).
+- A join refused from a full lobby or after game over is told to the table:
+  the system line "… wilde aanschuiven, maar de tafel is vol." and, for the
+  host only, a `refused` message (§7), at most once per 30 s per room whatever
+  the name (names are free text; a code guesser must not flood the host).
+- After game over the host chooses: `rematch` starts a new match at once with
+  the same seats and options; `lobby` takes the room back to phase `lobby`
+  under the same code and options. There the humans keep their seats (except
+  those disconnected for longer than the 30 s host grace), bots placed in the
+  lobby stay, and the seats that bots filled at the start or after a human left
+  are empty again, so a late friend can join and the host can change seats,
+  bots and options before starting. Scores and the previous hand are cleared.
+  The system line says "Wie wil, kan nu aanschuiven." only when a seat for a
+  human is free. Training has no lobby.
 - Reconnect: `join` with the room's code and the seat token returns you to your
-  seat, mid-game included.
+  seat, mid-game included. Without the token (another device, cleared storage),
+  a `join` with exactly the same name takes back a human seat that has been
+  disconnected for at least 3 min (a locked phone keeps its seat): the seat
+  gets a new token, the old one then gets `onbekend`, and a system line says
+  "… speelt verder op een ander apparaat".
 - A human who disconnects keeps the seat (event `away`, `connected: false`). If
   it is their turn and they are still away after 20 s, a substitute bot (level
   normaal) plays for them (a second `away` event, `away: true`) until they
@@ -463,11 +530,20 @@ greeting and game end), and about 60% of human lines get a reply attempt.
   a random persona at the room's level plays it (system line "… neemt het
   over") until a joiner takes it over. A second connection that joins with the
   same token takes the seat over; the old one gets `onbekend`.
+- A bot (or substitute) decides once per turn, in the background: a sterk
+  search uses all cores for a moment. Reconnects, window switches and a seat
+  changing hands during the turn reuse that decision; it is played when the
+  think time is up (counted from the turn, or from when a substitute starts).
 - If no human is connected, the game pauses (bots do not play, the hand summary
   waits); when someone returns, bots think again and the summary countdown
   restarts.
-- System chat lines (`sys`, seat -1): start, joining, leaving (and which bot
-  takes over), away/back of a substitute, host changes, rematch.
+- Bot chat (limits in §5): a bot does not repeat one of its last two lines for
+  the same kind of event (numbers aside: "20 roem" and "50 roem" are one line);
+  it asks for another line a few times and otherwise stays silent.
+- System chat lines (`sys`, seat -1): start, joining, a join refused because
+  the table is full, leaving (and which bot takes over), away/back of a
+  substitute, a seat taken back on another device, host changes, rematch, back
+  to the lobby (and a gone player's seat freed).
 
 ### Pacing (ms, scaled by tempo; `-fast` multiplies everything by 0.05)
 
@@ -479,6 +555,11 @@ greeting and game end), and about 60% of human lines get a reply attempt.
 | completed trick on table before collect | 2200 | 1500 | 800 |
 | hand summary before auto-continue (unless all humans `ready`) | 15000 | 12000 | 8000 |
 
+The hand summary also ends as soon as every human still connected is `ready`,
+including when the last one not ready leaves or drops. In training it does not
+auto-continue at all: the learner looks back at the hand and goes on with
+`ready` (`nextAt` is 0).
+
 During a pause nobody may act (`turn` is -1). Humans have no time limit.
 Pauses start with `deal`, `trump` (and a `bid` with `play: true`), `trick` and
 `handEnd`. A pause ends with the event that follows it (`turned` opens the
@@ -489,13 +570,24 @@ opens the turn (utrechts after the deal; voorhand's first lead after trump).
 ### Limits
 
 WebSocket messages ≤ 4 KiB; per connection ≤ 20 messages/s (excess:
-disconnect); chat ≤ 200 characters, 1 per second with burst 5; names 1–20
-characters, control characters stripped, trimmed (empty → "Speler"); room
-creation ≤ 20 per 10 minutes per client IP (`X-Real-IP` from nginx, else remote
-address; over the limit, or `MaxRooms` reached: error `te-veel-spellen`); ≤ 16
-websocket connections per IP (more: HTTP 429 before the upgrade). Chat over the
-limit: error `limiet`; over the message rate: error `limiet`, then the server
-closes the connection (status 1008). WebSocket `Origin` must match
+disconnect) and ≤ 1 `join` per second (burst 3; more: error `limiet`); chat
+≤ 200 characters, 1 per second with burst 5; names 1–20 characters (nothing
+visible → "Speler") and never with "(AI)" in them, in any spelling (case, full
+width, look-alike letters or brackets, spaces or invisible characters in
+between): only bots carry it. Names and chat lose control and format
+characters (bidi controls, zero-width spaces, soft hyphens, tag characters; a
+zero-width joiner stays between visible characters, as in 👩‍🏫), blank fillers
+(Hangul fillers, the empty Braille pattern) count as spaces, runs of whitespace
+become one space, trimmed, and a character keeps at most 3 combining marks; a
+chat line with nothing visible is dropped. Room creation ≤ 20 per 10 minutes
+and ≤ 10 live rooms per client IP (`X-Real-IP` from nginx, else remote address;
+over a limit, or `MaxRooms` reached with no idle room to replace: error
+`te-veel-spellen`); ≤ 16 websocket connections per IP (more: HTTP 429 before
+the upgrade). Failed joins (`onbekend`, `vol`, `gestart`) ≤ 10 per minute per
+IP; then joins from that IP get `limiet` for 5 minutes, except a `join` with a
+valid seat token (room codes cannot be guessed). Chat over the limit: error
+`limiet`; over the message rate: error `limiet`, then the server closes the
+connection (status 1008). WebSocket `Origin` must match
 the Host (coder/websocket default) or an `-origin` pattern. Server pings every
 25 s (nginx and NPM time out idle proxied connections at 60 s).
 
@@ -519,9 +611,10 @@ rotates so `you` is at the bottom.
 | `trump` | `suit` | Your turn, phase `trump` |
 | `bid` | `play` bool | Your turn, phase `bid` |
 | `play` | `card` | Your turn, phase `play` |
-| `ready` | | Phase `handEnd`: continue now |
+| `ready` | | Phase `handEnd`: continue now (ignored once the next hand is dealt: a late tap on the summary) |
 | `chat` | `text` | Any time |
 | `rematch` | | Host, phase `gameOver`: new match, same seats and options |
+| `lobby` | | Host, phase `gameOver`, not training: back to the lobby, same code and options (§6) |
 | `leave` | | Leave the room |
 | `ping` | | Keepalive (server answers `pong`) |
 
@@ -533,15 +626,17 @@ rotates so `you` is at the bottom.
 | `update` | `seq`, `ev` (event or null), `s` (full state for you) |
 | `chat` | `msg`: `{seat, name, text, ts, bot, sys}` (`sys`: system line, seat -1) |
 | `chatlog` | `msgs`: last 50, sent after `joined` |
-| `tip` | `text` (training: explanation after a trick, Dutch) |
+| `tip` | `text` (training: explanation after a trick, Dutch; when you played another card than the hint, it ends with the advised card and why: "Juf Ans had ♣9 aangeraden: …") |
+| `refused` | `name`: to the host only, someone could not join because the table is full (§6); no state change, so no `update` |
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
 
 Error codes: `onbekend` (no such room, or no longer in it: room removed, seat
-taken over by another window), `vol`, `gestart`, `geen-host`,
-`niet-jouw-beurt`, `ongeldig` (bad card/suit/fields; `msg` from
-`ExplainIllegal` for cards), `limiet` (rate limit), `te-veel-spellen`, `herstart`
-(server restarting; client reconnects after a delay).
+taken over by another window, or taken back by name on another device), `vol`,
+`gestart`, `geen-host`, `niet-jouw-beurt`, `ongeldig` (bad card/suit/fields;
+`msg` from `ExplainIllegal` for cards), `limiet` (rate limit, also for joins
+after too many failed ones), `te-veel-spellen`, `herstart` (server restarting;
+client reconnects after a delay).
 
 Every state change is one `update`: the client queues updates, animates `ev`
 from its previous state to `s`, then renders `s`. A resync (join, reconnect)
@@ -595,7 +690,7 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
                 "points":[70,92], "roem":[0,20], "score":[70,112], "nat":false, "pit":false } ],
   "total": [ 418, 391 ],
   "prevHand": { "tricks":[ /* 8 completed tricks */ ], "result": { /* HandResult */ } }, // after a hand ends, until the next hand ends
-  "nextAt": 0,                     // handEnd: unix ms of auto-continue
+  "nextAt": 0,                     // handEnd: unix ms of auto-continue (0 in training: waits for ready)
   "hint": null,                    // training, your turn: {"card":"AH"} | {"suit":"H"} | {"play":true}, plus "text"
   "hands4": null,                  // training with open: all four hands [[...],...]
   "winner": -1                     // gameOver
@@ -625,10 +720,19 @@ Every key above is always present, except `roster` (lobby only) and `legal` and
 
 - **Aas voorspelen**: lead an ace of a side suit to take its points safely.
 - **Kleintje boer**: leading a small card (7, 8, 9) of a side suit signals "ik heb de
-  troefboer"; partner wins and returns trump.
+  troefboer"; partner wins and returns trump. It is given by the trump maker
+  on its first lead (in utrechts the opening lead of the hand; bots as maker
+  give it only then, with the boer and at most one other trump, no nel), or by
+  the maker's partner on its first lead, while the boer is still out. Bots of
+  the playing team do not lead such a card without the boer when they have
+  another sensible lead, so they read it as a promise.
 - **Boer over boer**: leading a side-suit boer while holding the trump boer.
+  Bots do not read it; hints name it, and say when a side-boer lead of the
+  playing team is none.
 - **Hoog/laag bijspelen**: discarding a 10 or picture card says "ik heb weinig in
-  deze kleur"; a small card asks for that suit.
+  deze kleur"; a small card asks for that suit. Bots do not read it; a hint
+  names it for a high discard that tells the truth (at most one other card
+  of the suit left, not its ace).
 - **Tegenkleur seinen**: discarding a suit to ask for the suit of the other colour of
   the same shade (harten ↔ ruiten, klaveren ↔ schoppen).
 - **Smeren**: give points (10, aas) to a trick your partner is sure to win.
@@ -640,10 +744,31 @@ Vanilla ES modules, no framework, no build step, no inline `<script>`/`<style>`
 and no `style="…"` attributes or `setAttribute('style')` (CSP `style-src
 'self'`; setting `el.style.x` from JS is fine). Build DOM with
 `document.createElement`/`textContent`; never `innerHTML` with user or server
-text. At most 16 requests per page load in total, the websocket included (NPM
-allows bursts of 20 per address): html, 3 css, favicon, manifest, ≤ 6 app
-modules, cards.js, sound.js, manual.js. No service worker. System font stack.
+text. At most 17 requests per page load in total, the websocket included
+(NPM's rate limit for the name is in shrek-infra, `docs/services/klaverjas.md`):
+html, 3 css, favicon, manifest, one PNG icon (Chrome's install check),
+≤ 6 app modules, cards.js, sound.js, manual.js, the websocket. No service worker. System font stack.
 `localStorage` access wrapped in try/catch (keys prefixed `kj.`).
+Icons: `favicon.svg` (tab; manifest `any`), `icon-192.png` and `icon-512.png`
+(manifest `any`, rendered from favicon.svg), and from the full-bleed
+`icon-full.svg` (felt to every edge, artwork inside the central 80% circle)
+the opaque `apple-touch-icon.png` (180 px; iOS fills transparency black and
+also asks for this path by itself) and `icon-maskable-512.png` (manifest
+`maskable`). The PNGs are rendered once with `rsvg-convert` (commands in
+icon-full.svg) and committed; `test/ui/app-icons.test.mjs` checks them.
+Link preview: `index.html` has Open Graph tags (`og:title`, `og:description`,
+`og:image` and its size and alt text, `og:locale` `nl_NL`; no `og:url`, since
+the same file serves `/` and every `/ABCD`). `og:image` must be absolute:
+the file says `https://@SITE@/og.png` and the web image build fills in the
+host name (the dev server keeps the placeholder). `og.png` is an opaque
+1200×630 PNG under 300 KB (WhatsApp skips larger ones) of the felt, the
+clover and a fan of real card faces, rendered by `test/ui/og-image.mjs` and
+committed. Browsers never fetch it, so the request budget is unchanged.
+WhatsApp and iMessage build the preview on the sender's phone; iMessage's
+fetcher calls itself `facebookexternalhit`, which NPM's bot filter refuses
+outside the house, so its previews show the image only for a sender at home.
+Server-side previewers (Telegram, Slack, Discord) fetch from datacenter
+addresses that shrek's firewall drops.
 
 ### Module contracts shared between agents
 
@@ -677,44 +802,91 @@ export const sound = {
 export const SECTIONS = [ {id:'bediening',title:'Bediening'}, {id:'regels',title:'Spelregels'},
   {id:'punten',title:'Kaartwaarden'}, {id:'roem',title:'Roem'}, {id:'seinen',title:'Seinen & voorkaarten'},
   {id:'tips',title:'Tips'}, {id:'woorden',title:'Woordenlijst'} ];
-export function renderManual(sectionId) // → HTMLElement with that section's content (uses cards.js for illustrations)
+export function renderManual(sectionId, opts = {}) // → HTMLElement with that section's content (uses cards.js for illustrations);
+                                                  // opts.icon(name) (util.icon) puts the buttons' pictograms in the Bediening chips
 // Styles for the manual content live in web/css/manual.css (classes prefixed man-).
 ```
 
 ### Screens and flows (minimal clicks)
 
 - **Home**: name field (remembered; asked once), and big buttons: *Snel spelen*
-  (one tap: solo vs 3 bots, starts immediately), *Nieuw spel* (options sheet with
-  defaults → *Maak spel*), *Meedoen* (4-letter code field; joins as soon as 4
-  letters are typed), *Oefenen* (training), *Handleiding*. Opening a join link
-  `/ABCD` goes straight to joining (asks only for a name if none is stored).
+  (one tap: solo vs 3 bots, starts immediately, straight from home to the table
+  without showing the lobby; it uses the options last chosen for a new game,
+  named under the button when they differ from the defaults), *Nieuw spel*
+  (options sheet with defaults → *Maak spel*), *Meedoen* (4-letter code field;
+  joins as soon as 4 letters are typed), *Oefenen* (training), *Handleiding*.
+  Opening a join link `/ABCD` goes straight to joining (asks only for a name if
+  none is stored). Enter (the keyboard's go key) in the name field joins that
+  invite, or the code typed before the name was asked for.
 - **Lobby**: big code + *Kopieer link* + *Delen* (`navigator.share` where
-  available); a mini table with the four seats (teams visible); tap an empty seat to
+  available; when copying fails the link is shown in a field to copy by hand);
+  a mini table with the four seats (teams visible); tap an empty seat to
   sit there; host taps an empty seat to add a bot (choose a character or random),
-  ✕ to remove one; host edits options; *Start*.
+  ✕ to remove one; host edits options; *Start* (ignores taps for 0.8 s after
+  the lobby first shows, so a double tap on *Maak spel* cannot start the game
+  before friends can join). The hint under the code says when every seat for
+  a human is taken ("Zet Spelers hoger als er nog iemand mee wil doen."). A
+  `refused` gives the host a toast "… wil meedoen, maar de tafel is vol" with
+  what to do (*Zet Spelers op 3*; after game over *Spelers of regels
+  wijzigen*). A joiner turned away with `vol` or `gestart` lands on home with
+  the code back in the *Meedoen* field, so trying again is one tap.
 - **Table**: you at the bottom with your hand as a fan; partner on top, opponents
   left/right with card backs and names; dealer chip; turn glow; trump indicator;
   score bar *Wij – Zij* with names; potje n/16; buttons for chat (with unread
-  badge), score sheet, last trick, help, settings, sound.
+  badge), score sheet, last trick, help, settings, sound. Where a name must
+  shorten (lobby seat, score bar, *Laatste slag*), only the name does: its
+  "(AI)" stays readable ("Kees de Vi… (AI)"). The trump badge's details show
+  what the badge shows, also during the trump banner.
   Playing: on fine pointers one click plays a legal card; on touch the first tap
   lifts the card and a second tap (or swipe up) plays it (setting: one tap /
-  two taps). Illegal cards are dimmed; tapping one shows `ExplainIllegal`-style
-  text (the client may derive it from `rule`). Keyboard: ←/→ select, Enter plays.
-  Trump choice: four big suit buttons (forced: turned suit disabled). Bidding:
-  *Spelen* / *Passen*.
+  two taps); the prompt then says so ("Tik nog eens om ♠A te spelen"), and the
+  only legal card plays on the first tap. Illegal cards are dimmed; tapping one
+  shows `ExplainIllegal`-style text (the client may derive it from `rule`); a
+  tap during a pause (`turn` -1) says to wait. Keyboard: ←/→ select, Enter
+  plays; the trump/bid panel and the hand summary focus their main button on
+  fine pointers, and dialogs keep Tab inside. Trump choice: four big suit
+  buttons (forced: turned suit disabled). Bidding: *Spelen* / *Passen*.
+- **Back button**: every closable overlay (dialog, chat drawer) has a history
+  entry, so back (the Android gesture) closes the top one; at a table one more
+  entry makes back ask *Spel verlaten?* instead of leaving the page.
+- **Connection**: a `play`, `trump` or `bid` without any answer within 4 s
+  means a dead socket: the client reconnects. Every rejoin drops what was sent
+  but unanswered and renders purely from the resync. A tab in the background
+  still sounds the turn and shows "● Jouw beurt" in its title. Leaving while
+  offline sends `join` (with the seat token) + `leave` over a short-lived
+  connection of its own once the network is back. Without `localStorage` the
+  name and seat tokens live in memory for the life of the page.
+- **Game over**: final score with the team names; the host gets *Nog een
+  partij* (`rematch`) and, outside training, *Spelers of regels wijzigen*
+  (`lobby`: back to *Klaarzetten* under the same code, where the start guard
+  runs again); everyone gets *Scorebord* and *Naar start*.
 - **Feedback**: card fly-in animations, winner highlight, trick collection
   toward the winner, roem burst, trump banner, speech bubbles for bids and bot
   chat, nat/pit splash, animated score count-up, confetti on winning; short
   waits so every move can be followed; `prefers-reduced-motion` shortens all.
 - **Score sheet**: per hand: trump suit, who played (marker), points+roem per
-  team, nat (red) / pit (gold), running totals.
+  team, nat (red) / pit (gold), running totals ("stand" under each hand).
+  Team names keep "(AI)", one name per line.
 - **Review**: *Laatste slag* shows the previous trick at the seats with winner,
-  points and roem; the hand summary (and the score sheet for the previous hand)
-  shows all 8 tricks of the finished hand.
+  points and roem; the hand summary (and the score sheet for the previous hand,
+  which stays open while updates arrive) shows all 8 tricks of the finished
+  hand in play order, each card underlined in its team's colour; tapping a
+  trick shows it at the seats like *Laatste slag*.
 - **Chat**: drawer (side panel on wide screens), quick reactions (👍 😂 😱 "Mooi!"
-  "Nat!" "Goed gespeeld"), bot lines, system lines, unread badge.
+  "Nat!" "Goed gespeeld"), bot lines, system lines, unread badge (counts what
+  people write; system lines and bot chatter, shown as speech bubbles, do not).
+  Speech bubbles stay behind the cards of the trick and never overlap each
+  other: a chat line in the way of another bubble waits for room (dropped
+  after 6 s; it is in the chat log), while a bid (*Ik speel!*, *Pas*) shows at
+  once and ends a chat bubble in its way.
 - **Training**: tip bubble with the hint text and a glow on the advised card;
-  tips after each trick (`tip`); optional open cards; Juf Ans as partner.
+  for the trump or bid choice the hint is inside the panel (in short landscape
+  the bubble sits beside it); ✕ closes a hint until the next one; tips after
+  each trick (`tip`), shown until you play your next card; optional open
+  cards; Juf Ans as partner; the hand summary has no countdown ring (`nextAt`
+  0) and waits for *Volgend potje*. In short landscape the bubble sits in the
+  top-left corner and never covers the left seat (who plays after you): a
+  long text shows the lines that fit and *Lees verder* (then *Minder*).
 - **Help**: the manual (SECTIONS) in a modal, plus `title` tooltips and small ⓘ
   explanations on UI elements.
 - **Responsive**: phones portrait (360×640 up) and landscape (≥ 640×360),
@@ -724,30 +896,47 @@ export function renderManual(sectionId) // → HTMLElement with that section's c
 
 ## 10. Deployment
 
-- `Containerfile` stages: `build` (golang:1.27-alpine: `go vet`, `go test -short
-  ./...`, static build with `-trimpath -ldflags "-s -w -X main.version=$GIT_SHA"`),
-  `server` (`FROM scratch`, binary + CA-less, `USER 65532:65532`), `web`
-  (`nginxinc/nginx-unprivileged:1.31-alpine`, `deploy/nginx.conf`, `web/`).
+- `Containerfile` stages: `build` (the official golang Alpine image: `go vet`,
+  `go test -short ./...`, static build with `-trimpath -ldflags "-s -w -X
+  main.version=$GIT_SHA"`), `server` (`FROM scratch`, binary + CA-less, `USER
+  65532:65532`), `web` (`nginxinc/nginx-unprivileged`, Alpine, `deploy/nginx.conf`,
+  `web/`). The base tags (minor versions) live only in the `Containerfile`;
+  `scripts/go` and `scripts/dev-server` read the build image from its `FROM … AS
+  build` line, and `make image` builds with `--pull=newer`, so a fix re-published
+  under the same tag reaches the next deploy. The `web-conf` stage renders
+  `@SITE@` into `nginx.conf` (checked with `nginx -t`) and into `index.html`
+  (`og:image`), which the `web` stage copies over the one from `web/`.
 - `deploy/nginx.conf`: listen 8080; `/ws` → `http://127.0.0.1:8081` with Upgrade
   headers and long read timeout; `/api/` → same; `location ~ "^/[A-Za-z]{4}$"` →
   `/index.html`; security headers in one place (CSP `default-src 'self';
   connect-src 'self' wss://@SITE@; img-src 'self' data:; style-src 'self';
   script-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self';
   object-src 'none'; form-action 'none'`, nosniff, Referrer-Policy,
-  Permissions-Policy, COOP); `Cache-Control: no-cache` for html/js/css (ETag
-  revalidation) so a deploy is picked up at once; gzip; `X-Real-IP` forwarding:
+  Permissions-Policy, COOP, HSTS `max-age=31536000; includeSubDomains`), each sent
+  once on every path (`scripts/pod-check`); `Cache-Control: no-cache` for html/js/css (ETag
+  revalidation) so a deploy is picked up at once, a day for images, but never
+  for a 404, which is `text/html` whatever the path's extension; gzip; `X-Real-IP` forwarding:
   NPM's `X-Real-IP` is trusted from `127.0.0.1` only and passed on as the one
   client address (`X-Forwarded-For` is dropped); `Host` is passed unchanged
   (`$http_host`), which the websocket Origin check compares against.
 - Quadlets rendered by `make install` into `~/.config/containers/systemd/`:
   `klaverjas.pod` (`PublishPort=127.0.0.1:8093:8080`; `Network=pasta:--host-lo-to-ns-lo`,
   so NPM's connections arrive from `127.0.0.1` instead of the host's LAN
-  address), `klaverjas-web.container`,
+  address; `ExitPolicy=continue`, so both containers dying at once does not
+  stop the pod for good), `klaverjas-web.container`,
   `klaverjas-server.container` (`Pod=klaverjas.pod`, `Pull=never`, `ReadOnly`,
   `NoNewPrivileges`, `DropCapability=ALL`, health checks).
-- `Makefile` like `/storage/CLIC/ISMS/Makefile`: `help test image install deploy
-  status logs uninstall dev`, settings `SITE ?= klaverjas.kroes.dev`,
-  `ADDR ?= 127.0.0.1:8093`.
-- NPM proxy host (manual, by the admin): `klaverjas.kroes.dev` → `http://127.0.0.1:8093`,
-  wildcard certificate, Force SSL, HTTP/2, Block Common Exploits, **Websockets
-  Support ON**, no access list; HSTS in Advanced (`deploy/npm-advanced.conf`).
+- `Makefile` like `/storage/CLIC/ISMS/Makefile`: `help test test-all e2e dev
+  dev-stop image install deploy check status logs uninstall quadlet`, settings
+  `SITE ?= klaverjas.kroes.dev`, `ADDR ?= 127.0.0.1:8093`. The revision
+  (`GIT_SHA`, the image label and `/api/health`'s version) is `HEAD`, with
+  `-dirty` when `git status` lists anything; each build tags both images
+  `<GIT_SHA>-YYYYmmdd-HHMMSS`, and only `make deploy` then moves `:current`
+  (what the units run) to it, so `make image` alone never changes what a
+  restart starts. `make deploy` refuses a dirty tree unless `ALLOW_DIRTY=1`,
+  and ends with `make check`.
+- NPM proxy host (made by hand; it exists, ID 37): `klaverjas.kroes.dev` →
+  `http://127.0.0.1:8093`, wildcard certificate, Force SSL, Block Common
+  Exploits, **Websockets Support ON**, no access list, HTTP/2 off (either
+  works); Advanced empty and NPM's HSTS box off, since HSTS comes from
+  `deploy/nginx.conf` (recorded in `deploy/npm-advanced.conf`).

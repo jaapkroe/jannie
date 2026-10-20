@@ -1,7 +1,10 @@
-// Shared helpers for the app browser checks (app-screens.mjs, app-play.mjs):
-// connect to scripts/chrome, open isolated pages per viewport, collect
-// errors, tap like a finger or click like a mouse, and save screenshots.
+// Shared helpers for the app browser checks (app-screens.mjs, app-play.mjs,
+// app-checks.mjs): connect to scripts/chrome, give every page an address of
+// its own, open isolated pages per viewport, collect errors, tap like a
+// finger or click like a mouse, and save screenshots.
 import fs from 'node:fs';
+import http from 'node:http';
+import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
@@ -29,6 +32,57 @@ export function args() {
     dpr: Number(get('dpr', 0)),
     has: name => a.includes('--' + name),
   };
+}
+
+// The server limits rooms and connections per client address (X-Real-IP,
+// trusted as from nginx). Pages reach it through addressProxy, which sets
+// X-Real-IP from the browser context's "kjip" cookie (ownAddress), so each
+// context counts as an address of its own and a long run does not trip the
+// limits. Extra HTTP headers would not do: Chromium leaves them off the
+// websocket handshake. Host and Origin pass unchanged, so the server's
+// same-origin check holds.
+let ipN = 0;
+const run0 = Math.floor(Math.random() * 250);
+export const nextIP = () => `10.${77 + Math.floor(ipN / 250)}.${run0}.${(ipN++ % 250) + 1}`;
+
+export async function addressProxy(target) {
+  const t = new URL(target);
+  const realIP = req => /(?:^|;\s*)kjip=([\d.]+)/.exec(req.headers.cookie || '')?.[1] || req.headers['x-real-ip'] || '';
+  const headers = req => {
+    const out = [];
+    for (let i = 0; i < req.rawHeaders.length; i += 2) {
+      if (req.rawHeaders[i].toLowerCase() !== 'x-real-ip') out.push([req.rawHeaders[i], req.rawHeaders[i + 1]]);
+    }
+    const ip = realIP(req);
+    if (ip) out.push(['X-Real-IP', ip]);
+    return out;
+  };
+  const srv = http.createServer((req, res) => {
+    const up = http.request({ host: t.hostname, port: t.port, path: req.url, method: req.method, headers: Object.fromEntries(headers(req)) }, r => {
+      res.writeHead(r.statusCode, r.headers);
+      r.pipe(res);
+    });
+    up.on('error', () => res.destroy());
+    req.pipe(up);
+  });
+  srv.on('upgrade', (req, sock, head) => {
+    const up = net.connect(Number(t.port), t.hostname, () => {
+      up.write(`${req.method} ${req.url} HTTP/1.1\r\n${headers(req).map(([k, v]) => `${k}: ${v}`).join('\r\n')}\r\n\r\n`);
+      if (head?.length) up.write(head);
+      up.pipe(sock);
+      sock.pipe(up);
+    });
+    up.on('error', () => sock.destroy());
+    sock.on('error', () => up.destroy());
+  });
+  await new Promise(ok => srv.listen(0, '127.0.0.1', ok));
+  return { url: `http://127.0.0.1:${srv.address().port}`, close: () => srv.close() };
+}
+
+// Gives the page's browser context an address of its own behind base (an
+// addressProxy URL).
+export async function ownAddress(P, base) {
+  await P.page.setCookie({ name: 'kjip', value: nextIP(), url: base });
 }
 
 export async function connect(cdp) {

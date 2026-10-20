@@ -82,7 +82,7 @@ team does not get more than half of points plus roem, with 0 for them and
 162 + all roem for the others; otherwise each team scores points + roem; pit
 only with all eight tricks; the eight tricks hold the 32 different cards and
 their points match the result; the last score row is this hand; `nextAt` is
-set.
+set (0 in training, where the summary waits for *ready*).
 
 At game over: exactly `--hands` hands were played (and seen), the totals and
 the winner agree, and in training a tip arrived after every trick.

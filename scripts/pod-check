@@ -1,0 +1,66 @@
+#!/bin/sh
+# Checks a running pod from the host, without NPM: the page, a join link, a
+# 404, the server through nginx, the websocket upgrade and its Origin check, the
+# link preview (og:image for SITE, the image itself), and that every kind of path
+# carries each security header exactly once (a location with an add_header of
+# its own would drop them all; see deploy/nginx.conf).
+#   scripts/pod-check [127.0.0.1:8093 [klaverjas.kroes.dev]]   `make check`; `make deploy` runs it too
+# Prints the failures and a summary; exits 1 if anything failed.
+set -u
+addr=${1:-127.0.0.1:8093}
+site=${2:-klaverjas.kroes.dev}
+base=http://$addr
+n=0 failed=0
+
+expect() { # what, wanted, got
+  n=$((n + 1))
+  [ "$2" = "$3" ] && return 0
+  failed=$((failed + 1))
+  echo "FAIL  $1: expected '$2', got '${3:-nothing}'" >&2
+}
+code() { curl -s -o /dev/null -w '%{http_code}' --max-time 5 "$@"; }
+# Status and type together: nginx types even a 404 by the path's extension
+# unless told otherwise, so a type alone proves nothing.
+typed() { curl -s -o /dev/null -w '%{http_code} %{content_type}' --max-time 5 "$base$1"; }
+# The status of a websocket upgrade from Origin $1. The connection stays open
+# on success, so curl gives up after a second; the status line is in by then.
+upgrade() {
+  curl -si --max-time 1 "$base/ws" -H "Origin: $1" -H 'Connection: Upgrade' \
+    -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+    -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' 2>/dev/null | sed -n '1s/^HTTP\/[0-9.]* \([0-9]*\).*/\1/p'
+}
+
+if [ "$(code "$base/")" = 000 ]; then
+  echo "pod-check: nothing answers on $base" >&2
+  exit 1
+fi
+expect "/api/health through nginx" 200 "$(code "$base/api/health")"
+expect "/ status" 200 "$(code "$base/")"
+expect "/ title" '<title>Klaverjas</title>' "$(curl -s --max-time 5 "$base/" | grep -o '<title>[^<]*</title>')"
+expect "join link /KQXB status" 200 "$(code "$base/KQXB")"
+expect "/bestaat-niet status" 404 "$(code "$base/bestaat-niet")"
+expect "/bestaat-niet.png, a 404 page" '404 text/html; charset=utf-8' "$(typed /bestaat-niet.png)"
+expect "og:image of the link preview" "https://$site/og.png" \
+  "$(curl -s --max-time 5 "$base/KQXB" | sed -n 's/.*<meta property="og:image" content="\([^"]*\)">.*/\1/p')"
+expect "/og.png" '200 image/png' "$(typed /og.png)"
+expect "/apple-touch-icon.png" '200 image/png' "$(typed /apple-touch-icon.png)"
+expect "websocket from the page's own origin" 101 "$(upgrade "$base")"
+expect "websocket from another site" 403 "$(upgrade https://example.com)"
+
+for path in / /KQXB /js/main.js /favicon.svg /api/health /bestaat-niet; do
+  headers=$(curl -s -D - -o /dev/null --max-time 5 "$base$path" | tr -d '\r')
+  for h in Content-Security-Policy Strict-Transport-Security X-Content-Type-Options \
+           Referrer-Policy Permissions-Policy Cross-Origin-Opener-Policy; do
+    expect "$h on $path, times sent" 1 "$(printf '%s\n' "$headers" | grep -ci "^$h:")"
+  done
+done
+cache() { curl -s -D - -o /dev/null --max-time 5 "$base$1" | tr -d '\r' | sed -n 's/^[Cc]ache-[Cc]ontrol: //p'; }
+expect "Cache-Control on /js/main.js" no-cache "$(cache /js/main.js)"
+expect "Cache-Control on /favicon.svg" "public, max-age=86400" "$(cache /favicon.svg)"
+expect "Cache-Control on /bestaat-niet.png" no-cache "$(cache /bestaat-niet.png)"
+
+if [ "$failed" -gt 0 ]; then
+  echo "pod-check: $failed of $n checks failed on $base" >&2
+  exit 1
+fi
+echo "pod-check: all $n checks passed on $base"

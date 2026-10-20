@@ -586,7 +586,15 @@ function onMessage(ws, m) {
       if (r.phase === 'lobby') {
         const humans = r.players.filter(p => p && !p.bot).length;
         const free = r.players.findIndex(p => !p);
-        if (humans >= r.opts.humans || free < 0) return err('vol', 'Deze tafel is vol.');
+        if (humans >= r.opts.humans || free < 0) {
+          // As the server: the host hears of it (without its rate limit).
+          sys(r, `${String(m.name || 'Speler').slice(0, 20)} wilde aanschuiven, maar de tafel is vol.`);
+          const host = r.players[r.host];
+          if (host?.ws && host.connected) send(host.ws, { t: 'refused', name: String(m.name || 'Speler').slice(0, 20) });
+          return err('vol', humans < r.opts.humans ? 'Deze tafel is vol. Vraag de host om een AI-speler weg te halen en probeer het dan opnieuw.'
+            : r.opts.humans >= 4 ? 'Deze tafel is vol: alle vier de plaatsen zijn bezet.'
+              : 'Deze tafel is vol: alle plaatsen voor spelers zijn bezet. Vraag de host om bij Spelers een plaats vrij te maken en probeer het dan opnieuw.');
+        }
         seatHuman(ws, r, free, m.name);
         broadcast(r, { type: 'join', seat: free });
         sys(r, `${r.players[free].name} schuift aan.`);

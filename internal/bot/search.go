@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"math"
 	"math/rand/v2"
 	"runtime"
 	"sync"
@@ -122,6 +123,10 @@ type playResult struct {
 	card  game.Card
 	total int64 // summed value over the worlds
 	n     int   // worlds
+	// diffSq[j] sums, over the worlds, the squared difference between this
+	// card's value and that of candidate j (in v.Legal order): every
+	// candidate is played out in the same worlds, see pairSE.
+	diffSq [8]int64
 }
 
 func (r playResult) mean() float64 {
@@ -129,6 +134,29 @@ func (r playResult) mean() float64 {
 		return 0
 	}
 	return float64(r.total) / float64(r.n)
+}
+
+// pairSE is the standard error of res[i].mean() - res[j].mean(), from the
+// paired per-world differences. Pairing removes the luck of the deal that
+// both cards share, so it is much smaller than either mean's own error.
+func pairSE(res []playResult, i, j int) float64 {
+	n := float64(res[i].n)
+	if i == j || n < 2 {
+		return 0
+	}
+	d := float64(res[i].total-res[j].total) / n
+	v := float64(res[i].diffSq[j])/n - d*d
+	return math.Sqrt(max(v, 0) / (n - 1))
+}
+
+// resultIndex returns the index of card c in res, or -1.
+func resultIndex(res []playResult, c game.Card) int {
+	for i, r := range res {
+		if r.card == c {
+			return i
+		}
+	}
+	return -1
 }
 
 // searchPlay evaluates every legal card of v by determinised Monte Carlo:
@@ -146,6 +174,7 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 	ag := [4]float64{0.5, 0.5, 0.5, 0.5}
 	ag[v.Seat] = aggr
 	var sums [chunks][8]int64
+	var sq [chunks][8][8]int64 // sq[ch][i][j], i < j: summed squared differences
 	var counts [chunks]int
 	cfg.runChunks(func(ch int) {
 		n := perChunk(cfg.playWorlds, ch)
@@ -157,6 +186,7 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 		for s := range hands {
 			hands[s] = make([]game.Card, 0, 8)
 		}
+		var vals [8]int64
 		for _, w := range k.worlds(sp, rng, n) {
 			for s := range hands {
 				hands[s] = w[s].appendCards(hands[s][:0])
@@ -169,7 +199,12 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 				s := sim{d: *base, t: *tab}
 				s.play(c)
 				s.run(&ag)
-				sums[ch][i] += int64(s.value(team, aggr))
+				vals[i] = int64(s.value(team, aggr))
+				sums[ch][i] += vals[i]
+				for j := range i {
+					d := vals[j] - vals[i]
+					sq[ch][j][i] += d * d
+				}
 			}
 			counts[ch]++
 		}
@@ -178,20 +213,27 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 		for i := range res {
 			res[i].total += sums[ch][i]
 			res[i].n += counts[ch]
+			for j := range i {
+				res[i].diffSq[j] += sq[ch][j][i]
+				res[j].diffSq[i] += sq[ch][j][i]
+			}
 		}
 	}
 	return res
 }
 
-// bestResult returns the index of the best card; ties go to prefer, then
-// to the earlier card.
-func bestResult(res []playResult, prefer game.Card) int {
+// bestResult returns the index of the best card. Ties go to prefer, then
+// to the cheaper card (see cost): equal totals usually mean equivalent
+// cards, such as ♥7 and ♥8, and the lower one keeps the higher for later.
+func bestResult(res []playResult, prefer game.Card, trump game.Suit) int {
 	best := 0
 	for i := 1; i < len(res); i++ {
+		r, b := res[i], res[best]
 		switch {
-		case res[i].total > res[best].total:
+		case r.total > b.total:
 			best = i
-		case res[i].total == res[best].total && res[i].card == prefer:
+		case r.total < b.total || b.card == prefer:
+		case r.card == prefer || cost(r.card, trump) < cost(b.card, trump):
 			best = i
 		}
 	}

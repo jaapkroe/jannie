@@ -40,14 +40,22 @@ type Server struct {
 	personas []Persona
 
 	// Tunables; tests may change them before use.
-	scale        float64       // multiplier on every game delay
-	idleTimeout  time.Duration // remove a room after this long with no human connected
-	overTimeout  time.Duration // remove a room this long after game over
-	janitorEvery time.Duration
-	msgRate      float64 // messages per second per connection (burst as many)
-	maxPerIP     int     // websocket connections per client address
-	createMax    int     // rooms created per client address per createWindow
-	createWindow time.Duration
+	scale          float64       // multiplier on every game delay
+	idleTimeout    time.Duration // remove a running game after this long with no human connected
+	abandonTimeout time.Duration // the same for a lobby, a finished game or one without human seats
+	overTimeout    time.Duration // remove a room this long after game over
+	evictAfter     time.Duration // at MaxRooms, a room idle this long makes way for a new one
+	janitorEvery   time.Duration
+	msgRate        float64 // messages per second per connection (burst as many)
+	joinRate       float64 // joins per second per connection (burst joinBurst)
+	joinBurst      float64
+	maxPerIP       int // websocket connections per client address
+	createMax      int // rooms created per client address per createWindow
+	createWindow   time.Duration
+	liveMax        int // live rooms created per client address
+	joinFailMax    int // failed joins per client address per joinFailWindow ...
+	joinFailWindow time.Duration
+	joinBlock      time.Duration // ... before its joins are refused this long
 
 	ctx    context.Context // cancelled at shutdown
 	cancel context.CancelFunc
@@ -59,6 +67,8 @@ type Server struct {
 	clients  map[*client]struct{}
 	ipConns  map[string]int
 	creates  map[string][]time.Time
+	live     map[string]int         // registered rooms per creator address
+	joins    map[string]*joinRecord // failed joins per client address
 	janitorO sync.Once
 
 	players atomic.Int64 // humans connected to a room seat
@@ -81,23 +91,33 @@ func New(cfg Config) *Server {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Server{
-		cfg:          cfg,
-		log:          log,
-		personas:     cfg.AI.Personas(),
-		scale:        1,
-		idleTimeout:  30 * time.Minute,
-		overTimeout:  30 * time.Minute,
-		janitorEvery: time.Minute,
-		msgRate:      20,
-		maxPerIP:     16,
-		createMax:    20,
-		createWindow: 10 * time.Minute,
-		ctx:          ctx,
-		cancel:       cancel,
-		rooms:        make(map[string]*room),
-		clients:      make(map[*client]struct{}),
-		ipConns:      make(map[string]int),
-		creates:      make(map[string][]time.Time),
+		cfg:            cfg,
+		log:            log,
+		personas:       cfg.AI.Personas(),
+		scale:          1,
+		idleTimeout:    30 * time.Minute,
+		abandonTimeout: 5 * time.Minute,
+		overTimeout:    30 * time.Minute,
+		evictAfter:     2 * time.Minute,
+		janitorEvery:   time.Minute,
+		msgRate:        20,
+		joinRate:       1,
+		joinBurst:      3,
+		maxPerIP:       16,
+		createMax:      20,
+		createWindow:   10 * time.Minute,
+		liveMax:        10,
+		joinFailMax:    10,
+		joinFailWindow: time.Minute,
+		joinBlock:      5 * time.Minute,
+		ctx:            ctx,
+		cancel:         cancel,
+		rooms:          make(map[string]*room),
+		clients:        make(map[*client]struct{}),
+		ipConns:        make(map[string]int),
+		creates:        make(map[string][]time.Time),
+		live:           make(map[string]int),
+		joins:          make(map[string]*joinRecord),
 	}
 	if cfg.Fast {
 		s.scale = 0.05
@@ -229,6 +249,10 @@ func (s *Server) dispatch(c *client, m *inMsg) {
 	case "create":
 		s.create(c, m)
 	case "join":
+		if !c.joinBucket.take(time.Now()) {
+			c.sendError(errLimit, "Even rustig aan: probeer het over een paar seconden opnieuw.")
+			return
+		}
 		s.join(c, m)
 	default:
 		r := c.getRoom()
@@ -255,14 +279,14 @@ func (s *Server) create(c *client, m *inMsg) {
 	now := time.Now()
 	ip := c.ip
 	s.mu.Lock()
-	switch {
-	case s.closing:
+	if s.closing {
 		s.mu.Unlock()
 		c.sendError(errRestarting, msgRestarting)
 		return
-	case len(s.rooms) >= s.cfg.MaxRooms:
+	}
+	if s.live[ip] >= s.liveMax {
 		s.mu.Unlock()
-		c.sendError(errTooMany, "Er worden nu te veel spellen tegelijk gespeeld. Probeer het over een paar minuten opnieuw.")
+		c.sendError(errTooMany, "Vanaf jouw adres zijn al te veel spellen open. Probeer het over een paar minuten opnieuw.")
 		return
 	}
 	recent := pruneTimes(s.creates[ip], now.Add(-s.createWindow))
@@ -272,12 +296,27 @@ func (s *Server) create(c *client, m *inMsg) {
 		c.sendError(errTooMany, "Je hebt in korte tijd te veel spellen gemaakt. Probeer het over een paar minuten opnieuw.")
 		return
 	}
+	var evicted *room
+	if len(s.rooms) >= s.cfg.MaxRooms {
+		// Full: the room nobody has been in for longest makes way.
+		if evicted = s.idlestLocked(now); evicted == nil {
+			s.mu.Unlock()
+			c.sendError(errTooMany, "Er worden nu te veel spellen tegelijk gespeeld. Probeer het over een paar minuten opnieuw.")
+			return
+		}
+		s.unregisterLocked(evicted)
+	}
 	s.creates[ip] = append(recent, now)
 	code := s.newCode()
 	r := newRoom(s, code)
+	r.creator = ip
 	s.rooms[code] = r
+	s.live[ip]++
 	s.mu.Unlock()
 
+	if evicted != nil {
+		evicted.post(func() { evicted.close("plaats gemaakt") })
+	}
 	go r.loop()
 	s.switchRoom(c, r)
 	c.setRoom(r)
@@ -292,27 +331,79 @@ func (s *Server) join(c *client, m *inMsg) {
 	s.mu.Lock()
 	r := s.rooms[code]
 	closing := s.closing
+	blocked := s.joinBlockedLocked(c.ip, time.Now())
 	s.mu.Unlock()
-	if closing {
+	switch {
+	case closing:
 		c.sendError(errRestarting, msgRestarting)
 		return
-	}
-	if r == nil {
+	case blocked && (r == nil || m.Token == ""):
+		// Only a seat token gets through; the answer tells nothing about the code.
+		c.sendError(errLimit, msgJoinBlocked)
+		return
+	case r == nil:
+		s.joinFailed(c.ip)
 		c.sendError(errUnknown, msgNoRoom)
 		return
 	}
 	s.switchRoom(c, r)
 	c.setRoom(r)
-	if !r.post(func() { r.handleJoin(c, m) }) {
+	if !r.post(func() { r.handleJoin(c, m, blocked) }) {
 		c.leaveRoom(r)
 		c.sendError(errUnknown, msgNoRoom)
 	}
 }
 
 const (
-	msgNoRoom     = "Dit spel bestaat niet (meer). Controleer de code."
-	msgRestarting = "De server wordt herstart. Het lopende spel stopt helaas."
+	msgNoRoom      = "Dit spel bestaat niet (meer). Controleer de code."
+	msgRestarting  = "De server wordt herstart. Het lopende spel stopt helaas."
+	msgJoinBlocked = "Te veel mislukte pogingen om mee te doen. Probeer het over een paar minuten opnieuw."
 )
+
+// joinRecord is the failed joins of one client address.
+type joinRecord struct {
+	fails []time.Time // within joinFailWindow
+	until time.Time   // joins refused until then
+}
+
+// joinFailed counts a refused join (unknown code, full, started) from ip;
+// joinFailMax of them within joinFailWindow block the address's joins for
+// joinBlock, so room codes cannot be guessed.
+func (s *Server) joinFailed(ip string) {
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	j := s.joins[ip]
+	if j == nil {
+		j = &joinRecord{}
+		s.joins[ip] = j
+	}
+	j.fails = append(pruneTimes(j.fails, now.Add(-s.joinFailWindow)), now)
+	if len(j.fails) >= s.joinFailMax {
+		j.fails, j.until = nil, now.Add(s.joinBlock)
+		s.log.Info("joins blocked for an address", "minutes", s.joinBlock.Minutes())
+	}
+}
+
+// joinBlockedLocked reports whether ip may not join now; s.mu must be held.
+func (s *Server) joinBlockedLocked(ip string, now time.Time) bool {
+	j := s.joins[ip]
+	return j != nil && now.Before(j.until)
+}
+
+// idlestLocked returns the registered room that has had no human connected
+// for longest, at least evictAfter, or nil; s.mu must be held.
+func (s *Server) idlestLocked(now time.Time) *room {
+	var best *room
+	var bestAt int64
+	limit := now.Add(-s.evictAfter).UnixNano()
+	for _, r := range s.rooms {
+		if at := r.idle.Load(); at != 0 && at <= limit && (best == nil || at < bestAt) {
+			best, bestAt = r, at
+		}
+	}
+	return best
+}
 
 func pruneTimes(ts []time.Time, after time.Time) []time.Time {
 	i := 0
@@ -348,14 +439,23 @@ func newToken() string {
 // removeRoom forgets r if it is still registered under its code.
 func (s *Server) removeRoom(r *room) {
 	s.mu.Lock()
-	if s.rooms[r.code] == r {
-		delete(s.rooms, r.code)
-	}
+	s.unregisterLocked(r)
 	s.mu.Unlock()
 }
 
+// unregisterLocked forgets r if it is still registered; s.mu must be held.
+func (s *Server) unregisterLocked(r *room) {
+	if s.rooms[r.code] != r {
+		return
+	}
+	delete(s.rooms, r.code)
+	if s.live[r.creator]--; s.live[r.creator] <= 0 {
+		delete(s.live, r.creator)
+	}
+}
+
 // janitor periodically lets every room check whether it should go, and
-// forgets old room-creation timestamps.
+// forgets old room-creation timestamps and failed joins.
 func (s *Server) janitor() {
 	t := time.NewTicker(s.janitorEvery)
 	defer t.Stop()
@@ -374,6 +474,11 @@ func (s *Server) janitor() {
 					delete(s.creates, ip)
 				} else {
 					s.creates[ip] = ts
+				}
+			}
+			for ip, j := range s.joins {
+				if j.fails = pruneTimes(j.fails, now.Add(-s.joinFailWindow)); j.fails == nil && !now.Before(j.until) {
+					delete(s.joins, ip)
 				}
 			}
 			s.mu.Unlock()
@@ -403,6 +508,7 @@ func (s *Server) Shutdown(ctx context.Context) {
 		rooms = append(rooms, r)
 	}
 	s.rooms = make(map[string]*room)
+	s.live = make(map[string]int)
 	s.mu.Unlock()
 
 	for _, r := range rooms {

@@ -4,13 +4,14 @@ import (
 	"math/rand/v2"
 	"strings"
 	"testing"
+	"unicode"
 	"unicode/utf8"
 )
 
 var eventKinds = []string{"greet", "trump", "pass", "play", "wonTrick", "roem", "nat", "natOpp", "pit",
 	"handWon", "handLost", "gameWon", "gameLost", "partnerGood"}
 
-var replyKindNames = []string{"hello", "praise", "gg", "laugh", "help", "nat", "pech", "sorry", "thanks", "bye", "name"}
+var replyKindNames = []string{"hello", "praise", "gg", "laugh", "help", "nat", "nat/maat", "pech", "sorry", "thanks", "bye", "name"}
 
 func TestVoicesComplete(t *testing.T) {
 	for _, p := range roster {
@@ -101,9 +102,15 @@ func TestChatEvents(t *testing.T) {
 				}
 			}
 		}
-		// Mine selects the side: our roem is celebrated, theirs is not.
-		if v := voices[p.ID]; contains(v.lines["roem"], Chat(chatty, ChatEvent{Kind: "roem"}, rng)) {
-			t.Errorf("%s used its own roem line for the opponents' roem", p.ID)
+		// Mine selects the side: our roem is celebrated, theirs is not, and
+		// the other team's trump choice or trick gets the "/opp" lines.
+		v := voices[p.ID]
+		for kind := range sided {
+			for range 30 {
+				if l := Chat(chatty, ChatEvent{Kind: kind, Points: 20}, rng); l != "" && contains(v.lines[kind], l) {
+					t.Errorf("%s used its own %s line %q for the other team", p.ID, kind, l)
+				}
+			}
 		}
 	}
 	if Chat(Persona{ID: "henk"}, ChatEvent{Kind: "pit", Mine: true}, rng) != "" {
@@ -251,5 +258,96 @@ func TestChatReplies(t *testing.T) {
 	}
 	if !mentions(henk, "opa henk, help!") || mentions(henk, "henkie") {
 		t.Error("mentions does not match whole names")
+	}
+}
+
+// TestNatReplyContext: "Nat!" is answered only while a hand is played and
+// the playing team is taunted: the speaker's partner agrees, a bot of the
+// playing team protests. After the hand, or when a player of the playing
+// team says it about their own team, no bot answers.
+func TestNatReplyContext(t *testing.T) {
+	rng := rand.New(rand.NewPCG(67, 68))
+	for _, p := range roster {
+		chatty := p
+		chatty.Chattiness = 1
+		v := voices[p.ID]
+		ask := func(ev ChatEvent) (lines []string) {
+			ev.Kind, ev.Text = "reply", "Nat!"
+			for range 60 {
+				if l := Chat(chatty, ev, rng); l != "" {
+					lines = append(lines, l)
+				}
+			}
+			return lines
+		}
+		for _, c := range []struct {
+			ev   ChatEvent
+			pool string
+		}{
+			{ChatEvent{InHand: true, Playing: true}, "nat"},
+			{ChatEvent{InHand: true, Mine: true}, "nat/maat"},
+		} {
+			got := ask(c.ev)
+			if len(got) == 0 {
+				t.Errorf("%s never answers %+v", p.ID, c.ev)
+			}
+			for _, l := range got {
+				if !contains(v.replies[c.pool], l) {
+					t.Errorf("%s answered %+v with %q, not a %q reply", p.ID, c.ev, l, c.pool)
+				}
+			}
+		}
+		for _, ev := range []ChatEvent{{}, {Mine: true}, {Playing: true}, {InHand: true}, {InHand: true, Mine: true, Playing: true}} {
+			if got := ask(ev); len(got) > 0 {
+				t.Errorf("%s answered %+v with %q", p.ID, ev, got[0])
+			}
+		}
+	}
+}
+
+// TestChatNeutral: lines fit any time of day (ChatEvent has no clock) and
+// both trump modes (in utrechts, the default, nobody can pass), and Bram
+// speaks Dutch first.
+func TestChatNeutral(t *testing.T) {
+	voicesAll := map[string]*voice{"generic": genericVoice}
+	for id, v := range voices {
+		voicesAll[id] = v
+	}
+	for id, v := range voicesAll {
+		for kind, lines := range v.lines {
+			for _, l := range lines {
+				low := strings.ToLower(l)
+				for _, bad := range []string{"goedenavond", "vanavond", "avondje", "een avond", "mooie avond", "heerlijke avond", "welterusten", "slaap lekker", "naar bed"} {
+					if strings.Contains(low, bad) {
+						t.Errorf("%s %s: %q assumes it is evening (%q)", id, kind, l, bad)
+					}
+				}
+				if kind != "pass" && (strings.Contains(low, "passen") || strings.Contains(low, "gepast")) {
+					t.Errorf("%s %s: %q assumes passing exists", id, kind, l)
+				}
+			}
+		}
+		for kind, lines := range v.replies {
+			for _, l := range lines {
+				low := strings.ToLower(l)
+				for _, bad := range []string{"goedenavond", "vanavond", "welterusten", "slaap lekker", "naar bed"} {
+					if strings.Contains(low, bad) {
+						t.Errorf("%s reply %s: %q assumes it is evening (%q)", id, kind, l, bad)
+					}
+				}
+			}
+		}
+	}
+	// Common Dutch youth words (gg, nice, rip, yes) are fine; whole English
+	// phrases are not.
+	english := map[string]bool{"let's": true, "next": true, "time": true, "all": true, "good": true, "bye": true,
+		"thx": true, "easy": true, "nope": true, "damn": true, "ez": true, "np": true, "baby": true}
+	for _, l := range allLines("bram") {
+		words := strings.FieldsFunc(strings.ToLower(l), func(r rune) bool { return !unicode.IsLetter(r) && r != '\'' })
+		for _, w := range words {
+			if english[w] {
+				t.Errorf("Bram line %q is English (%q)", l, w)
+			}
+		}
 	}
 }

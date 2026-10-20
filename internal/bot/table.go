@@ -29,7 +29,8 @@ type table struct {
 	won     [2]int // tricks won per team
 	hasLed  [4]bool
 	// boerSig per team: the seat that signalled holding the trump boer by
-	// leading a small side card (kleintje boer), NoSeat if none.
+	// leading a small side card (kleintje boer, see signalsBoer), NoSeat if
+	// none.
 	boerSig [2]game.Seat
 }
 
@@ -77,15 +78,26 @@ func (t *table) trumpsAbove(h int8) cardSet {
 	return cardSet(above[1][trumpHighToLow[7-h]]) << (uint(t.trump) * 8)
 }
 
+// signalsBoer reports whether seat, leading c to a new trick, says "ik heb
+// de troefboer" (kleintje boer, design §8): a player of the playing team
+// (the maker or its partner) on its first lead, with a 7, 8 or 9 of a side
+// suit while the boer is still out. In gedraaid the maker's first lead need
+// not be the first trick. Bots avoid leading such a card without the boer
+// (see mover.fakeSignal), so they can read it as a promise.
+func (t *table) signalsBoer(seat game.Seat, c game.Card) bool {
+	return t.n == 0 && !t.hasLed[seat] && seat.Team() == t.playing &&
+		c.Suit != t.trump && c.Rank <= game.Nine && !t.played.has(jackOf(t.trump))
+}
+
 // apply records that seat played c.
 func (t *table) apply(seat game.Seat, c game.Card) {
 	trump := t.trump
 	if t.n == 0 {
-		t.leader, t.win, t.best, t.high, t.points = seat, seat, c, -1, 0
-		if !t.hasLed[seat] && seat.Team() == t.playing && seat != t.trumpBy &&
-			c.Suit != trump && c.Rank <= game.Nine && !t.played.has(jackOf(trump)) {
+		// Only one player can hold the boer: the team's first signal counts.
+		if t.signalsBoer(seat, c) && !t.boerSig[seat.Team()].Valid() {
 			t.boerSig[seat.Team()] = seat
 		}
+		t.leader, t.win, t.best, t.high, t.points = seat, seat, c, -1, 0
 		t.hasLed[seat] = true
 	} else {
 		t.infer(seat, c)
@@ -142,8 +154,12 @@ func (t *table) infer(seat game.Seat, c game.Card) {
 		return
 	}
 	switch {
+	case c.Suit != trump && t.rules == game.Rotterdams:
+		*ex |= suitSet(trump) // Rotterdams: a void player with any trump must trump
 	case c.Suit != trump:
 		*ex |= t.trumpsAbove(t.high) // no trump at all if none was in the trick
+	case lowerTrump && t.rules == game.Rotterdams:
+		*ex |= t.trumpsAbove(t.high) // undertrumping is compulsory: side suits stay possible
 	case lowerTrump:
 		*ex |= ^suitSet(trump) | t.trumpsAbove(t.high)
 	}

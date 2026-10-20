@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const manualPath = `${root}web/js/manual.js`;
 const cardsPath = `${root}web/js/cards.js`;
+const homePath = `${root}web/js/home.js`;
 
 // ---- Minimal DOM, enough for the renderer ----
 
@@ -149,6 +150,7 @@ function legalMoves(hand, played, trump, rules) {
     return free.length ? free : trumps;
   }
   if (higher.length) return higher;
+  if (rules === 'rotterdams') return trumps; // always trump, undertrumping if need be
   return others.length ? others : trumps;
 }
 
@@ -469,6 +471,57 @@ test('bediening covers the whole interface', () => {
     'minder animaties', 'Juf Ans', 'Utrechts/Amsterdams', '16', 'grijs', 'veeg omhoog', 'Enter']) {
     assert.ok(text.includes(w), w);
   }
+});
+
+test('bediening names the game options exactly as the new-game sheet does', { skip: !existsSync(homePath) && 'home.js not written yet' }, () => {
+  // OPTS in home.js holds the option rows of both the new-game sheet and the lobby.
+  const home = readFileSync(homePath, 'utf8');
+  const start = home.indexOf('const OPTS');
+  const labels = [...home.slice(start, home.indexOf('\n];', start)).matchAll(/\blabel: '([^']+)'/g)].map((m) => m[1]);
+  assert.ok(labels.length >= 6, `option labels in home.js: ${labels.join()}`);
+  const blocks = CONTENT.bediening;
+  const at = blocks.findIndex((b) => b.h4 === 'Spelregels bij Nieuw spel');
+  assert.ok(at >= 0 && blocks[at + 1].dl, 'option list follows its heading');
+  assert.deepEqual(blocks[at + 1].dl.map(([term]) => term), labels);
+});
+
+test('bediening only promises a review of the last potje', () => {
+  // The state keeps the tricks of the last finished hand only (design section 7,
+  // prevHand), so the score sheet makes just that row tappable.
+  const entry = blocksOf('dl').flat().find(([term]) => term === 'Scorebord');
+  assert.ok(entry, 'Scorebord is explained');
+  assert.match(entry[1], /Tik op het laatste potje/);
+  assert.doesNotMatch(entry[1], /een potje/);
+});
+
+test('bediening chips show the pictograms of the real buttons', () => {
+  // The top-bar buttons show only an icon (panels.js TOOLS), so the manual
+  // puts that icon in front of each name; util.js must have it.
+  const util = readFileSync(`${root}web/js/util.js`, 'utf8');
+  const panels = readFileSync(`${root}web/js/panels.js`, 'utf8');
+  const tools = Object.fromEntries([...panels.matchAll(/^ {2}\w+: \['(\w+)', '([^']+)'/gm)].map((m) => [m[2], m[1]]));
+  assert.ok(Object.keys(tools).length >= 6, `TOOLS in panels.js: ${Object.keys(tools).join()}`);
+  const rows = blocksOf('dl').flat().filter((row) => row[2]);
+  assert.ok(rows.length >= 10);
+  for (const [term, , name] of rows) assert.match(util, new RegExp(`\\n  ${name}: \\[`), `${term}: icon ${name} in util.js`);
+  const blocks = CONTENT.bediening;
+  const buttons = blocks[blocks.findIndex((b) => b.h === 'Knoppen tijdens het spel') + 2].dl;
+  for (const label of ['Laatste slag', 'Scorebord', 'Chat', 'Handleiding', 'Instellingen', 'Geluid', 'Meer']) {
+    const row = buttons.find(([term]) => term === label);
+    assert.ok(row, `${label} is listed`);
+    assert.equal(row[2], tools[label], `${label} shows the button's icon`);
+  }
+  const made = [];
+  const el = renderManual('bediening', { icon: (n) => { made.push(n); const i = document.createElement('i'); i.className = 'icon'; return i; } });
+  const chips = byClass(el, 'man-ui').filter((c) => c.children.some((k) => k.classList.contains('icon')));
+  assert.equal(chips.length, rows.length);
+  assert.deepEqual(made, rows.map((r) => r[2]));
+  assert.ok(renderManual('bediening').textContent.includes('⋯ (Meer)'));
+});
+
+test('card value headers keep "(hier ♠)" together when they wrap', () => {
+  const th = byTag(byTag(renderManual('punten'), 'thead')[0], 'th');
+  assert.deepEqual(th.map((h) => h.textContent), ['#', 'Troef (hier ♥)', 'Geen troef (hier ♠)']);
 });
 
 test('seinen covers every signal from design section 8', () => {

@@ -44,7 +44,7 @@ network cannot join this one, because it listens on loopback.
 ## Tests
 
 ```sh
-make test       # go vet, the Go tests (-short) and the JS unit tests
+make test       # go vet, the Go tests (-short), the JS unit tests and the deployment files
 make test-all   # also the bot arena: sterk must beat normaal must beat makkelijk
 make e2e        # full games over the websocket against the server from source
 ```
@@ -57,7 +57,17 @@ cd test/ui
 node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # full games by tapping, reload, rematch
 node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
 node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at five sizes, into test/ui/out/
+node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 21 behaviour checks (coach, taps, back button, lost socket, full table…); needs -fast, ~15 min
+node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image
 ```
+
+`make test` also runs the JS unit tests in `test/*.test.mjs` and
+`test/ui/*.test.mjs` (the manual against the rules, sounds, cards,
+`app-util.test.mjs` for the storage fallback and text helpers, and
+`app-icons.test.mjs` for the home-screen icons and the link preview), and
+`scripts/deploy-test`, which puts the units through podman's quadlet generator
+and checks how `make deploy` labels, tags and refuses builds, with stubs in
+place of podman and systemd.
 
 ## How it is built
 

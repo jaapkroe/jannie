@@ -1,6 +1,6 @@
 // Renders every handleiding section in a mock of the dark help modal, checks the
-// layout (no horizontal overflow, cards drawn, no script errors) and writes
-// viewport-sized screenshots at phone and desktop size.
+// layout (no horizontal overflow, tables fit without scrolling, cards drawn, no
+// script errors) and writes viewport-sized screenshots at phone and desktop size.
 //
 //   cd test/ui && node manual-shot.mjs [OUTDIR]
 //
@@ -23,7 +23,7 @@ const cdpPort = process.env.CDP_PORT || '9321';
 const httpPort = Number(process.env.HTTP_PORT || 18120);
 const dsf = Number(process.env.DSF || 1);
 const four = process.env.FOUR === '1';
-const VIEWPORTS = [{ width: 390, height: 844 }, { width: 1440, height: 900 }];
+const VIEWPORTS = [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 1440, height: 900 }];
 mkdirSync(out, { recursive: true });
 
 // Mock of the help modal: dark translucent panel over the green felt.
@@ -135,7 +135,8 @@ try {
       const facts = await page.evaluate(() => {
         const man = document.querySelector('.man');
         const box = man.getBoundingClientRect();
-        // Overflow is fine inside a box that scrolls on its own (tables, quick links).
+        // Overflow is fine inside a box that scrolls on its own (quick links); tables
+        // have such a box too, but are checked separately: they must fit as they are.
         const inScroller = (el) => {
           for (let p = el.parentElement; p && p !== man; p = p.parentElement) {
             if (['auto', 'scroll'].includes(getComputedStyle(p).overflowX)) return true;
@@ -159,9 +160,10 @@ try {
         };
       });
       const tag = `${id}@${vp.width}`;
-      notes.push(`${tag}: ${facts.cards} cards (${facts.cardWidth}px), height ${facts.height}px${facts.tableScroll ? `, ${facts.tableScroll} table(s) scroll inside` : ''}`);
+      notes.push(`${tag}: ${facts.cards} cards (${facts.cardWidth}px), height ${facts.height}px`);
       if (facts.pageOverflow > 0) problems.push(`${tag}: page scrolls sideways by ${facts.pageOverflow}px`);
       if (facts.wide.length) problems.push(`${tag}: wider than the panel: ${facts.wide.join(', ')}`);
+      if (facts.tableScroll) problems.push(`${tag}: ${facts.tableScroll} table(s) scroll sideways`);
       if (facts.blankCards) problems.push(`${tag}: ${facts.blankCards} cards not drawn`);
       if (facts.smallText) problems.push(`${tag}: ${facts.smallText} text elements below 11.5px`);
 

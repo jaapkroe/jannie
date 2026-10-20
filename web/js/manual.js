@@ -38,6 +38,8 @@ const BOX_LABELS = { tip: 'Tip', note: 'Goed om te weten', warn: 'Let op' };
  *   lead, p, h (h3), h4, ul, ol, tip, note, warn, dl, cards, compare,
  *   legal, trick, roem, score, values, roemTable, glossary.
  * Inline markup in text: **vet**, {JH} card, {H} suit symbol, [Knop] UI label.
+ * A dl row may name an icon as its third item: renderManual shows it in the
+ * chip when the caller passes an icon factory (the app's util.icon).
  */
 export const CONTENT = {
   bediening: [
@@ -46,11 +48,11 @@ export const CONTENT = {
     { h: 'Een spel beginnen' },
     {
       dl: [
-        ['Snel spelen', 'Eén tik en je zit aan tafel met drie AI-spelers. Het spel begint meteen.'],
-        ['Nieuw spel', 'Speel met vrienden. Kies de spelregels (zie hieronder) en tik op [Maak spel]. Je krijgt een spelcode en een link om te delen.'],
-        ['Meedoen', 'Typ de spelcode van vier letters bij **Meedoen met een code**. Zodra de vierde letter staat, schuif je aan. Een link zoals **klaverjas.kroes.dev/ABCD** werkt ook: openen en je zit erin.'],
-        ['Oefenen', 'Leer het spel met Juf Ans (AI) als maat en een tip bij elke zet. Meer daarover onderaan.'],
-        ['Handleiding', 'Deze uitleg. Aan tafel open je hem met de knop Handleiding.'],
+        ['Snel spelen', 'Eén tik en je zit aan tafel met drie AI-spelers. Het spel begint meteen, met de spelregels die je het laatst bij Nieuw spel koos.', 'bolt'],
+        ['Nieuw spel', 'Speel met vrienden. Kies de spelregels (zie hieronder) en tik op [Maak spel]. Je krijgt een spelcode en een link om te delen.', 'users'],
+        ['Meedoen', 'Typ de spelcode van vier letters bij **Meedoen met een code**. Zodra de vierde letter staat, schuif je aan. Een link zoals **klaverjas.kroes.dev/ABCD** werkt ook: openen en je zit erin.', 'enter'],
+        ['Oefenen', 'Leer het spel met Juf Ans (AI) als maat en een tip bij elke zet. Meer daarover onderaan.', 'school'],
+        ['Handleiding', 'Deze uitleg. Aan tafel open je hem met de knop Handleiding.', 'book'],
       ],
       chips: true,
     },
@@ -59,7 +61,7 @@ export const CONTENT = {
     { h4: 'Spelregels bij Nieuw spel' },
     {
       dl: [
-        ['Mensen aan tafel', 'Hoeveel mensen er mogen meespelen, 1 tot 4 (standaard **4**). De andere plaatsen krijgen AI-spelers.'],
+        ['Spelers', 'Hoeveel mensen er mogen meespelen, jij meegerekend: 1 tot 4 (standaard **4**). Er zitten altijd vier spelers aan tafel; de andere plaatsen krijgen AI-spelers.'],
         ['Potjes', '4 tot 24 (standaard **16**, een boompje).'],
         ['Troef', '**Utrechts** (standaard): voorhand moet troef kiezen. **Gedraaid**: spelen of passen op een gedraaide kleur.'],
         ['Regels', '**Amsterdams** (standaard) of **Rotterdams**: wanneer je moet troeven. De standaardvariant is dus Utrechts/Amsterdams.'],
@@ -68,12 +70,13 @@ export const CONTENT = {
       ],
     },
 
-    { h: 'De lobby' },
+    { h: 'Klaarzetten (de lobby)' },
     {
       ul: [
         'Bovenaan staat de **spelcode**. Met [Kopieer link] of [Delen] stuur je de uitnodiging door, bijvoorbeeld via WhatsApp.',
         'Je ziet de vier plaatsen rond de tafel. Wie tegenover je zit, is je **maat**; de kleuren laten zien wie bij Wij en wie bij Zij hoort.',
         'Tik op een vrije plaats om daar te gaan zitten.',
+        'Hoeveel mensen er mee kunnen doen, staat bij **Spelers**. Zijn die plaatsen bezet, dan kan er niemand meer bij: wie de link dan nog opent, hoort dat de tafel vol is, en de host krijgt een melding. Zet Spelers dan hoger om een plaats vrij te maken.',
         'De **host** (wie het spel heeft gemaakt) kan op een vrije plaats ook een AI-speler zetten: kies een karakter of laat het toeval beslissen. Tik op een AI-speler om een ander karakter te kiezen; met ✕ gaat hij weer weg.',
         'AI-spelers herken je aan **(AI)** achter de naam, zoals Opa Henk (AI). Ieder heeft een eigen karakter en kletst op zijn eigen manier mee.',
         'Plaatsen die bij de start nog vrij zijn, krijgen vanzelf een willekeurige AI-speler. De host tikt op [Start spel] en er wordt gedeeld.',
@@ -87,13 +90,14 @@ export const CONTENT = {
         'Jouw kaarten liggen onderaan als een waaier. Je **maat** zit tegenover je, de tegenstanders links en rechts.',
         'Er wordt met de klok mee gespeeld: na jou is links aan de beurt.',
         'Wie aan de beurt is, licht op. Het fiche met de **G** staat bij de gever.',
+        'De terugknop van je telefoon of browser sluit eerst wat er open staat, zoals het scorebord of de chat. Aan tafel vraagt hij of je het spel wilt verlaten.',
       ],
     },
     { h4: 'Een kaart spelen' },
     {
       ul: [
         '**Met de muis**: klik op een kaart en hij ligt op tafel.',
-        '**Op een touchscreen**: tik een kaart aan, dan schuift hij omhoog. Tik nog een keer of veeg omhoog om hem te spelen. Liever meteen? Kies bij Instellingen voor **Eén tik**.',
+        '**Op een touchscreen**: tik een kaart aan, dan schuift hij omhoog en staat boven je kaarten welke kaart klaarligt. Tik nog een keer of veeg omhoog om hem te spelen. Mag je maar één kaart spelen, dan gaat hij met één tik. Liever altijd meteen? Kies bij Instellingen voor **Eén tik**.',
         '**Met het toetsenbord**: kies een kaart met ← en → en speel hem met Enter of de spatiebalk.',
         'Kaarten die je niet mag spelen, zijn **grijs**. Tik je er toch op, dan zie je waarom niet.',
         'Boven je kaarten staat steeds wat er van je verwacht wordt, bijvoorbeeld “Bekennen: speel {D}” of “Je maat heeft de slag: vrije keuze”.',
@@ -103,34 +107,38 @@ export const CONTENT = {
     { p: 'Moet jij troef maken, dan verschijnen vier grote knoppen met de kleuren: tik er één aan. Bij Gedraaid kies je [Spelen] of [Passen] voor de gedraaide kleur. Past iedereen, dan moet voorhand toch kiezen; de gedraaide kleur kan dan niet meer.' },
 
     { h: 'Knoppen tijdens het spel' },
-    { p: 'Bovenaan zie je de stand, het potje en de troef. Op een smalle telefoon staan sommige knoppen onder [Meer].' },
+    { p: 'Bovenaan zie je de stand, het potje en de troef, met daarnaast de knoppen hieronder. Die tonen alleen een pictogram. Op een smalle telefoon staan sommige onder de knop ⋯ (Meer).' },
     {
       dl: [
         ['Wij – Zij', 'De stand van de partij. Wij zijn jij en je maat, Zij de tegenstanders. Tik erop voor het scorebord.'],
         ['Potje 3/16', 'Het hoeveelste potje dit is.'],
         ['Troef', 'De troefkleur van dit potje. Tik erop om te zien wie hem koos, hoe het potje ervoor staat en welke variant jullie spelen.'],
-        ['Laatste slag', 'Bekijk de vorige slag nog eens: wie wat speelde, wie hem won en hoeveel punten en roem erin zaten.'],
-        ['Scorebord', 'Alle potjes op een rij: troef, wie er speelde, punten en roem per koppel, **nat** en **pit** duidelijk gemarkeerd, en de stand. Tik op een potje om de slagen terug te zien.'],
-        ['Chat', 'Kletsen met de tafel. Met de snelle reacties (👍 😂 😱 Mooi! Nat! Goed gespeeld!) ben je in één tik klaar. Een bolletje op de knop betekent nieuwe berichten. De AI-spelers praten ook terug.'],
-        ['Handleiding', 'Deze uitleg, ook midden in een potje.'],
-        ['Instellingen', 'Geluidseffecten en volume, vierkleurenspel (klaveren groen, ruiten blauw), **Eén tik** of **Twee tikken** om een kaart te spelen, minder animaties en je naam.'],
-        ['Geluid', 'Zet het geluid in één tik aan of uit.'],
+        ['Laatste slag', 'Bekijk de vorige slag nog eens: wie wat speelde, wie hem won en hoeveel punten en roem erin zaten.', 'history'],
+        ['Scorebord', 'Alle potjes op een rij: troef, wie er speelde, punten en roem per koppel, **nat** en **pit** duidelijk gemarkeerd, en de stand. Tik op het laatste potje om de slagen terug te zien, en op een slag om te zien wie wat speelde.', 'score'],
+        ['Chat', 'Kletsen met de tafel. Met de snelle reacties (👍 😂 😱 Mooi! Nat! Goed gespeeld!) ben je in één tik klaar. Schrijft een andere speler iets, dan staat er een bolletje met het aantal nieuwe berichten op de knop. De AI-spelers praten ook terug.', 'chat'],
+        ['Handleiding', 'Deze uitleg, ook midden in een potje.', 'help'],
+        ['Instellingen', 'Geluidseffecten en volume, vierkleurenspel (klaveren groen, ruiten blauw), **Eén tik** of **Twee tikken** om een kaart te spelen, minder animaties en je naam.', 'settings'],
+        ['Geluid', 'Zet het geluid in één tik aan of uit.', 'soundOn'],
+        ['Meer', 'Alleen op een smalle telefoon. Achter deze knop zitten het scorebord, de handleiding, de instellingen, het geluid en **Spel verlaten**. De knop voor de laatste slag staat dan naast je kaarten.', 'menu'],
       ],
       chips: true,
     },
     { tip: 'Zie je ergens een ⓘ? Tik erop voor een korte uitleg.' },
 
     { h: 'Na elk potje' },
-    { p: 'Na de achtste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle acht slagen. Het volgende potje begint na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt.' },
-    { p: 'Na het laatste potje wint het koppel met de meeste punten. De host kan met [Nog een potje] meteen opnieuw beginnen, met dezelfde spelers en spelregels.' },
+    { p: 'Na de achtste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle acht slagen. Tik op een slag om te zien wie wat speelde. Het volgende potje begint na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt.' },
+    { p: 'Na het laatste potje wint het koppel met de meeste punten. De host kan met [Nog een partij] meteen opnieuw beginnen, met dezelfde spelers en spelregels.' },
+    { p: 'Wil je eerst iets veranderen, of is er nog iemand bij gekomen? Met [Spelers of regels wijzigen] gaat de tafel terug naar Klaarzetten, met dezelfde spelcode. De AI-spelers die bij de start de lege plaatsen opvulden, staan dan weer op, zodat vrienden kunnen aanschuiven (zet zo nodig **Spelers** hoger), en de host kan de spelregels aanpassen.' },
 
     { h: 'Oefenen' },
     {
       ul: [
         'Tik op [Oefenen] en dan op [Start oefenspel]. Je speelt alleen met AI-spelers: **Juf Ans (AI)** is je maat en niemand anders kan aanschuiven.',
         'Zet **Open kaarten** aan als je alle vier de handen wilt zien. Zo snap je beter waarom iemand iets speelt.',
-        'Ben je aan de beurt, dan geeft een tipballon advies en licht de aangeraden kaart op. Je mag het advies ook in de wind slaan: zo leer je het meest.',
+        'Ben je aan de beurt, dan geeft een tipballon advies en licht de aangeraden kaart op. Moet je troef kiezen, dan staat de tip in het venster met de kleuren. Met ✕ verberg je de tip tot je volgende beurt.',
+        'Je mag het advies ook in de wind slaan: zo leer je het meest. Speel je iets anders, dan vertelt Juf Ans na de slag welke kaart zij had aangeraden en waarom.',
         'Na elke slag legt Juf Ans uit wat er gebeurde: wie er won, met welke kaart en hoeveel punten en roem erin zaten.',
+        'Na elk potje wacht het spel tot je op [Volgend potje] tikt, zodat je de slagen rustig kunt nalopen.',
         'Het tempo staat op rustig, zodat je alles goed kunt volgen.',
       ],
     },
@@ -139,9 +147,10 @@ export const CONTENT = {
     {
       ul: [
         'Je plaats blijft van jou. Open het spel opnieuw in dezelfde browser en je zit weer op je plek, ook midden in een potje.',
+        'Op een ander apparaat of in een andere browser? Doe mee met de spelcode en precies dezelfde naam. Ben je minstens drie minuten weg geweest, dan krijg je je plaats terug.',
         'Ben je weg terwijl je aan de beurt bent, dan speelt na 20 seconden een AI-speler voor je, tot je terug bent.',
         'Kies je **Spel verlaten**, dan neemt een AI-speler je plaats in. Iemand anders kan die plaats met de spelcode overnemen.',
-        'Zit er geen enkele mens meer aan tafel, dan wacht het spel.',
+        'Zit er geen enkele mens meer aan tafel, dan wacht het spel, tot een half uur lang. Is het spel nog niet begonnen of al afgelopen, dan wordt de tafel na vijf minuten zonder spelers opgeruimd.',
       ],
     },
   ],
@@ -200,7 +209,7 @@ export const CONTENT = {
           title: 'Rotterdams',
           items: [
             '**Altijd troeven**, ook als je maat de slag al heeft.',
-            'Ligt er al troef, dan **overtroeven** als je kunt, ook over je maat heen. Kun je niet over, speel dan een andere kleur bij. Ondertroeven alleen als je niets anders hebt.',
+            'Ligt er al troef, dan **overtroeven** als je kunt, ook over je maat heen. Kun je niet over, dan toch troeven: **ondertroeven**. Een andere kleur alleen als je geen troef hebt.',
           ],
         },
       ],
@@ -229,9 +238,10 @@ export const CONTENT = {
         hand: ['8S', '7S', 'TC', 'KH'],
         note: 'Je hebt geen ruiten.',
         variants: [
-          { rules: 'beide', allowed: ['TC', 'KH'], text: 'Je kunt niet over {QS} heen. Speel een andere kleur bij; ondertroeven met {8S} of {7S} mag niet zolang je iets anders hebt.' },
+          { rules: 'amsterdams', allowed: ['TC', 'KH'], text: 'Je kunt niet over {QS} heen. Speel een andere kleur bij; ondertroeven met {8S} of {7S} mag niet zolang je iets anders hebt.' },
+          { rules: 'rotterdams', allowed: ['8S', '7S'], text: 'Je kunt niet over {QS} heen, maar je moet toch troeven: ondertroeven met {8S} of {7S}.' },
         ],
-        after: 'Had je alleen {8S} en {7S} gehad, dan moest je wel ondertroeven.',
+        after: 'Bij Amsterdams geldt: had je alleen {8S} en {7S} gehad, dan moest je wel ondertroeven.',
       },
     },
     {
@@ -375,14 +385,15 @@ export const CONTENT = {
   seinen: [
     { lead: 'Met **seinen** (ook wel **voorkaarten**) vertel je je maat iets over je hand, alleen met de kaart die je speelt.' },
     { note: 'Seinen is een afspraak tussen maten, geen valsspelen: de kaart zelf is het signaal en iedereen aan tafel mag de afspraken kennen. Praten over je kaarten, knipogen of zuchten bij een slag hoort er niet bij.' },
-    { p: 'De sterke AI-spelers gebruiken vooral **aas voorspelen** en **kleintje boer**. Let dus goed op wat zij uitspelen.' },
+    { p: 'De AI-spelers op Normaal en Sterk houden zich aan **aas voorspelen** en **kleintje boer**. Komt een AI-speler van de spelende partij voor het eerst uit met een kleintje, dan heeft die (bijna altijd) de troefboer. Let dus goed op wat zij uitspelen.' },
 
     { h: 'Aas voorspelen' },
     { p: 'Kom uit met een aas in een **bijkleur** (een kleur die geen troef is). Vroeg in het potje heeft bijna iedereen die kleur nog, dus die 11 punten zijn veilig binnen. Wacht je te lang, dan wordt je aas misschien afgetroefd.' },
     { cards: [['AD', 'Uitkomst']], caption: 'Troef {S}: je komt uit met {AD}.' },
 
     { h: 'Kleintje boer' },
-    { p: 'Kom je uit met een **klein kaartje** (7, 8 of 9) van een bijkleur, dan zeg je: “ik heb de troefboer”. Je maat probeert de slag te winnen en speelt daarna **troef terug**. Zo kun jij met je boer de troeven ophalen.' },
+    { p: 'Ben je de troefmaker of zijn maat, en kom je voor het eerst uit met een **klein kaartje** (7, 8 of 9) van een bijkleur terwijl de troefboer nog niet gevallen is, dan zeg je: “ik heb de troefboer”. Je maat probeert de slag te winnen en speelt daarna **troef terug**. Zo kun jij met je boer de troeven ophalen.' },
+    { warn: 'Een AI-maat leest jouw kleintje ook zo: speel je er een zonder de troefboer, dan speelt je maat toch troef terug.' },
     { cards: [['7C', 'Uitkomst'], ['JH', 'In je hand']], caption: 'Troef {H}: je komt uit met {7C} en hebt {JH}.' },
 
     { h: 'Boer over boer' },
@@ -671,8 +682,9 @@ function renderValues() {
   foot.append(label, cell('td', `**${sum(CARD_VALUES.trump)}**`, 'man-num'), cell('td', `**${sum(CARD_VALUES.plain)}**`, 'man-num'));
   const head = [
     { text: '#', cls: 'man-rank' },
-    { text: 'Troef (hier {H})' },
-    { text: 'Geen troef (hier {S})' },
+    // No-break space: on a narrow phone the header wraps as "Geen troef / (hier ♠)".
+    { text: 'Troef (hier\u00a0{H})' },
+    { text: 'Geen troef (hier\u00a0{S})' },
   ];
   const wrap = table('Volgorde van hoog naar laag en punten, voor troef en voor de andere kleuren', head, rows, foot);
   wrap.classList.add('man-values');
@@ -805,12 +817,19 @@ function renderCompare(cols) {
   return node;
 }
 
-function renderDl(block) {
+function renderDl(block, ctx) {
   const dl = el('dl', block.chips ? 'man-dl man-dl-chips' : 'man-dl');
-  for (const [term, def] of block.dl) {
+  for (const [term, def, iconName] of block.dl) {
     const item = el('div', 'man-dl-item');
     const dt = el('dt');
-    dt.append(block.chips ? el('span', 'man-ui', term) : term);
+    if (block.chips) {
+      const chip = el('span', 'man-ui');
+      if (iconName && ctx.icon) chip.append(ctx.icon(iconName));
+      chip.append(term);
+      dt.append(chip);
+    } else {
+      dt.append(term);
+    }
     item.append(dt, richEl('dd', '', def));
     dl.append(item);
   }
@@ -869,7 +888,7 @@ const RENDERERS = {
   tip: (v, b) => box('tip', v, b.title),
   note: (v, b) => box('note', v, b.title),
   warn: (v, b) => box('warn', v, b.title),
-  dl: (v, b) => renderDl(b),
+  dl: (v, b, ctx) => renderDl(b, ctx),
   cards: (v, b) => renderCards(b),
   compare: (v) => renderCompare(v),
   legal: (v) => renderLegal(v),
@@ -908,12 +927,13 @@ function renderToc(headings) {
   return nav;
 }
 
-export function renderManual(sectionId) {
+// opts.icon(name) returns an icon element for the chips (optional).
+export function renderManual(sectionId, opts = {}) {
   const section = CONTENT[sectionId] ? sectionId : SECTIONS[0].id;
   const root = el('article', 'man');
   root.lang = 'nl';
   root.dataset.section = section;
-  const ctx = { section, headings: [] };
+  const ctx = { section, headings: [], icon: opts.icon };
   const nodes = CONTENT[section].map((block) => renderBlock(block, ctx));
   if (ctx.headings.length >= 4) {
     const at = 'lead' in CONTENT[section][0] ? 1 : 0;

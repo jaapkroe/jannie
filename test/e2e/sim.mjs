@@ -228,6 +228,10 @@ class Player {
         break;
       case 'pong':
         break;
+      case 'refused': // someone could not join a full table: the host hears of it
+        this.check(typeof m.name === 'string' && m.name.length > 0, 'refused without a name');
+        this.check(this.s && this.s.host === this.s.you, 'refused sent to a player who is not the host');
+        break;
       default:
         this.fail(`unknown message type ${m.t}`);
     }
@@ -271,7 +275,10 @@ class Player {
       this.fail(err.message);
       return;
     }
+    // What was sent while offline is lost: decide and press ready again
+    // after the resync (training summaries wait for ready).
     this.acted = -1;
+    this.readied = 0;
     this.send({ t: 'join', code: this.code, name: this.name, token: this.token });
     this.reconnecting = false;
   }
@@ -368,7 +375,10 @@ class Player {
     const pts = [0, 0];
     for (const t of s.prevHand.tricks) pts[t.winner % 2] += t.points;
     this.check(pts[0] === r.points[0] && pts[1] === r.points[1], `trick points ${pts} vs result ${r.points}`);
-    this.check(s.nextAt > 0, 'handEnd without nextAt');
+    // The summary counts down to the next hand, except in training: there it
+    // waits for ready.
+    if (this.game.cfg.training) this.check(s.nextAt === 0, `training handEnd with nextAt ${s.nextAt}`);
+    else this.check(s.nextAt > 0, 'handEnd without nextAt');
   }
 
   checkGameOver(s, ev) {
