@@ -34,7 +34,7 @@ The checkout is already at `/storage/klaverjas`, and NPM already has the proxy h
 1. Commit everything, until `git status` lists nothing: `make deploy` builds only a committed tree, so that what runs in public is a commit that is on Forgejo. Then put the source on Forgejo, once. Create the empty repository `jaap/klaverjas` in Forgejo's web interface (no README, no licence), then push the checkout to it:
 
    ```sh
-   git -C /storage/klaverjas remote add origin ssh://git@git.kroes.dev:2222/jaap/klaverjas.git
+   git -C /storage/klaverjas remote add origin ssh://git@shrek.home:2222/jaap/klaverjas.git
    git -C /storage/klaverjas push -u origin main
    ```
 
@@ -51,7 +51,7 @@ The checkout is already at `/storage/klaverjas`, and NPM already has the proxy h
 4. Have the name's own rate tier installed in NPM **before the link goes to anyone**. Until then the name has NPM's default limit for web pages, which one page load nearly uses up: a second player at the same address, or one player reloading, gets `429` and a page that never starts. It needs root, in shrek-infra: step 4 of its `docs/services/klaverjas.md`.
 5. Check from outside the house (below), and that the pod comes back from a restart: `systemctl --user restart klaverjas-pod`, then `make status` shows both containers `healthy`.
 
-From scratch on another machine, `git clone ssh://git@git.kroes.dev:2222/jaap/klaverjas.git /storage/klaverjas` replaces step 1, and the proxy host is created as below.
+From scratch on another machine, `git clone ssh://git@shrek.home:2222/jaap/klaverjas.git /storage/klaverjas` replaces step 1, and the proxy host is created as below.
 
 ## Nginx Proxy Manager
 
