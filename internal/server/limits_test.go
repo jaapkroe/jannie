@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -30,8 +31,16 @@ func TestMessageTooBig(t *testing.T) {
 func TestMessageRate(t *testing.T) {
 	_, ts, _ := newTestServer(t, func(s *Server) { s.msgRate = 20 })
 	c := dial(t, ts)
-	for range 30 {
-		c.send(map[string]any{"t": "ping"})
+	// The server may close the connection as soon as the 21st ping arrives, so
+	// a write after that can fail; one before it cannot.
+	ping, _ := json.Marshal(map[string]any{"t": "ping"})
+	for i := range 30 {
+		if err := c.conn.Write(context.Background(), websocket.MessageText, ping); err != nil {
+			if i <= 20 {
+				t.Fatalf("send ping %d: %v", i+1, err)
+			}
+			break
+		}
 	}
 	pongs := 0
 	for {
