@@ -135,7 +135,8 @@ function trickRoem(cards, trump) {
   return out;
 }
 
-// Display order: trump first, then alternating colours.
+// Display order: trump first, then alternating colours; within a suit low
+// to high.
 function sortHand(hand, trump) {
   const order = !trump ? ['C', 'D', 'S', 'H']
     : { C: ['C', 'H', 'S', 'D'], S: ['S', 'H', 'C', 'D'], H: ['H', 'C', 'D', 'S'], D: ['D', 'C', 'H', 'S'] }[trump];
@@ -144,7 +145,7 @@ function sortHand(hand, trump) {
     const sb = order.indexOf(st(b));
     if (sa !== sb) return sa - sb;
     const ord = st(a) === trump ? TRUMP_ORDER : PLAIN_ORDER;
-    return ord.indexOf(rk(a)) - ord.indexOf(rk(b));
+    return ord.indexOf(rk(b)) - ord.indexOf(rk(a));
   });
 }
 

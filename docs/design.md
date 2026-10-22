@@ -279,7 +279,7 @@ func ExplainConstraint(hand []Card, trick Trick, seat Seat, trump Suit, rules Ru
 // Why a specific card is illegal (Dutch), "" if legal: "Je moet bekennen (♦).", ...
 func ExplainIllegal(card Card, hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) string
 
-// Display order: suits alternate colour, trump (if known) first; within a suit high→low
+// Display order: suits alternate colour, trump (if known) first; within a suit low→high
 // by the order that applies (trump order for trump).
 func SortHand(hand []Card, trump Suit, trumpKnown bool) []Card
 
@@ -905,8 +905,8 @@ persona on a seat its player left). `away` comes once per lost connection.
   "trump": "H", "trumpBy": 2, "playingTeam": 0,
   "turn": 0,                       // -1 while paused or nobody's turn
   "takeover": null,                // {"seat":1,"left":false}: the game waits for that absent seat; may an AI play it?
-  "hand": ["JH","9H","AH","TS","KS","8C","AD","7D"],   // yours, display-sorted
-  "legal": ["JH","9H"],            // only on your turn in phase play
+  "hand": ["AH","9H","JH","KS","TS","8C","7D","AD"],   // yours, display-sorted
+  "legal": ["9H","JH"],            // only on your turn in phase play
   "rule": "Troef gevraagd: overtroeven",   // ExplainConstraint, on your turn
   "trick": { "leader":3, "cards":[{"seat":3,"card":"QH"}], "winner":-1 },
   "lastTrick": { "leader":2, "cards":[...4], "winner":3, "points":21, "roem":[] },   // or null

@@ -445,11 +445,11 @@ func TestSortHand(t *testing.T) {
 		trumpKnown bool
 		want       string
 	}{
-		{"four suits, no trump", "7C AH TS JD 9C KH", 0, false, "TS AH KH 9C 7C JD"},
-		{"plain order within a suit", "JS 9S AS TS 7S QS KS 8S", 0, false, "AS TS KS QS JS 9S 8S 7S"},
-		{"trump first, trump order", "7C JC AC 9C AH TS KD", Clubs, true, "JC 9C AC 7C AH TS KD"},
-		{"trump order for hearts", "QH KH TH AH 9H JH 8H 7H", Hearts, true, "JH 9H AH TH KH QH 8H 7H"},
-		{"trump unknown keeps plain order", "QH KH TH AH 9H JH 8H 7H", Hearts, false, "AH TH KH QH JH 9H 8H 7H"},
+		{"four suits, no trump", "7C AH TS JD 9C KH", 0, false, "TS KH AH 7C 9C JD"},
+		{"plain order within a suit", "JS 9S AS TS 7S QS KS 8S", 0, false, "7S 8S 9S JS QS KS TS AS"},
+		{"trump first, trump order", "7C JC AC 9C AH TS KD", Clubs, true, "7C AC 9C JC AH TS KD"},
+		{"trump order for hearts", "QH KH TH AH 9H JH 8H 7H", Hearts, true, "7H 8H QH KH TH AH 9H JH"},
+		{"trump unknown keeps plain order", "QH KH TH AH 9H JH 8H 7H", Hearts, false, "7H 8H 9H JH QH KH TH AH"},
 		{"alternate colours with three suits", "7C 7S 7D", 0, false, "7S 7D 7C"},
 		{"two black suits cannot alternate", "7C 7S", 0, false, "7S 7C"},
 		{"trump not in hand", "7C 7H", Spades, true, "7H 7C"},
