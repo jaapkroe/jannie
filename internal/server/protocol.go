@@ -19,6 +19,8 @@ type inMsg struct {
 	ID       string          `json:"id"`
 	Suit     string          `json:"suit"`
 	Play     *bool           `json:"play"`
+	Bid      *int            `json:"bid"`
+	Cards    []string        `json:"cards"`
 	Card     string          `json:"card"`
 	Text     string          `json:"text"`
 	AI       *bool           `json:"ai"`
@@ -125,6 +127,22 @@ type evBid struct {
 	Play bool      `json:"play"`
 }
 
+// evAuction is a bid (bid > 0) or a pass (bid 0) with three players.
+type evAuction struct {
+	Type string    `json:"type"`
+	Seat game.Seat `json:"seat"`
+	Bid  int       `json:"bid"`
+}
+
+// evContract ends the auction: seat plays alone for bid (forced: the
+// others passed and nobody bid) and takes the talon.
+type evContract struct {
+	Type   string    `json:"type"`
+	Seat   game.Seat `json:"seat"`
+	Bid    int       `json:"bid"`
+	Forced bool      `json:"forced"`
+}
+
 type evTrump struct {
 	Type   string    `json:"type"`
 	Seat   game.Seat `json:"seat"`
@@ -158,11 +176,12 @@ type evHandEnd struct {
 
 type evGameOver struct {
 	Type   string `json:"type"`
-	Total  [2]int `json:"total"`
+	Total  []int  `json:"total"`
 	Winner int    `json:"winner"`
 }
 
-// evSeat is join, leave, away, back and takeover.
+// evSeat is join, leave, away, back and takeover, and with three players
+// discard.
 type evSeat struct {
 	Type string    `json:"type"`
 	Seat game.Seat `json:"seat"`
@@ -172,42 +191,49 @@ type evSeat struct {
 // without omitempty are always present; roster, legal and rule only when
 // they apply.
 type state struct {
-	Code        string          `json:"code"`
-	Phase       string          `json:"phase"`
-	Opts        Options         `json:"opts"`
-	Training    bool            `json:"training"`
-	You         int             `json:"you"`
-	Host        int             `json:"host"`
-	Roster      []rosterEntry   `json:"roster,omitempty"`
-	Players     [4]*playerState `json:"players"`
-	HandNo      int             `json:"handNo"`
-	Hands       int             `json:"hands"`
-	Dealer      int             `json:"dealer"`
-	Voorhand    int             `json:"voorhand"`
-	Turned      *game.Suit      `json:"turned"`
-	Bids        [4]int          `json:"bids"`
-	Forced      bool            `json:"forced"`
-	Trump       *game.Suit      `json:"trump"`
-	TrumpBy     int             `json:"trumpBy"`
-	PlayingTeam int             `json:"playingTeam"`
-	Turn        int             `json:"turn"`
-	Takeover    *takeoverState  `json:"takeover"`
-	Hand        []game.Card     `json:"hand"`
-	Legal       []game.Card     `json:"legal,omitempty"`
-	Rule        string          `json:"rule,omitempty"`
-	Trick       *game.Trick     `json:"trick"`
-	LastTrick   *game.Trick     `json:"lastTrick"`
-	TricksWon   [2]int          `json:"tricksWon"`
-	HandPoints  [2]int          `json:"handPoints"`
-	HandRoem    [2]int          `json:"handRoem"`
-	Scores      []scoreRow      `json:"scores"`
-	Total       [2]int          `json:"total"`
-	PrevHand    *prevHand       `json:"prevHand"`
-	NextAt      int64           `json:"nextAt"`
-	Hint        *hint           `json:"hint"`
-	Hands4      *[4][]game.Card `json:"hands4"`
-	Winner      int             `json:"winner"`
-	Review      *reviewState    `json:"review"`
+	Code        string              `json:"code"`
+	Phase       string              `json:"phase"`
+	Opts        Options             `json:"opts"`
+	Training    bool                `json:"training"`
+	You         int                 `json:"you"`
+	Host        int                 `json:"host"`
+	Roster      []rosterEntry       `json:"roster,omitempty"`
+	Players     []*playerState      `json:"players"`
+	HandNo      int                 `json:"handNo"`
+	Hands       int                 `json:"hands"`
+	Dealer      int                 `json:"dealer"`
+	Voorhand    int                 `json:"voorhand"`
+	Turned      *game.Suit          `json:"turned"`
+	Bids        []int               `json:"bids"`
+	Forced      bool                `json:"forced"`
+	Bid         int                 `json:"bid"`
+	Bidder      int                 `json:"bidder"`
+	Soloist     int                 `json:"soloist"`
+	Talon       []game.Card         `json:"talon"`
+	Discards    []game.Card         `json:"discards"`
+	Piles       *[2][8]game.Pile    `json:"piles"`
+	OpenRoem    *[2][]game.RoemItem `json:"openRoem"`
+	Trump       *game.Suit          `json:"trump"`
+	TrumpBy     int                 `json:"trumpBy"`
+	PlayingTeam int                 `json:"playingTeam"`
+	Turn        int                 `json:"turn"`
+	Takeover    *takeoverState      `json:"takeover"`
+	Hand        []game.Card         `json:"hand"`
+	Legal       []game.Card         `json:"legal,omitempty"`
+	Rule        string              `json:"rule,omitempty"`
+	Trick       *game.Trick         `json:"trick"`
+	LastTrick   *game.Trick         `json:"lastTrick"`
+	TricksWon   [2]int              `json:"tricksWon"`
+	HandPoints  [2]int              `json:"handPoints"`
+	HandRoem    [2]int              `json:"handRoem"`
+	Scores      []scoreRow          `json:"scores"`
+	Total       []int               `json:"total"`
+	PrevHand    *prevHand           `json:"prevHand"`
+	NextAt      int64               `json:"nextAt"`
+	Hint        *hint               `json:"hint"`
+	Hands4      *[4][]game.Card     `json:"hands4"`
+	Winner      int                 `json:"winner"`
+	Review      *reviewState        `json:"review"`
 }
 
 type rosterEntry struct {
@@ -239,16 +265,19 @@ type takeoverState struct {
 	Left bool      `json:"left"`
 }
 
-// scoreRow is one line of the score sheet.
+// scoreRow is one line of the score sheet. Points, roem and score are per
+// side, gains per scorer (game.HandResult).
 type scoreRow struct {
 	Hand        int       `json:"hand"`
 	Dealer      game.Seat `json:"dealer"`
 	Trump       game.Suit `json:"trump"`
 	TrumpBy     game.Seat `json:"trumpBy"`
 	PlayingTeam int       `json:"playingTeam"`
+	Bid         int       `json:"bid"`
 	Points      [2]int    `json:"points"`
 	Roem        [2]int    `json:"roem"`
 	Score       [2]int    `json:"score"`
+	Gains       []int     `json:"gains"`
 	Nat         bool      `json:"nat"`
 	Pit         bool      `json:"pit"`
 }

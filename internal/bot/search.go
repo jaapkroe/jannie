@@ -12,9 +12,10 @@ import (
 
 // searchConfig sizes the Monte Carlo search.
 type searchConfig struct {
-	playWorlds  int // sampled deals per card decision
-	trumpWorlds int // sampled deals per trump or bid decision
-	workers     int // goroutines; 0 means GOMAXPROCS (capped at chunks)
+	playWorlds  int     // sampled deals per card decision
+	trumpWorlds int     // sampled deals per trump or bid decision
+	workers     int     // goroutines; 0 means GOMAXPROCS (capped at chunks)
+	defend      float64 // three players: what defending is worth (see defendValue); 0 for the default
 }
 
 // defaultSearch keeps a decision well under ~150 ms on a 16-core machine.

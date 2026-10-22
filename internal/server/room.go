@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log/slog"
-	"math/bits"
 	"math/rand/v2"
 	"runtime/debug"
 	"sync"
@@ -18,6 +17,8 @@ import (
 // Room phases on the wire.
 const (
 	phaseLobby    = "lobby"
+	phaseAuction  = "auction"
+	phaseDiscard  = "discard"
 	phaseTrump    = "trump"
 	phaseBid      = "bid"
 	phasePlay     = "play"
@@ -84,8 +85,8 @@ type room struct {
 	rng       *rand.Rand
 	opts      Options
 	training  bool
-	alwaysOn  bool // tests: bots play on without a connected human
-	seats     [4]seat
+	alwaysOn  bool    // tests: bots play on without a connected human
+	seats     [4]seat // seats 0..opts.Players-1; the others stay empty
 	host      game.Seat
 	phase     string
 	seq       int
@@ -115,7 +116,7 @@ type room struct {
 	missed    *missedHint  // training: the hint the player did not follow in this trick
 	misses    []missedHint // training: trump and bid hints not followed in this hand, told with its first trick
 	scores    []scoreRow
-	total     [2]int
+	total     []int // per scorer (game.Scorers)
 	prev      *prevHand
 	lastTrick *game.Trick
 	winner    int
@@ -209,6 +210,9 @@ func (r *room) later(d time.Duration, f func()) {
 func (r *room) scaled(d time.Duration) time.Duration {
 	return time.Duration(float64(d) * r.srv.scale)
 }
+
+// players is the number of seats at the table.
+func (r *room) players() int { return r.opts.Players }
 
 func (r *room) pace() pacing {
 	if p, ok := pacings[r.opts.Tempo]; ok {
@@ -367,6 +371,14 @@ func (r *room) randomPersona(skip ...string) Persona {
 
 func botName(p Persona) string { return p.Name + " (AI)" }
 
+// numberNL writes 2..4 as a Dutch word ("drie"), for texts.
+func numberNL(n int) string {
+	if n >= 2 && n <= 4 {
+		return [...]string{"twee", "drie", "vier"}[n-2]
+	}
+	return fmt.Sprint(n)
+}
+
 // displayName is how a seat appears in chat and texts.
 func (r *room) displayName(i game.Seat) string {
 	st := &r.seats[i]
@@ -379,57 +391,45 @@ func (r *room) displayName(i game.Seat) string {
 	return "Lege plaats"
 }
 
-// arrangeBots sets the number of bot seats to 4-humans in the lobby. It
-// never moves humans, keeps existing bots where it can, and otherwise puts
-// bots so the seats left for humans are partners (humans 2: bots at 1 and
-// 3; 3: bot at 3; 1: bots at 1, 2 and 3).
-func (r *room) arrangeBots() {
-	want := 4 - r.opts.Humans
-	pref := [4]int{0, 2, 1, 3} // preference for a bot at each seat
-	best, bestScore := -1, -1
-	for mask := 0; mask < 16; mask++ {
-		if bits.OnesCount(uint(mask)) != want {
+// setPlayers changes the table to n seats in the lobby. Humans keep their
+// seat when it is still there and otherwise move to the first free one;
+// bots keep theirs, but make way for humans and go with a seat that is
+// removed. It fails when more humans are seated than n.
+func (r *room) setPlayers(n int) error {
+	if h := r.humanCount(); h > n {
+		return fmt.Errorf("Er zitten al %d mensen aan tafel.", h)
+	}
+	for i := n; i < len(r.seats); i++ {
+		st := r.seats[i]
+		r.seats[i] = seat{}
+		if st.kind != seatHuman {
 			continue
 		}
-		score, ok := 0, true
-		for i := range 4 {
-			bot := mask&(1<<i) != 0
-			switch r.seats[i].kind {
-			case seatHuman:
-				ok = ok && !bot
-			case seatBot:
-				if bot {
-					score += 100
-				}
-			}
-			if bot {
-				score += pref[i]
-			} else if mask&(1<<((i+2)%4)) == 0 {
-				score += 10
+		to := game.NoSeat
+		for k := range n {
+			if r.seats[k].kind == seatEmpty {
+				to = game.Seat(k)
+				break
 			}
 		}
-		if ok && score > bestScore {
-			best, bestScore = mask, score
+		for k := n - 1; to == game.NoSeat && k >= 0; k-- {
+			if r.seats[k].kind == seatBot {
+				to = game.Seat(k)
+			}
+		}
+		r.seats[to] = st
+		if r.host == game.Seat(i) {
+			r.host = to
 		}
 	}
-	if best < 0 {
-		return
-	}
-	for i := range 4 {
-		bot := best&(1<<i) != 0
-		switch {
-		case bot && r.seats[i].kind == seatEmpty:
-			r.seats[i] = r.newBot(r.randomPersona())
-		case !bot && r.seats[i].kind == seatBot:
-			r.seats[i] = seat{}
-		}
-	}
+	r.opts.Players = n
+	return nil
 }
 
 // fillSeats puts random distinct bots on every empty seat and on every
 // seat a human left.
 func (r *room) fillSeats() {
-	for i := range r.seats {
+	for i := range r.players() {
 		if k := r.seats[i].kind; k == seatEmpty || k == seatLeft {
 			r.seats[i] = r.newBot(r.randomPersona())
 			r.seats[i].filled = true
@@ -515,11 +515,11 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 		r.opts.Tempo = "rustig"
 	}
 	patch.apply(&r.opts)
-	if patch.Humans != nil {
-		r.opts.Humans = *patch.Humans
+	if patch.Players != nil {
+		r.opts.Players = *patch.Players
 	}
 	if r.training {
-		r.opts.Humans = 1
+		r.opts.Players = 4 // with Juf Ans as partner
 	} else {
 		r.opts.Open = false
 	}
@@ -528,10 +528,8 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	r.host = 0
 	if r.training {
 		r.seatTraining()
-	} else {
-		r.arrangeBots()
 	}
-	r.log.Info("room created", "training", r.training, "humans", r.opts.Humans, "start", m.Start)
+	r.log.Info("room created", "training", r.training, "players", r.opts.Players, "start", m.Start)
 	r.welcome(c, 0)
 	r.emitTo(evLobby{Type: "lobby"}, c)
 	if m.Start {
@@ -577,18 +575,17 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 		return
 	}
 	if r.phase == phaseLobby {
-		if r.humanCount() >= r.opts.Humans {
-			if r.opts.Humans >= 4 {
-				fail(errFull, "Deze tafel is vol: alle vier de plaatsen zijn bezet.")
-			} else {
-				fail(errFull, "Deze tafel is vol: alle plaatsen voor spelers zijn bezet. Vraag de host om bij Spelers een plaats vrij te maken en probeer het dan opnieuw.")
-			}
-			r.refused(name)
-			return
-		}
 		i := r.firstSeat(func(st *seat) bool { return st.kind == seatEmpty })
-		if i == game.NoSeat {
+		switch {
+		case i != game.NoSeat:
+		case r.firstSeat(func(st *seat) bool { return st.kind == seatBot }) != game.NoSeat:
 			fail(errFull, "Deze tafel is vol. Vraag de host om een AI-speler weg te halen en probeer het dan opnieuw.")
+		case r.players() < 4:
+			fail(errFull, fmt.Sprintf("Deze tafel is vol: alle %s plaatsen zijn bezet. Vraag de host om bij Spelers een plaats bij te zetten en probeer het dan opnieuw.", numberNL(r.players())))
+		default:
+			fail(errFull, "Deze tafel is vol: alle vier de plaatsen zijn bezet.")
+		}
+		if i == game.NoSeat {
 			r.refused(name)
 			return
 		}
@@ -664,8 +661,9 @@ func (r *room) refused(name string) {
 	}
 }
 
+// firstSeat returns the first seat at the table that ok accepts.
 func (r *room) firstSeat(ok func(*seat) bool) game.Seat {
-	for i := range r.seats {
+	for i := range r.players() {
 		if ok(&r.seats[i]) {
 			return game.Seat(i)
 		}
@@ -818,14 +816,15 @@ func (r *room) checkHost() {
 // else the first human; it reports whether the host changed.
 func (r *room) pickHost(from game.Seat) bool {
 	pick := game.NoSeat
-	for k := 1; k <= 4 && pick == game.NoSeat; k++ {
-		i := (from + game.Seat(k)) & 3
+	n := game.Seat(r.players())
+	for k := game.Seat(1); k <= n && pick == game.NoSeat; k++ {
+		i := (from + k) % n
 		if st := &r.seats[i]; st.kind == seatHuman && st.client != nil {
 			pick = i
 		}
 	}
-	for k := 1; k <= 4 && pick == game.NoSeat; k++ {
-		if i := (from + game.Seat(k)) & 3; r.seats[i].kind == seatHuman {
+	for k := game.Seat(1); k <= n && pick == game.NoSeat; k++ {
+		if i := (from + k) % n; r.seats[i].kind == seatHuman {
 			pick = i
 		}
 	}
@@ -893,6 +892,28 @@ func (r *room) handle(c *client, m *inMsg) {
 		if r.lobbyHost(c, i) {
 			r.startMatch()
 		}
+	case "auction":
+		if m.Bid == nil {
+			c.sendError(errInvalid, "Bied een aantal punten of pas.")
+			return
+		}
+		r.humanAct(c, i, action{kind: actAuction, bid: *m.Bid})
+	case "discard":
+		var a action
+		if len(m.Cards) != 2 {
+			c.sendError(errInvalid, game.ErrBadDiscard.Error())
+			return
+		}
+		for k, code := range m.Cards {
+			card, err := game.ParseCard(code)
+			if err != nil {
+				c.sendError(errInvalid, "Die kaart bestaat niet.")
+				return
+			}
+			a.cards[k] = card
+		}
+		a.kind = actDiscard
+		r.humanAct(c, i, a)
 	case "trump":
 		s, err := game.ParseSuit(m.Suit)
 		if err != nil {
@@ -946,8 +967,9 @@ func (r *room) lobbyHost(c *client, i game.Seat) bool {
 	return true
 }
 
-func seatArg(m *inMsg) (game.Seat, bool) {
-	if m.Seat == nil || *m.Seat < 0 || *m.Seat > 3 {
+// seatArg reads the seat of a lobby command: one at the table.
+func (r *room) seatArg(m *inMsg) (game.Seat, bool) {
+	if m.Seat == nil || !game.Seat(*m.Seat).ValidFor(r.players()) {
 		return game.NoSeat, false
 	}
 	return game.Seat(*m.Seat), true
@@ -958,7 +980,7 @@ func (r *room) cmdSit(c *client, i game.Seat, m *inMsg) {
 		c.sendError(errStarted, "Het spel is al begonnen.")
 		return
 	}
-	to, ok := seatArg(m)
+	to, ok := r.seatArg(m)
 	switch {
 	case !ok:
 		c.sendError(errInvalid, "Die plaats bestaat niet.")
@@ -983,7 +1005,7 @@ func (r *room) cmdBot(c *client, i game.Seat, m *inMsg) {
 	if !r.lobbyHost(c, i) {
 		return
 	}
-	to, ok := seatArg(m)
+	to, ok := r.seatArg(m)
 	switch {
 	case !ok:
 		c.sendError(errInvalid, "Die plaats bestaat niet.")
@@ -1026,7 +1048,7 @@ func (r *room) cmdUnbot(c *client, i game.Seat, m *inMsg) {
 	if !r.lobbyHost(c, i) {
 		return
 	}
-	to, ok := seatArg(m)
+	to, ok := r.seatArg(m)
 	switch {
 	case !ok:
 		c.sendError(errInvalid, "Die plaats bestaat niet.")
@@ -1051,17 +1073,15 @@ func (r *room) cmdOpts(c *client, i game.Seat, m *inMsg) {
 		c.sendError(errInvalid, err.Error())
 		return
 	}
-	if n := patch.Humans; n != nil && *n != r.opts.Humans {
+	if n := patch.Players; n != nil && *n != r.opts.Players {
 		if r.training {
-			c.sendError(errInvalid, "In de oefenmodus speel je altijd samen met Juf Ans.")
+			c.sendError(errInvalid, "In de oefenmodus speel je altijd met z'n vieren, samen met Juf Ans.")
 			return
 		}
-		if h := r.humanCount(); *n < h {
-			c.sendError(errInvalid, fmt.Sprintf("Er zitten al %d mensen aan tafel.", h))
+		if err := r.setPlayers(*n); err != nil {
+			c.sendError(errInvalid, err.Error())
 			return
 		}
-		r.opts.Humans = *n
-		r.arrangeBots()
 	}
 	patch.apply(&r.opts)
 	if !r.training {
@@ -1174,14 +1194,14 @@ func (r *room) cmdLobby(c *client, i game.Seat) {
 	r.deal = nil
 	r.pending = stepNone
 	r.scores = nil
-	r.total = [2]int{}
+	r.total = nil
 	r.prev = nil
 	r.lastTrick = nil
 	r.winner = -1
 	r.overAt = time.Time{}
 	r.nextAt = time.Time{}
 	r.log.Info("back to the lobby", "humans", r.humanCount())
-	if r.humanCount() < r.opts.Humans && r.firstSeat(func(st *seat) bool { return st.kind == seatEmpty }) != game.NoSeat {
+	if r.firstSeat(func(st *seat) bool { return st.kind == seatEmpty }) != game.NoSeat {
 		r.sysChat("%s zet de tafel opnieuw klaar. Wie wil, kan nu aanschuiven.", r.seats[i].name)
 	} else {
 		r.sysChat("%s zet de tafel opnieuw klaar.", r.seats[i].name)

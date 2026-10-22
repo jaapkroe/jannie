@@ -13,12 +13,16 @@ import (
 )
 
 // startTable starts a match of four hands for the named humans, the first
-// one the host, with bots on the other seats. With humans 2 the guest sits
-// at 2; with 3 the guests sit at 1 and 2.
+// one the host, with bots on the other seats. With two humans the guest
+// sits at 2 (the host puts a bot at 1 first); with three the guests sit at
+// 1 and 2.
 func startTable(t *testing.T, ts *httptest.Server, names ...string) []*tclient {
 	t.Helper()
 	h := dial(t, ts)
-	h.create(names[0], map[string]any{"humans": len(names), "hands": 4}, false, len(names) == 1)
+	h.create(names[0], map[string]any{"hands": 4}, false, len(names) == 1)
+	if len(names) == 2 {
+		placeBots(h, 1)
+	}
 	cs := []*tclient{h}
 	for _, name := range names[1:] {
 		c := dial(t, ts)
@@ -61,12 +65,13 @@ func (c *tclient) waitSeat(ev string, i int) *msg {
 	})
 }
 
-// waitMove waits until seat i makes a decision: a trump suit, a bid or a card.
+// waitMove waits until seat i makes a decision: a trump suit, a bid or a
+// card, or with three players a bid in the auction or the discards.
 func (c *tclient) waitMove(i int) {
 	c.t.Helper()
 	c.until(5*time.Second, fmt.Sprintf("a move of seat %d", i), func(m *msg) bool {
 		switch m.evType() {
-		case "trump", "bid", "play":
+		case "trump", "bid", "play", "auction", "discard":
 			return int(m.ev["seat"].(float64)) == i
 		}
 		return false
@@ -106,12 +111,12 @@ func checkConsent(t *testing.T, prev *state, m *msg) {
 		seat = int(v)
 	}
 	switch ev {
-	case "trump", "bid", "play":
+	case "trump", "bid", "play", "auction", "discard":
 		if p := s.Players[seat]; p != nil && !p.Bot && (p.Left || !p.Connected && !p.Away) {
 			t.Errorf("%s for an absent player without consent: %+v", ev, p)
 		}
 	}
-	inHand := s.Phase == phaseTrump || s.Phase == phaseBid || s.Phase == phasePlay
+	inHand := s.Phase == phaseAuction || s.Phase == phaseDiscard || s.Phase == phaseTrump || s.Phase == phaseBid || s.Phase == phasePlay
 	if q := s.Takeover; q != nil {
 		if p := s.Players[q.Seat]; !inHand || s.Turn != int(q.Seat) || int(q.Seat) == s.You || p == nil || p.Bot || p.Connected || p.Away || p.Left != q.Left {
 			t.Errorf("takeover %+v in phase %s, turn %d: %+v", q, s.Phase, s.Turn, p)
@@ -213,6 +218,28 @@ func TestDropOutAsks(t *testing.T) {
 	if p := s.Players[0]; p.Away || s.Players[2].Vote != nil {
 		t.Errorf("asked again: %+v, vote %v", p, s.Players[2].Vote)
 	}
+}
+
+// TestDropOutAsksThreePlayers: at a table of three the game also waits for
+// a player who dropped out in the auction, and the substitute bids for
+// them once the other agreed.
+func TestDropOutAsksThreePlayers(t *testing.T) {
+	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
+	a := dial(t, ts)
+	a.create("Anna", map[string]any{"players": 3, "hands": 4}, false, false)
+	b := dial(t, ts)
+	b.join(a.code, "Bert", "")
+	a.send(map[string]any{"t": "start"})
+	drive(t, func() bool { return a.myTurn() && a.s.Phase == phaseAuction }, a, b)
+	a.conn.CloseNow()
+	b.waitSeat("away", 0)
+	s := b.waitState("the question", func(s *state) bool { return s.Takeover != nil })
+	if q := *s.Takeover; q.Seat != 0 || q.Left || s.Phase != phaseAuction {
+		t.Errorf("question %+v in phase %s", q, s.Phase)
+	}
+	b.vote(0, true)
+	b.waitEvent("takeover")
+	b.waitMove(0)
 }
 
 // TestLeftSeatAsks: a player who leaves keeps the name on a seat nobody
@@ -671,7 +698,7 @@ func TestSoloWaits(t *testing.T) {
 		t.Run(map[bool]string{false: "solo", true: "training"}[training], func(t *testing.T) {
 			s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 			c := dial(t, ts)
-			c.create("Piet", map[string]any{"humans": 1, "hands": 4}, training, true)
+			c.create("Piet", map[string]any{"hands": 4}, training, true)
 			drive(t, func() bool { return c.myTurn() }, c)
 			r := roomOf(t, s, c.code)
 			cards := c.s.Players[0].Cards
@@ -699,7 +726,7 @@ func TestSoloWaits(t *testing.T) {
 func TestVoteErrors(t *testing.T) {
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.05 }) // askAfter: 500 ms
 	h := dial(t, ts)
-	h.create("Anna", map[string]any{"humans": 2, "hands": 4}, false, false)
+	h.create("Anna", map[string]any{"hands": 4}, false, false)
 	h.vote(2, true)
 	if e := h.waitError(errInvalid); e.errMsg() != "Die vraag staat niet (meer) open." {
 		t.Errorf("vote in the lobby: %q", e.errMsg())

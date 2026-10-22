@@ -13,7 +13,7 @@ import (
 
 // Options are the room settings chosen by the host (design §3).
 type Options struct {
-	Humans    int            `json:"humans"`
+	Players   int            `json:"players"`
 	Hands     int            `json:"hands"`
 	TrumpMode game.TrumpMode `json:"trumpMode"`
 	Rules     game.Rules     `json:"rules"`
@@ -24,7 +24,7 @@ type Options struct {
 
 func defaultOptions() Options {
 	return Options{
-		Humans:    4,
+		Players:   4,
 		Hands:     16,
 		TrumpMode: game.Utrechts,
 		Rules:     game.Amsterdams,
@@ -40,7 +40,7 @@ var (
 
 // optsPatch is a partial options update; nil fields are unchanged.
 type optsPatch struct {
-	Humans    *int
+	Players   *int
 	Hands     *int
 	TrumpMode *game.TrumpMode
 	Rules     *game.Rules
@@ -73,12 +73,12 @@ func parseOpts(raw json.RawMessage, lenient bool) (optsPatch, error) {
 	for key, val := range fields {
 		var err error
 		switch key {
-		case "humans":
+		case "players":
 			var n int
-			if json.Unmarshal(val, &n) != nil || n < 1 || n > 4 {
-				err = fail("Het aantal spelers moet tussen 1 en 4 liggen.")
+			if json.Unmarshal(val, &n) != nil || n < 2 || n > 4 {
+				err = fail("Kies 2, 3 of 4 spelers.")
 			} else {
-				p.Humans = &n
+				p.Players = &n
 			}
 		case "hands":
 			var n int
@@ -130,7 +130,7 @@ func parseOpts(raw json.RawMessage, lenient bool) (optsPatch, error) {
 	return p, nil
 }
 
-// apply sets the fields of p on o, except Humans (rooms handle seats).
+// apply sets the fields of p on o, except Players (rooms handle seats).
 func (p optsPatch) apply(o *Options) {
 	if p.Hands != nil {
 		o.Hands = *p.Hands
@@ -150,6 +150,19 @@ func (p optsPatch) apply(o *Options) {
 	if p.Open != nil {
 		o.Open = *p.Open
 	}
+}
+
+// variantNL names the variant for system lines: "Utrechts/Amsterdams",
+// with three players "drie spelers, bieden, Amsterdams", with two "twee
+// spelers, Utrechts".
+func (o Options) variantNL() string {
+	switch o.Players {
+	case 3:
+		return "drie spelers, bieden, " + o.Rules.NameNL()
+	case 2:
+		return "twee spelers, " + o.TrumpMode.NameNL()
+	}
+	return o.TrumpMode.NameNL() + "/" + o.Rules.NameNL()
 }
 
 // pacing holds the unscaled delays of one tempo (design §6).

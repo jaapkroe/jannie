@@ -41,6 +41,12 @@ func refWinner(trick []Played, trump Suit) Seat {
 }
 
 func refLegal(hand []Card, trick []Played, seat Seat, trump Suit, rules Rules) []Card {
+	return refLegalWith(hand, trick, (seat+2)%4, trump, rules)
+}
+
+// refLegalWith is refLegal for a player whose partner is partner (NoSeat:
+// none, as for the soloist with three players or with two).
+func refLegalWith(hand []Card, trick []Played, partner Seat, trump Suit, rules Rules) []Card {
 	if len(trick) == 0 {
 		return hand
 	}
@@ -84,7 +90,7 @@ func refLegal(hand []Card, trick []Played, seat Seat, trump Suit, rules Rules) [
 	}
 	over := filter(beatsAllTrumps)
 	nonTrump := filter(func(c Card) bool { return !isTrump(c) })
-	if rules == Amsterdams && refWinner(trick, trump) == (seat+2)%4 {
+	if rules == Amsterdams && partner != NoSeat && refWinner(trick, trump) == partner {
 		if allowed := filter(func(c Card) bool { return !isTrump(c) || beatsAllTrumps(c) }); len(allowed) > 0 {
 			return allowed
 		}

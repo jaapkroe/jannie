@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"math/rand/v2"
 	"slices"
 	"sort"
@@ -13,7 +14,8 @@ import (
 // Keys of `s` (design §7) present in every phase.
 var baseKeys = []string{
 	"code", "phase", "opts", "training", "you", "host", "players", "handNo", "hands",
-	"dealer", "voorhand", "turned", "bids", "forced", "trump", "trumpBy", "playingTeam",
+	"dealer", "voorhand", "turned", "bids", "forced", "bid", "bidder", "soloist", "talon",
+	"discards", "piles", "openRoem", "trump", "trumpBy", "playingTeam",
 	"turn", "takeover", "hand", "trick", "lastTrick", "tricksWon", "handPoints", "handRoem", "scores",
 	"total", "prevHand", "nextAt", "hint", "hands4", "winner", "review",
 }
@@ -49,10 +51,16 @@ func field(t *testing.T, raw json.RawMessage, key string) json.RawMessage {
 }
 
 func TestStateKeys(t *testing.T) {
+	for _, players := range []int{4, 3, 2} {
+		t.Run(fmt.Sprint(players), func(t *testing.T) { testStateKeys(t, players) })
+	}
+}
+
+func testStateKeys(t *testing.T, players int) {
 	_, ts, _ := newTestServer(t)
-	rng := rand.New(rand.NewPCG(11, 11))
+	rng := rand.New(rand.NewPCG(11, uint64(players)))
 	c := dial(t, ts)
-	c.send(map[string]any{"t": "create", "name": "Piet", "opts": map[string]any{"humans": 1, "hands": 4}})
+	c.send(map[string]any{"t": "create", "name": "Piet", "opts": map[string]any{"hands": 4, "players": players}})
 	c.waitType("joined")
 	c.waitType("chatlog")
 	lobby := c.waitType("update")
@@ -60,25 +68,30 @@ func TestStateKeys(t *testing.T) {
 		t.Errorf("first update ev %s, want null", lobby.Ev)
 	}
 	wantKeys(t, "lobby", lobby.S, append(slices.Clone(baseKeys), "roster"))
-	wantKeys(t, "opts", field(t, lobby.S, "opts"), []string{"humans", "hands", "trumpMode", "rules", "ai", "tempo", "open"})
-	var players []json.RawMessage
-	json.Unmarshal(field(t, lobby.S, "players"), &players)
-	if len(players) != 4 {
-		t.Fatalf("players has %d entries", len(players))
+	wantKeys(t, "opts", field(t, lobby.S, "opts"), []string{"players", "hands", "trumpMode", "rules", "ai", "tempo", "open"})
+	var seats []json.RawMessage
+	json.Unmarshal(field(t, lobby.S, "players"), &seats)
+	if len(seats) != players {
+		t.Fatalf("players has %d entries", len(seats))
 	}
 	playerKeys := []string{"name", "bot", "botId", "emoji", "color", "connected", "away", "left", "vote", "cards", "ready"}
-	for i, p := range players {
-		wantKeys(t, "player", p, playerKeys)
-		if i > 0 && !strings.Contains(string(p), `"bot":true`) {
-			t.Errorf("seat %d is no bot: %s", i, p)
+	wantKeys(t, "player", seats[0], playerKeys)
+	for i, p := range seats[1:] {
+		if string(p) != "null" {
+			t.Errorf("seat %d is not free in the lobby: %s", i+1, p)
 		}
 	}
 	var roster []json.RawMessage
 	json.Unmarshal(field(t, lobby.S, "roster"), &roster)
 	wantKeys(t, "roster entry", roster[0], []string{"id", "name", "emoji", "color", "bio"})
-	for _, k := range []string{"trick", "lastTrick", "prevHand", "hint", "hands4", "turned", "trump", "review", "takeover"} {
+	for _, k := range []string{"trick", "lastTrick", "prevHand", "hint", "hands4", "turned", "trump", "piles", "openRoem", "review", "takeover"} {
 		if v := string(field(t, lobby.S, k)); v != "null" {
 			t.Errorf("lobby %s = %s, want null", k, v)
+		}
+	}
+	for _, k := range []string{"talon", "discards"} {
+		if v := string(field(t, lobby.S, k)); v != "[]" {
+			t.Errorf("lobby %s = %s, want []", k, v)
 		}
 	}
 	if v := string(field(t, lobby.S, "scores")); v != "[]" {
@@ -120,7 +133,11 @@ func TestStateKeys(t *testing.T) {
 			c.send(map[string]any{"t": "ready"})
 		}
 	}
-	for _, k := range []string{"trump", "play", "play/mine", "handEnd", "gameOver"} {
+	want := []string{"trump", "play", "play/mine", "handEnd", "gameOver"}
+	if players == 3 {
+		want = append(want, "auction", "discard")
+	}
+	for _, k := range want {
 		if !seen[k] {
 			t.Errorf("never saw a state in %s", k)
 		}
@@ -130,22 +147,34 @@ func TestStateKeys(t *testing.T) {
 func checkPhaseValues(t *testing.T, key string, m *msg) {
 	t.Helper()
 	s := m.state
+	n := len(s.Players)
+	if p := string(field(t, m.S, "piles")); (n == 2 && s.Phase != phaseHandEnd && s.Phase != phaseGameOver && s.Phase != phaseLobby) != (p != "null") {
+		t.Errorf("%s: %d players with piles %s", key, n, p)
+	}
 	switch s.Phase {
-	case phaseTrump, phasePlay:
-		if s.Trick == nil || s.Dealer < 0 || s.Voorhand != (s.Dealer+1)%4 {
+	case phaseAuction, phaseDiscard, phaseTrump, phasePlay:
+		if s.Trick == nil || s.Dealer < 0 || s.Voorhand != (s.Dealer+1)%n {
 			t.Errorf("%s: trick %v dealer %d voorhand %d", key, s.Trick, s.Dealer, s.Voorhand)
 		}
 		wantKeys(t, key+" trick", field(t, m.S, "trick"), []string{"leader", "cards", "winner", "points", "roem"})
+		if n == 2 {
+			var piles [][]json.RawMessage
+			json.Unmarshal(field(t, m.S, "piles"), &piles)
+			if len(piles) != 2 || len(piles[0]) != 8 {
+				t.Fatalf("%s: piles %s", key, field(t, m.S, "piles"))
+			}
+			wantKeys(t, key+" pile", piles[0][0], []string{"n", "card"})
+		}
 	case phaseHandEnd:
 		if s.NextAt <= time.Now().Add(-time.Minute).UnixMilli() || s.PrevHand == nil || s.Turn != -1 {
 			t.Errorf("handEnd: nextAt %d prevHand %v turn %d", s.NextAt, s.PrevHand != nil, s.Turn)
 		}
 		wantKeys(t, "prevHand", field(t, m.S, "prevHand"), []string{"tricks", "result"})
 		wantKeys(t, "result", field(t, field(t, m.S, "prevHand"), "result"),
-			[]string{"playingTeam", "trumpBy", "trump", "dealer", "points", "roem", "score", "nat", "pit", "pitTeam"})
+			[]string{"players", "playingTeam", "trumpBy", "trump", "dealer", "points", "roem", "score", "nat", "pit", "pitTeam", "bid", "discards", "gains"})
 		var rows []json.RawMessage
 		json.Unmarshal(field(t, m.S, "scores"), &rows)
-		wantKeys(t, "score row", rows[0], []string{"hand", "dealer", "trump", "trumpBy", "playingTeam", "points", "roem", "score", "nat", "pit"})
+		wantKeys(t, "score row", rows[0], []string{"hand", "dealer", "trump", "trumpBy", "playingTeam", "bid", "points", "roem", "score", "gains", "nat", "pit"})
 		if s.Trick != nil || len(s.Hand) != 0 {
 			t.Errorf("handEnd: trick %v hand %v", s.Trick, s.Hand)
 		}
@@ -168,10 +197,16 @@ func checkPhaseValues(t *testing.T, key string, m *msg) {
 
 // TestEventShapes checks the fields of each event kind.
 func TestEventShapes(t *testing.T) {
+	for _, players := range []int{4, 3} {
+		t.Run(fmt.Sprint(players), func(t *testing.T) { testEventShapes(t, players) })
+	}
+}
+
+func testEventShapes(t *testing.T, players int) {
 	_, ts, _ := newTestServer(t)
-	rng := rand.New(rand.NewPCG(13, 13))
+	rng := rand.New(rand.NewPCG(13, uint64(players)))
 	c := dial(t, ts)
-	c.create("Piet", map[string]any{"humans": 1, "hands": 4, "trumpMode": "gedraaid"}, false, true)
+	c.create("Piet", map[string]any{"hands": 4, "trumpMode": "gedraaid", "players": players}, false, true)
 	want := map[string][]string{
 		"deal":     {"type", "handNo", "dealer"},
 		"turned":   {"type", "suit"},
@@ -183,6 +218,13 @@ func TestEventShapes(t *testing.T) {
 		"handEnd":  {"type", "result"},
 		"gameOver": {"type", "total", "winner"},
 	}
+	if players == 3 {
+		// The auction instead of gedraaid.
+		delete(want, "turned")
+		delete(want, "bid")
+		want["auction"] = []string{"type", "seat", "bid"}
+		want["contract"] = []string{"type", "seat", "bid", "forced"}
+	}
 	seen := map[string]bool{}
 	acted, readied := 0, 0
 	for !seen["gameOver"] {
@@ -192,8 +234,11 @@ func TestEventShapes(t *testing.T) {
 		}
 		if e := m.evType(); e != "" {
 			keys, ok := want[e]
-			if !ok {
+			if !ok && e != "discard" {
 				t.Fatalf("unexpected event %s", m.Ev)
+			}
+			if e == "discard" {
+				keys = []string{"type", "seat"} // only when the human plays alone
 			}
 			wantKeys(t, "event "+e, m.Ev, keys)
 			if e == "trick" && !strings.Contains(string(m.Ev), `"roem":[`) {

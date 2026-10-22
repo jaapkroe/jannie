@@ -128,9 +128,9 @@ func TestDealUtrechtsFlow(t *testing.T) {
 	}
 	res := d.Result()
 	want := HandResult{
-		PlayingTeam: 1, TrumpBy: 1, Trump: Hearts, Dealer: 0,
+		Players: 4, PlayingTeam: 1, TrumpBy: 1, Trump: Hearts, Dealer: 0,
 		Points: [2]int{0, 162}, Roem: [2]int{0, 600 + PitBonus},
-		Score: [2]int{0, 862}, Pit: true, PitTeam: 1,
+		Score: [2]int{0, 862}, Pit: true, PitTeam: 1, Gains: [4]int{0, 862},
 	}
 	if res != want {
 		t.Errorf("result = %+v\nwant %+v", res, want)
@@ -139,7 +139,7 @@ func TestDealUtrechtsFlow(t *testing.T) {
 		t.Errorf("tallies %v %v %v", d.TricksWon(), d.HandPoints(), d.HandRoem())
 	}
 	b, _ := json.Marshal(res)
-	if string(b) != `{"playingTeam":1,"trumpBy":1,"trump":"H","dealer":0,"points":[0,162],"roem":[0,700],"score":[0,862],"nat":false,"pit":true,"pitTeam":1}` {
+	if string(b) != `{"players":4,"playingTeam":1,"trumpBy":1,"trump":"H","dealer":0,"points":[0,162],"roem":[0,700],"score":[0,862],"nat":false,"pit":true,"pitTeam":1,"bid":0,"discards":[],"gains":[0,862]}` {
 		t.Errorf("result JSON = %s", b)
 	}
 }
@@ -476,12 +476,15 @@ func mustErr(t *testing.T, err, want error) {
 	}
 }
 
-// chooseRandom completes the trump phase with random decisions.
+// chooseRandom completes the trump phase (and with three players the
+// auction and the discards) with random decisions.
 func chooseRandom(t *testing.T, d *Deal, rng *rand.Rand) {
 	t.Helper()
-	for d.Phase() == PhaseBid || d.Phase() == PhaseTrump {
+	for d.Phase() != PhasePlay && d.Phase() != PhaseDone {
 		var err error
-		if d.Phase() == PhaseBid {
+		if d.Phase() == PhaseAuction || d.Phase() == PhaseDiscard {
+			err = chooseSmall(d, rng)
+		} else if d.Phase() == PhaseBid {
 			err = d.Bid(d.Turn(), rng.IntN(4) == 0)
 		} else {
 			s := Suit(rng.IntN(4))

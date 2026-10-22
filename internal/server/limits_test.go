@@ -193,7 +193,7 @@ func TestFailedJoinsBlock(t *testing.T) {
 		s.joinBlock = 300 * time.Millisecond
 	})
 	h := dial(t, ts)
-	h.create("Host", map[string]any{"humans": 2}, false, false)
+	h.create("Host", map[string]any{"players": 2}, false, false)
 	const ip = "192.0.2.30"
 	g := dialIP(t, ts, ip)
 	g.join(h.code, "Gast", "")
@@ -265,7 +265,7 @@ func TestOriginCheck(t *testing.T) {
 func TestShutdown(t *testing.T) {
 	s, ts, _ := newTestServer(t)
 	c := dial(t, ts)
-	c.create("Piet", map[string]any{"humans": 1}, false, true)
+	c.create("Piet", map[string]any{}, false, true)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	go s.Shutdown(ctx)
@@ -305,7 +305,7 @@ func TestJanitor(t *testing.T) {
 	}
 	// A room nobody is connected to goes.
 	c := dial(t, ts)
-	c.create("Piet", map[string]any{"humans": 1}, false, true)
+	c.create("Piet", map[string]any{}, false, true)
 	c.conn.CloseNow()
 	waitFor(t, "idle room removed", func() bool { return rooms() == 0 })
 	if n := s.players.Load(); n != 0 {
@@ -314,7 +314,7 @@ func TestJanitor(t *testing.T) {
 
 	// A finished game goes too, even with players connected; they hear so.
 	d := dial(t, ts)
-	d.create("Piet", map[string]any{"humans": 1, "hands": 4}, false, true)
+	d.create("Piet", map[string]any{"hands": 4}, false, true)
 	s.mu.Lock()
 	r := s.rooms[d.code]
 	s.mu.Unlock()
@@ -347,16 +347,16 @@ func TestJanitorAbandoned(t *testing.T) {
 		return s.rooms[code] != nil
 	}
 	running := dial(t, ts)
-	running.create("Piet", map[string]any{"humans": 1}, false, true)
+	running.create("Piet", map[string]any{}, false, true)
 	running.conn.CloseNow()
 	left := dial(t, ts)
-	left.create("Piet", map[string]any{"humans": 1}, false, true)
+	left.create("Piet", map[string]any{}, false, true)
 	left.send(map[string]any{"t": "leave"})
 	lobby := dial(t, ts)
-	lobby.create("Piet", map[string]any{"humans": 2}, false, false)
+	lobby.create("Piet", map[string]any{}, false, false)
 	lobby.conn.CloseNow()
 	over := dial(t, ts)
-	over.create("Piet", map[string]any{"humans": 1, "hands": 4}, false, true)
+	over.create("Piet", map[string]any{"hands": 4}, false, true)
 	r := roomOf(t, s, over.code)
 	call(r, func() {
 		r.pending = stepNone

@@ -78,7 +78,7 @@ func (r *room) ask(i game.Seat) {
 // cmdVote records whether the player at seat i lets an AI play the seat
 // the question is about; the answer may change while the question is open.
 func (r *room) cmdVote(c *client, i game.Seat, m *inMsg) {
-	to, ok := seatArg(m)
+	to, ok := r.seatArg(m)
 	switch {
 	case !ok:
 		c.sendError(errInvalid, "Die plaats bestaat niet.")

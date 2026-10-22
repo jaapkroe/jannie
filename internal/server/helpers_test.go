@@ -134,6 +134,17 @@ func (fakeBrain) Bid(v game.View) bool {
 
 func (fakeBrain) Play(v game.View) game.Card { return v.Legal[0] }
 
+// Auction opens with the lowest bid when holding a boer, else passes, so
+// both an auction and a forced soloist occur.
+func (fakeBrain) Auction(v game.View) int {
+	if v.Bidder == game.NoSeat && slices.ContainsFunc(v.Hand, func(c game.Card) bool { return c.Rank == game.Jack }) {
+		return v.MinNextBid()
+	}
+	return 0
+}
+
+func (fakeBrain) Discard(v game.View) [2]game.Card { return [2]game.Card{v.Hand[0], v.Hand[1]} }
+
 // newTestServer returns a server at a very fast pace behind httptest.
 func newTestServer(t *testing.T, tweak ...func(*Server)) (*Server, *httptest.Server, *fakeAI) {
 	t.Helper()
@@ -223,6 +234,8 @@ func (b countBrain) note(v game.View) {
 func (b countBrain) ChooseTrump(v game.View) game.Suit { b.note(v); return fakeBrain{}.ChooseTrump(v) }
 func (b countBrain) Bid(v game.View) bool              { b.note(v); return fakeBrain{}.Bid(v) }
 func (b countBrain) Play(v game.View) game.Card        { b.note(v); return fakeBrain{}.Play(v) }
+func (b countBrain) Auction(v game.View) int           { b.note(v); return fakeBrain{}.Auction(v) }
+func (b countBrain) Discard(v game.View) [2]game.Card  { b.note(v); return fakeBrain{}.Discard(v) }
 
 // roomOf returns the registered room with code.
 func roomOf(t *testing.T, s *Server, code string) *room {
@@ -505,7 +518,14 @@ func (c *tclient) join(code, name, token string) {
 // myTurn reports whether the latest state awaits this client's action.
 func (c *tclient) myTurn() bool {
 	s := c.s
-	return s != nil && s.Turn == s.You && (s.Phase == phaseTrump || s.Phase == phaseBid || s.Phase == phasePlay)
+	if s == nil || s.Turn != s.You {
+		return false
+	}
+	switch s.Phase {
+	case phaseAuction, phaseDiscard, phaseTrump, phaseBid, phasePlay:
+		return true
+	}
+	return false
 }
 
 // actHint follows the training hint on the client's turn.
@@ -540,6 +560,19 @@ func (c *tclient) actRandom(rng *rand.Rand) {
 		}
 	case phaseBid:
 		c.send(map[string]any{"t": "bid", "play": rng.IntN(3) == 0})
+	case phaseAuction:
+		bid := 0
+		if rng.IntN(3) == 0 {
+			bid = game.MinBid
+			if s.Bidder >= 0 {
+				bid = s.Bid + game.BidStep
+			}
+		}
+		c.send(map[string]any{"t": "auction", "bid": bid})
+	case phaseDiscard:
+		h := slices.Clone(s.Hand)
+		rng.Shuffle(len(h), func(i, j int) { h[i], h[j] = h[j], h[i] })
+		c.send(map[string]any{"t": "discard", "cards": []string{h[0].String(), h[1].String()}})
 	case phasePlay:
 		c.send(map[string]any{"t": "play", "card": s.Legal[rng.IntN(len(s.Legal))].String()})
 	}

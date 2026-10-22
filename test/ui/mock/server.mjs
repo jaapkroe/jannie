@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Mock klaverjas server for frontend development and UI tests: serves web/
 // (with the /ABCD → index.html rule) and speaks the websocket protocol of
-// docs/design.md §7 with a compact rules engine and simple bots.
+// docs/design.md §7 with a compact rules engine and simple bots, for tables
+// of four only (opts.players other than 4 is ignored).
 //
 //   node test/ui/mock/server.mjs [--port 18100] [--scale 1] [--fast] [--rig] [--seed N]
 //
@@ -191,7 +192,7 @@ const ASK_AFTER = 10000; // ms, scaled: a dropped-out person's turn before the t
 const PLAYING = new Set(['trump', 'bid', 'play']);
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const rooms = new Map();
-const DEFAULTS = { humans: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', open: false };
+const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', open: false };
 
 function newCode() {
   for (;;) {
@@ -225,16 +226,6 @@ function clearTimers(room) {
   clearTimeout(room.turnTimer);
 }
 
-function prefill(room) {
-  const want = room.opts.humans;
-  const bots = { 1: [1, 2, 3], 2: [1, 3], 3: [3], 4: [] }[want];
-  for (let s = 0; s < 4; s++) {
-    const p = room.players[s];
-    if (bots.includes(s) && !p) room.players[s] = botPlayer(room);
-    if (!bots.includes(s) && p?.bot) room.players[s] = null;
-  }
-}
-
 function createRoom(opts, training) {
   const room = {
     code: newCode(), opts: { ...DEFAULTS, ...pickOpts(opts) }, training, host: 0, seq: 0,
@@ -243,14 +234,14 @@ function createRoom(opts, training) {
     chat: [], timers: new Set(), rigged: RIG, lastBotChat: 0,
     turnKey: '', turnAt: 0, openedAt: 0, think: 0, turnTimer: 0, question: null, takeover: null, summaryWaits: false,
   };
-  if (training) room.opts = { ...room.opts, humans: 1, tempo: opts?.tempo || 'rustig' };
+  if (training) room.opts = { ...room.opts, tempo: opts?.tempo || 'rustig' };
   rooms.set(room.code, room);
   return room;
 }
 
 function pickOpts(o = {}) {
   const out = {};
-  if ([1, 2, 3, 4].includes(o.humans)) out.humans = o.humans;
+
   if ([4, 8, 12, 16, 20, 24].includes(o.hands)) out.hands = o.hands;
   if (['utrechts', 'gedraaid'].includes(o.trumpMode)) out.trumpMode = o.trumpMode;
   if (['amsterdams', 'rotterdams'].includes(o.rules)) out.rules = o.rules;
@@ -719,7 +710,7 @@ function onMessage(ws, m) {
         r.players[2] = { ...botPlayer(r, 'ans') };
         r.players[1] = botPlayer(r);
         r.players[3] = botPlayer(r);
-      } else prefill(r);
+      }
       seatHuman(ws, r, 0, m.name);
       if (m.start || r.training) startGame(r);
       else broadcast(r, { type: 'lobby' });
@@ -752,16 +743,14 @@ function onMessage(ws, m) {
       }
       if (r.training) return err('vol', 'Dit is een oefenspel; daar kun je niet bij.');
       if (r.phase === 'lobby') {
-        const humans = r.players.filter(p => p && !p.bot).length;
         const free = r.players.findIndex(p => !p);
-        if (humans >= r.opts.humans || free < 0) {
+        if (free < 0) {
           // As the server: the host hears of it (without its rate limit).
           sys(r, `${String(m.name || 'Speler').slice(0, 20)} wilde aanschuiven, maar de tafel is vol.`);
           const host = r.players[r.host];
           if (host?.ws && host.connected) send(host.ws, { t: 'refused', name: String(m.name || 'Speler').slice(0, 20) });
-          return err('vol', humans < r.opts.humans ? 'Deze tafel is vol. Vraag de host om een AI-speler weg te halen en probeer het dan opnieuw.'
-            : r.opts.humans >= 4 ? 'Deze tafel is vol: alle vier de plaatsen zijn bezet.'
-              : 'Deze tafel is vol: alle plaatsen voor spelers zijn bezet. Vraag de host om bij Spelers een plaats vrij te maken en probeer het dan opnieuw.');
+          return err('vol', r.players.some(p => p?.bot) ? 'Deze tafel is vol. Vraag de host om een AI-speler weg te halen en probeer het dan opnieuw.'
+            : 'Deze tafel is vol: alle vier de plaatsen zijn bezet.');
         }
         seatHuman(ws, r, free, m.name);
         sys(r, `${r.players[free].name} schuift aan.`);
@@ -818,7 +807,6 @@ function onMessage(ws, m) {
       if (!host) return err('geen-host', 'Alleen de host kan dat.');
       if (room.phase !== 'lobby') return err('ongeldig', 'Het spel is al begonnen.');
       Object.assign(room.opts, pickOpts(m.opts));
-      if ('humans' in (m.opts || {})) prefill(room);
       return broadcast(room, { type: 'lobby' });
     case 'start':
       if (!host) return err('geen-host', 'Alleen de host kan het spel starten.');

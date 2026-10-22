@@ -3723,6 +3723,12 @@ body.busy::after {
   animation: kj-pop 0.5s var(--ease);
 }
 
+/* A headline with a player's name in it ("Kees de Visser (AI) gaat
+   nat!") is set smaller, so it takes no more room than "Gehaald!". */
+.m-summary .sum-title.long {
+  font-size: clamp(26px, 7.4vw, 40px);
+}
+
 /* Seen from Wij: good news in our colour, bad news in red, the opponents
    making their game plain; our pit shines gold (util.js handHeadline). */
 .sum-head.good .sum-title { color: var(--wij-hi); }
@@ -5074,6 +5080,330 @@ body.chat-open .chat-scrim {
   .table {
     --hand-w: clamp(80px, min(9vw, 12.5dvh), 118px);
     --trick-w: clamp(70px, min(7.2vw, 10.6dvh), 102px);
+  }
+}
+
+/* ---------- tables of three and two players ---------- */
+
+/* Three players: the other two sit left and right, a little towards the
+   top, and the trick lies in a triangle between the three. */
+.table[data-players="3"] .seat-left,
+.table[data-players="3"] .seat-right {
+  align-self: start;
+  margin-top: clamp(6px, 4dvh, 40px);
+}
+
+/* Raised, the side seats talk downwards, past their cards. */
+.table[data-players="3"] .seat-left .bubble,
+.table[data-players="3"] .seat-right .bubble {
+  top: calc(100% + 8px);
+  bottom: auto;
+  transform-origin: 50% 0;
+}
+
+.table[data-players="3"] .seat-left .bubble::after,
+.table[data-players="3"] .seat-right .bubble::after {
+  top: -5px;
+  bottom: auto;
+}
+
+.table[data-players="3"] .slot-bottom { translate: 0 calc(var(--trick-w) * 0.5); }
+.table[data-players="3"] .slot-left { translate: calc(var(--trick-w) * -0.66) calc(var(--trick-w) * -0.3); }
+.table[data-players="3"] .slot-right { translate: calc(var(--trick-w) * 0.66) calc(var(--trick-w) * -0.3); }
+
+/* The talon: two closed cards in the middle while the auction runs. */
+.talon {
+  --card-w: calc(var(--trick-w) * 0.82);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  translate: -50% -50%;
+}
+
+.talon > .card {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.talon > .card:first-child {
+  rotate: -7deg;
+}
+
+.talon > .card + .card {
+  margin-left: calc(var(--card-w) * -0.55);
+  rotate: 6deg;
+}
+
+/* The auction: the highest bid, a bid to offer, bid or pass. */
+.panel-auction .auction-high {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.panel-auction .auction-high b {
+  color: var(--gold-hi);
+  font-size: 17px;
+}
+
+.bid-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.bid-step {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  font-size: 26px;
+  font-weight: 900;
+  border-radius: 50%;
+}
+
+.panel-auction .bid-btns .btn {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.bid-num {
+  min-width: 3.2ch;
+  font-size: 34px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-hi);
+}
+
+.banner-sym.banner-bid {
+  width: auto;
+  min-width: 64px;
+  padding: 0 8px;
+  font-size: 34px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Laying away: the two cards from the talon glow; the chosen ones lift,
+   but stay in their place in the fan, so the card beside a chosen one can
+   be chosen too. */
+.hand > .card.picked {
+  translate: 0 calc(var(--hand-h) * -0.2);
+}
+
+.hand > .card.from-talon {
+  box-shadow:
+    0 0 0 2.5px var(--gold),
+    0 0 16px rgba(242, 193, 78, 0.75),
+    0 6px 14px rgba(0, 0, 0, 0.3);
+}
+
+.stage.low {
+  align-items: end;
+  padding-bottom: 4px;
+}
+
+.panel-discard .bid-btns {
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.roem-burst small {
+  margin-top: 6px;
+  color: #fff3d0;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* Two players: eight piles of two cards in front of each, the top cards
+   open. Ours take the place of the hand, the front row (piles 0..3)
+   nearest us; the opponent's mirror them at the top. A pile shows the
+   closed card under the top one, peeking out. */
+.table[data-players="2"] {
+  --pile-w: clamp(42px, min(19.5vw, 10.4dvh), 96px);
+  --opp-pile-w: clamp(28px, min(11.5vw, 6.2dvh), 68px);
+  --hand-row: calc(var(--pile-w) * 2.32 + 12px + var(--sab));
+}
+
+.hand.tableau {
+  --card-w: var(--pile-w);
+  display: grid;
+  grid-template-columns: repeat(4, var(--pile-w));
+  grid-template-rows: calc(var(--pile-w) * 0.92) calc(var(--pile-w) * 1.4);
+  justify-content: center;
+  align-content: end;
+  column-gap: calc(var(--pile-w) * 0.2);
+  padding-bottom: calc(6px + var(--sab));
+}
+
+.pile {
+  position: relative;
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.4);
+}
+
+.pile.gone {
+  border-radius: calc(var(--card-w) * 0.1);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.12);
+}
+
+.pile > .card,
+.pile-under {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.pile-under {
+  translate: calc(var(--card-w) * 0.06) calc(var(--card-w) * 0.07);
+}
+
+.pile-under > .card {
+  filter: brightness(0.85);
+}
+
+.pile > .card {
+  box-shadow: 0 0 0 0.5px rgba(40, 30, 10, 0.4), 0 4px 10px rgba(0, 0, 0, 0.35);
+  transition: translate 0.18s var(--ease), filter 0.2s ease;
+}
+
+.hand.tableau .pile.front { grid-row: 2; z-index: 2; }
+.hand.tableau .pile.back { grid-row: 1; z-index: 1; }
+.hand.tableau .pile-0, .hand.tableau .pile-4 { grid-column: 1; }
+.hand.tableau .pile-1, .hand.tableau .pile-5 { grid-column: 2; }
+.hand.tableau .pile-2, .hand.tableau .pile-6 { grid-column: 3; }
+.hand.tableau .pile-3, .hand.tableau .pile-7 { grid-column: 4; }
+
+.hand.tableau.my-turn .card.legal {
+  translate: 0 calc(var(--card-w) * -0.1);
+  cursor: pointer;
+}
+
+.hand.tableau.my-turn .card.disabled {
+  filter: brightness(0.55) saturate(0.6);
+}
+
+.hand.tableau .card.selected {
+  translate: 0 calc(var(--card-w) * -0.22);
+  z-index: 5;
+}
+
+.hand.tableau .card.hint {
+  translate: 0 calc(var(--card-w) * -0.17);
+}
+
+.piles {
+  --card-w: var(--opp-pile-w);
+  display: grid;
+  grid-template-columns: repeat(4, var(--opp-pile-w));
+  grid-template-rows: calc(var(--opp-pile-w) * 0.92) calc(var(--opp-pile-w) * 1.4);
+  column-gap: calc(var(--opp-pile-w) * 0.16);
+}
+
+.piles[hidden] {
+  display: none;
+}
+
+.piles .pile.front { grid-row: 1; z-index: 1; }
+.piles .pile.back { grid-row: 2; z-index: 2; }
+.piles .pile-0, .piles .pile-4 { grid-column: 4; }
+.piles .pile-1, .piles .pile-5 { grid-column: 3; }
+.piles .pile-2, .piles .pile-6 { grid-column: 2; }
+.piles .pile-3, .piles .pile-7 { grid-column: 1; }
+
+.table[data-players="2"] .seat-top {
+  gap: 10px;
+  padding-top: 10px;
+  max-width: 100%;
+}
+
+.table[data-players="2"] .seat-top .seat-id {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.table[data-players="2"] .seat-top .nm {
+  max-width: max(70px, calc(100vw - var(--opp-pile-w) * 4.5 - 90px));
+}
+
+@media (min-width: 760px) and (min-height: 640px) {
+  .table[data-players="2"] {
+    --pile-w: clamp(60px, min(8.6vw, 11.4dvh), 112px);
+    --opp-pile-w: clamp(44px, min(6.2vw, 8dvh), 86px);
+  }
+}
+
+/* Lobby: three seats around the table, or two opposite. */
+.mini-table[data-players="3"] .ls-left,
+.mini-table[data-players="3"] .ls-right {
+  top: 30%;
+}
+
+/* Score pill with three players: tighter, so the bar keeps its buttons. */
+.score-pill.three .sp {
+  min-width: 42px;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+/* Score sheet and summary with a column per player. */
+.scoresheet.cols-3 th,
+.scoresheet.cols-3 td {
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.scoresheet .tr .bid {
+  display: block;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--gold);
+}
+
+.sum-table th .role {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
+
+.sum-table td.shared b {
+  opacity: 0.8;
+}
+
+.sum-three thead .face {
+  display: block;
+  font-size: 19px;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.over-score.many {
+  flex-wrap: wrap;
+}
+
+.sum-why .card {
+  --card-w: 22px;
+  display: inline-flex;
+  vertical-align: middle;
+  margin: 0 2px;
+}
+
+@media (max-width: 599px) {
+  .m-summary .sum-review-3 .review {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .m-summary .sum-review-2 .review {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .m-summary .sum-review-2 .mt {
+    padding: 3px 2px 6px 4px;
   }
 }
 

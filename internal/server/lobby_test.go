@@ -51,25 +51,39 @@ func TestCreateDefaults(t *testing.T) {
 	}
 }
 
-func TestPrefillBots(t *testing.T) {
+// TestPlayersSetsTheTable: the number of players is the number of seats;
+// they stay empty in the lobby until someone sits there or the host puts a
+// bot there, and bots fill the rest at the start.
+func TestPlayersSetsTheTable(t *testing.T) {
 	_, ts, _ := newTestServer(t)
-	for humans, want := range map[int][]int{1: {1, 2, 3}, 2: {1, 3}, 3: {3}, 4: nil} {
+	for _, players := range []int{2, 3, 4} {
 		c := dial(t, ts)
-		c.create("Host", map[string]any{"humans": humans}, false, false)
-		if got := botSeats(c.s); !slices.Equal(got, want) {
-			t.Errorf("humans %d: bots at %v, want %v", humans, got, want)
+		c.create("Host", map[string]any{"players": players}, false, false)
+		if len(c.s.Players) != players || len(c.s.Bids) != players || len(botSeats(c.s)) != 0 || c.s.Opts.Players != players {
+			t.Errorf("%d players: seats %+v, opts %+v", players, c.s.Players, c.s.Opts)
+		}
+		c.send(map[string]any{"t": "start"})
+		s := c.waitEvent("deal").state
+		if got := botSeats(s); len(got) != players-1 || len(s.Total) != game.Scorers(players) {
+			t.Errorf("%d players: bots at %v after the start, total %v", players, got, s.Total)
 		}
 		ids := map[string]bool{}
-		for _, i := range want {
-			ids[c.s.Players[i].BotID] = true
+		for _, i := range botSeats(s) {
+			ids[s.Players[i].BotID] = true
 		}
-		if len(ids) != len(want) {
-			t.Errorf("humans %d: bots not distinct", humans)
+		if len(ids) != players-1 {
+			t.Errorf("%d players: bots not distinct", players)
 		}
+	}
+	// Training is always four, whatever the options say.
+	c := dial(t, ts)
+	c.create("Leerling", map[string]any{"players": 2}, true, false)
+	if len(c.s.Players) != 4 || c.s.Opts.Players != 4 {
+		t.Errorf("training at a table of %d", len(c.s.Players))
 	}
 }
 
-func TestOptsChangesBots(t *testing.T) {
+func TestOptsChangesPlayers(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
@@ -79,24 +93,42 @@ func TestOptsChangesBots(t *testing.T) {
 		t.Fatalf("guest at seat %d, want the first empty seat 1", g.seat)
 	}
 	h.waitEvent("join")
-	h.send(map[string]any{"t": "opts", "opts": map[string]any{"humans": 2, "hands": 8, "trumpMode": "gedraaid"}})
-	s := h.waitState("bots for 2", func(s *state) bool { return s.Opts.Humans == 2 })
-	if got := botSeats(s); !slices.Equal(got, []int{2, 3}) {
-		t.Errorf("humans 2 with people at 0 and 1: bots at %v", got)
+	// The guest moves to seat 3, the host puts a bot at 2: going to three
+	// seats takes seat 3 away, so the guest moves to the first free seat
+	// and the bot stays.
+	g.send(map[string]any{"t": "sit", "seat": 3})
+	g.waitState("guest at 3", func(s *state) bool { return s.You == 3 })
+	h.send(map[string]any{"t": "bot", "seat": 2, "id": "dirk"})
+	h.waitState("bot at 2", func(s *state) bool { return s.Players[2] != nil })
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"players": 3, "hands": 8, "trumpMode": "gedraaid"}})
+	s := h.waitState("three seats", func(s *state) bool { return s.Opts.Players == 3 })
+	if len(s.Players) != 3 || s.Players[1] == nil || s.Players[1].Name != "Gast" || !slices.Equal(botSeats(s), []int{2}) {
+		t.Errorf("three seats: %+v %+v %+v", s.Players[0], s.Players[1], s.Players[2])
 	}
 	if s.Opts.Hands != 8 || s.Opts.TrumpMode != game.Gedraaid {
 		t.Errorf("opts %+v", s.Opts)
 	}
-	h.send(map[string]any{"t": "opts", "opts": map[string]any{"humans": 1}})
-	if e := h.waitError(errInvalid); e.errMsg() != "Er zitten al 2 mensen aan tafel." {
+	if gs := g.waitState("guest moved", func(s *state) bool { return s.You == 1 }); len(gs.Players) != 3 {
+		t.Errorf("guest sees %d seats", len(gs.Players))
+	}
+	h.send(map[string]any{"t": "bot", "seat": 3, "id": ""})
+	h.waitError(errInvalid) // no such seat any more
+	// Two seats: the bot makes way, nobody else has to.
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"players": 2}})
+	s = h.waitState("two seats", func(s *state) bool { return s.Opts.Players == 2 })
+	if len(s.Players) != 2 || len(botSeats(s)) != 0 || s.Players[1].Name != "Gast" {
+		t.Errorf("two seats: %+v %+v", s.Players[0], s.Players[1])
+	}
+	// A third person makes two seats too few.
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"players": 3}})
+	h.waitState("three seats", func(s *state) bool { return s.Opts.Players == 3 })
+	x := dial(t, ts)
+	x.join(h.code, "Derde", "")
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"players": 2}})
+	if e := h.waitError(errInvalid); e.errMsg() != "Er zitten al 3 mensen aan tafel." {
 		t.Errorf("msg %q", e.errMsg())
 	}
-	h.send(map[string]any{"t": "opts", "opts": map[string]any{"humans": 3}})
-	s = h.waitState("bots for 3", func(s *state) bool { return s.Opts.Humans == 3 })
-	if got := botSeats(s); !slices.Equal(got, []int{3}) {
-		t.Errorf("humans 3: bots at %v, want [3]", got)
-	}
-	for _, bad := range []map[string]any{{"hands": 5}, {"ai": "goddelijk"}, {"tempo": 3}, {"rules": "haags"}, {"humans": 0}} {
+	for _, bad := range []map[string]any{{"hands": 5}, {"ai": "goddelijk"}, {"tempo": 3}, {"rules": "haags"}, {"players": 1}, {"players": 5}} {
 		h.send(map[string]any{"t": "opts", "opts": bad})
 		h.waitError(errInvalid)
 	}
@@ -107,7 +139,7 @@ func TestOptsChangesBots(t *testing.T) {
 func TestLobbyCommands(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
-	h.create("Host", map[string]any{"humans": 4}, false, false)
+	h.create("Host", nil, false, false)
 	g := dial(t, ts)
 	g.join(h.code, "Gast", "")
 	h.waitEvent("join")
@@ -165,7 +197,7 @@ func TestLobbyCommands(t *testing.T) {
 func TestJoinErrors(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
-	h.create("Host", map[string]any{"humans": 2}, false, false)
+	h.create("Host", map[string]any{"players": 2}, false, false)
 
 	x := dial(t, ts)
 	x.send(map[string]any{"t": "join", "code": "ZZZZ", "name": "X"})
@@ -177,12 +209,14 @@ func TestJoinErrors(t *testing.T) {
 
 	g := dial(t, ts)
 	g.join(strings.ToLower(h.code), "Gast", "") // codes are case-insensitive
-	if g.seat != 2 {
-		t.Errorf("guest at seat %d, want the partner seat 2", g.seat)
+	if g.seat != 1 {
+		t.Errorf("guest at seat %d, want the free seat 1", g.seat)
 	}
 	y := dial(t, ts)
 	y.send(map[string]any{"t": "join", "code": h.code, "name": "Y"})
-	y.waitError(errFull)
+	if e := y.waitError(errFull); !strings.Contains(e.errMsg(), "alle twee plaatsen zijn bezet") {
+		t.Errorf("refusal %q", e.errMsg())
+	}
 
 	h.send(map[string]any{"t": "start"})
 	h.waitEvent("deal")
@@ -195,11 +229,11 @@ func TestJoinErrors(t *testing.T) {
 // TestRefusedJoin: a join turned away from a full lobby tells the joiner
 // what to ask for, and the host (a system line for the table, a refused
 // message for the host only), at most once per refusedGap per room. Back
-// in the lobby with every human seat taken, nobody is invited to join.
+// in the lobby with every seat taken, nobody is invited to join.
 func TestRefusedJoin(t *testing.T) {
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	h := dial(t, ts)
-	h.create("Host", map[string]any{"humans": 2, "hands": 4}, false, false)
+	h.create("Host", map[string]any{"players": 2, "hands": 4}, false, false)
 	g := dial(t, ts)
 	g.join(h.code, "Gast", "")
 	h.waitEvent("join")
@@ -207,7 +241,7 @@ func TestRefusedJoin(t *testing.T) {
 
 	y := dial(t, ts)
 	y.send(map[string]any{"t": "join", "code": h.code, "name": "Yara"})
-	if m := y.waitError(errFull); !strings.Contains(m.errMsg(), "bij Spelers een plaats vrij te maken") {
+	if m := y.waitError(errFull); !strings.Contains(m.errMsg(), "bij Spelers een plaats bij te zetten") {
 		t.Errorf("refusal text %q", m.errMsg())
 	}
 	if m := h.waitType("refused"); m.Name != "Yara" {
@@ -235,10 +269,10 @@ func TestRefusedJoin(t *testing.T) {
 	})
 
 	// A free seat taken by a bot: the host can remove it.
-	h.send(map[string]any{"t": "opts", "opts": map[string]any{"humans": 3}})
-	h.waitState("humans 3, seat 1 free", func(s *state) bool { return s.Opts.Humans == 3 && s.Players[1] == nil })
-	h.send(map[string]any{"t": "bot", "seat": 1, "id": ""})
-	h.waitState("bot at 1", func(s *state) bool { return s.Players[1] != nil && s.Players[1].Bot })
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"players": 3}})
+	h.waitState("three seats, seat 2 free", func(s *state) bool { return s.Opts.Players == 3 && s.Players[2] == nil })
+	h.send(map[string]any{"t": "bot", "seat": 2, "id": ""})
+	h.waitState("bot at 2", func(s *state) bool { return s.Players[2] != nil && s.Players[2].Bot })
 	call(r, func() { r.refusedAt = time.Time{} })
 	y.send(map[string]any{"t": "join", "code": h.code, "name": "Yara"})
 	if m := y.waitError(errFull); !strings.Contains(m.errMsg(), "AI-speler weg te halen") {
@@ -246,10 +280,9 @@ func TestRefusedJoin(t *testing.T) {
 	}
 	h.waitType("refused")
 
-	// Game over, back to the lobby with 2 of 3 humans: room for one more.
-	// With the third seat for humans gone again, no invitation.
-	h.send(map[string]any{"t": "opts", "opts": map[string]any{"humans": 2}})
-	h.waitState("humans 2", func(s *state) bool { return s.Opts.Humans == 2 })
+	// Game over and back to the lobby with both seats taken: no invitation.
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"players": 2}})
+	h.waitState("two seats", func(s *state) bool { return s.Opts.Players == 2 })
 	h.send(map[string]any{"t": "start"})
 	h.waitEvent("deal")
 	call(r, func() {
@@ -268,7 +301,7 @@ func TestRefusedJoin(t *testing.T) {
 func TestLeaveAndTakeOver(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
-	h.create("Host", map[string]any{"humans": 2, "hands": 4}, false, false)
+	h.create("Host", map[string]any{"hands": 4}, false, false)
 	g := dial(t, ts)
 	g.join(h.code, "Gast", "")
 	h.send(map[string]any{"t": "start"})
@@ -282,8 +315,8 @@ func TestLeaveAndTakeOver(t *testing.T) {
 	if p := s.Players[0]; p == nil || p.Bot || !p.Left || p.Connected || p.Name != "Host" {
 		t.Fatalf("seat 0 after leave: %+v", p)
 	}
-	if s.Host != 2 {
-		t.Errorf("host %d, want 2", s.Host)
+	if s.Host != 1 {
+		t.Errorf("host %d, want 1", s.Host)
 	}
 	if !slices.ContainsFunc(g.chats, func(c chatMsg) bool { return c.Sys && c.Text == "Host is vertrokken." }) {
 		t.Errorf("no leave line in %+v", g.chats)
@@ -429,7 +462,7 @@ func TestBotChatLimits(t *testing.T) {
 func TestBotsGreetAndReply(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
-	c.create("Piet", map[string]any{"humans": 1}, false, true)
+	c.create("Piet", map[string]any{}, false, true)
 	m := c.until(5*time.Second, "bot greeting", func(m *msg) bool {
 		if m.T != "chat" {
 			return false

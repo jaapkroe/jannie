@@ -13,7 +13,8 @@ import (
 
 // The review (design §9 Spelanalyse) grades every decision a human makes
 // with a choice, in the background, and shows the result to that player
-// alone when the match is over.
+// alone when the match is over. It grades with the search of the hints,
+// which plays four players: at a table of three or two there is none.
 
 const (
 	riskyNat     = 0.4 // a bid to play with a higher chance of nat is listed as risky
@@ -112,6 +113,9 @@ func (r *room) reviewOf(i game.Seat) *review {
 	return st.review
 }
 
+// reviewing reports whether this match is reviewed: a table of four.
+func (r *room) reviewing() bool { return r.players() == 4 }
+
 // startReviews starts a review for every human at the start of a match.
 func (r *room) startReviews() {
 	r.matchID = newToken()[:12]
@@ -121,7 +125,7 @@ func (r *room) startReviews() {
 			rv.stale.Store(true)
 		}
 		r.seats[i].review = nil
-		if r.seats[i].kind == seatHuman {
+		if r.seats[i].kind == seatHuman && r.reviewing() {
 			r.seats[i].review = &review{}
 		}
 	}
@@ -130,6 +134,9 @@ func (r *room) startReviews() {
 // gradeHands measures, in the background, what the cards just dealt are
 // worth to each human.
 func (r *room) gradeHands() {
+	if !r.reviewing() {
+		return
+	}
 	for k := range r.seats {
 		i := game.Seat(k)
 		if r.seats[i].kind != seatHuman {
@@ -154,7 +161,7 @@ func (r *room) gradeHands() {
 // beforeChoice returns the view seat i decides action a on, when it is
 // their turn, and notes the roem their card would give.
 func (r *room) beforeChoice(i game.Seat, a action) (game.View, bool) {
-	if r.pending != stepNone || r.deal == nil || r.deal.Turn() != i {
+	if !r.reviewing() || r.pending != stepNone || r.deal == nil || r.deal.Turn() != i {
 		return game.View{}, false
 	}
 	v := r.viewFor(i)

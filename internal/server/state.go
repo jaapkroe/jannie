@@ -17,9 +17,14 @@ func (r *room) stateFor(i game.Seat) *state {
 		Host:        int(r.host),
 		HandNo:      r.handNo,
 		Hands:       r.opts.Hands,
+		Players:     make([]*playerState, r.players()),
 		Dealer:      -1,
 		Voorhand:    -1,
-		Bids:        [4]int{-1, -1, -1, -1},
+		Bids:        make([]int, r.players()),
+		Bidder:      -1,
+		Soloist:     -1,
+		Talon:       []game.Card{},
+		Discards:    []game.Card{},
 		TrumpBy:     -1,
 		PlayingTeam: -1,
 		Turn:        -1,
@@ -33,8 +38,12 @@ func (r *room) stateFor(i game.Seat) *state {
 	if s.Scores == nil {
 		s.Scores = []scoreRow{}
 	}
-	for k := range r.seats {
+	if s.Total == nil {
+		s.Total = make([]int, game.Scorers(r.players()))
+	}
+	for k := range s.Players {
 		s.Players[k] = r.playerState(game.Seat(k))
+		s.Bids[k] = -1
 	}
 	switch r.phase {
 	case phaseLobby:
@@ -51,10 +60,25 @@ func (r *room) stateFor(i game.Seat) *state {
 		return s
 	}
 	s.Dealer, s.Voorhand = int(d.Dealer()), int(d.Voorhand())
-	s.Bids, s.Forced = d.Bids(), d.Forced()
-	if d.Mode() == game.Gedraaid {
+	bids := d.Bids()
+	copy(s.Bids, bids[:])
+	s.Forced = d.Forced()
+	if d.Mode() == game.Gedraaid && d.Players() != 3 {
 		t := d.Turned()
 		s.Turned = &t
+	}
+	if d.Players() == 3 {
+		bidder, bid := d.Contract()
+		s.Bid, s.Bidder = bid, int(bidder)
+		if d.Phase() != game.PhaseAuction {
+			s.Soloist = int(bidder)
+		}
+		if bidder == i && d.Phase() != game.PhaseAuction && r.inHand() {
+			s.Talon = d.Talon()
+			if ds := d.Discards(); ds != nil {
+				s.Discards = ds
+			}
+		}
 	}
 	trump, known := d.Trump()
 	if known {
@@ -63,6 +87,18 @@ func (r *room) stateFor(i game.Seat) *state {
 		s.PlayingTeam = d.PlayingTeam()
 	}
 	s.TricksWon, s.HandPoints, s.HandRoem = d.TricksWon(), d.HandPoints(), d.HandRoem()
+	if d.Players() == 2 && r.inHand() {
+		var piles [2][8]game.Pile
+		var roem [2][]game.RoemItem
+		for k := range game.Seat(2) {
+			piles[k] = d.Piles(k)
+			roem[k] = d.OpenRoem(k)
+			if roem[k] == nil {
+				roem[k] = []game.RoemItem{}
+			}
+		}
+		s.Piles, s.OpenRoem = &piles, &roem
+	}
 	if !r.inHand() {
 		return s
 	}
@@ -85,8 +121,7 @@ func (r *room) stateFor(i game.Seat) *state {
 					}
 				}
 			}
-			v := d.View(i)
-			s.Rule = game.ExplainConstraint(v.Hand, v.Current, i, trump, d.Rules())
+			s.Rule = d.Constraint()
 		}
 		if r.training {
 			s.Hint = r.hintFor(i)
@@ -106,7 +141,7 @@ func (r *room) stateFor(i game.Seat) *state {
 // collected, then the empty next trick led by its winner.
 func (r *room) shownTrick() *game.Trick {
 	t := r.deal.Current()
-	if t.Complete() && r.collected {
+	if len(t.Cards) == r.deal.Players() && r.collected {
 		return &game.Trick{Leader: t.Winner, Winner: game.NoSeat, Cards: []game.Played{}}
 	}
 	return &t

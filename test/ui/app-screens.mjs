@@ -71,7 +71,7 @@ async function playUntil(P, stop, { timeout = 180000, ready = true, roemShot = n
   throw new Error(`[${P.name}] timeout playing until ${stop}`);
 }
 
-async function newGame(P, { humans = 1, hands = 4, tempo = 'snel', trumpMode = '' } = {}, label = '') {
+async function newGame(P, { players = 4, hands = 4, tempo = 'snel', trumpMode = '' } = {}, label = '') {
   await press(P, '#btn-new');
   await waitFor(P, () => document.querySelector('.m-new.open'), { label: 'new game sheet' });
   const pickOpt = async (row, value) => {
@@ -90,7 +90,7 @@ async function newGame(P, { humans = 1, hands = 4, tempo = 'snel', trumpMode = '
   };
   await sleep(300);
   if (label) await snap(P, label);
-  await pickOpt(1, String(humans));
+  await pickOpt(1, String(players));
   await pickOpt(2, String(hands));
   if (trumpMode) await pickOpt(3, trumpMode);
   await pickOpt(6, tempo[0].toUpperCase() + tempo.slice(1));
@@ -137,7 +137,7 @@ async function mainFlow(P) {
   await type(P, '#name', 'Piet');
 
   // New game sheet → lobby → start.
-  await newGame(P, { humans: 1, hands: 4, tempo: 'snel' }, '02-new-game');
+  await newGame(P, { hands: 4, tempo: 'snel' }, '02-new-game');
   await sleep(300);
   await snap(P, '03-lobby');
   await press(P, '#btn-start:not(:disabled)');
@@ -213,7 +213,7 @@ async function mainFlow(P) {
 // Gedraaid: the bidding panel.
 async function bidFlow(P) {
   await home(P);
-  await newGame(P, { humans: 1, hands: 4, tempo: 'snel', trumpMode: 'Gedraaid' });
+  await newGame(P, { hands: 4, tempo: 'snel', trumpMode: 'Gedraaid' });
   await press(P, '#btn-start:not(:disabled)');
   await playUntil(P, '.panel-bid .btn-go:not(:disabled)');
   await sleep(500);

@@ -8,10 +8,12 @@ import (
 	"klaverjas/internal/game"
 )
 
-// Player makes the decisions for one bot seat.
+// Player makes the decisions for one bot seat, at a table of v.Players.
 type Player interface {
-	ChooseTrump(v game.View) game.Suit // utrechts, or forced (never v.Turned when v.Forced)
+	ChooseTrump(v game.View) game.Suit // utrechts, forced (never v.Turned when v.Forced), or the soloist
 	Bid(v game.View) bool              // gedraaid: play on v.Turned?
+	Auction(v game.View) int           // three players: a bid of at least v.MinNextBid(), or 0 to pass
+	Discard(v game.View) [2]game.Card  // three players: two cards of v.Hand for the soloist to lay away
 	Play(v game.View) game.Card        // always one of v.Legal
 }
 
@@ -38,7 +40,11 @@ type player struct {
 	level   Level
 	cfg     searchConfig
 	rng     *rand.Rand
+	est     auctionEstimate // three players: the estimate of the hand being bid on
 }
+
+// small reports whether v is at a table of two or three players.
+func small(v *game.View) bool { return v.Players == 2 || v.Players == 3 }
 
 // makkelijkMistakes is the share of random legal cards a makkelijk bot plays.
 const makkelijkMistakes = 0.3
@@ -48,6 +54,9 @@ const makkelijkMistakes = 0.3
 var fallbacks atomic.Int64
 
 func (b *player) ChooseTrump(v game.View) (s game.Suit) {
+	if small(&v) {
+		return b.smallTrump(v)
+	}
 	h := setOf(v.Hand)
 	switch {
 	case b.level == Makkelijk:
@@ -66,6 +75,9 @@ func (b *player) ChooseTrump(v game.View) (s game.Suit) {
 }
 
 func (b *player) Bid(v game.View) (play bool) {
+	if small(&v) {
+		return b.smallBid(v)
+	}
 	h := setOf(v.Hand)
 	normal := trumpValue(h, v.Turned) >= bidThreshold(b.persona.Aggression)
 	switch {
@@ -85,6 +97,9 @@ func (b *player) Bid(v game.View) (play bool) {
 }
 
 func (b *player) Play(v game.View) (c game.Card) {
+	if small(&v) {
+		return b.smallPlay(v)
+	}
 	legal := legalCards(v)
 	if len(legal) == 0 {
 		return game.Card{}

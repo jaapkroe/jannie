@@ -91,7 +91,7 @@ func TestReviewAtGameOver(t *testing.T) {
 			ai := newGradeAI(false)
 			_, ts := newTestServerWith(t, ai)
 			host := dial(t, ts)
-			host.create("Host", map[string]any{"humans": 2, "hands": 4, "trumpMode": mode}, false, false)
+			host.create("Host", map[string]any{"hands": 4, "trumpMode": mode}, false, false)
 			guest := dial(t, ts)
 			guest.join(host.code, "Gast", "")
 			host.waitState("both seated", func(s *state) bool { return s.Players[guest.seat] != nil && !s.Players[guest.seat].Bot })
@@ -154,7 +154,7 @@ func TestReviewPending(t *testing.T) {
 	ai := newGradeAI(true)
 	_, ts := newTestServerWith(t, ai)
 	c := dial(t, ts)
-	c.create("Piet", map[string]any{"humans": 1, "hands": 4}, false, true)
+	c.create("Piet", map[string]any{"hands": 4}, false, true)
 	playGame(t, rand.New(rand.NewPCG(13, 14)), 4, c)
 	if r := c.s.Review; r == nil || !r.Pending {
 		t.Fatalf("review at game over with every grade held back: %+v", r)
@@ -294,5 +294,21 @@ func TestReviewOnlyLuckPending(t *testing.T) {
 	rv.pending, rv.grading = 2, 1
 	if got := r.reviewFor(0); got == nil || !got.Pending {
 		t.Errorf("review %+v with a grade out", got)
+	}
+}
+
+// TestNoReviewAtSmallTables: the review grades with the search of the
+// hints, which plays four players; a table of three or two has none.
+func TestNoReviewAtSmallTables(t *testing.T) {
+	for _, players := range []int{3, 2} {
+		ai := newGradeAI(false)
+		_, ts := newTestServerWith(t, ai)
+		c := dial(t, ts)
+		c.create("Piet", map[string]any{"players": players, "hands": 4}, false, true)
+		playGame(t, rand.New(rand.NewPCG(5, uint64(players))), 4, c)
+		c.settle()
+		if c.s.Phase != phaseGameOver || c.s.Review != nil {
+			t.Errorf("%d players: phase %s, review %+v", players, c.s.Phase, c.s.Review)
+		}
 	}
 }
