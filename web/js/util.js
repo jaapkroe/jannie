@@ -1,6 +1,6 @@
 // Shared helpers: app context, DOM building, icons, storage, preferences,
 // toasts, motion timing and seat geometry.
-import { SUITS } from './cards.js';
+import { SUITS, cardShort } from './cards.js';
 
 // Mutable application context shared by all modules (filled by main.js).
 export const app = {
@@ -375,6 +375,63 @@ export function handHeadline(r, w) {
   return we
     ? { t: 'Gehaald!', sub: 'Wij spelen en halen het.', cls: 'good' }
     : { t: 'Zij halen het', sub: 'Zij spelen en halen meer dan de helft van de punten.', cls: 'neutral' };
+}
+
+// ---------- spelanalyse (the review at the end of a match) ----------
+
+// The verdict on the review's percentage. The bounds fit the bots' averages
+// (internal/bot TestGradeLevels): sterk about 99, normaal 87, makkelijk 76.
+export const reviewVerdict = pct => (pct >= 95 ? 'sterk gespeeld' : pct >= 82 ? 'goed gespeeld' : 'kan beter');
+
+// What the player's cards were worth per hand against an average hand:
+// "Boven gemiddeld (+8)", "Gemiddeld (+1)", "Onder gemiddeld (−6)".
+export function luckText(n) {
+  const band = n >= 5 ? 'Boven gemiddeld' : n <= -5 ? 'Onder gemiddeld' : 'Gemiddeld';
+  return `${band}\u00a0(${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n)})`;
+}
+
+export const pointsText = n => `${n}\u00a0${n === 1 ? 'punt' : 'punten'}`;
+
+// Where a moment of the review was: "Potje 5, slag 3", "Potje 9".
+export const momentWhere = m => `Potje ${m.hand}` + (m.trick ? `, slag ${m.trick}` : '');
+
+// A strong move: what was chosen ("♠A", "♣ als troef", "Gespeeld",
+// "Gepast") and the rest of the line, ": " and the reason, or the whole
+// hint as a sentence of its own.
+export function strongLine(m) {
+  const c = m.played || {};
+  const what = c.card ? cardShort(c.card) : c.suit ? `${suitSym(c.suit)} als troef` : c.play ? 'Gespeeld' : 'Gepast';
+  return { what, rest: m.why ? `: ${m.why}` : m.text ? `. ${m.text}` : '' };
+}
+
+// Points left on the table: "♠10 gespeeld, ♠A 18 punten beter: …", "♥ als
+// troef, ♣ 14 punten beter: …", "Gepast, spelen 12 punten beter: …". A
+// hint whose reason could not be cut out follows as a sentence of its own.
+export function missedLine(m) {
+  const c = m.played || {};
+  const b = m.better || {};
+  const pts = pointsText(m.points);
+  let head;
+  if (c.card) head = `${cardShort(c.card)} gespeeld, ${cardShort(b.card)} ${pts} beter`;
+  else if (c.suit) head = `${suitSym(c.suit)} als troef, ${suitSym(b.suit)} ${pts} beter`;
+  else head = c.play ? `Gespeeld, passen ${pts} beter` : `Gepast, spelen ${pts} beter`;
+  if (m.why) return `${head}: ${m.why}`;
+  return m.text ? `${head}. ${m.text}` : head;
+}
+
+// The percentages of the reviews before review r on this device, oldest
+// first (at most keep). r itself is added to the list the first time.
+export function reviewHistory(r, keep = 5) {
+  let list = store.json('reviews', []);
+  if (!Array.isArray(list)) list = [];
+  list = list.filter(x => x && typeof x.id === 'string' && Number.isFinite(x.pct));
+  let i = list.findIndex(x => x.id === r.id);
+  if (i < 0) {
+    list.push({ id: r.id, pct: r.pct });
+    i = list.length - 1;
+    store.setJSON('reviews', list.slice(-20));
+  }
+  return list.slice(Math.max(0, i - keep), i).map(x => x.pct);
 }
 
 // Avatar circle for a player: emoji for bots, initial for humans.

@@ -54,6 +54,7 @@ type seat struct {
 	awayAt time.Time
 	ready  bool
 	chat   tokenBucket
+	review *review // the analysis of their play in this match
 
 	// Bots, and the substitute of a human.
 	persona  Persona
@@ -115,6 +116,10 @@ type room struct {
 	winner    int
 	nextAt    time.Time
 	trickNo   int // tricks completed in this room, for bot chat limits
+
+	// The review of the humans' play (review.go).
+	matchID    string
+	handTricks [][]game.Trick // the tricks of every finished hand of the match
 }
 
 func newRoom(s *Server, code string) *room {

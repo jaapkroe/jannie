@@ -355,6 +355,28 @@ func Advise(v game.View) Advice
 // "Fatima (AI) wint de slag met ♥B, de hoogste troef. 25 punten, roem: stuk (20)."
 func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
 
+// The review at the end of a match (§9 Spelanalyse). GradeChoice runs the
+// search of Advise on the same view (same seed), so it agrees with the hint.
+// Points are expected score differences between the teams, as in the hints.
+type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool } // exactly one set
+type Grade struct {
+    Stake  float64 // best minus worst option; 0 without a choice (one legal card)
+    Lost   float64 // the hint's option minus the choice when that is at least
+                   // max(5, 2 paired SE), the hint's tolerance; else 0
+    Gain   float64 // a strong move: the choice is the hint's option, the normaal
+                   // choice differs and is worse by at least max(10, 2 paired SE); else 0
+    Better Choice  // the hint's option, when Lost > 0
+    Text   string  // the hint for Better (Lost > 0) or for the choice (Gain > 0)
+    Nat    float64 // a bid to play: the estimated chance of going nat
+}
+func GradeChoice(v game.View, c Choice) Grade
+// What the cards dealt to v.Seat are worth to its team against an average
+// hand in the same seat: the mean score difference when the hand is played
+// from the deal by the normaal policy (bids and trump choice included) over
+// 320 sampled deals of the other cards, minus the same over 20000 random
+// deals (computed once per trump mode and rules). v is the view at the deal.
+func HandLuck(v game.View) float64
+
 // Personality chat. Returns "" for silence; the server rate-limits on top.
 type ChatEvent struct {
     Kind string   // "greet","trump","pass","play","wonTrick","roem","nat","natOpp","pit","handWon",
@@ -414,12 +436,16 @@ type Brain interface {
     Play(v game.View) game.Card
 }
 type Advice struct{ Card *game.Card; Suit *game.Suit; Play *bool; Text string }
+type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool }                   // as bot.Choice
+type Grade struct{ Stake, Lost, Gain float64; Better Choice; Text string; Nat float64 } // as bot.Grade
 type ChatEvent struct{ Kind string; Mine bool; Text string; Points int; InHand, Playing bool } // as bot.ChatEvent
 type AI interface {
     Personas() []Persona
     NewBrain(personaID, level string, seed uint64) Brain   // level "makkelijk"|"normaal"|"sterk";
                                                            // personaID "" = neutral substitute for an away human
     Advise(v game.View) Advice
+    Grade(v game.View, c Choice) Grade    // the review (§6 Spelanalyse)
+    HandLuck(v game.View) float64
     ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
     Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
 }
@@ -547,6 +573,19 @@ reply attempt.
 - If no human is connected, the game pauses (bots do not play, the hand summary
   waits); when someone returns, bots think again and the summary countdown
   restarts.
+- Spelanalyse (§9): every decision a connected human makes with a choice (a
+  card when more than one is legal, a trump choice, a bid) is graded in the
+  background with `AI.Grade` on the view it was made on, and each human's
+  cards with `AI.HandLuck` at the deal. A substitute's decisions are not
+  graded. At most GOMAXPROCS/4 analyses (at least 1) run at once over all
+  rooms, each on one core; one whose match is over, or whose room is gone,
+  is skipped when its turn comes. The roem a human's card adds to the
+  cards on the table, beyond the least that one of their legal cards would
+  add, counts as given away when the opponents take the trick. A match starts
+  every review afresh; a seat that changes hands starts a new one. At game
+  over each human's state carries their own review and nobody else's
+  (`review`, §7); while grades are still out it is `{"pending": true, …}`,
+  and the player gets an update without event once the last one is in.
 - Bot chat (limits in §5): a bot does not repeat one of its last two lines for
   the same kind of event (numbers aside: "20 roem" and "50 roem" are one line);
   it asks for another line a few times and otherwise stays silent.
@@ -703,9 +742,32 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
   "nextAt": 0,                     // handEnd: unix ms of auto-continue (0 in training: waits for ready)
   "hint": null,                    // training, your turn: {"card":"AH"} | {"suit":"H"} | {"play":true}, plus "text"
   "hands4": null,                  // training with open: all four hands [[...],...]
-  "winner": -1                     // gameOver
+  "winner": -1,                    // gameOver
+  "review": null                   // gameOver: your own review (§6, §9 Spelanalyse), below
 }
 ```
+
+`review` (null before game over and for a player without a graded decision,
+or one on its way):
+`{"id":"9f2c…","pending":false,"pct":87,"hands":16,"choices":118,"luck":-6,
+"lost":41,"lostN":3,"strongN":2,"leads":[9,11],"trumps":[4,5],"roem":[40,2],
+"risky":[2,1],"strong":[moment…],"missed":[moment…]}`: `id` names the match
+(for the history on the device), `pct` is 100 × (1 − Σ lost / Σ stake),
+rounded, `luck` the mean HandLuck per hand, `lost` and `lostN` the points
+and decisions with `Lost > 0`, `strongN` those with `Gain > 0`, `leads` and
+`trumps` [graded without loss, graded] for leads and for trump choices and
+bids, `roem` [points, times] given away, `risky` [bids to play with more than
+40% chance of nat, of which nat]. `strong` and `missed` list at most three
+moments each, those with the most points, in the order played:
+`{"hand":5,"trick":3,"played":{"card":"TS"},"better":{"card":"AS"},"points":18,
+"why":"je maat heeft de slag nog niet …","text":"Speel ♠A: je maat …","table":Trick}`
+— `trick` 0 and `cards` (the player's hand, display-sorted) instead of
+`table` for a trump choice or bid; `played` and `better` hold one of `card`,
+`suit` or `play`; `better` only in `missed`; `why` is the hint's reason
+without its opening ("Speel ♠A: ", "Kies ♣ als troef: ", "Passen: "), or ""
+when the hint opens otherwise (then `text` says it all). While `pending` is
+true only `id` and `pending` mean anything. `hands` is 0 for a player who
+took a seat over during a hand and saw no deal: no *Jouw kaarten* then.
 
 `HandResult` JSON: `{"playingTeam":0,"trumpBy":2,"trump":"H","dealer":1,
 "points":[104,58],"roem":[20,0],"score":[124,58],"nat":false,"pit":false,"pitTeam":-1}`.
@@ -941,6 +1003,30 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   0) and waits for *Volgend potje*. In short landscape the bubble sits in the
   top-left corner and never covers the left seat (who plays after you): a
   long text shows the lines that fit and *Lees verder* (then *Minder*).
+- **Spelanalyse** (issue #6): under the final score, a line for the player
+  alone: *Jouw spelanalyse: 87% (goed gespeeld) ›* (*… wordt berekend…*,
+  disabled, while grades are out; hidden without a review). The verdict is
+  *sterk gespeeld* from 95%, *goed gespeeld* from 82%, else *kan beter*
+  (`reviewVerdict`; the bounds fit the bots' averages in `TestGradeLevels`:
+  sterk ≈ 99, normaal ≈ 87, makkelijk ≈ 76). It opens *Jouw spelanalyse*:
+  the percentage with ⓘ (how it is computed), potjes and keuzes, then
+  *Jouw kaarten* (*Boven gemiddeld (+8)*, *Gemiddeld (+1)* within ±4,
+  *Onder gemiddeld (−6)*: points per potje, ⓘ), *Sterke zetten*, *Laten
+  liggen* (points in zetten), *Uitkomen* (*9 van 11 keer de beste kaart*),
+  *Troefkeuze* (*4 van 5 keer de beste keuze*), *Roem weggegeven* (ⓘ), and
+  in gedraaid when it happened *Gespeeld met meer dan 40% kans op nat: 2
+  keer, 1 keer nat*. Below, the listed moments: *Potje 3, slag 2 · ♠A: …*
+  and *Potje 5, slag 3 · ♠10 gespeeld, ♠A 18 punten beter: …* (*♥ als
+  troef, ♣ 14 punten beter: …*, *Gepast, spelen 12 punten beter: …*); a tap
+  shows the trick at the seats, or the hand of a trump choice or bid. Then
+  *Vorige partijen 79% · 83%* (the percentages of up to five earlier matches
+  on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
+  Niet mee eens? Deze analyse is gebaseerd op de game engine en kan fouten
+  bevatten.* Apart from the verdict, the wording is plain and factual:
+  numbers, cards and the hint's reasons, no praise or consolation. The game-over buttons stay in view with
+  the line: on a short phone it takes the place of the emoji (portrait up to
+  760 px high) and of *Laatste potje* (up to 680 px); in short landscape the
+  sub-line goes and the title and score shrink.
 - **Help**: the manual (SECTIONS) in a modal, plus `title` tooltips and small ⓘ
   explanations on UI elements.
 - **Responsive**: phones portrait (360×640 up) and landscape (≥ 640×360),

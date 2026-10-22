@@ -276,10 +276,32 @@ function stateFor(room, seat) {
     tricksWon: d ? d.tricksWon : [0, 0], handPoints: d ? d.points : [0, 0], handRoem: d ? d.roem : [0, 0],
     scores: room.scores, total: room.total, prevHand: room.prevHand, nextAt: room.phase === 'handEnd' ? room.nextAt : 0,
     hint: null, hands4: null, winner: room.winner,
+    review: room.phase === 'gameOver' && !room.players[seat]?.bot ? mockReview(room, seat) : null,
   };
   if (room.training && myTurn) s.hint = hintFor(room, seat);
   if (room.training && room.opts.open && playing) s.hands4 = d.hands.map((h, i) => (i === seat ? null : sortHand(h, d.trump)));
   return s;
+}
+
+// The review at game over (design §9 Spelanalyse), with its moments taken
+// from the tricks of the last hand.
+function mockReview(room, seat) {
+  const tricks = room.prevHand?.tricks || [];
+  const moment = (k, m) => {
+    const t = tricks[k];
+    const pc = t?.cards.find(c => c.seat === seat);
+    return pc ? { hand: room.handNo, trick: k + 1, played: { card: pc.card }, text: '', table: t, ...m } : null;
+  };
+  const strong = [moment(1, { points: 21, why: 'de slag is zeker voor jullie, dus zo zijn de 11 punten binnen.' })].filter(Boolean);
+  const missed = [
+    { hand: 1, trick: 0, played: { suit: 'H' }, better: { suit: 'C' }, points: 14, text: '', cards: ['JC', '9C', 'AC', '7C', 'AH', '8H', 'TS', '7D'],
+      why: 'je hebt de boer, de nel en de aas, in totaal vier klaveren. Je haalt het zo naar schatting in 8 van de 10 potjes.' },
+    moment(3, { better: { card: 'AS' }, points: 18, why: 'je maat heeft de slag nog niet en de aas is hoog.' }),
+  ].filter(Boolean);
+  return {
+    id: room.reviewId, pending: false, pct: 87, hands: room.opts.hands, choices: 31, luck: -6, lost: 41, lostN: 3,
+    strongN: 2, leads: [9, 11], trumps: [3, 4], roem: [40, 2], risky: room.opts.trumpMode === 'gedraaid' ? [2, 1] : [0, 0], strong, missed,
+  };
 }
 
 function broadcast(room, ev) {
@@ -536,6 +558,7 @@ function nextHand(room) {
   if (room.handNo >= room.opts.hands) {
     room.phase = 'gameOver';
     room.deal = null;
+    room.reviewId = `${room.code}-${Date.now()}`;
     room.winner = room.total[0] === room.total[1] ? -1 : room.total[0] > room.total[1] ? 0 : 1;
     broadcast(room, { type: 'gameOver', total: room.total, winner: room.winner });
     return;
