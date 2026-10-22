@@ -35,6 +35,8 @@ deck('Alle kaarten — 90 px', 90);
 deck('140 px', 140);
 deck('60 px', 60);
 deck('40 px', 40);
+deck('30 px', 30);
+deck('24 px', 24);
 deck('Vierkleurig — 60 px', 60, { fourColor: true });
 deck('Vierkleurig — 90 px', 90, { fourColor: true });
 

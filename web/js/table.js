@@ -555,7 +555,7 @@ function tryPlay(code) {
   sound.play('card');
   app.send({ t: 'play', card: code });
   const p = pending;
-  p.flight = fly(code, from, slots.bottom, { rotFrom: rot, ms: 360 }).then(() => {
+  p.flight = fly(code, from, slots.bottom, { rotFrom: rot, ms: 360, index: indexOf(el) }).then(() => {
     if (pending === p) { p.placed = true; renderTrick(app.s); }
   });
   renderHand(s);
@@ -609,8 +609,14 @@ function layer() {
   return flyLayer;
 }
 
+// The corner index scale a face shows (cards.css), for a flight from it.
+const indexOf = card => getComputedStyle(card.querySelector('.card-svg')).getPropertyValue('--_index');
+
 // FLIP flight of a card (or back) from a source rect to a target element.
-function fly(code, from, target, { rotFrom = 0, flip = false, back = false, ms = 400, fade = false } = {}) {
+// The card has the size and index of where it lands (a trick slot keeps the
+// regular index); `index` (indexOf the card it leaves) tweens the index from
+// the one it took off with, so the face never jumps.
+function fly(code, from, target, { rotFrom = 0, flip = false, back = false, ms = 400, fade = false, index = '' } = {}) {
   const to = target.getBoundingClientRect();
   const d = dur(ms);
   if (!d || !to.width) return Promise.resolve();
@@ -621,6 +627,7 @@ function fly(code, from, target, { rotFrom = 0, flip = false, back = false, ms =
   else el = createCard(code);
   el.classList.add('flyer');
   el.style.setProperty('--card-w', w + 'px');
+  el.style.setProperty('--card-index-max', getComputedStyle(target).getPropertyValue('--card-index-max'));
   el.style.left = to.left + 'px';
   el.style.top = to.top + 'px';
   layer().append(el);
@@ -629,10 +636,13 @@ function fly(code, from, target, { rotFrom = 0, flip = false, back = false, ms =
   const sc = Math.max(0.2, from.width / w);
   const rotTo = code && !back ? tilt(code) : 0;
   const yFrom = flip ? ' rotateY(180deg)' : '';
+  const timing = { duration: d, easing: EASE, fill: 'forwards' };
   const a = el.animate([
     { transform: `perspective(900px) translate(${dx}px, ${dy}px) rotate(${rotFrom}deg) scale(${sc})${yFrom}`, opacity: fade ? 0.4 : 1 },
     { transform: `perspective(900px) translate(0, 0) rotate(${rotTo}deg) scale(1)${flip ? ' rotateY(0deg)' : ''}`, opacity: 1 },
-  ], { duration: d, easing: EASE, fill: 'forwards' });
+  ], timing);
+  const end = index && indexOf(el);
+  if (end && end !== index) el.querySelector('.card-svg').animate([{ '--_index': index }, { '--_index': end }], timing);
   return a.finished.catch(() => {}).then(() => { el.remove(); });
 }
 
@@ -766,9 +776,10 @@ async function animPlay(ev, prev, next) {
     const el = handEls.get(ev.card);
     const from = el ? rectOf(el) : rectOf(E.hand);
     const rot = el ? parseFloat(el.style.getPropertyValue('--rot')) || 0 : 0;
+    const index = el ? indexOf(el) : '';
     if (el) el.style.visibility = 'hidden';
     sound.play('card');
-    await fly(ev.card, from, slots[pos], { rotFrom: rot, ms: 380 });
+    await fly(ev.card, from, slots[pos], { rotFrom: rot, ms: 380, index });
     return;
   }
   const S = seats[pos];
@@ -783,7 +794,7 @@ async function animPlay(ev, prev, next) {
     if (n > 0) setBacks(S, n - 1);
   }
   sound.play('card');
-  await fly(ev.card, from, slots[pos], { flip: !openCard, ms: 420 });
+  await fly(ev.card, from, slots[pos], { flip: !openCard, ms: 420, index: openCard ? indexOf(openCard) : '' });
 }
 
 async function animTrick(ev, next) {

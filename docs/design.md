@@ -874,8 +874,14 @@ export function createBack(opts={})       // → HTMLElement .card.back
 // Extras: parseCard(code) → {rank,suit}|null; suitIcon(suit, {colored}) → <svg.suit-icon> (1em);
 //   createBack({size, color:'blue'|'red'}). State classes: .legal .selected (lifted) .disabled
 //   .hint (pulsing glow) .winner (gold ring) .selectable (hover/press only); they use the
-//   individual `translate`/`scale` properties, so layout may use `transform`. Cards < 60 px wide
-//   show a compact face (big index + one big pip).
+//   individual `translate`/`scale` properties, so layout may use `transform`. Every face, at any
+//   size, shows its picture (pips, ace medallion, court figure) and the index (rank over suit) in
+//   the top-left and, turned, the bottom-right corner; the boer's B has a square-cornered stem.
+//   Below 60, 40 and 30 px wide the index grows to 1.25, 1.4 and 1.6 times its regular size and
+//   the picture shrinks to keep clear of it. --card-index-max on an ancestor caps that growth
+//   where cards overlap at their corners or show only a strip (the trick: 1, the regular index).
+//   The scale a face shows is --_index on its .card-svg, a registered <number> that an
+//   animation may tween (a flight from a hand to the trick does).
 
 // web/js/sound.js — synthesised with WebAudio, no audio files
 export const sound = {
@@ -931,7 +937,15 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   icon to match; on phones it is in the ⋯ menu). Where a name must
   shorten (lobby seat, score bar, *Laatste slag*), only the name does: its
   "(AI)" stays readable ("Kees de Vi… (AI)"). The trump badge's details show
-  what the badge shows, also during the trump banner.
+  what the badge shows, also during the trump banner. Whatever the order of
+  play, every card in the trick keeps one corner index in view, also under a
+  winner scaled up with its ring: the top and left cards their top-left one,
+  the bottom and right cards their bottom-right one (the left card sits a
+  little low, the right card a little high). Open hands and your own hand
+  show each card's whole index (`app-checks.mjs --only corners` measures
+  the trick and the hands). A card flying from a hand to the trick takes
+  off with that hand's index and grows or shrinks it to the trick's on the
+  way.
   Playing: on fine pointers one click plays a legal card; on touch the first tap
   lifts the card and a second tap (or swipe up) plays it (setting: one tap /
   two taps); the prompt then says so ("Tik nog eens om ♠A te spelen"), and the
@@ -1029,8 +1043,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   sub-line goes and the title and score shrink.
 - **Help**: the manual (SECTIONS) in a modal, plus `title` tooltips and small ⓘ
   explanations on UI elements.
-- **Responsive**: phones portrait (360×640 up) and landscape (≥ 640×360),
-  tablets and desktop; touch targets ≥ 44 px; no horizontal scroll.
+- **Responsive**: phones portrait (360×640 up, and an iPhone SE in Safari:
+  375×548) and landscape (≥ 640×360), tablets and desktop; touch targets
+  ≥ 44 px; no horizontal scroll.
 - **Look**: green felt table with vignette, wooden rim, gold accents, team colours
   (Wij teal/blue, Zij coral/red), dark UI chrome; four-colour deck option.
 

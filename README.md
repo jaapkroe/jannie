@@ -61,8 +61,8 @@ Browser checks with Puppeteer live in `test/ui` and run against a server
 cd test/ui
 node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # full games by tapping, reload, rematch
 node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
-node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at five sizes, into test/ui/out/
-node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 26 behaviour checks (coach, taps, back button, lost socket, full table, summary on a phone…); needs -fast, ~15 min
+node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at six sizes, into test/ui/out/
+node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 27 behaviour checks (coach, taps, back button, lost socket, full table, summary on a phone, card corners…); needs -fast, ~15 min
 node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image
 ```
 

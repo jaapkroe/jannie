@@ -8,7 +8,11 @@
  * layout code is free to position and rotate cards with `transform`; code that
  * overrides `transition` on cards should keep translate, scale and filter in it.
  * Four-colour deck: put .four-color on any ancestor.
- * Cards narrower than 60 px switch to a compact face (big index, one big pip).
+ * Every face shows its picture and the index in both corners at any size.
+ * Below 60, 40 and 30 px wide the index grows to 1.25, 1.4 and 1.6 times its
+ * regular size and the picture shrinks to make room. A layout that overlaps
+ * cards at their corners, or shows only a strip of each, caps that with
+ * --card-index-max on an ancestor (1 keeps the regular index).
  * suitIcon(…, {colored:true}) badges use --kj-ink-red/--kj-ink-black (default:
  * the card inks); set lighter values for them on dark UI chrome.
  */
@@ -74,13 +78,41 @@
   pointer-events: none;
 }
 
-/* Compact face for narrow cards: bigger index, one big suit symbol. */
-.card .card-mini { display: none; }
-
-@container kjcard (max-width: 59.9px) {
-  .card .card-full { display: none; }
-  .card .card-mini { display: inline; }
+/* The narrower the card, the bigger its corner index relative to it:
+   --_index scales both indices about their outer ink corner, and the
+   picture shrinks about the centre just enough to keep the regular gap
+   (the round ace medallion needs the most room). --card-index-max caps the
+   index, and the picture follows. A registered number, so an animation can
+   tween it (a card flying from a hand to the trick, table.js). */
+@property --_index {
+  syntax: "<number>";
+  inherits: true;
+  initial-value: 1;
 }
+
+.card > .card-svg { --_index: 1; }
+
+@container kjcard (width < 60px) {
+  .card > .card-svg { --_index: min(1.25, var(--card-index-max, 1.25)); }
+}
+
+@container kjcard (width < 40px) {
+  .card > .card-svg { --_index: min(1.4, var(--card-index-max, 1.4)); }
+}
+
+@container kjcard (width < 30px) {
+  .card > .card-svg { --_index: min(1.6, var(--card-index-max, 1.6)); }
+}
+
+.card .card-index > g {
+  transform-origin: 11px 8px;
+  transform: scale(var(--_index));
+}
+
+.card :is(.card-pips, .card-court, .card-ace) { transform-origin: 100px 140px; }
+.card .card-pips { transform: scale(calc(1.75 - 0.75 * var(--_index))); }
+.card .card-court { transform: scale(calc(1.7 - 0.7 * var(--_index))); }
+.card .card-ace { transform: scale(max(0.45, 2.1 - 1.1 * var(--_index))); }
 
 /* ---- Back ---------------------------------------------------------------- */
 
