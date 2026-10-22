@@ -113,12 +113,14 @@ const SUIT_PATHS = {
 // Rank glyphs as stroked centre lines in a box 100 units high (stroke 15),
 // condensed like classic card indices: identical on every platform and
 // bolder than system fonts at tiny sizes. k scales the stroke per glyph.
+// The boer's B is two closed loops with mitred joins: a straight stem with
+// square corners, so even a tiny B never reads as the round-sided 8.
 const GLYPHS = {
   7: { w: 48, d: 'M0 3H48C35 30 25 62 21 100' },
   8: { w: 46, d: 'M23 47C13 47 6 37 6 25S13 3 23 3 40 13 40 25 33 47 23 47ZM23 47C35 47 45 57 45 73.5S35 100 23 100 1 90 1 73.5 11 47 23 47Z' },
   9: { w: 46, d: 'M45 31C45 15 35 3 23 3S1 15 1 31 11 59 23 59 45 47 45 31ZM45 31V58C45 85 34 100 19 100 11 100 6 97 2.5 92' },
   T: { w: 63, k: 0.87, d: 'M0 19L12 4V100M46 3C35 3 29 22 29 51.5S35 100 46 100 63 81 63 51.5 57 3 46 3Z' },
-  J: { w: 46, d: 'M1 100V3H23C35 3 42 11 42 24S35 47.5 23 47.5H1M23 47.5H26C38 47.5 46 57 46 73S38 100 26 100H1' },
+  J: { w: 46, join: 'miter', d: 'M1 47.5V3H23C35 3 42 11 42 24S35 47.5 23 47.5ZM1 47.5H26C38 47.5 46 57 46 73S38 100 26 100H1Z' },
   Q: { w: 50, d: 'M0 3L25 100L50 3' },
   K: { w: 44, d: 'M0 3V100M44 3V100M0 51H44' },
   A: { w: 52, d: 'M0 100L26 3L52 100M10 67H42' },
@@ -133,7 +135,7 @@ function suitAt(parent, suit, cx, cy, size, flip, cls) {
   return node('path', attrs, parent);
 }
 
-function rankAt(parent, rank, cx, top, height, weight = 15) {
+function rankAt(parent, rank, cx, top, height) {
   const g = GLYPHS[rank];
   const s = height / 100;
   return node('path', {
@@ -141,9 +143,9 @@ function rankAt(parent, rank, cx, top, height, weight = 15) {
     transform: `translate(${r3(cx - (g.w * s) / 2)} ${r3(top)}) scale(${r3(s)})`,
     fill: 'none',
     stroke: 'currentColor',
-    'stroke-width': r3(weight * (g.k || 1)),
+    'stroke-width': r3(15 * (g.k || 1)),
     'stroke-linecap': 'round',
-    'stroke-linejoin': 'round',
+    'stroke-linejoin': g.join || 'round',
   }, parent);
 }
 
@@ -170,33 +172,26 @@ function buildFace(rank, suit) {
   });
   root.appendChild(svg);
 
-  const full = node('g', { class: 'card-full' }, svg);
-  if (rank === 'A') drawAce(full, suit);
-  else if (rank === 'J' || rank === 'Q' || rank === 'K') drawCourt(full, rank, suit);
-  else drawPips(full, rank, suit);
-  const idx = drawIndex(full, rank, suit);
+  if (rank === 'A') drawAce(svg, suit);
+  else if (rank === 'J' || rank === 'Q' || rank === 'K') drawCourt(svg, rank, suit);
+  else drawPips(svg, rank, suit);
+  const idx = drawIndex(svg, rank, suit);
   const idx2 = idx.cloneNode(true);
   idx2.setAttribute('transform', `rotate(180 ${W / 2} ${MID})`);
-  full.appendChild(idx2);
-
-  drawMini(node('g', { class: 'card-mini' }, svg), rank, suit);
+  svg.appendChild(idx2);
   return root;
 }
 
 // Corner index: rank over suit, sized to stay readable when only the left
-// ~30% of the card shows in a fan.
+// ~30% of a regular card shows in a fan. The inner group is what cards.css
+// scales up on narrow cards, about the corner, while the picture shrinks; a
+// grown index can reach past that strip.
 function drawIndex(parent, rank, suit) {
   const g = node('g', { class: 'card-index' }, parent);
-  rankAt(g, rank, 28, 12, 54);
-  suitAt(g, suit, 28, 92, 34);
+  const inner = node('g', {}, g);
+  rankAt(inner, rank, 28, 12, 54);
+  suitAt(inner, suit, 28, 92, 34);
   return g;
-}
-
-// Compact layout for cards narrower than ~60 px (see cards.css container query).
-function drawMini(parent, rank, suit) {
-  rankAt(parent, rank, 37, 16, 86, 17);
-  suitAt(parent, suit, 37, 147, 56);
-  suitAt(parent, suit, 136, 218, 96);
 }
 
 const COL_L = 72;

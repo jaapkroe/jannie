@@ -1804,8 +1804,11 @@ body.busy::after {
   margin-left: 0;
 }
 
+/* Stacked downwards, each card shows its top 0.68 card widths: room for
+   an index 1.2 times the regular one (cards.css), suit included. */
 .seat-left .backs.open,
 .seat-right .backs.open {
+  --card-index-max: 1.2;
   flex-direction: column;
   align-items: center;
 }
@@ -1914,8 +1917,16 @@ body.busy::after {
   min-height: 0;
 }
 
+/* The trick's cards overlap at their corners, so they keep the regular
+   index (cards.css), and whatever the play order each keeps one corner
+   index in view: the top and left cards their top-left one, the bottom and
+   right cards their bottom-right one. The left card sits a little low and
+   the right card a little high, so a winner there, scaled up with its
+   ring, stays clear of the top and bottom cards' corners (app-checks.mjs
+   --only corners measures it). */
 .trick {
   --card-w: var(--trick-w);
+  --card-index-max: 1;
   position: absolute;
   left: 50%;
   top: 50%;
@@ -1933,8 +1944,8 @@ body.busy::after {
 
 .slot-bottom { translate: 0 calc(var(--trick-w) * 0.62); }
 .slot-top { translate: 0 calc(var(--trick-w) * -0.62); }
-.slot-left { translate: calc(var(--trick-w) * -0.84) 0; }
-.slot-right { translate: calc(var(--trick-w) * 0.84) 0; }
+.slot-left { translate: calc(var(--trick-w) * -0.84) calc(var(--trick-w) * 0.2); }
+.slot-right { translate: calc(var(--trick-w) * 0.84) calc(var(--trick-w) * -0.2); }
 
 .slot > .card {
   position: absolute;
@@ -4300,6 +4311,7 @@ body.chat-open .chat-scrim {
   :where(html:not(.kb)) .seat-left .backs.open,
   :where(html:not(.kb)) .seat-right .backs.open {
     --card-w: clamp(24px, 7.5dvh, 32px);
+    --card-index-max: initial;
     flex-direction: row;
   }
 
