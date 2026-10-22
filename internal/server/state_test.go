@@ -14,7 +14,7 @@ import (
 var baseKeys = []string{
 	"code", "phase", "opts", "training", "you", "host", "players", "handNo", "hands",
 	"dealer", "voorhand", "turned", "bids", "forced", "trump", "trumpBy", "playingTeam",
-	"turn", "hand", "trick", "lastTrick", "tricksWon", "handPoints", "handRoem", "scores",
+	"turn", "takeover", "hand", "trick", "lastTrick", "tricksWon", "handPoints", "handRoem", "scores",
 	"total", "prevHand", "nextAt", "hint", "hands4", "winner", "review",
 }
 
@@ -66,7 +66,7 @@ func TestStateKeys(t *testing.T) {
 	if len(players) != 4 {
 		t.Fatalf("players has %d entries", len(players))
 	}
-	playerKeys := []string{"name", "bot", "botId", "emoji", "color", "connected", "away", "cards", "ready"}
+	playerKeys := []string{"name", "bot", "botId", "emoji", "color", "connected", "away", "left", "vote", "cards", "ready"}
 	for i, p := range players {
 		wantKeys(t, "player", p, playerKeys)
 		if i > 0 && !strings.Contains(string(p), `"bot":true`) {
@@ -76,7 +76,7 @@ func TestStateKeys(t *testing.T) {
 	var roster []json.RawMessage
 	json.Unmarshal(field(t, lobby.S, "roster"), &roster)
 	wantKeys(t, "roster entry", roster[0], []string{"id", "name", "emoji", "color", "bio"})
-	for _, k := range []string{"trick", "lastTrick", "prevHand", "hint", "hands4", "turned", "trump", "review"} {
+	for _, k := range []string{"trick", "lastTrick", "prevHand", "hint", "hands4", "turned", "trump", "review", "takeover"} {
 		if v := string(field(t, lobby.S, k)); v != "null" {
 			t.Errorf("lobby %s = %s, want null", k, v)
 		}

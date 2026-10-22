@@ -127,6 +127,9 @@ func (r *room) startMatch() {
 	for i := range r.seats {
 		st := &r.seats[i]
 		st.ready = false
+		// The others let an AI play for an absent player in the match that
+		// ended: in this one they are waited for and asked again.
+		st.away, st.asked = false, false
 		if st.kind == seatBot {
 			st.brain = r.newBrain(st.persona.ID, r.opts.AI)
 		}
@@ -178,6 +181,7 @@ func (r *room) pause(s step, d time.Duration) {
 // cache key.
 func (r *room) openTurn() {
 	r.turnAt = time.Now()
+	r.openedAt = r.turnAt
 	r.step++
 	r.think = r.thinkTime(r.deal.Turn())
 }
@@ -198,9 +202,9 @@ func (r *room) thinkTime(i game.Seat) time.Duration {
 }
 
 // drive schedules whatever happens next: the end of a pause, a bot's move,
-// or a substitute for a human who is away. It cancels everything scheduled
-// before, so it is called after every state change. A bot decides once per
-// turn however often drive runs (see botMove).
+// or the question about a human who dropped out on their turn. It cancels
+// everything scheduled before, so it is called after every state change. A
+// bot decides once per turn however often drive runs (see botMove).
 func (r *room) drive() {
 	r.gen++
 	if r.timer != nil {
@@ -229,16 +233,17 @@ func (r *room) drive() {
 	}
 	st := &r.seats[turn]
 	switch {
-	case st.kind == seatBot:
+	case r.botPlays(turn):
 		r.botMove(turn, r.turnAt.Add(r.think))
-	case st.client != nil:
-		// A connected human: their move, no time limit.
-	case st.away:
-		r.botMove(turn, latest(r.turnAt, st.awayAt).Add(r.think))
-	default:
-		due := latest(r.turnAt, st.leftAt).Add(r.scaled(awayAfter))
-		r.after(time.Until(due), func() { r.goAway(turn) })
+	case st.kind == seatHuman && st.client == nil && !st.asked:
+		// Gone on their turn: after a while the others are asked whether
+		// an AI may play for them meanwhile.
+		due := latest(r.openedAt, st.leftAt).Add(r.scaled(askAfter))
+		r.after(time.Until(due), func() { r.ask(turn) })
 	}
+	// Anyone else is waited for, without a time limit: a connected human,
+	// and an absent player until they return, someone takes their seat or
+	// everyone lets an AI play it (see question).
 }
 
 func latest(a, b time.Time) time.Time {
@@ -348,20 +353,6 @@ func (r *room) applyBot(i game.Seat) {
 			r.log.Error("fallback move rejected", "seat", int(i), "err", err.Error())
 		}
 	}
-}
-
-// goAway lets a substitute play for a human who is still disconnected on
-// their turn.
-func (r *room) goAway(i game.Seat) {
-	st := &r.seats[i]
-	if st.kind != seatHuman || st.client != nil || st.away {
-		return
-	}
-	st.away = true
-	st.awayAt = time.Now()
-	r.sysChat("%s is even weg; een AI-speler neemt zolang de beurten over.", st.name)
-	r.emit(evSeat{Type: "away", Seat: i})
-	r.drive()
 }
 
 var errPaused = errors.New("Even geduld, het spel gaat zo verder.")

@@ -21,6 +21,8 @@ type inMsg struct {
 	Play     *bool           `json:"play"`
 	Card     string          `json:"card"`
 	Text     string          `json:"text"`
+	AI       *bool           `json:"ai"`
+	Left     *bool           `json:"left"` // vote, optional: the question it answers is about a seat its player left
 }
 
 // Error codes on the wire.
@@ -160,7 +162,7 @@ type evGameOver struct {
 	Winner int    `json:"winner"`
 }
 
-// evSeat is join, leave, away and back.
+// evSeat is join, leave, away, back and takeover.
 type evSeat struct {
 	Type string    `json:"type"`
 	Seat game.Seat `json:"seat"`
@@ -189,6 +191,7 @@ type state struct {
 	TrumpBy     int             `json:"trumpBy"`
 	PlayingTeam int             `json:"playingTeam"`
 	Turn        int             `json:"turn"`
+	Takeover    *takeoverState  `json:"takeover"`
 	Hand        []game.Card     `json:"hand"`
 	Legal       []game.Card     `json:"legal,omitempty"`
 	Rule        string          `json:"rule,omitempty"`
@@ -223,8 +226,17 @@ type playerState struct {
 	Color     string `json:"color"`
 	Connected bool   `json:"connected"`
 	Away      bool   `json:"away"`
+	Left      bool   `json:"left"`
+	Vote      *bool  `json:"vote"`
 	Cards     int    `json:"cards"`
 	Ready     bool   `json:"ready"`
+}
+
+// takeoverState is the question to the table: may an AI play the seat the
+// game waits for? Left: its player left (else they dropped out).
+type takeoverState struct {
+	Seat game.Seat `json:"seat"`
+	Left bool      `json:"left"`
 }
 
 // scoreRow is one line of the score sheet.

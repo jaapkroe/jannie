@@ -18,6 +18,9 @@ Dutch. It runs at <https://klaverjas.kroes.dev>.
   shown as "Naam (AI)", at three strengths. The strongest counts cards, infers
   voids and gives and reads signals. They fill empty seats and chat in
   character.
+- **No AI plays a seat unasked.** When a player loses the connection or
+  leaves, the game waits for them; an AI stands in only when everyone else at
+  the table agrees, and a friend with the code can take a seat that was left.
 - **Easy to follow**: cards fly to the table, the winning card lights up, tricks
   slide to their winner, roem and trump get a banner, and short pauses let
   every move register. Sound effects are synthesised in the browser.
@@ -62,7 +65,7 @@ cd test/ui
 node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # full games by tapping, reload, rematch
 node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
 node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at six sizes, into test/ui/out/
-node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 27 behaviour checks (coach, taps, back button, lost socket, full table, summary on a phone, card corners…); needs -fast, ~15 min
+node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 28 behaviour checks (coach, taps, back button, lost socket, full table, takeover vote, summary on a phone, card corners…); needs -fast, ~15 min
 node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image
 ```
 
