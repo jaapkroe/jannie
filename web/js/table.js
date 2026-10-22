@@ -3,9 +3,9 @@
 import { createCard, createBack, cardShort } from './cards.js';
 import { sound } from './sound.js';
 import {
-  app, h, clear, prefs, savePrefs, toast, wait, dur, anim, sleep, EASE, POS, posOf, isWij, teamCls, teamName,
-  nameOf, suitSym, suitName, suitText, isRed, roemTotal, ROEM_NAMES, fillAvatar, countUp, icon, suitify, cap, playerName,
-  shortLandscape, onKeyboard,
+  app, h, clear, prefs, savePrefs, toast, wait, dur, anim, sleep, EASE, POS, posOf, seatCount, isWij, teamCls, teamName,
+  scorerOrder, scorerName, myScorer, nameOf, suitSym, suitName, suitText, isRed, roemTotal, ROEM_NAMES, fillAvatar, countUp, icon,
+  suitify, cap, playerName, shortLandscape, onKeyboard,
 } from './util.js';
 import * as panels from './panels.js';
 
@@ -17,15 +17,23 @@ let handOrder = [];       // codes in display order
 let selected = '';        // lifted card (touch, keyboard)
 let selectedBy = '';      // 'tap' or 'key': how it was lifted
 let pending = null;       // {card, flight, placed, at} our play awaiting the server
-let pendingAction = false; // trump/bid sent, awaiting the server
+let pendingAction = false; // trump/bid/auction/discard sent, awaiting the server
+let picked = [];          // three players, laying away: the cards chosen so far
+let bidValue = 0;         // three players, our turn in the auction: the bid on offer
 let actionAt = 0;         // when pendingAction was sent
+let actionPhase = '';     // the phase it was sent in: the soloist keeps the turn from discard to trump
+let talonHand = 0;        // three players: the hand whose talon still lies on the table (until the contract)
 let heldTrick = null;     // completed trick kept on the table until "collect"
 let tip = '';             // training explanation after a trick, until our next card
 let dismissed = '';       // training hint closed with ✕ (JSON of s.hint)
 let drag = null;
 let stageKey = '';
 
-const PLAYING = new Set(['trump', 'bid', 'play']);
+const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
+// The bids of the three-player auction (design §2).
+const MIN_BID = 80;
+const BID_STEP = 10;
+const MAX_BID = 300;
 // A move still unanswered this long after it was sent did not arrive.
 const STUCK_MS = 1500;
 const LIFT_HINTS = 3;     // times the swipe is mentioned after lifting a card
@@ -46,7 +54,11 @@ export function init() {
   E.center = h('div', { class: 'center' });
   E.trick = h('div', { class: 'trick', 'aria-label': 'Slag op tafel', role: 'group' });
   for (const pos of POS) E.trick.append(slots[pos] = h('div', { class: 'slot slot-' + pos }));
-  E.center.append(E.trick);
+  // Three players: the two cards that lie closed on the table until the
+  // auction is over.
+  E.talon = h('div', { class: 'talon', hidden: true, title: 'De twee dichte kaarten op tafel: wie alleen speelt, pakt ze' },
+    createBack(), createBack());
+  E.center.append(E.trick, E.talon);
   E.stage = h('div', { class: 'stage' });
   E.fx = h('div', { class: 'fx', 'aria-live': 'polite' });
   E.table.append(E.center, E.stage, E.fx);
@@ -71,13 +83,10 @@ export function init() {
 }
 
 function buildTopbar(bar) {
-  E.pill = h('button', { class: 'score-pill', type: 'button', title: 'Scorebord: alle potjes en de stand', onclick: () => panels.openScoreSheet() },
-    h('span', { class: 'sp sp-wij' },
-      h('span', { class: 'sp-lbl', text: 'Wij' }), E.wijNum = h('span', { class: 'sp-num', text: '0' }),
-      E.wijNames = h('span', { class: 'sp-names' })),
-    h('span', { class: 'sp sp-zij' },
-      h('span', { class: 'sp-lbl', text: 'Zij' }), E.zijNum = h('span', { class: 'sp-num', text: '0' }),
-      E.zijNames = h('span', { class: 'sp-names' })));
+  // One part per score: Wij and Zij with four players, else every player
+  // (see renderTop).
+  E.pill = h('button', { class: 'score-pill', type: 'button', title: 'Scorebord: alle potjes en de stand', onclick: () => panels.openScoreSheet() });
+  E.segs = [];
   E.potje = h('div', { class: 'potje', title: 'Het hoeveelste potje van het spel' },
     h('span', { class: 'potje-lbl', text: 'Potje' }), h('span', { class: 'potje-n' }, E.potjeN = h('b', { text: '1' }), '/', E.potjeT = h('span', { text: '16' })));
   E.badge = h('button', { class: 'trump-badge', type: 'button', title: 'Troef: tik voor details over troef en spelvariant', onclick: () => panels.openTrumpInfo() },
@@ -99,6 +108,7 @@ function buildSeat(pos) {
         S.name = h('span', { class: 'nm' }),
         S.status = h('span', { class: 'st', hidden: true }))),
     S.backs = h('div', { class: 'backs', 'aria-hidden': 'true' }),
+    S.piles = h('div', { class: 'piles', hidden: true }),
     S.bubble = h('div', { class: 'bubble', hidden: true }));
   seats[pos] = S;
   return S.root;
@@ -110,31 +120,59 @@ export function render(s, o = {}) {
   if (!s) return;
   app.view = s;
   if (!PLAYING.has(s.phase)) { selected = ''; pendingAction = false; }
+  const n = seatCount(s);
+  E.table.dataset.players = n;
   renderTop(s);
-  for (let seat = 0; seat < 4; seat++) renderSeat(s, seat, o);
+  for (const pos of POS) seats[pos].root.hidden = true;
+  for (let seat = 0; seat < n; seat++) renderSeat(s, seat, o);
   renderTrick(s);
+  renderTalon(s, o);
   renderStage(s);
   renderPrompt(s);
   renderHand(s, o);
 }
 
-// The team's two names in the score pill; each shortens on its own and
-// keeps its "(AI)".
-function setTeamNames(el, s, team) {
+// The names behind a score in the pill, each shortened on its own with its
+// "(AI)" kept: a team's two with four players, else the player's.
+function setScoreNames(el, s, k) {
   const names = [];
-  for (let seat = team; seat < 4; seat += 2) names.push(seat === s.you ? 'jij' : s.players[seat]?.name || 'vrij');
+  if (seatCount(s) === 4) {
+    for (let seat = k; seat < 4; seat += 2) names.push(seat === s.you ? 'jij' : s.players[seat]?.name || 'vrij');
+  } else {
+    names.push(k === s.you ? 'jij' : s.players[k]?.name || 'vrij');
+  }
   const all = names.join(' & ');
   if (el.title === all) return;
   el.title = all;
-  el.replaceChildren(playerName(names[0]), h('span', { class: 'pname-sep', text: ' & ' }), playerName(names[1]));
+  el.replaceChildren(...names.flatMap((nm, i) => [i ? h('span', { class: 'pname-sep', text: ' & ' }) : null, playerName(nm)]).filter(Boolean));
+}
+
+// The label of a score in the pill: Wij and Zij with four players, else
+// Jij and the others' faces as on their seats (emoji or initial).
+function scoreLabel(s, k) {
+  if (seatCount(s) === 4 || k === s.you) return scorerName(s, k);
+  const p = s.players[k];
+  return p?.bot ? p.emoji || '🤖' : (p?.name || '?').trim().charAt(0).toUpperCase();
 }
 
 function renderTop(s) {
-  const w = s.you % 2;
-  countUp(E.wijNum, s.total?.[w] ?? 0);
-  countUp(E.zijNum, s.total?.[1 - w] ?? 0);
-  setTeamNames(E.wijNames, s, w);
-  setTeamNames(E.zijNames, s, 1 - w);
+  const order = scorerOrder(s);
+  while (E.segs.length > order.length) E.segs.pop().root.remove();
+  while (E.segs.length < order.length) {
+    const g = {};
+    g.root = h('span', { class: 'sp' }, g.lbl = h('span', { class: 'sp-lbl' }), g.num = h('span', { class: 'sp-num', text: '0' }),
+      g.names = h('span', { class: 'sp-names' }));
+    E.pill.append(g.root);
+    E.segs.push(g);
+  }
+  order.forEach((k, i) => {
+    const g = E.segs[i];
+    g.root.className = 'sp ' + (k === myScorer(s) ? 'sp-wij' : 'sp-zij');
+    g.lbl.textContent = scoreLabel(s, k);
+    countUp(g.num, s.total?.[k] ?? 0);
+    setScoreNames(g.names, s, k);
+  });
+  E.pill.classList.toggle('three', order.length === 3);
   E.potjeN.textContent = s.handNo || 1;
   E.potjeT.textContent = s.hands || s.opts?.hands || 16;
 
@@ -144,7 +182,8 @@ function renderTop(s) {
   E.badge.dataset.suit = sym || '';
   E.badge.className = 'trump-badge' + (sym && isRed(sym) ? ' red' : '') + (known ? ' known ' + teamCls(s, s.trumpBy) : ' unknown');
   E.badgeSym.textContent = sym ? suitSym(sym) : '?';
-  E.badgeLbl.textContent = known ? (s.trumpBy === s.you ? 'Jij' : teamName(s, s.playingTeam)) : s.turned ? '?' : 'Troef';
+  E.badgeLbl.textContent = !known ? (s.turned ? '?' : 'Troef') : s.trumpBy === s.you ? 'Jij'
+    : seatCount(s) === 4 ? teamName(s, s.playingTeam) : scoreLabel(s, s.trumpBy);
   E.badge.title = known
     ? `Troef is ${suitName(s.trump)}, gekozen door ${nameOf(s, s.trumpBy, false)}. Tik voor details.`
     : 'Er is nog geen troef gekozen. Tik voor details over de spelvariant.';
@@ -152,8 +191,9 @@ function renderTop(s) {
 }
 
 function renderSeat(s, seat, o) {
-  const pos = posOf(seat, s.you);
+  const pos = posOf(s, seat);
   const S = seats[pos];
+  S.root.hidden = false;
   const p = s.players[seat];
   const turn = s.turn === seat && PLAYING.has(s.phase);
   const cls = ['seat', 'seat-' + pos, teamCls(s, seat)];
@@ -166,9 +206,9 @@ function renderSeat(s, seat, o) {
   S.root.className = cls.join(' ') + keep;
   fillAvatar(S.av, p);
   S.name.textContent = p ? (pos === 'bottom' ? `${p.name}` : p.name) : 'Vrij';
-  S.root.title = p ? `${p.name} · ${isWij(s, seat) ? 'Wij' : 'Zij'}${seat === s.you ? ' (jij)' : ''}` : 'Lege plaats';
+  S.root.title = p ? `${p.name}${seatCount(s) === 4 ? ` · ${isWij(s, seat) ? 'Wij' : 'Zij'}` : ''}${seat === s.you ? ' (jij)' : ''}` : 'Lege plaats';
   S.chip.hidden = s.dealer !== seat || s.phase === 'lobby';
-  const status = p?.away ? 'AI speelt even mee' : p && !p.bot && !p.connected ? 'verbinding weg' : '';
+  const status = p?.away ? 'AI speelt even mee' : p && !p.bot && !p.connected ? 'verbinding weg' : bidStatus(s, seat);
   S.status.hidden = !status;
   S.status.textContent = status;
 
@@ -180,9 +220,58 @@ function renderSeat(s, seat, o) {
   }
 
   if (pos === 'bottom') return;
+  if (seatCount(s) === 2) {
+    setBacks(S, 0);
+    renderPiles(S.piles, shownPiles(s, seat, o), false);
+    return;
+  }
   const open = s.hands4?.[seat];
   if (open && PLAYING.has(s.phase) && !o.dealing) renderOpenHand(S, open);
   else setBacks(S, o.backs ? o.backs[seat] : PLAYING.has(s.phase) ? (p?.cards ?? 0) : 0);
+}
+
+// Three players: what a seat bid in the auction ("bod 90", "pas"), and who
+// plays alone for how much once it is over.
+function bidStatus(s, seat) {
+  if (seatCount(s) !== 3 || !PLAYING.has(s.phase)) return '';
+  if (s.phase === 'auction') {
+    const b = s.bids?.[seat] ?? -1;
+    return b > 0 ? `bod ${b}` : b === 0 ? 'pas' : '';
+  }
+  return seat === s.soloist ? `alleen voor ${s.bid}` : '';
+}
+
+// Two players: what a seat's piles show. While the cards are dealt, eight
+// empty places for them to fly to; outside a hand nothing.
+const NO_PILES = Array.from({ length: 8 }, () => ({ n: 0, card: null }));
+function shownPiles(s, seat, o) {
+  if (!PLAYING.has(s.phase)) return null;
+  return o.dealing ? NO_PILES : s.piles?.[seat] || null;
+}
+
+// Two players: the eight piles in front of a seat, as s.piles has them
+// ({n, card}: card null when face down). Ours (mine) sit in two rows with
+// the front row (piles 0..3) nearest us; the opponent's mirror them. A
+// face-up card of ours is in handEls, so it plays like a card in the hand.
+function renderPiles(root, piles, mine) {
+  const key = piles ? JSON.stringify(piles) : '';
+  if (root.dataset.key === key) return;
+  root.dataset.key = key;
+  if (mine) for (const [c, el] of handEls) { el.remove(); handEls.delete(c); }
+  clear(root);
+  root.hidden = !piles;
+  if (!piles) return;
+  piles.forEach((p, i) => {
+    const pile = h('div', { class: `pile pile-${i}` + (i < 4 ? ' front' : ' back') + (p.n ? '' : ' gone'), dataset: { pile: i } });
+    if (p.n > 1) pile.append(h('div', { class: 'pile-under' }, createBack()));
+    if (p.n > 0) {
+      const el = p.card ? createCard(p.card) : createBack();
+      el.classList.add('pile-top');
+      pile.append(el);
+      if (mine && p.card) handEls.set(p.card, el);
+    }
+    root.append(pile);
+  });
 }
 
 function setBacks(S, n) {
@@ -224,8 +313,8 @@ function trickCard(code) {
 function renderTrick(s) {
   const t = shownTrick(s);
   const want = new Map();
-  const done = !!t && t.cards.length === 4 && t.winner >= 0;
-  (t?.cards || []).forEach((pc, i) => want.set(posOf(pc.seat, s.you), { code: pc.card, i, win: done && pc.seat === t.winner }));
+  const done = !!t && t.cards.length === seatCount(s) && t.winner >= 0;
+  (t?.cards || []).forEach((pc, i) => want.set(posOf(s, pc.seat), { code: pc.card, i, win: done && pc.seat === t.winner }));
   if (pending?.placed && !want.has('bottom')) want.set('bottom', { code: pending.card, i: want.size, win: false });
   for (const pos of POS) {
     const slot = slots[pos];
@@ -245,20 +334,80 @@ function renderTrick(s) {
   E.trick.classList.toggle('done', done);
 }
 
+// Three players: the talon lies closed in the middle until the auction is
+// over (and not while the cards are being dealt).
+function renderTalon(s, o = {}) {
+  const lying = s.phase === 'auction' || (s.phase === 'discard' && talonHand === s.handNo);
+  E.talon.hidden = !(seatCount(s) === 3 && lying && !o.dealing);
+}
+
 function renderStage(s) {
   const my = s.turn === s.you;
   let key = '';
   if (s.phase === 'trump' && !shownTrick(s)) key = my ? `trump-me-${s.forced}-${s.turned}` : s.turn >= 0 ? `trump-wait-${s.turn}` : '';
   else if (s.phase === 'bid' && s.turn >= 0) key = `bid-${my}-${s.turn}-${s.turned}`;
+  else if (s.phase === 'auction' && s.turn >= 0) key = `auction-${my}-${s.turn}-${s.bid}-${s.bidder}`;
+  else if (s.phase === 'discard' && s.turn >= 0) key = my ? `discard-me-${picked.join()}` : `discard-wait-${s.turn}`;
   const hintKey = s.hint ? JSON.stringify(s.hint) : '';
   if (key + '|' + hintKey + '|' + pendingAction === stageKey) return;
   stageKey = key + '|' + hintKey + '|' + pendingAction;
   clear(E.stage);
-  E.stage.className = 'stage' + (key ? ' on' : '') + (my ? ' mine' : '');
+  E.stage.className = 'stage' + (key ? ' on' : '') + (my ? ' mine' : '') + (s.phase === 'discard' && my ? ' low' : '');
   if (!key) return;
   if (s.phase === 'trump') E.stage.append(my ? trumpPanel(s) : waitPanel(s, 'kiest troef'));
+  else if (s.phase === 'auction') E.stage.append(auctionPanel(s, my));
+  else if (s.phase === 'discard') E.stage.append(my ? discardPanel(s) : waitPanel(s, 'legt twee kaarten weg'));
   else E.stage.append(bidPanel(s, my));
   if (my && !pendingAction) focusStage();
+}
+
+// Three players: bid or pass. The bid on offer starts at the lowest one
+// allowed and goes up in steps.
+function auctionPanel(s, my) {
+  const high = s.bidder >= 0
+    ? h('div', { class: 'auction-high' }, 'Hoogste bod: ', h('b', { text: String(s.bid) }), ` van ${nameOf(s, s.bidder, false)}`)
+    : h('div', { class: 'auction-high', text: 'Nog geen bod' });
+  if (!my) return h('div', { class: 'panel panel-auction' }, high, waitText(s, 'denkt na'));
+  const lowest = s.bidder >= 0 ? s.bid + BID_STEP : MIN_BID;
+  if (lowest > MAX_BID) {
+    return h('div', { class: 'panel panel-auction' }, h('div', { class: 'panel-title', text: 'Bieden' }), high,
+      h('div', { class: 'bid-btns' },
+        h('button', { class: 'btn btn-pass', type: 'button', disabled: pendingAction, onclick: () => sendAction({ t: 'auction', bid: 0 }) }, 'Passen')),
+      h('div', { class: 'panel-sub', text: `Hoger dan ${MAX_BID} kan niet.` }));
+  }
+  bidValue = Math.min(MAX_BID, Math.max(bidValue, lowest));
+  const num = h('output', { class: 'bid-num', 'aria-live': 'polite', text: String(bidValue) });
+  const go = h('button', { class: 'btn btn-go', type: 'button', disabled: pendingAction,
+    onclick: () => sendAction({ t: 'auction', bid: bidValue }) }, `Bied ${bidValue}`);
+  const step = d => {
+    bidValue = Math.min(MAX_BID, Math.max(lowest, bidValue + d));
+    num.textContent = String(bidValue);
+    go.textContent = `Bied ${bidValue}`;
+    down.disabled = bidValue <= lowest || pendingAction;
+    up.disabled = bidValue >= MAX_BID || pendingAction;
+    sound.play('click');
+  };
+  const down = h('button', { class: 'btn btn-ghost bid-step', type: 'button', 'aria-label': `${BID_STEP} minder`, disabled: bidValue <= lowest || pendingAction, onclick: () => step(-BID_STEP) }, '−');
+  const up = h('button', { class: 'btn btn-ghost bid-step', type: 'button', 'aria-label': `${BID_STEP} meer`, disabled: bidValue >= MAX_BID || pendingAction, onclick: () => step(BID_STEP) }, '+');
+  return h('div', { class: 'panel panel-auction' },
+    h('div', { class: 'panel-title', text: 'Bieden' }),
+    high,
+    h('div', { class: 'bid-stepper' }, down, num, up),
+    h('div', { class: 'bid-btns' }, go,
+      h('button', { class: 'btn btn-pass', type: 'button', disabled: pendingAction, onclick: () => sendAction({ t: 'auction', bid: 0 }) }, 'Passen')),
+    h('div', { class: 'panel-sub', text: 'Wie het hoogst biedt, pakt de twee dichte kaarten, legt er twee weg en speelt alleen. Haal je bod, roem telt mee, of je gaat nat.' }));
+}
+
+// Three players: the soloist chooses two cards in the hand to lay away.
+function discardPanel(s) {
+  const ready = picked.length === 2;
+  return h('div', { class: 'panel panel-discard' },
+    h('div', { class: 'panel-title', text: 'Leg twee kaarten weg' }),
+    h('div', { class: 'panel-sub', text: ready ? `${picked.map(cardShort).join(' en ')} gaan weg. Hun punten tellen voor jou.`
+      : 'Tik twee kaarten aan. De twee kaarten van tafel zitten nu in je hand (gemarkeerd); hun punten tellen voor jou.' }),
+    h('div', { class: 'bid-btns' },
+      h('button', { class: 'btn btn-go', type: 'button', disabled: !ready || pendingAction,
+        onclick: () => sendAction({ t: 'discard', cards: picked.slice() }) }, 'Wegleggen')));
 }
 
 // Keyboard users land on the choice at once (the advised one in training);
@@ -302,7 +451,19 @@ function trumpPanel(s) {
     h('div', { class: 'panel-title', text: forced ? 'Iedereen paste: kies een andere troef' : 'Kies troef' }),
     h('div', { class: 'suit-btns' }, btns),
     panelHint(s),
-    h('div', { class: 'panel-sub', text: forced ? `${suitText(s.turned)} mag niet meer. Jullie spelen en moeten de meeste punten halen.` : 'Jij komt uit. Jullie moeten daarna meer dan de helft van de punten halen.' }));
+    h('div', { class: 'panel-sub', text: trumpSub(s, forced) }));
+}
+
+// What choosing trump commits to, under the suit buttons.
+function trumpSub(s, forced) {
+  const n = seatCount(s);
+  if (n === 3) {
+    const lead = s.voorhand === s.you ? 'Jij komt uit.' : `${nameOf(s, s.voorhand)} komt uit.`;
+    return `Jij speelt alleen en moet minstens ${s.bid} punten halen, roem telt mee. ${lead}`;
+  }
+  const we = n === 2 ? 'Je moet' : 'Jullie moeten';
+  if (forced) return `${suitText(s.turned)} mag niet meer. ${n === 2 ? 'Jij speelt en moet' : 'Jullie spelen en moeten'} meer dan de helft van de punten halen.`;
+  return `Jij komt uit. ${we} daarna meer dan de helft van de punten halen.${n === 2 ? ' Dan gaan de achterste kaarten open.' : ''}`;
 }
 
 function bidPanel(s, my) {
@@ -326,9 +487,11 @@ function sendAction(m) {
   sound.play('click');
   pendingAction = true;
   actionAt = performance.now();
+  actionPhase = app.s?.phase || '';
   app.send(m);
   stageKey = '';
   renderStage(app.s);
+  renderHand(app.s);
 }
 
 function renderPrompt(s) {
@@ -341,6 +504,8 @@ function renderPrompt(s) {
   else if (s.phase === 'play' && s.turn >= 0 && !my) text = `${nameOf(s, s.turn)} is aan de beurt`;
   else if (s.phase === 'trump' && my) { text = 'Jij mag troef kiezen'; cls += ' mine'; }
   else if (s.phase === 'bid' && my) { text = 'Spelen of passen?'; cls += ' mine'; }
+  else if (s.phase === 'auction' && my) { text = 'Bieden of passen?'; cls += ' mine'; }
+  else if (s.phase === 'discard' && my) { text = `Kies twee kaarten om weg te leggen (${picked.length} van 2)`; cls += ' mine'; }
   E.rule.className = cls + (text ? '' : ' empty');
   if (E.rule.dataset.text !== text) {
     E.rule.dataset.text = text;
@@ -421,7 +586,20 @@ function closeCoach() {
 }
 
 function renderHand(s, o = {}) {
-  const codes = PLAYING.has(s.phase) ? (s.hand || []).filter(c => c !== pending?.card) : [];
+  const two = seatCount(s) === 2;
+  if (E.hand.classList.contains('tableau') !== two) {
+    for (const [, el] of handEls) el.remove();
+    handEls.clear();
+    clear(E.hand);
+    delete E.hand.dataset.key;
+    E.hand.hidden = false;
+    E.hand.classList.toggle('tableau', two);
+  }
+  if (two) return renderMyPiles(s, o);
+  if (s.phase !== 'discard') picked = [];
+  // Our talon cards join the hand when they have flown there (animContract).
+  const onTable = new Set(s.phase === 'discard' && talonHand === s.handNo ? s.talon || [] : []);
+  const codes = PLAYING.has(s.phase) ? (s.hand || []).filter(c => c !== pending?.card && !onTable.has(c)) : [];
   for (const [c, el] of handEls) {
     if (!codes.includes(c)) { el.remove(); handEls.delete(c); }
   }
@@ -435,25 +613,51 @@ function renderHand(s, o = {}) {
   if (selected && !codes.includes(selected)) selected = '';
   handOrder = codes;
   const playing = s.phase === 'play' && s.turn === s.you && !pending;
+  const laying = s.phase === 'discard' && s.turn === s.you && !pendingAction;
   const legal = new Set(s.legal || []);
+  const talon = new Set(s.phase === 'discard' ? s.talon || [] : []);
+  picked = picked.filter(c => codes.includes(c));
   codes.forEach((c, i) => {
     const el = handEls.get(c);
     el.classList.toggle('legal', playing && legal.has(c));
+    el.classList.toggle('selectable', laying);
     el.classList.toggle('disabled', playing && !legal.has(c));
     el.classList.toggle('selected', c === selected);
+    el.classList.toggle('picked', picked.includes(c));
+    el.classList.toggle('from-talon', talon.has(c));
     el.classList.toggle('hint', playing && s.hint?.card === c);
     el.classList.toggle('dealing', !!o.dealing);
     el.style.zIndex = i + 1;
   });
-  E.hand.classList.toggle('my-turn', playing);
+  E.hand.classList.toggle('my-turn', playing || laying);
   E.table.classList.toggle('my-turn', s.turn === s.you && PLAYING.has(s.phase));
   layoutHand();
+}
+
+// Two players: our eight piles take the place of the hand. Their face-up
+// cards play like cards in the hand; a card on its way to the trick is
+// hidden at once.
+function renderMyPiles(s, o) {
+  renderPiles(E.hand, shownPiles(s, s.you, o), true);
+  if (selected && !handEls.has(selected)) selected = '';
+  handOrder = [...handEls.keys()];
+  const playing = s.phase === 'play' && s.turn === s.you && !pending;
+  const legal = new Set(s.legal || []);
+  for (const [c, el] of handEls) {
+    el.style.visibility = c === pending?.card ? 'hidden' : '';
+    el.classList.toggle('legal', playing && legal.has(c));
+    el.classList.toggle('disabled', playing && !legal.has(c));
+    el.classList.toggle('selected', c === selected);
+    el.classList.toggle('hint', playing && s.hint?.card === c);
+  }
+  E.hand.classList.toggle('my-turn', playing);
+  E.table.classList.toggle('my-turn', s.turn === s.you && PLAYING.has(s.phase));
 }
 
 // Fans the hand so it always fits the available width.
 function layoutHand() {
   const n = handOrder.length;
-  if (!n) return;
+  if (!n || E.hand.classList.contains('tableau')) return;
   const els = handOrder.map(c => handEls.get(c));
   const W = E.hand.clientWidth;
   const cw = els[0].offsetWidth || 64;
@@ -504,6 +708,7 @@ function bindHand() {
 function tap(code, type) {
   const s = app.s;
   if (!s) return;
+  if (s.phase === 'discard' && s.turn === s.you) return pick(code);
   const playing = s.phase === 'play' && s.turn === s.you && !pending;
   const legal = (s.legal || []).includes(code);
   if (playing && !legal) return illegal(code, s);
@@ -517,6 +722,22 @@ function tap(code, type) {
     savePrefs();
   }
   renderHand(s);
+  renderPrompt(s);
+}
+
+// Three players, laying away: a tap chooses a card or puts it back; a
+// third choice replaces the first.
+function pick(code) {
+  const s = app.s;
+  if (pendingAction) return;
+  if (picked.includes(code)) picked = picked.filter(c => c !== code);
+  else {
+    if (picked.length === 2) picked.shift();
+    picked.push(code);
+  }
+  sound.play('click');
+  renderHand(s);
+  renderStage(s);
   renderPrompt(s);
 }
 
@@ -536,7 +757,7 @@ function tryPlay(code) {
   const el = handEls.get(code);
   if (s.phase === 'play' && s.turn < 0) {
     // A pause: the trick is being collected, or play is about to start.
-    toast(shownTrick(s)?.cards?.length === 4 ? 'Even geduld, de slag wordt opgehaald' : 'Even geduld, het spel gaat zo verder');
+    toast(shownTrick(s)?.cards?.length === seatCount(s) ? 'Even geduld, de slag wordt opgehaald' : 'Even geduld, het spel gaat zo verder');
     return;
   }
   if (s.phase !== 'play' || s.turn !== s.you) {
@@ -578,6 +799,9 @@ function onKey(e) {
     selectedBy = 'key';
     renderHand(s);
     renderPrompt(s);
+  } else if ((e.key === 'Enter' || e.key === ' ') && selected && s.phase === 'discard') {
+    e.preventDefault();
+    if (s.turn === s.you) pick(selected);
   } else if ((e.key === 'Enter' || e.key === ' ') && selected) {
     e.preventDefault();
     tryPlay(selected);
@@ -597,7 +821,10 @@ export function onError() {
   if (pendingAction) {
     pendingAction = false;
     stageKey = '';
-    if (app.s) renderStage(app.s);
+    if (app.s) {
+      renderStage(app.s);
+      renderHand(app.s);
+    }
   }
 }
 
@@ -656,12 +883,15 @@ export async function animate(ev, prev, next) {
     case 'deal': return animDeal(ev, next);
     case 'turned': return animTurned(next);
     case 'bid': return animBid(ev, next);
+    case 'auction': return animAuction(ev, next);
+    case 'contract': return animContract(ev, prev, next);
+    case 'discard': return animDiscard(ev, prev, next);
     case 'trump': return animTrump(ev, next);
     case 'play': return animPlay(ev, prev, next);
     case 'trick': return animTrick(ev, next);
     case 'collect': return animCollect(ev, next);
     case 'handEnd': return animHandEnd(ev, next);
-    case 'gameOver': sound.play(next.winner === -1 ? 'click' : next.winner === next.you % 2 ? 'win' : 'lose'); return;
+    case 'gameOver': sound.play(next.winner === -1 ? 'click' : next.winner === myScorer(next) ? 'win' : 'lose'); return;
     case 'join': case 'leave': case 'away': case 'back': return seatToast(ev, prev, next);
     default: return;
   }
@@ -672,37 +902,80 @@ async function animDeal(ev, next) {
   pending = null;
   pendingAction = false;
   selected = '';
+  picked = [];
+  bidValue = 0;
   tip = '';
   dismissed = '';
   clear(E.fx);
   for (const pos of POS) clear(slots[pos]);
-  const you = next.you;
+  const n = seatCount(next);
   const dealer = ev.dealer ?? next.dealer;
+  talonHand = next.handNo;
   render(next, { dealing: true, backs: [0, 0, 0, 0] });
   if (!dur(100)) return;
   sound.play('shuffle');
-  const src = seatRect(posOf(dealer, you));
-  // Fit the 12 packets into ~85% of the server's deal pause for this tempo.
+  const src = seatRect(posOf(next, dealer));
+  // Fit the packets into ~85% of the server's deal pause for this tempo:
+  // 3-2-3 with four players; 3, the talon, 4, 3 with three; with two the
+  // piles, the cards under them first.
+  const rounds = n === 4 ? [3, 2, 3] : n === 3 ? [3, 4, 3] : [8, 8];
+  const packets = rounds.length * n + (n === 3 ? 1 : 0);
   const pause = { rustig: 2000, normaal: 1500, snel: 900 }[next.opts?.tempo] ?? 1500;
-  const stagger = Math.max(25, (pause * 0.85 - 420) / 11);
+  const stagger = Math.max(25, (pause * 0.85 - 420) / (packets - 1));
   const counts = [0, 0, 0, 0];
   const flights = [];
   let k = 0;
   await wait(100);
-  for (const n of [3, 2, 3]) {
-    for (let j = 0; j < 4; j++) {
-      const seat = (dealer + 1 + j) % 4;
+  rounds.forEach((size, round) => {
+    for (let j = 0; j < n; j++) {
+      const seat = (dealer + 1 + j) % n;
       const from = counts[seat];
-      counts[seat] += n;
-      flights.push(sleep(dur(k++ * stagger)).then(() => packet(src, seat, posOf(seat, you), from, n, next)));
+      counts[seat] += size;
+      flights.push(sleep(dur(k++ * stagger)).then(() => packet(src, seat, posOf(next, seat), from, size, next)));
     }
-  }
+    if (n === 3 && round === 0) {
+      flights.push(sleep(dur(k++ * stagger)).then(() => talonPacket(src)));
+    }
+  });
   await Promise.all(flights);
+  if (n === 2) {
+    render(next); // the piles, front rows face up
+    sound.play('card');
+    await flipIn([...E.hand.querySelectorAll('.pile.front .pile-top'), ...seats.top.piles.querySelectorAll('.pile.front .pile-top')]);
+  }
+}
+
+// Three players: two closed cards to the middle of the table.
+function talonPacket(src) {
+  sound.play('deal');
+  E.talon.hidden = false;
+  const backs = [...E.talon.children];
+  for (const b of backs) b.style.visibility = 'hidden';
+  return Promise.all(backs.map((b, i) => sleep(dur(i * 30)).then(() => fly('', src, b, { back: true, ms: 320 })).then(() => {
+    b.style.visibility = '';
+  })));
+}
+
+// Turns face-up cards over as they appear.
+function flipIn(els) {
+  return Promise.all(els.map((el, i) => anim(el, [
+    { transform: 'perspective(600px) rotateY(90deg)', opacity: 0.4 },
+    { transform: 'perspective(600px) rotateY(0deg)', opacity: 1 },
+  ], 320, { delay: i * 25 })));
 }
 
 function packet(src, seat, pos, from, n, s) {
   sound.play('deal');
   const jobs = [];
+  if (seatCount(s) === 2) {
+    // The cards fly to the empty places of the piles (see shownPiles).
+    const root = pos === 'bottom' ? E.hand : seats[pos].piles;
+    for (let i = 0; i < n; i++) {
+      const target = root.querySelector(`.pile-${(from + i) % 8}`);
+      if (target) jobs.push(sleep(dur(i * 25)).then(() => fly('', src, target, { back: true, ms: 300 })));
+    }
+    return Promise.all(jobs);
+  }
   for (let i = 0; i < n; i++) {
     const idx = from + i;
     if (pos === 'bottom') {
@@ -729,6 +1002,57 @@ async function animTurned(next) {
   await wait(250);
 }
 
+// Three players: a bid ("90") or a pass at the seat.
+async function animAuction(ev, next) {
+  bubble(next, ev.seat, ev.bid > 0 ? String(ev.bid) : 'Pas', ev.bid > 0 ? 'go' : 'pass', 1800);
+  sound.play(ev.bid > 0 ? 'trump' : 'click');
+  await wait(ev.bid > 0 ? 350 : 450);
+}
+
+// Three players: the auction is over. A banner says who plays alone for
+// how much, and the talon goes to that player (into our hand, if ours).
+async function animContract(ev, prev, next) {
+  const who = nameOf(next, ev.seat);
+  const text = ev.forced ? `${who} moet spelen` : `${who} speelt alleen`;
+  const ban = h('div', { class: 'banner ' + teamCls(next, ev.seat) },
+    h('span', { class: 'banner-sym banner-bid', text: String(ev.bid) }),
+    h('span', { class: 'banner-text' }, h('small', { text: ev.forced ? 'De anderen passen' : 'Het hoogste bod' }), h('b', { text })));
+  E.fx.append(ban);
+  sound.play('trump');
+  const backs = [...E.talon.children];
+  const from = backs.map(rectOf);
+  talonHand = 0;
+  render(next);
+  const pos = posOf(next, ev.seat);
+  if (dur(100) && from[0]?.width) {
+    const talon = new Set(next.talon || []);
+    await Promise.all(from.map((r, i) => {
+      if (pos === 'bottom') {
+        const code = [...talon][i];
+        const el = code && handEls.get(code);
+        if (el) return fly(code, r, el, { flip: true, ms: 480 });
+      }
+      return fly('', r, seats[pos].av, { back: true, ms: 480, fade: true });
+    }));
+  }
+  await anim(ban, [{ transform: 'scale(.6)', opacity: 0 }, { transform: 'scale(1.06)', opacity: 1, offset: 0.6 }, { transform: 'scale(1)', opacity: 1 }], 420);
+  await wait(700);
+  await anim(ban, [{ opacity: 1 }, { opacity: 0, transform: 'translateY(-12px)' }], 260, { fill: 'forwards' });
+  ban.remove();
+}
+
+// Three players: the soloist lays two cards away, face down.
+async function animDiscard(ev, prev, next) {
+  const pos = posOf(next, ev.seat);
+  const gone = ev.seat === next.you ? (prev?.hand || []).filter(c => !(next.hand || []).includes(c)) : [];
+  const from = gone.length ? gone.map(c => handEls.get(c)).filter(Boolean).map(rectOf) : [rectOf(seats[pos].av), rectOf(seats[pos].av)];
+  picked = [];
+  render(next);
+  sound.play('card');
+  const to = E.talon.getBoundingClientRect().width ? E.talon : E.trick;
+  await Promise.all(from.map((r, i) => sleep(dur(i * 60)).then(() => fly('', r, to, { back: true, ms: 380, fade: true }))));
+}
+
 async function animBid(ev, next) {
   bubble(next, ev.seat, ev.play ? 'Ik speel!' : 'Pas', ev.play ? 'go' : 'pass', 1800);
   sound.play(ev.play ? 'trump' : 'click');
@@ -738,9 +1062,12 @@ async function animBid(ev, next) {
 async function animTrump(ev, next) {
   render(next);
   sound.play('trump');
+  const two = seatCount(next) === 2;
+  // Two players: the back rows turn over now.
+  if (two) flipIn([...E.hand.querySelectorAll('.pile.back .pile-top'), ...seats.top.piles.querySelectorAll('.pile.back .pile-top')]);
   const who = nameOf(next, ev.seat);
   // Gedraaid: a "spelen" bid makes the turned suit trump.
-  const text = ev.forced ? `${who} moest kiezen` : next.bids?.[ev.seat] === 1 ? `${who} speelt` : `${who} kiest`;
+  const text = seatCount(next) === 3 ? `${who} kiest` : ev.forced ? `${who} moest kiezen` : next.bids?.[ev.seat] === 1 ? `${who} speelt` : `${who} kiest`;
   const ban = h('div', { class: 'banner ' + teamCls(next, ev.seat) },
     h('span', { class: 'banner-sym' + (isRed(ev.suit) ? ' red' : ''), text: suitSym(ev.suit) }),
     h('span', { class: 'banner-text' }, h('small', { text }), h('b', { text: cap(`${suitName(ev.suit)} is troef`) })));
@@ -750,10 +1077,20 @@ async function animTrump(ev, next) {
   await wait(800);
   await anim(ban, [{ opacity: 1 }, { opacity: 0, transform: 'translateY(-12px)' }], 260, { fill: 'forwards' });
   ban.remove();
+  if (!two) return;
+  // The roem in each player's open cards counts for that player.
+  for (const seat of [next.you, 1 - next.you]) {
+    const items = next.openRoem?.[seat] || [];
+    const total = roemTotal(items);
+    if (!total) continue;
+    sound.play('roem');
+    roemBurst(items, total, isWij(next, seat), seat === next.you ? 'Jouw open kaarten' : `Open kaarten van ${nameOf(next, seat)}`);
+    await wait(1400);
+  }
 }
 
 async function animPlay(ev, prev, next) {
-  const pos = posOf(ev.seat, next.you);
+  const pos = posOf(next, ev.seat);
   // Our card (sent here, or played for us while away): as in tryPlay.
   if (ev.seat === next.you) tip = '';
   if (ev.seat === next.you && pending?.card === ev.card) {
@@ -773,7 +1110,8 @@ async function animPlay(ev, prev, next) {
   }
   const S = seats[pos];
   let from;
-  const openCard = S.backs.classList.contains('open') && [...S.backs.children].find(c => c.dataset.card === ev.card);
+  const openCard = (S.backs.classList.contains('open') && [...S.backs.children].find(c => c.dataset.card === ev.card)) ||
+    S.piles.querySelector(`.card[data-card="${ev.card}"]`);
   if (openCard) {
     from = rectOf(openCard);
     openCard.style.visibility = 'hidden';
@@ -787,7 +1125,7 @@ async function animPlay(ev, prev, next) {
 }
 
 async function animTrick(ev, next) {
-  if (!next.trick?.cards?.length && next.lastTrick?.cards?.length === 4) heldTrick = next.lastTrick;
+  if (!next.trick?.cards?.length && next.lastTrick?.cards?.length === seatCount(next)) heldTrick = next.lastTrick;
   render(next);
   const wij = isWij(next, ev.winner);
   sound.play(wij ? 'trickWon' : 'trick');
@@ -810,10 +1148,10 @@ async function animTrick(ev, next) {
   await wait(roem ? 900 : 550);
 }
 
-function roemBurst(items, total, wij) {
+function roemBurst(items, total, wij, who = '') {
   const names = items.map(r => ROEM_NAMES[r.kind] || r.kind).join(' + ');
   const el = h('div', { class: 'roem-burst ' + (wij ? 'wij' : 'zij') },
-    h('b', { text: `+${total}` }), h('span', { text: `${names}!` }));
+    h('b', { text: `+${total}` }), h('span', { text: `${names}!` }), who ? h('small', { text: who }) : null);
   E.fx.append(el);
   const ms = 1900;
   if (!dur(ms)) { setTimeout(() => el.remove(), 1200); return; }
@@ -827,7 +1165,7 @@ function roemBurst(items, total, wij) {
 }
 
 async function animCollect(ev, next) {
-  const pos = posOf(ev.winner, next.you);
+  const pos = posOf(next, ev.winner);
   const to = rectOf(seats[pos].av);
   const cards = POS.map(p => slots[p].firstElementChild).filter(Boolean);
   if (dur(100)) {
@@ -851,15 +1189,28 @@ async function animHandEnd(ev, next) {
   heldTrick = null;
   const r = ev.result || next.prevHand?.result;
   if (!r) return;
-  const w = next.you % 2;
+  const n = seatCount(next);
+  const w = n === 4 ? next.you % 2 : n === 2 ? next.you : r.trumpBy === next.you ? 0 : 1;
+  // Who: "Wij"/"Zij" with four; with two "Jij" or the other's name; with
+  // three the soloist ("Jij" or the name) or the other two ("Wij", "De
+  // anderen").
+  const sideName = side => {
+    if (n === 4) return side === w ? 'Wij' : 'Zij';
+    if (n === 2) return side === w ? 'Jij' : nameOf(next, side);
+    if (side === 0) return w === 0 ? 'Jij' : nameOf(next, r.trumpBy);
+    return w === 1 ? 'Wij' : 'De anderen';
+  };
+  const verb = (side, one, many) => `${sideName(side)} ${n === 4 || (n === 3 && side === 1) ? many : one}`;
   if (r.pit) {
     sound.play('pit');
-    await splash('Pit!', r.pitTeam === w ? 'Wij halen alle slagen' : 'Zij halen alle slagen', 'pit');
+    await splash('Pit!', `${verb(r.pitTeam, 'haalt', 'halen')} alle slagen`, 'pit');
   } else if (r.nat) {
     sound.play('nat');
-    await splash('Nat!', r.playingTeam === w ? 'Wij gaan nat' : 'Zij gaan nat', 'nat');
+    await splash('Nat!', `${verb(r.playingTeam, 'gaat', 'gaan')} nat`, 'nat');
   } else {
-    sound.play(r.score[w] >= r.score[1 - w] ? 'handWon' : 'handLost');
+    const mine = r.gains?.[myScorer(next)] ?? r.score[w];
+    const best = Math.max(...(r.gains?.length ? r.gains : r.score));
+    sound.play(mine >= best ? 'handWon' : 'handLost');
     await wait(250);
   }
 }
@@ -899,7 +1250,7 @@ let waitingBubbles = []; // {pos, text, kind, ms, at}
 
 export function bubble(s, seat, text, kind = '', ms = 0) {
   if (!s || seat == null || seat < 0 || document.body.dataset.screen !== 'game') return;
-  const pos = posOf(seat, s.you);
+  const pos = posOf(s, seat);
   waitingBubbles = waitingBubbles.filter(b => b.pos !== pos); // the newer line wins
   showBubble({ pos, text, kind, ms, at: performance.now() });
 }
@@ -977,7 +1328,7 @@ export function settle(next, ev = null) {
     const inHand = (next.hand || []).includes(pending.card);
     if (!inHand || (lost && next.phase === 'play' && performance.now() - pending.at > STUCK_MS)) pending = null;
   }
-  if (pendingAction && (next.turn !== next.you || !['trump', 'bid'].includes(next.phase) || (lost && performance.now() - actionAt > STUCK_MS))) {
+  if (pendingAction && (next.turn !== next.you || next.phase !== actionPhase || (lost && performance.now() - actionAt > STUCK_MS))) {
     pendingAction = false;
     stageKey = '';
   }
@@ -986,6 +1337,7 @@ export function settle(next, ev = null) {
 // After a rejoin: forget everything sent but unanswered, so the resync
 // that follows renders the table purely from the server's state.
 export function resync() {
+  talonHand = 0;
   pending = null;
   pendingAction = false;
   selected = '';
@@ -997,6 +1349,8 @@ export function resync() {
 
 export function resetRoom() {
   app.view = null;
+  talonHand = 0;
+  E.hand.hidden = false;
   heldTrick = null;
   pending = null;
   pendingAction = false;

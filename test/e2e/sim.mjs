@@ -3,7 +3,7 @@
 // checks invariants on every update. No dependencies: Node's global
 // WebSocket. See README.md in this directory.
 //
-//   node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --humans 2 --trump gedraaid \
+//   node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --players 3 --humans 2 --trump gedraaid \
 //     --rules rotterdams --ai sterk --hands 4 [--training] [--reconnect] [--games 3]
 //   node test/e2e/sim.mjs http://127.0.0.1:18200      # the standard suite (make e2e)
 //
@@ -11,14 +11,17 @@
 
 import { parseArgs } from 'node:util';
 
-const USAGE = `usage: sim.mjs [URL] [--url ws://HOST:PORT/ws] [--humans 1-4] [--trump utrechts|gedraaid]
+const USAGE = `usage: sim.mjs [URL] [--url ws://HOST:PORT/ws] [--players 2-4] [--humans 1-players] [--trump utrechts|gedraaid]
        [--rules amsterdams|rotterdams] [--ai makkelijk|normaal|sterk] [--hands 4|8|...|24]
        [--tempo rustig|normaal|snel] [--training] [--open] [--reconnect] [--games N] [--parallel] [--verbose]
+--players: the seats at the table (default 4); --humans: how many of them simulated people take (default all).
 --reconnect: players now and then drop the connection and come back with their seat token.
 With only a URL, plays the standard suite of configurations.`;
 
 const STALL_MS = 30000;
-const IN_HAND = new Set(['trump', 'bid', 'play']);
+const IN_HAND = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
+// Cards per seat (and tricks) at a table of 2, 3 or 4 (design §2).
+const SIZE = { 2: 16, 3: 10, 4: 8 };
 
 let args;
 try {
@@ -26,6 +29,7 @@ try {
     allowPositionals: true,
     options: {
       url: { type: 'string' },
+      players: { type: 'string' },
       humans: { type: 'string' },
       trump: { type: 'string' },
       rules: { type: 'string' },
@@ -71,7 +75,7 @@ function oneOf(name, value, allowed, dflt) {
   return v;
 }
 
-const explicit = ['humans', 'trump', 'rules', 'ai', 'hands', 'tempo', 'training', 'open', 'reconnect'].some(k => opt[k] !== undefined);
+const explicit = ['players', 'humans', 'trump', 'rules', 'ai', 'hands', 'tempo', 'training', 'open', 'reconnect'].some(k => opt[k] !== undefined);
 const games = Number(opt.games ?? 1);
 if (!Number.isInteger(games) || games < 1) {
   console.error('--games must be a positive integer');
@@ -80,8 +84,10 @@ if (!Number.isInteger(games) || games < 1) {
 
 function config(o) {
   const training = !!o.training;
+  const players = training ? 4 : Number(oneOf('players', o.players, ['2', '3', '4'], '4'));
   return {
-    humans: training ? 1 : Number(oneOf('humans', o.humans, ['1', '2', '3', '4'], '4')),
+    players,
+    humans: training ? 1 : Number(oneOf('humans', o.humans, ['1', '2', '3', '4'].slice(0, players), String(players))),
     trumpMode: oneOf('trump', o.trump, ['utrechts', 'gedraaid'], 'utrechts'),
     rules: oneOf('rules', o.rules, ['amsterdams', 'rotterdams'], 'amsterdams'),
     ai: oneOf('ai', o.ai, ['makkelijk', 'normaal', 'sterk'], 'normaal'),
@@ -95,6 +101,10 @@ function config(o) {
 
 const SUITE = [
   { humans: '1', trump: 'utrechts', rules: 'amsterdams', ai: 'makkelijk', hands: '4' },
+  { players: '3', humans: '2', rules: 'rotterdams', ai: 'normaal', hands: '4', tempo: 'snel' },
+  { players: '3', humans: '1', rules: 'amsterdams', ai: 'sterk', hands: '8', reconnect: true },
+  { players: '2', humans: '2', trump: 'gedraaid', ai: 'normaal', hands: '4' },
+  { players: '2', humans: '1', trump: 'utrechts', ai: 'sterk', hands: '4', tempo: 'snel' },
   { humans: '2', trump: 'gedraaid', rules: 'rotterdams', ai: 'normaal', hands: '4', tempo: 'snel' },
   { humans: '3', trump: 'utrechts', rules: 'rotterdams', ai: 'sterk', hands: '4' },
   { humans: '4', trump: 'gedraaid', rules: 'amsterdams', ai: 'normaal', hands: '4', tempo: 'rustig' },
@@ -103,11 +113,17 @@ const SUITE = [
   { humans: '3', trump: 'gedraaid', rules: 'amsterdams', ai: 'makkelijk', hands: '8', tempo: 'snel', reconnect: true },
 ];
 
-const label = c => `${c.training ? 'training' : c.humans + ' human' + (c.humans > 1 ? 's' : '')}, ` +
+const label = c => `${c.training ? 'training' : `${c.humans} human${c.humans > 1 ? 's' : ''} of ${c.players}`}, ` +
   `${c.trumpMode}/${c.rules}, ai ${c.ai}, ${c.hands} hands, tempo ${c.tempo}${c.open ? ', open' : ''}` +
   `${c.reconnect ? ', reconnects' : ''}`;
 
 class Violation extends Error {}
+
+// Card points (design §2), for the soloist's discards.
+function cardPoints(code, trump) {
+  if (code[1] === trump) return { J: 20, 9: 14, A: 11, T: 10, K: 4, Q: 3 }[code[0]] ?? 0;
+  return { A: 11, T: 10, K: 4, Q: 3, J: 2 }[code[0]] ?? 0;
+}
 
 let ipSeq = 0;
 // A distinct client address per connection (and per process), sent as
@@ -125,7 +141,9 @@ const cardNL = code => SUIT_SYMBOL[code[1]] + RANK_NL[code[0]];
 
 const rand = n => Math.floor(Math.random() * n);
 const pick = a => a[rand(a.length)];
-const sum2 = (a, b) => [a[0] + b[0], a[1] + b[1]];
+// The side of a seat in a hand (design §2): its team with four players,
+// itself with two, with three 0 for the soloist and 1 for the other two.
+const sideOf = (n, seat, soloist) => (n === 3 ? (seat === soloist ? 0 : 1) : seat % 2);
 
 // One simulated human: connects, follows the protocol, plays randomly and
 // checks every update.
@@ -300,7 +318,8 @@ class Player {
     const cfg = this.game.cfg;
     this.check(s.you === this.seat, `you=${s.you}, joined at ${this.seat}`);
     this.check(s.code === this.code, `code ${s.code}`);
-    this.check(Array.isArray(s.players) && s.players.length === 4, 'players must have 4 entries');
+    const n = cfg.players;
+    this.check(Array.isArray(s.players) && s.players.length === n, `players must have ${n} entries`);
     const me = s.players[s.you];
     this.check(me && !me.bot && me.connected, 'own seat is not a connected human');
     for (const p of s.players) {
@@ -319,18 +338,28 @@ class Player {
     } else {
       this.check(s.trick && Array.isArray(s.trick.cards), 'no trick during a hand');
       const done = s.tricksWon[0] + s.tricksWon[1];
-      const open = s.trick.cards.length < 4 ? s.trick.cards : [];
-      for (let seat = 0; seat < 4; seat++) {
-        const want = 8 - done - (open.some(pc => pc.seat === seat) ? 1 : 0);
+      const open = s.trick.cards.length < n ? s.trick.cards : [];
+      for (let seat = 0; seat < n; seat++) {
+        const talon = s.phase === 'discard' && seat === s.soloist ? 2 : 0;
+        const want = SIZE[n] - done - (open.some(pc => pc.seat === seat) ? 1 : 0) + talon;
         this.check(s.players[seat].cards === want, `seat ${seat} has ${s.players[seat].cards} cards, want ${want}`);
       }
-      this.check(s.hand.length === s.players[s.you].cards, `hand has ${s.hand.length} cards, players says ${s.players[s.you].cards}`);
+      if (n === 2) {
+        // The hand is the face-up cards on our piles.
+        const up = s.piles[s.you].filter(p => p.card).map(p => p.card);
+        this.check(s.hand.length === up.length && s.hand.every(c => up.includes(c)), `hand ${s.hand} is not our open cards ${up}`);
+      } else {
+        this.check(s.hand.length === s.players[s.you].cards, `hand has ${s.hand.length} cards, players says ${s.players[s.you].cards}`);
+      }
       this.check(new Set(s.hand).size === s.hand.length, 'duplicate card in hand');
-      if (prev && IN_HAND.has(prev.phase) && prev.handNo === s.handNo) {
+      if (n !== 2 && prev && IN_HAND.has(prev.phase) && prev.handNo === s.handNo && !(s.phase === 'discard' && prev.phase === 'auction')) {
         for (const c of s.hand) this.check(prev.hand.includes(c), `card ${c} appeared in the hand`);
       }
-      if (cfg.trumpMode === 'gedraaid' && s.phase === 'bid') this.check(s.turned, 'bidding without a turned suit');
-      if (s.phase === 'play') this.check(s.trump && s.trumpBy >= 0 && s.playingTeam === s.trumpBy % 2, 'play without trump');
+      if (cfg.trumpMode === 'gedraaid' && n !== 3 && s.phase === 'bid') this.check(s.turned, 'bidding without a turned suit');
+      if (s.phase === 'play') {
+        this.check(s.trump && s.trumpBy >= 0 && s.playingTeam === sideOf(n, s.trumpBy, s.soloist), 'play without trump');
+      }
+      if (n === 3 && s.phase !== 'auction') this.check(s.soloist >= 0 && s.bid >= 80 && s.bid % 10 === 0, `soloist ${s.soloist} bid ${s.bid}`);
     }
 
     const mine = inHand && s.turn === s.you;
@@ -355,38 +384,49 @@ class Player {
 
     this.check(s.scores.length === (s.phase === 'handEnd' || s.phase === 'gameOver' ? s.handNo : s.handNo - 1),
       `${s.scores.length} score rows in hand ${s.handNo} (${s.phase})`);
-    let total = [0, 0];
+    const total = s.total.map(() => 0);
+    this.check(s.total.length === (n === 4 ? 2 : n), `total ${s.total} for ${n} players`);
     s.scores.forEach((r, i) => {
       this.check(r.hand === i + 1, `score row ${i} has hand ${r.hand}`);
-      total = sum2(total, r.score);
+      r.gains.forEach((g, k) => { total[k] += g; });
     });
-    this.check(total[0] === s.total[0] && total[1] === s.total[1], `total ${s.total} but the rows add up to ${total}`);
+    this.check(total.every((t, k) => t === s.total[k]), `total ${s.total} but the rows add up to ${total}`);
   }
 
   checkHandEnd(s, ev) {
     const r = ev.result;
+    const n = this.game.cfg.players;
     this.handEnds++;
+    this.check(r.players === n, `result for ${r.players} players`);
     this.check(r.points[0] + r.points[1] === 162, `card points ${r.points} do not add up to 162`);
     const roem = r.roem[0] + r.roem[1];
     const P = r.playingTeam;
     this.check(P === 0 || P === 1, `playing team ${P}`);
+    // With three players the soloist (side 0) must make the bid; otherwise
+    // the side that made trump more than half.
+    const made = n === 3 ? r.points[0] + r.roem[0] >= r.bid : 2 * (r.points[P] + r.roem[P]) > 162 + roem;
+    this.check(r.nat === !made, `nat ${r.nat} for points ${r.points}, roem ${r.roem}, bid ${r.bid}`);
     if (r.nat) {
       this.check(r.score[P] === 0 && r.score[1 - P] === 162 + roem, `nat scored ${r.score} (roem ${r.roem})`);
-      this.check(2 * (r.points[P] + r.roem[P]) <= 162 + roem, 'nat although the playing team had more than half');
     } else {
       this.check(r.score[0] === r.points[0] + r.roem[0] && r.score[1] === r.points[1] + r.roem[1],
         `score ${r.score} from points ${r.points} and roem ${r.roem}`);
-      this.check(2 * (r.points[P] + r.roem[P]) > 162 + roem, 'not nat although the playing team had at most half');
     }
-    if (r.pit) this.check(r.pitTeam >= 0 && s.prevHand.tricks.every(t => t.winner % 2 === r.pitTeam), 'pit without all tricks');
+    const gains = n === 4 ? r.score : n === 2 ? r.score
+      : [0, 1, 2].map(seat => (seat === r.trumpBy ? r.score[0] : Math.ceil(r.score[1] / 2)));
+    this.check(gains.every((g, k) => g === r.gains[k]) && r.gains.length === gains.length, `gains ${r.gains}, want ${gains}`);
+    const side = seat => sideOf(n, seat, r.trumpBy);
+    if (r.pit) this.check(r.pitTeam >= 0 && s.prevHand.tricks.every(t => side(t.winner) === r.pitTeam), 'pit without all tricks');
     const row = s.scores[s.scores.length - 1];
     this.check(row.hand === s.handNo && row.score[0] === r.score[0] && row.score[1] === r.score[1] && row.nat === r.nat,
       'last score row differs from the hand result');
-    this.check(s.prevHand && s.prevHand.tricks.length === 8, 'prevHand without 8 tricks');
+    this.check(s.prevHand && s.prevHand.tricks.length === SIZE[n], `prevHand without ${SIZE[n]} tricks`);
     const cards = new Set(s.prevHand.tricks.flatMap(t => t.cards.map(pc => pc.card)));
-    this.check(cards.size === 32, `the 8 tricks hold ${cards.size} different cards`);
+    for (const c of r.discards) cards.add(c);
+    this.check(cards.size === 32, `the tricks and discards hold ${cards.size} different cards`);
     const pts = [0, 0];
-    for (const t of s.prevHand.tricks) pts[t.winner % 2] += t.points;
+    for (const t of s.prevHand.tricks) pts[side(t.winner)] += t.points;
+    if (n === 3) for (const c of r.discards) pts[0] += cardPoints(c, r.trump);
     this.check(pts[0] === r.points[0] && pts[1] === r.points[1], `trick points ${pts} vs result ${r.points}`);
     // The summary counts down to the next hand, except in training: there it
     // waits for ready.
@@ -398,8 +438,9 @@ class Player {
     const cfg = this.game.cfg;
     this.check(s.handNo === cfg.hands && s.scores.length === cfg.hands, `game over after ${s.scores.length} hands, want ${cfg.hands}`);
     if (!this.reconnects) this.check(this.handEnds === cfg.hands, `saw ${this.handEnds} hand ends, want ${cfg.hands}`);
-    this.check(ev.total[0] === s.total[0] && ev.total[1] === s.total[1], 'gameOver total differs from the state');
-    const w = s.total[0] > s.total[1] ? 0 : s.total[1] > s.total[0] ? 1 : -1;
+    this.check(ev.total.every((t, k) => t === s.total[k]), 'gameOver total differs from the state');
+    const top = Math.max(...s.total);
+    const w = s.total.filter(t => t === top).length > 1 ? -1 : s.total.indexOf(top);
     this.check(ev.winner === w && s.winner === w, `winner ${ev.winner} for total ${s.total}`);
     if (cfg.training && !this.reconnects) this.check(this.tips >= 8 * cfg.hands && this.hints > 0, `training: ${this.tips} tips, ${this.hints} hints`);
     this.over = true;
@@ -433,6 +474,16 @@ class Player {
         const play = Math.random() < 0.3;
         if (typeof h?.play === 'boolean' && play !== h.play) this.misses.push(`aangeraden om te ${h.play ? 'spelen' : 'passen'}`);
         this.send({ t: 'bid', play });
+        break;
+      }
+      case 'auction': {
+        const lowest = s.bidder >= 0 ? s.bid + 10 : 80;
+        this.send({ t: 'auction', bid: Math.random() < 0.35 ? lowest + 10 * rand(3) : 0 });
+        break;
+      }
+      case 'discard': {
+        const h2 = [...s.hand].sort(() => Math.random() - 0.5);
+        this.send({ t: 'discard', cards: h2.slice(0, 2) });
         break;
       }
       case 'play': {
@@ -486,9 +537,9 @@ class Game {
       await Promise.race([this.run(), this.failed]);
       const s = await Promise.race([Promise.all(this.players.map(p => p.done)), this.failed]);
       const final = s[0];
-      const w = final.you % 2;
       const re = this.players.reduce((n, p) => n + p.reconnects, 0);
-      return `ok   game ${this.id} (${label(cfg)}) room ${final.code}: Wij ${final.total[w]} - Zij ${final.total[1 - w]}, ` +
+      const score = cfg.players === 4 ? `Wij ${final.total[final.you % 2]} - Zij ${final.total[1 - (final.you % 2)]}` : final.total.join(' - ');
+      return `ok   game ${this.id} (${label(cfg)}) room ${final.code}: ${score}, ` +
         `${((Date.now() - t0) / 1000).toFixed(1)} s${cfg.reconnect ? `, ${re} reconnects, substitutes seen ${this.subs}` : ''}`;
     } finally {
       this.finished = true;
@@ -504,7 +555,7 @@ class Game {
     const start = cfg.training || cfg.humans === 1;
     host.send({
       t: 'create', name: host.name, training: cfg.training, start,
-      opts: { humans: cfg.humans, hands: cfg.hands, trumpMode: cfg.trumpMode, rules: cfg.rules, ai: cfg.ai, tempo: cfg.tempo, open: cfg.open },
+      opts: { players: cfg.players, hands: cfg.hands, trumpMode: cfg.trumpMode, rules: cfg.rules, ai: cfg.ai, tempo: cfg.tempo, open: cfg.open },
     });
     const j = await host.joined;
     for (const g of guests) {

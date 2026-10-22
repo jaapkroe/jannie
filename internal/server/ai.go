@@ -14,11 +14,13 @@ type Persona struct {
 	Speed                       float64 // multiplier on think time
 }
 
-// Brain makes the decisions for one bot seat. The server calls one brain from
-// one goroutine at a time.
+// Brain makes the decisions for one bot seat, at a table of v.Players. The
+// server calls one brain from one goroutine at a time.
 type Brain interface {
-	ChooseTrump(v game.View) game.Suit // utrechts, or forced (never v.Turned when v.Forced)
+	ChooseTrump(v game.View) game.Suit // utrechts, forced (never v.Turned when v.Forced), or the soloist
 	Bid(v game.View) bool              // gedraaid: play on v.Turned?
+	Auction(v game.View) int           // three players: a bid of at least v.MinNextBid(), or 0 to pass
+	Discard(v game.View) [2]game.Card  // three players: two cards of v.Hand for the soloist to lay away
 	Play(v game.View) game.Card        // one of v.Legal
 }
 

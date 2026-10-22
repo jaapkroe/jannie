@@ -23,22 +23,25 @@ node test/e2e/sim.mjs http://127.0.0.1:18200
 podman stop kj-dev-18200
 ```
 
-With only a URL it plays the standard suite: one to four humans, both ways of
-choosing trump, both rule sets, all AI levels, a training game with open cards,
-a full *boom* of 16 hands, and a game where players drop their connection
-and come back. Any option below plays that one configuration instead:
+With only a URL it plays the standard suite: tables of four, three and two,
+one to four humans, both ways of choosing trump, both rule sets, all AI
+levels, a training game with open cards, a full *boom* of 16 hands, and
+games where players drop their connection and come back. Any option below
+plays that one configuration instead:
 
 ```sh
 node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --humans 2 --trump gedraaid \
   --rules rotterdams --ai sterk --hands 4 --games 3
 node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --training --open --hands 4
 node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --humans 3 --reconnect --games 4 --parallel
+node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --players 3 --humans 2 --rules rotterdams
 ```
 
 | Option | Values | Default |
 |---|---|---|
 | `--url` (or a positional URL) | `ws://…/ws`, or `http://host:port` (then `/ws` is added) | `ws://127.0.0.1:18200/ws` |
-| `--humans` | 1–4 simulated players; the other seats get bots | 4 |
+| `--players` | 2, 3, 4: the seats at the table (§2 of the design) | 4 |
+| `--humans` | 1 to `--players` simulated players; the other seats get bots | `--players` |
 | `--trump` | `utrechts`, `gedraaid` | `utrechts` |
 | `--rules` | `amsterdams`, `rotterdams` | `amsterdams` |
 | `--ai` | `makkelijk`, `normaal`, `sterk` | `normaal` |

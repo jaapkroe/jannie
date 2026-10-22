@@ -1,23 +1,26 @@
 // Home screen (name, quick play, new game, join, training), the join-link
 // invite, and the lobby where seats and options are arranged.
 import { sound } from './sound.js';
-import { app, h, clear, icon, store, toast, POS, posOf, isWij, teamCls, avatar, playerName, variantText, copyText, DEFAULT_NAME } from './util.js';
+import { app, h, clear, icon, store, toast, POS, posOf, seatCount, isWij, teamCls, avatar, playerName, variantText, countWord, cap, copyText, DEFAULT_NAME } from './util.js';
 import * as panels from './panels.js';
 
 const E = {};
 const CODE_RE = /^[A-HJ-NP-Z]{4}$/;
-const DEFAULTS = { humans: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal' };
+const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal' };
 
 // Option rows shared by the new-game sheet and the lobby.
 const OPTS = [
-  { key: 'humans', label: 'Spelers', choices: [[1, '1'], [2, '2'], [3, '3'], [4, '4']],
-    info: ['Hoeveel mensen er mee kunnen spelen, jij meegerekend.', 'Plaatsen zonder mens krijgen een AI-speler. Met z\'n tweeën zitten jullie tegenover elkaar, als maten.'] },
+  { key: 'players', label: 'Spelers', choices: [[2, '2'], [3, '3'], [4, '4']],
+    info: ['Met hoeveel spelers je klaverjast, jij meegerekend. Een plaats waar bij de start niemand zit, krijgt een AI-speler.',
+      'Met z\'n vieren: twee tegen twee, maten tegenover elkaar.',
+      'Met z\'n drieën: ieder voor zich. Je krijgt tien kaarten, twee liggen dicht op tafel. Wie het hoogst biedt, pakt die twee, legt er twee weg, kiest troef en speelt alleen tegen de andere twee.',
+      'Met z\'n tweeën: je speelt van acht stapeltjes van twee kaarten op tafel, de bovenste open. Ook de kaarten van de ander zie je.'] },
   { key: 'hands', label: 'Potjes', choices: [[4, '4'], [8, '8'], [12, '12'], [16, '16'], [20, '20'], [24, '24']],
     info: ['Hoeveel potjes (handen) het spel duurt. Zestien potjes heet een boom.', 'Wie na het laatste potje de meeste punten heeft, wint.'] },
-  { key: 'trumpMode', label: 'Troef', choices: [['utrechts', 'Utrechts'], ['gedraaid', 'Gedraaid']],
-    info: ['Utrechts (verplicht): de voorhand moet troef kiezen en speelt.', 'Gedraaid (vrij): er wordt een kleur gedraaid. Om de beurt zeg je spelen of passen. Past iedereen, dan kiest de voorhand een andere kleur.'] },
-  { key: 'rules', label: 'Regels', choices: [['amsterdams', 'Amsterdams'], ['rotterdams', 'Rotterdams']],
-    info: ['Amsterdams: kun je niet bekennen en heeft je maat de slag, dan hoef je niet te troeven.', 'Rotterdams: kun je niet bekennen, dan moet je altijd troeven (en overtroeven als het kan).'] },
+  { key: 'trumpMode', label: 'Troef', choices: [['utrechts', 'Utrechts'], ['gedraaid', 'Gedraaid']], players: [2, 4],
+    info: ['Utrechts (verplicht): de voorhand moet troef kiezen en speelt.', 'Gedraaid (vrij): er wordt een kleur gedraaid. Om de beurt zeg je spelen of passen. Past iedereen, dan kiest de voorhand een andere kleur.', 'Met z\'n drieën wordt er om troef geboden.'] },
+  { key: 'rules', label: 'Regels', choices: [['amsterdams', 'Amsterdams'], ['rotterdams', 'Rotterdams']], players: [3, 4],
+    info: ['Amsterdams: kun je niet bekennen en heeft je maat de slag, dan hoef je niet te troeven.', 'Rotterdams: kun je niet bekennen, dan moet je altijd troeven (en overtroeven als het kan).', 'Met z\'n drieën zijn de twee tegenspelers van wie alleen speelt elkaars maat. Met z\'n tweeën heb je geen maat.'] },
   { key: 'ai', label: 'AI-sterkte', choices: [['makkelijk', 'Makkelijk'], ['normaal', 'Normaal'], ['sterk', 'Sterk']],
     info: ['Makkelijk: speelt los en maakt fouten.', 'Normaal: speelt degelijk volgens de vuistregels.', 'Sterk: telt kaarten, rekent kansen door en kent de seinen.'] },
   { key: 'tempo', label: 'Tempo', choices: [['rustig', 'Rustig'], ['normaal', 'Normaal'], ['snel', 'Snel']],
@@ -29,46 +32,63 @@ const LABELS = Object.fromEntries(OPTS.map(o => [o.key, Object.fromEntries(o.cho
 // double tap on "Maak spel" lands on it and would start without friends.
 const START_GUARD_MS = 800;
 
+// The option rows; a row that does not apply to the number of players
+// (o.players) hides: troef with three (they bid), the rules with two
+// (nobody has a partner). onChange hears every choice.
 function optionsForm(opts, onChange, keys = OPTS.map(o => o.key)) {
-  return h('div', { class: 'opts' }, OPTS.filter(o => keys.includes(o.key)).map(o =>
-    h('div', { class: 'opt-row' },
+  const form = h('div', { class: 'opts' }, OPTS.filter(o => keys.includes(o.key)).map(o =>
+    h('div', { class: 'opt-row', dataset: { key: o.key } },
       h('div', { class: 'opt-lbl' }, h('span', { text: o.label }), panels.infoBtn(o.label, o.info)),
-      panels.segmented(o.choices, opts[o.key] ?? DEFAULTS[o.key], v => onChange(o.key, v), o.label))));
+      panels.segmented(o.choices, opts[o.key] ?? DEFAULTS[o.key], v => {
+        onChange(o.key, v);
+        if (o.key === 'players') showRows(form, v);
+      }, o.label))));
+  showRows(form, opts.players ?? DEFAULTS.players);
+  return form;
+}
+
+function showRows(form, players) {
+  for (const row of form.querySelectorAll('.opt-row')) {
+    const o = OPTS.find(x => x.key === row.dataset.key);
+    row.hidden = !!o?.players && !o.players.includes(players);
+  }
 }
 
 function optsSummary(o) {
   return [`${o.hands} potjes`, variantText(o), `AI ${LABELS.ai[o.ai]?.toLowerCase() || o.ai}`, `tempo ${LABELS.tempo[o.tempo]?.toLowerCase() || o.tempo}`];
 }
 
-// Snel spelen uses the options last chosen for a new game (kj.opts), alone
-// with three bots.
+// Snel spelen uses the options last chosen for a new game (kj.opts), the
+// number of players included, alone with bots.
 function quickOpts() {
   const stored = store.json('opts', {});
   const o = {};
-  for (const key of ['hands', 'trumpMode', 'rules', 'ai', 'tempo']) {
+  for (const key of ['players', 'hands', 'trumpMode', 'rules', 'ai', 'tempo']) {
     if (stored?.[key] != null && LABELS[key][stored[key]] !== undefined) o[key] = stored[key];
   }
-  o.humans = 1;
   return o;
 }
 
 // The quick-play subtitle names whatever differs from the defaults.
 function quickSub() {
   const o = { ...DEFAULTS, ...quickOpts() };
+  const bots = o.players - 1;
   const parts = [];
   if (o.hands !== DEFAULTS.hands) parts.push(`${o.hands} potjes`);
-  if (o.trumpMode !== DEFAULTS.trumpMode) parts.push(LABELS.trumpMode[o.trumpMode]);
-  if (o.rules !== DEFAULTS.rules) parts.push(LABELS.rules[o.rules]);
+  if (o.trumpMode !== DEFAULTS.trumpMode && o.players !== 3) parts.push(LABELS.trumpMode[o.trumpMode]);
+  if (o.rules !== DEFAULTS.rules && o.players !== 2) parts.push(LABELS.rules[o.rules]);
   if (o.ai !== DEFAULTS.ai) parts.push(`AI ${LABELS.ai[o.ai].toLowerCase()}`);
   if (o.tempo !== DEFAULTS.tempo) parts.push(`tempo ${LABELS.tempo[o.tempo].toLowerCase()}`);
-  return parts.length ? `Drie AI-spelers · ${parts.join(' · ')}` : 'Meteen aan tafel met drie AI-spelers';
+  const who = `${countWord(bots)} ${bots === 1 ? 'AI-speler' : 'AI-spelers'}`;
+  return parts.length ? `${cap(who)} · ${parts.join(' · ')}` : `Meteen aan tafel met ${who}`;
 }
+
 
 // Shows the quick-play subtitle with "AI-spelers" kept whole: a narrow
 // phone would break the line after "AI-".
 function showQuickSub() {
-  E.quickSub.replaceChildren(...quickSub().split(/(AI-spelers)/).filter(Boolean)
-    .map(part => (part === 'AI-spelers' ? h('span', { class: 'nobreak', text: part }) : part)));
+  E.quickSub.replaceChildren(...quickSub().split(/(AI-spelers?)/).filter(Boolean)
+    .map(part => (part.startsWith('AI-speler') ? h('span', { class: 'nobreak', text: part }) : part)));
 }
 
 // ---------- home ----------
@@ -331,22 +351,29 @@ export function renderLobby(s, fresh = false) {
   }
   E.lbTitle.textContent = host ? 'Klaarzetten' : 'Even wachten';
   E.lbCode.replaceChildren(...[...s.code].map(ch => h('span', { text: ch })));
-  for (let seat = 0; seat < 4; seat++) renderLobbySeat(s, seat, host);
-  const humans = s.players.filter(p => p && !p.bot).length;
-  const free = s.players.some(p => !p);
+  const n = seatCount(s);
+  E.lbTable.dataset.players = n;
+  for (const pos of POS) E.lbSeats[pos].hidden = true;
+  for (let seat = 0; seat < n; seat++) renderLobbySeat(s, seat, host);
+  const taken = s.players.filter(Boolean).length;
+  const free = taken < n;
   const bots = s.players.some(p => p?.bot);
   const tip = host
     ? (free ? 'tik op een lege plaats voor een AI-speler' : bots ? 'tik op een AI-speler om te wisselen' : 'iedereen zit klaar')
     : (free ? 'tik op een lege plaats om daar te gaan zitten' : 'de tafel is vol');
-  E.lbCount.textContent = `${humans} van ${s.opts.humans} ${s.opts.humans === 1 ? 'mens' : 'mensen'} · ${tip}`;
-  E.lbHint.textContent = codeHint(s, host, humans, free, bots);
+  E.lbCount.textContent = `${taken} van de ${n} plaatsen bezet · ${tip}`;
+  E.lbHint.textContent = codeHint(s, host, free, bots);
 
   const key = JSON.stringify([s.opts, host]);
   if (key !== lastOptsKey) {
     lastOptsKey = key;
     if (host) {
+      // The next new game starts from what the room has: a change the
+      // server refused (more people than seats) is not remembered.
+      const { players, hands, trumpMode, rules, ai, tempo } = s.opts;
+      store.setJSON('opts', { ...store.json('opts', {}), players, hands, trumpMode, rules, ai, tempo });
       E.lbOpts.replaceChildren(h('div', { class: 'lb-lbl', text: 'Spelregels' }),
-        optionsForm(s.opts, (k, v) => { app.send({ t: 'opts', opts: { [k]: v } }); store.setJSON('opts', { ...store.json('opts', {}), [k]: v }); }));
+        optionsForm(s.opts, (k, v) => app.send({ t: 'opts', opts: { [k]: v } })));
     } else {
       E.lbOpts.replaceChildren(h('div', { class: 'lb-lbl', text: 'Spelregels' }),
         h('div', { class: 'chips' }, optsSummary(s.opts).map(t => h('span', { class: 'chip', text: t }))),
@@ -377,24 +404,20 @@ export function renderLobby(s, fresh = false) {
 
 // Under the code: who can still join. A friend who opens the link of a
 // full table is turned away, so say so, and how the host makes room.
-function codeHint(s, host, humans, free, bots) {
-  if (humans >= s.opts.humans) {
-    if (s.opts.humans >= 4) return 'Alle vier de plaatsen zijn bezet.';
-    return host ? 'Alle plaatsen voor spelers zijn bezet. Zet Spelers hoger als er nog iemand mee wil doen.'
-      : 'Alle plaatsen voor spelers zijn bezet.';
-  }
-  if (!free && bots) {
-    return host ? 'Alle plaatsen zijn bezet. Haal een AI-speler weg als er nog iemand mee wil doen.'
-      : 'Alle plaatsen zijn bezet.';
-  }
-  return 'Stuur de link of de code naar wie mee wil doen.';
+function codeHint(s, host, free, bots) {
+  if (free) return 'Stuur de link of de code naar wie mee wil doen.';
+  if (!host) return 'Alle plaatsen zijn bezet.';
+  if (bots) return 'Alle plaatsen zijn bezet. Haal een AI-speler weg als er nog iemand mee wil doen.';
+  if (seatCount(s) < 4) return 'Alle plaatsen zijn bezet. Zet Spelers hoger als er nog iemand mee wil doen.';
+  return 'Alle vier de plaatsen zijn bezet.';
 }
 
 function renderLobbySeat(s, seat, host) {
-  const pos = posOf(seat, s.you);
+  const pos = posOf(s, seat);
   const el = E.lbSeats[pos];
   const p = s.players[seat];
   const me = seat === s.you;
+  el.hidden = false;
   el.className = `lseat ls-${pos} ${teamCls(s, seat)}` + (p ? '' : ' empty') + (me ? ' me' : '') + (p?.bot ? ' bot' : '');
   const role = me ? 'jij' : isWij(s, seat) ? 'maat' : 'tegenstander';
   const tag = [p && !p.bot && !p.connected ? 'weg' : role, seat === s.host ? 'host' : ''].filter(Boolean).join(' · ');

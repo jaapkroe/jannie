@@ -97,11 +97,11 @@ async function pickOpt(P, sheet, row, value) {
   throw new Error(`option ${value} not found`);
 }
 
-async function newGame(P, { humans = 1, hands = 4 } = {}) {
+async function newGame(P, { players = 4, hands = 4 } = {}) {
   await press(P, '#btn-new');
   await waitFor(P, () => document.querySelector('.m-new.open'), { label: 'new game sheet' });
   await sleep(300);
-  await pickOpt(P, '.m-new', 1, String(humans));
+  await pickOpt(P, '.m-new', 1, String(players));
   await pickOpt(P, '.m-new', 2, String(hands));
   await pickOpt(P, '.m-new', 6, 'Snel');
   await press(P, '#btn-create');
@@ -122,6 +122,8 @@ async function training(P, trumpMode = 'Utrechts') {
 const UI = () => ({
   trump: !!document.querySelector('.panel-trump .suit-btn:not(:disabled)'),
   bid: !!document.querySelector('.panel-bid .btn-go:not(:disabled)'),
+  auction: !!document.querySelector('.panel-auction .btn-pass:not(:disabled)'),
+  discard: !!document.querySelector('.panel-discard'),
   play: !!document.querySelector('.hand.my-turn .card.legal'),
   summary: !!document.querySelector('.m-summary.open .btn-go:not(:disabled)'),
   over: !!document.querySelector('.m-over.open'),
@@ -136,12 +138,23 @@ async function playUntil(P, stop, { timeout = 120000, label = 'condition', ready
     const st = await P.page.evaluate(UI);
     if (st.trump) await press(P, '.panel-trump .suit-btn.advised:not(:disabled), .panel-trump .suit-btn:not(:disabled)');
     else if (st.bid) await press(P, Math.random() < 0.5 ? '.panel-bid .btn-go' : '.panel-bid .btn-pass');
+    else if (st.auction) await press(P, Math.random() < 0.3 ? '.panel-auction .btn-go' : '.panel-auction .btn-pass');
+    else if (st.discard) await layAway(P);
     else if (st.play) await playLegal(P);
     // -fast: the summary may be gone before the tap.
     else if (st.summary && ready) await press(P, '.m-summary .btn-go', { timeout: 1000 }).catch(() => {});
     await sleep(100);
   }
   throw new Error(`[${P.name}] timeout playing until ${label}`);
+}
+
+// Three players, playing alone: picks the first two cards and lays them away.
+async function layAway(P) {
+  for (const el of (await P.page.$$('.hand .card:not(.picked)')).slice(0, 2 - (await P.page.$$('.hand .card.picked')).length)) {
+    await pressEl(P, el);
+    await sleep(150);
+  }
+  await press(P, '.panel-discard .btn-go:not(:disabled)', { timeout: 3000 }).catch(() => {});
 }
 
 const toasts = P => P.page.$$eval('.toast', els => els.map(e => e.textContent));
@@ -392,7 +405,7 @@ CHECKS.quick = async browser => {
   const P = await page(browser, VP.iphone, 'quick', {
     hooks: true,
     init: () => {
-      localStorage.setItem('kj.opts', JSON.stringify({ humans: 3, hands: 8, ai: 'sterk', open: true }));
+      localStorage.setItem('kj.opts', JSON.stringify({ players: 3, hands: 8, ai: 'sterk', open: true }));
       window.__screens = [];
       document.addEventListener('DOMContentLoaded', () => {
         new MutationObserver(() => window.__screens.push(document.body.dataset.screen))
@@ -403,14 +416,14 @@ CHECKS.quick = async browser => {
   await run(P, async () => {
     await home(P);
     const sub = await P.page.$eval('#quick-sub', e => e.textContent);
-    if (sub !== 'Drie AI-spelers · 8 potjes · AI sterk') throw new Error(`quick subtitle "${sub}"`);
+    if (sub !== 'Twee AI-spelers · 8 potjes · AI sterk') throw new Error(`quick subtitle "${sub}"`);
     await quick(P);
     const st = await P.page.evaluate(() => ({
       screens: window.__screens, total: document.querySelector('.potje-n').textContent,
       create: window.__kj.sent.find(m => m.t === 'create'),
     }));
     if (st.screens.includes('lobby')) throw new Error(`the lobby flashed: ${st.screens}`);
-    if (st.total !== '1/8' || st.create.opts.humans !== 1 || 'open' in st.create.opts) throw new Error(`quick play ${JSON.stringify(st)}`);
+    if (st.total !== '1/8' || st.create.opts.players !== 3 || 'open' in st.create.opts) throw new Error(`quick play ${JSON.stringify(st)}`);
   });
 };
 
@@ -740,7 +753,7 @@ CHECKS.nostorage = async browser => {
 
     // A guest with blocked storage joins by link under the name typed.
     await home(H, 'Anna');
-    const code = await newGame(H, { humans: 2 });
+    const code = await newGame(H);
     await G.page.goto(`${BASE}/${code}`, { waitUntil: 'networkidle0' });
     await waitFor(G, () => document.querySelector('.invite:not([hidden]) .btn-hero'), { label: 'invite' });
     await type(G, '#name', 'Bert');
@@ -817,7 +830,8 @@ CHECKS.setup = async browser => {
   let friend = null;
   await run(H, async () => {
     await home(H, 'Anna');
-    const code = await newGame(H, { humans: 2 });
+    // Two seats: the one a bot filled at the start is free again after.
+    const code = await newGame(H, { players: 2 });
     await press(H, '#btn-start:not(:disabled)');
     await waitFor(H, () => document.body.dataset.screen === 'game', { label: 'game' });
     await playUntil(H, () => !!document.querySelector('.m-over.open'), { label: 'game over', timeout: 300000 });
@@ -891,9 +905,8 @@ CHECKS.names = async browser => {
   const G2 = await page(browser, VP.phone, 'names-guest2');
   await run(G, async () => {
     await home(H, 'Anna');
-    const code = await newGame(H, { humans: 3 });
-    const botSeat = await H.page.$eval('.lseat.bot', e => e.className.match(/ls-(left|top|right)/)[1]);
-    await seatBot(H, botSeat, 'Kees de Visser');
+    const code = await newGame(H);
+    await seatBot(H, 'right', 'Kees de Visser');
     await aiMarks(H, '.lseat .ls-name');
 
     await G.page.goto(`${BASE}/${code}`, { waitUntil: 'networkidle0' });
@@ -925,7 +938,7 @@ CHECKS.names = async browser => {
   const P = await page(browser, { width: 1024, height: 768, isMobile: false, hasTouch: false, deviceScaleFactor: 1 }, 'names-pill');
   await run(P, async () => {
     await home(P, 'Anna');
-    await newGame(P, { humans: 1 });
+    await newGame(P);
     await seatBot(P, 'left', 'Tante Truus');
     await seatBot(P, 'right', 'Kees de Visser');
     await press(P, '#btn-start:not(:disabled)');
@@ -958,7 +971,7 @@ CHECKS.leave = async browser => {
   const G = await page(browser, VP.phone, 'leave-guest', { hooks: true });
   await run(G, async () => {
     await home(H, 'Anna');
-    const code = await newGame(H, { humans: 2 });
+    const code = await newGame(H);
     await home(G, 'Bert', '/' + code);
     await press(G, '.invite .btn-hero');
     await waitFor(G, () => document.body.dataset.screen === 'lobby', { label: 'guest in lobby' });
@@ -992,7 +1005,7 @@ CHECKS.lobby = async browser => {
   const bots = [];
   await run(H, async () => {
     await home(H, 'Anna');
-    const code = await newGame(H, { humans: 4 });
+    const code = await newGame(H);
     const ws = BASE.replace(/^http/, 'ws') + '/ws';
     for (const name of ['Bert', 'Cor', 'Dien']) {
       const c = new NodeWS(ws, { headers: { Origin: BASE, 'X-Real-IP': nextIP() } });
@@ -1002,7 +1015,7 @@ CHECKS.lobby = async browser => {
     }
     await waitFor(H, () => document.querySelectorAll('.lseat:not(.empty)').length === 4, { label: 'four people seated' });
     const hint = await H.page.$eval('.lb-count', e => e.textContent);
-    if (hint !== '4 van 4 mensen · iedereen zit klaar') throw new Error(`lobby hint "${hint}"`);
+    if (hint !== '4 van de 4 plaatsen bezet · iedereen zit klaar') throw new Error(`lobby hint "${hint}"`);
     await press(H, '.lb-code .btn-row .btn:first-child');
     await waitFor(H, () => document.querySelector('.modal.open .link-field'), { label: 'link to copy by hand' });
     const st = await H.page.evaluate(() => ({ value: document.querySelector('.link-field').value, path: location.pathname, toasts: [...document.querySelectorAll('.toast')].map(t => t.textContent) }));
@@ -1014,21 +1027,20 @@ CHECKS.lobby = async browser => {
 // A full table: a late friend with a stored name opens the link, is told to
 // ask the host for a seat and finds the code back in the Meedoen field; the
 // host gets a toast saying how to make room, and the hint under the code
-// says the seats for people are taken. Once Spelers goes up, one tap on
-// Meedoen joins.
+// says every seat is taken. Once Spelers goes up, one tap on Meedoen joins.
 CHECKS.full = async browser => {
   const H = await page(browser, VP.desktop, 'full-host');
   const L = await page(browser, VP.phone, 'full-late');
   let guest = null;
   await run(L, async () => {
     await home(H, 'Anna');
-    const code = await newGame(H, { humans: 2 });
+    const code = await newGame(H, { players: 2 });
     const hint = () => H.page.$eval('.lb-code .lb-hint', e => e.textContent);
     if (!(await hint()).startsWith('Stuur de link')) throw new Error(`hint with a free seat: "${await hint()}"`);
     guest = new NodeWS(BASE.replace(/^http/, 'ws') + '/ws', { headers: { Origin: BASE, 'X-Real-IP': nextIP() } });
     await new Promise((ok, fail) => { guest.once('open', ok); guest.once('error', fail); });
     guest.send(JSON.stringify({ t: 'join', code, name: 'Bert' }));
-    await waitFor(H, () => document.querySelector('.lb-code .lb-hint')?.textContent.startsWith('Alle plaatsen voor spelers zijn bezet. Zet Spelers hoger'), { label: 'hint: no seat for people' });
+    await waitFor(H, () => document.querySelector('.lb-code .lb-hint')?.textContent.startsWith('Alle plaatsen zijn bezet. Zet Spelers hoger'), { label: 'hint: no seat for people' });
 
     await L.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
     await L.page.evaluate(() => localStorage.setItem('kj.name', 'Laat'));
@@ -1228,7 +1240,7 @@ CHECKS.bubbles = async browser => {
         const table = await import('/js/table.js');
         const { app, posOf } = await import('/js/util.js');
         const s = app.s;
-        const seatAt = pos => [1, 2, 3].map(k => (s.you + k) % 4).find(seat => posOf(seat, s.you) === pos);
+        const seatAt = pos => [1, 2, 3].map(k => (s.you + k) % 4).find(seat => posOf(s, seat) === pos);
         const pause = ms => new Promise(ok => setTimeout(ok, ms));
         const LONG = 'Ha, daar zijn jullie! Ik heb er zó\'n zin in vanavond, echt waar.';
         const visible = () => [...document.querySelectorAll('.seat .bubble:not([hidden])')];

@@ -43,9 +43,10 @@ type situation struct {
 	hasOther bool // hand holds non-trump cards
 }
 
-// judge determines what the player holding hand must play into the trick
-// described by ti. It does not allocate.
-func judge(hand []Card, ti *trickInfo, seat Seat, trump Suit, rules Rules) situation {
+// judge determines what the player holding hand, whose partner in this
+// hand is partner (NoSeat if none), must play into the trick described by
+// ti. It does not allocate.
+func judge(hand []Card, ti *trickInfo, partner Seat, trump Suit, rules Rules) situation {
 	s := situation{led: ti.led, trump: trump, high: ti.high, best: ti.best}
 	if ti.n == 0 {
 		s.why = rLead
@@ -68,7 +69,7 @@ func judge(hand []Card, ti *trickInfo, seat Seat, trump Suit, rules Rules) situa
 			s.hasOther = true
 		}
 	}
-	s.partner = ti.winner == seat.Partner()
+	s.partner = partner != NoSeat && ti.winner == partner
 
 	switch {
 	case ti.led == trump && !hasTrump:
@@ -130,11 +131,11 @@ func LegalMoves(hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) []
 // enough capacity in dst it does not allocate.
 func AppendLegalMoves(dst, hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) []Card {
 	ti := infoFromTrick(trick, trump)
-	return appendLegal(dst, hand, &ti, seat, trump, rules)
+	return appendLegal(dst, hand, &ti, seat.Partner(), trump, rules)
 }
 
-func appendLegal(dst, hand []Card, ti *trickInfo, seat Seat, trump Suit, rules Rules) []Card {
-	s := judge(hand, ti, seat, trump, rules)
+func appendLegal(dst, hand []Card, ti *trickInfo, partner Seat, trump Suit, rules Rules) []Card {
+	s := judge(hand, ti, partner, trump, rules)
 	if s.need == needFree {
 		return append(dst, hand...)
 	}
@@ -152,7 +153,7 @@ func IsLegal(card Card, hand []Card, trick Trick, seat Seat, trump Suit, rules R
 		return false
 	}
 	ti := infoFromTrick(trick, trump)
-	s := judge(hand, &ti, seat, trump, rules)
+	s := judge(hand, &ti, seat.Partner(), trump, rules)
 	return s.allows(card)
 }
 
@@ -160,7 +161,7 @@ func IsLegal(card Card, hand []Card, trick Trick, seat Seat, trump Suit, rules R
 // play, shown above the hand on that player's turn.
 func ExplainConstraint(hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) string {
 	ti := infoFromTrick(trick, trump)
-	s := judge(hand, &ti, seat, trump, rules)
+	s := judge(hand, &ti, seat.Partner(), trump, rules)
 	return s.constraint()
 }
 
@@ -171,7 +172,7 @@ func ExplainIllegal(card Card, hand []Card, trick Trick, seat Seat, trump Suit, 
 		return "Die kaart heb je niet."
 	}
 	ti := infoFromTrick(trick, trump)
-	s := judge(hand, &ti, seat, trump, rules)
+	s := judge(hand, &ti, seat.Partner(), trump, rules)
 	if s.allows(card) {
 		return ""
 	}

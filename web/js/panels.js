@@ -1,14 +1,15 @@
 // Overlays and side panels: modal stack, score sheet, last trick, hand summary,
 // game over, settings, manual, bot picker, menu, info popovers and chat.
-import { createCard } from './cards.js';
+import { createCard, cardShort } from './cards.js';
 import { sound } from './sound.js';
 import { SECTIONS, renderManual } from './manual.js';
 import {
-  app, h, $$, icon, prefs, savePrefs, store, toast, dur, posOf, isWij, teamCls, teamName,
-  nameOf, suitSym, suitName, suitText, isRed, roemTotal, roemText, variantText, countUp, avatar, playerName, suitify, cap, handHeadline,
+  app, h, $$, icon, prefs, savePrefs, store, toast, dur, posOf, seatCount, mySide, isWij, teamCls, teamName,
+  scorerOrder, scorerName, myScorer, nameOf, suitSym, suitName, suitText, isRed, roemTotal, roemText, variantText, countUp, avatar,
+  playerName, suitify, cap, handHeadline,
 } from './util.js';
 
-const PLAYING = new Set(['trump', 'bid', 'play']);
+const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
 const stack = [];
 const fine = matchMedia('(pointer: fine)');
 const touch = matchMedia('(pointer: coarse)');
@@ -289,7 +290,7 @@ function review(s, tricks, owner) {
 function trickCross(s, t) {
   const cross = h('div', { class: 'cross' });
   for (const pc of t.cards) {
-    const pos = posOf(pc.seat, s.you);
+    const pos = posOf(s, pc.seat);
     cross.append(h('div', { class: `cross-slot cs-${pos} ${teamCls(s, pc.seat)}` + (pc.seat === t.winner ? ' win' : '') },
       mini(pc.card, pc.seat === t.winner ? 'winner' : ''),
       playerName(nameOf(s, pc.seat), { cls: 'cs-name', title: true }),
@@ -326,87 +327,138 @@ export function openScoreSheet() {
   m.refresh();
 }
 
+// The side a scorer played on in a finished hand r (see util.sideOf):
+// its team with four players, itself with two, with three 0 for the
+// soloist (r.trumpBy) and 1 for the other two.
+function rowSide(s, r, k) {
+  const n = seatCount(s);
+  return n === 3 ? (k === r.trumpBy ? 0 : 1) : k;
+}
+
+// What is shown of hand r in scorer k's column: nat and pit for the side
+// that went nat or made pit; roem for a side that kept it (with three
+// players only the soloist's, as the other two share theirs).
+function rowMarks(s, r, k) {
+  const side = rowSide(s, r, k);
+  const nat = r.nat && r.playingTeam === side;
+  const pit = r.pit && (r.nat ? 1 - r.playingTeam : r.playingTeam) === side;
+  const roem = !r.nat && !(seatCount(s) === 3 && side === 1) ? r.roem?.[side] || 0 : 0;
+  return { nat, pit, roem };
+}
+
+// Who played a hand, under its trump suit: jij, Wij/Zij with four players,
+// else the player's face (as in the score pill), and the bid with three.
+function playedBy(s, r) {
+  if (r.trumpBy === s.you) return 'jij';
+  if (seatCount(s) === 4) return r.playingTeam === s.you % 2 ? 'Wij' : 'Zij';
+  return scorerName(s, r.trumpBy);
+}
+
 function scoreBody(s, m) {
-  const w = s.you % 2;
-  const run = [0, 0]; // the stand after each potje
+  const order = scorerOrder(s);
+  const mine = myScorer(s);
+  const three = seatCount(s) === 3;
+  const run = new Array(s.total?.length || order.length).fill(0); // the stand after each potje
+  const cls = k => (k === mine ? 'wij' : 'zij');
   const rows = (s.scores || []).map((r, i, all) => {
     const last = i === all.length - 1 && s.prevHand?.tricks?.length;
-    run[0] += r.score[0];
-    run[1] += r.score[1];
+    const gains = r.gains || r.score;
+    gains.forEach((g, k) => { run[k] += g; });
     const stand = [...run];
-    const cell = team => {
-      const nat = r.nat && r.playingTeam === team;
-      const pit = r.pit && (r.nat ? 1 - r.playingTeam : r.playingTeam) === team;
-      return h('td', { class: 'num ' + (team === w ? 'wij' : 'zij') + (nat ? ' is-nat' : '') + (pit ? ' is-pit' : '') },
+    const cell = k => {
+      const { nat, pit, roem } = rowMarks(s, r, k);
+      return h('td', { class: 'num ' + cls(k) + (nat ? ' is-nat' : '') + (pit ? ' is-pit' : '') },
         nat ? h('span', { class: 'tag tag-nat', text: 'nat' }) : null,
         pit ? h('span', { class: 'tag tag-pit', text: 'pit' }) : null,
-        h('b', { text: r.score[team] }),
-        r.roem?.[team] && !r.nat ? h('small', { text: `+${r.roem[team]} roem` }) : null,
-        h('small', { class: 'stand', text: `stand ${stand[team]}` }));
+        h('b', { text: gains[k] }),
+        roem ? h('small', { text: `+${roem} roem` }) : null,
+        h('small', { class: 'stand', text: `stand ${stand[k]}` }));
     };
+    const ours = seatCount(s) === 4 ? r.playingTeam === s.you % 2 : r.trumpBy === s.you;
     return h('tr', { class: last ? 'tap' : '', onclick: last ? () => showReview(s, m, r) : null, title: last ? 'Tik om de slagen van dit potje te zien' : '' },
       h('td', { class: 'n', text: r.hand }),
       h('td', { class: 'tr' },
         h('span', { class: 'suit' + (isRed(r.trump) ? ' red' : ''), text: suitSym(r.trump) }),
-        h('span', { class: 'by ' + (r.playingTeam === w ? 'wij' : 'zij'), text: r.trumpBy === s.you ? 'jij' : teamName(s, r.playingTeam) })),
-      cell(w), cell(1 - w));
+        three && r.bid ? h('span', { class: 'bid', text: r.bid }) : null,
+        h('span', { class: 'by ' + (ours ? 'wij' : 'zij'), text: playedBy(s, r) })),
+      order.map(cell));
   });
   let live = null;
   if (PLAYING.has(s.phase) && s.trump) {
     const hp = s.handPoints || [0, 0];
     const hr = s.handRoem || [0, 0];
     const tw = s.tricksWon || [0, 0];
-    const c = t => h('td', { class: 'num ' + (t === w ? 'wij' : 'zij') }, h('b', { text: hp[t] }), hr[t] ? h('small', { text: `+${hr[t]} roem` }) : null, h('small', { text: `${tw[t]} ${tw[t] === 1 ? 'slag' : 'slagen'}` }));
+    // Points so far per side; the soloist's two opponents share theirs.
+    const c = k => {
+      const t = seatCount(s) === 4 ? k : seatCount(s) === 2 ? k : (k === s.soloist ? 0 : 1);
+      return h('td', { class: 'num ' + cls(k) }, h('b', { text: hp[t] }), hr[t] ? h('small', { text: `+${hr[t]} roem` }) : null,
+        h('small', { text: `${tw[t]} ${tw[t] === 1 ? 'slag' : 'slagen'}${three && t === 1 ? ' samen' : ''}` }));
+    };
     live = h('tr', { class: 'live' },
       h('td', { class: 'n', text: s.handNo }),
       h('td', { class: 'tr' }, h('span', { class: 'suit' + (isRed(s.trump) ? ' red' : ''), text: suitSym(s.trump) }), h('span', { class: 'by', text: 'bezig' })),
-      c(w), c(1 - w));
+      order.map(c));
   }
-  const total = s.total || [0, 0];
+  const total = s.total || run;
   const empty = !rows.length && !live;
+  const cols = 2 + order.length;
   return h('div', { class: 'score-wrap' },
-    h('table', { class: 'scoresheet' },
+    h('table', { class: 'scoresheet cols-' + order.length },
       h('thead', {}, h('tr', {},
         h('th', { class: 'n', text: '#' }), h('th', { text: 'Troef' }),
-        h('th', { class: 'wij' }, 'Wij', teamNamesEl(s, w)),
-        h('th', { class: 'zij' }, 'Zij', teamNamesEl(s, 1 - w)))),
+        order.map(k => h('th', { class: cls(k) }, scorerName(s, k), teamNamesEl(s, k))))),
       h('tbody', {}, rows, live,
-        empty ? h('tr', {}, h('td', { colSpan: 4, class: 'empty', text: 'Nog geen potjes gespeeld.' })) : null),
+        empty ? h('tr', {}, h('td', { colSpan: cols, class: 'empty', text: 'Nog geen potjes gespeeld.' })) : null),
       h('tfoot', {}, h('tr', {},
         h('td', { colSpan: 2, text: `Totaal na ${s.scores?.length || 0} van ${s.hands || s.opts?.hands || 16}` }),
-        h('td', { class: 'num wij' }, h('b', { text: total[w] })),
-        h('td', { class: 'num zij' }, h('b', { text: total[1 - w] }))))),
+        order.map(k => h('td', { class: 'num ' + cls(k) }, h('b', { text: total[k] })))))),
     h('p', { class: 'legend' },
-      h('span', { class: 'tag tag-nat', text: 'nat' }), ' de spelende partij haalde niet meer dan de helft. ',
-      h('span', { class: 'tag tag-pit', text: 'pit' }), ' alle acht slagen: 100 roem extra.',
+      h('span', { class: 'tag tag-nat', text: 'nat' }),
+      three ? ' wie alleen speelde, haalde het bod niet. ' : ' de spelende partij haalde niet meer dan de helft. ',
+      h('span', { class: 'tag tag-pit', text: 'pit' }), ' alle slagen: 100 roem extra.',
+      three ? ' Wie niet alleen speelt, krijgt de helft van wat de twee samen halen.' : '',
       s.prevHand?.tricks?.length ? ' Tik op het laatste potje om de slagen te zien.' : ''));
 }
 
-// The two names of a team, one per line, AI players as "Naam (AI)".
-function teamNamesEl(s, team) {
+// The names behind a score, one per line, AI players as "Naam (AI)": a
+// team's two with four players, else the one player's.
+function teamNamesEl(s, k) {
   const names = [];
-  for (let seat = team; seat < 4; seat += 2) names.push(seat === s.you ? 'jij' : s.players[seat]?.name || 'vrij');
+  const seats = seatCount(s) === 4 ? [k, k + 2] : [k];
+  for (const seat of seats) names.push(seat === s.you ? 'jij' : s.players[seat]?.name || 'vrij');
   return h('small', { class: 'team-names', title: names.join(' & ') }, names.map(n => h('span', { text: n })));
+}
+
+// s as it was in the hand of result r: with three players the soloist
+// decides who played together, and the next hand has another one.
+function asInHand(s, r) {
+  return seatCount(s) === 3 && r ? { ...s, soloist: r.trumpBy } : s;
 }
 
 function showReview(s, m, r) {
   sound.play('click');
   m.view = 'review';
   m.titleEl.textContent = `Potje ${r.hand}: de slagen`;
+  const res = s.prevHand.result;
   m.body.replaceChildren(
     h('button', { class: 'btn btn-ghost btn-sm back-btn', type: 'button', onclick: () => { m.view = 'score'; m.refresh(); } }, icon('back'), 'Terug naar scorebord'),
-    resultLine(s, s.prevHand.result),
-    review(s, s.prevHand.tricks, 'score'),
-    h('p', { class: 'legend', text: 'De kaarten liggen in speelvolgorde, gekleurd per koppel. Tik op een slag om te zien wie wat speelde.' }));
+    resultLine(s, res),
+    review(asInHand(s, res), s.prevHand.tricks, 'score'),
+    h('p', { class: 'legend', text: seatCount(s) === 4 ? 'De kaarten liggen in speelvolgorde, gekleurd per koppel. Tik op een slag om te zien wie wat speelde.'
+      : 'De kaarten liggen in speelvolgorde, gekleurd per kant. Tik op een slag om te zien wie wat speelde.' }));
 }
 
 function resultLine(s, r) {
   if (!r) return null;
-  const w = s.you % 2;
+  const order = scorerOrder(s);
+  const gains = r.gains || r.score;
+  const parts = order.flatMap((k, i) => [i ? ' · ' : null,
+    h('b', { class: k === myScorer(s) ? 'wij' : 'zij', text: `${scorerName(s, k)} ${gains[k]}` })]).filter(Boolean);
+  const bid = seatCount(s) === 3 && r.bid ? ` alleen voor ${r.bid}` : '';
   return h('p', { class: 'result-line' },
     h('span', { class: 'suit' + (isRed(r.trump) ? ' red' : ''), text: suitSym(r.trump) }),
-    ` ${nameOf(s, r.trumpBy)} speelde ${suitName(r.trump)}. `,
-    h('b', { class: 'wij', text: `Wij ${r.score[w]}` }), ' · ', h('b', { class: 'zij', text: `Zij ${r.score[1 - w]}` }),
+    ` ${nameOf(s, r.trumpBy)} speelde ${suitName(r.trump)}${bid}. `,
+    ...parts,
     r.nat ? h('span', { class: 'tag tag-nat', text: 'nat' }) : null,
     r.pit ? h('span', { class: 'tag tag-pit', text: 'pit' }) : null);
 }
@@ -431,31 +483,46 @@ export function openTrumpInfo() {
   if (!s) return;
   sound.play('click');
   const o = s.opts || {};
-  const w = s.you % 2;
+  const n = seatCount(s);
   const parts = [];
   if (s.trump && s.playingTeam >= 0) {
+    const maker = `Gekozen door ${nameOf(s, s.trumpBy, false)}${s.trumpBy === s.you ? ' (jij)' : ''}.`;
+    const task = n === 3 ? `${s.trumpBy === s.you ? 'Jij speelt' : `${nameOf(s, s.trumpBy, false)} speelt`} alleen en moet minstens ${s.bid} punten halen, roem telt mee.`
+      : n === 2 ? `${s.trumpBy === s.you ? 'Jij speelt en moet' : `${nameOf(s, s.trumpBy, false)} speelt en moet`} meer dan de helft halen.`
+        : `${teamName(s, s.playingTeam)} spelen en moeten meer dan de helft halen.`;
     parts.push(h('div', { class: 'ti-trump' + (isRed(s.trump) ? ' red' : '') },
       h('span', { class: 'ti-sym', text: suitSym(s.trump) }),
-      h('div', {}, h('b', { text: cap(`${suitName(s.trump)} is troef`) }),
-        h('span', { text: `Gekozen door ${nameOf(s, s.trumpBy, false)}${s.trumpBy === s.you ? ' (jij)' : ''}. ${teamName(s, s.playingTeam)} spelen en moeten meer dan de helft halen.` }))));
+      h('div', {}, h('b', { text: cap(`${suitName(s.trump)} is troef`) }), h('span', { text: `${maker} ${task}` }))));
+  } else if (n === 3 && s.phase === 'auction') {
+    parts.push(h('p', { text: s.bidder >= 0 ? `Er wordt geboden. Hoogste bod: ${s.bid} van ${nameOf(s, s.bidder, false)}.` : 'Er wordt geboden. Nog geen bod.' }));
   } else {
     parts.push(h('p', { text: s.turned ? `Gedraaid: ${suitText(s.turned)}. Nog niemand speelt.` : 'Er is nog geen troef gekozen.' }));
   }
   if (PLAYING.has(s.phase) && s.trump) {
     const hp = s.handPoints || [0, 0];
     const hr = s.handRoem || [0, 0];
+    const w = n === 4 ? s.you % 2 : mySide(s);
+    const label = side => (n === 4 ? (side === w ? 'Wij' : 'Zij') : teamName(s, side));
     parts.push(h('p', { class: 'ti-now' }, 'Dit potje: ',
-      h('b', { class: 'wij', text: `Wij ${hp[w]}${hr[w] ? ` + ${hr[w]} roem` : ''}` }), ' · ',
-      h('b', { class: 'zij', text: `Zij ${hp[1 - w]}${hr[1 - w] ? ` + ${hr[1 - w]} roem` : ''}` })));
+      h('b', { class: 'wij', text: `${label(w)} ${hp[w]}${hr[w] ? ` + ${hr[w]} roem` : ''}` }), ' · ',
+      h('b', { class: 'zij', text: `${label(1 - w)} ${hp[1 - w]}${hr[1 - w] ? ` + ${hr[1 - w]} roem` : ''}` })));
   }
+  const rules = h('p', { text: o.rules === 'rotterdams'
+    ? 'Rotterdams: kun je niet bekennen, dan moet je altijd troeven, ook als je maat de slag heeft.'
+    : 'Amsterdams: kun je niet bekennen en heeft je maat de slag, dan hoef je niet te troeven.' });
+  const trump = h('p', { text: o.trumpMode === 'gedraaid'
+    ? 'Gedraaid (vrij): er wordt een kleur gedraaid. Om de beurt zeg je spelen of passen. Past iedereen, dan moet de voorhand een andere kleur kiezen.'
+    : 'Utrechts (verplicht): de voorhand moet troef kiezen en speelt dan.' });
+  const variant = n === 3 ? [
+    h('p', { text: 'Met z\'n drieën: ieder voor zich, tien kaarten elk en twee dicht op tafel. Wie het hoogst biedt, pakt die twee, legt er twee weg (hun punten tellen voor hem of haar), kiest troef en speelt alleen. Haalt die het bod (roem telt mee), dan krijgt ieder wat hij haalde en delen de andere twee hun punten; anders is het nat en delen zij alles.' }),
+    rules,
+  ] : n === 2 ? [
+    h('p', { text: 'Met z\'n tweeën: ieder speelt van acht stapeltjes van twee kaarten op tafel. Je speelt een open kaart; de kaart eronder gaat open als de slag af is. Roem in je acht open kaarten na de troefkeus telt voor jou.' }),
+    trump,
+  ] : [trump, rules];
   parts.push(h('div', { class: 'ti-variant' },
     h('h3', { text: `Variant: ${variantText(o)}` }),
-    h('p', { text: o.trumpMode === 'gedraaid'
-      ? 'Gedraaid (vrij): er wordt een kleur gedraaid. Om de beurt zeg je spelen of passen. Past iedereen, dan moet de voorhand een andere kleur kiezen.'
-      : 'Utrechts (verplicht): de voorhand moet troef kiezen en speelt dan.' }),
-    h('p', { text: o.rules === 'rotterdams'
-      ? 'Rotterdams: kun je niet bekennen, dan moet je altijd troeven, ook als je maat de slag heeft.'
-      : 'Amsterdams: kun je niet bekennen en heeft je maat de slag, dan hoef je niet te troeven.' }),
+    ...variant,
     h('p', { class: 'muted', text: `${s.hands || o.hands || 16} potjes · AI ${o.ai || 'normaal'} · tempo ${o.tempo || 'normaal'}` })));
   openModal({ id: 'trumpinfo', title: 'Troef en variant', cls: 'm-info', body: parts });
 }
@@ -601,13 +668,12 @@ function showSummary(s, ev) {
   if (!r) return;
   let m = byId('summary');
   if (!m) {
-    const w = s.you % 2;
-    const T = handHeadline(r, w);
+    const n = seatCount(s);
+    const w = n === 4 ? s.you % 2 : n === 2 ? s.you : r.trumpBy === s.you ? 0 : 1;
+    const T = handHeadline(r, w, s);
     const fresh = ev?.type === 'handEnd';
     const nums = [];
     const num = (v, cls) => { const el = h('b', { class: cls, text: fresh ? 0 : v }); if (fresh) nums.push([el, v]); else el.dataset.n = v; return el; };
-    const row = (label, a, b, cls = '') => h('tr', { class: cls }, h('th', { text: label }), h('td', { class: 'wij' }, num(a)), h('td', { class: 'zij' }, num(b)));
-    const total = s.total || [0, 0];
     const tricks = s.prevHand?.tricks || [];
     const ready = h('div', { class: 'ready-list' });
     const ring = countdownRing();
@@ -616,23 +682,15 @@ function showSummary(s, ev) {
     m = openModal({
       id: 'summary', cls: 'm-summary passive', closable: false, label: 'Uitslag van het potje', body: [
         h('div', { class: 'sum-head ' + T.cls },
-          h('div', { class: 'sum-title', text: T.t }),
+          h('div', { class: 'sum-title' + (T.t.length > 16 ? ' long' : ''), text: T.t }),
           h('div', { class: 'sum-sub', text: T.sub }),
           h('div', { class: 'sum-meta' },
             h('span', { class: 'suit' + (isRed(r.trump) ? ' red' : ''), text: suitSym(r.trump) }),
             ` ${nameOf(s, r.trumpBy)} speelde ${suitName(r.trump)} · potje ${s.handNo} van ${s.hands}`)),
-        h('table', { class: 'sum-table' },
-          h('thead', {}, h('tr', {}, h('th'), h('th', { class: 'wij', text: 'Wij' }), h('th', { class: 'zij', text: 'Zij' }))),
-          h('tbody', {},
-            row('Punten', r.points[w], r.points[1 - w]),
-            row('Roem', r.roem[w], r.roem[1 - w]),
-            row('Erbij', r.score[w], r.score[1 - w], 'sum-score'),
-            row('Stand', total[w], total[1 - w], 'sum-total'))),
-        r.nat ? h('p', { class: 'sum-why' }, infoBtn('Nat', [
-          'De spelende partij moet meer dan de helft van alle punten plus roem halen. Lukt dat niet, dan gaan ze nat.',
-          'Bij nat krijgt de tegenpartij alle 162 punten en alle roem van beide partijen.',
-        ]), r.playingTeam === w ? ' Waarom nat? Wij haalden niet meer dan de helft.' : ' Zij haalden niet meer dan de helft.') : null,
-        tricks.length ? h('div', { class: 'sum-review' }, h('h3', {}, 'De slagen', h('small', { text: ' · tik voor wie wat speelde' })), review(s, tricks, 'summary')) : null,
+        sumTable(s, r, w, num),
+        seatCount(s) === 3 ? discardLine(s, r) : natWhy(s, r, w),
+        tricks.length ? h('div', { class: 'sum-review' + (n !== 4 ? ` sum-review-${n}` : '') }, h('h3', {}, 'De slagen', h('small', { text: ' · tik voor wie wat speelde' })),
+          review(asInHand(s, r), tricks, 'summary')) : null,
         h('div', { class: 'sum-foot' }, go, ready),
       ],
     });
@@ -652,6 +710,78 @@ function showSummary(s, ev) {
     p.ready ? icon('check') : null, nameOf(s, seat)) : null).filter(Boolean);
   m.ready.replaceChildren(...(chips.length > 1 ? chips : []));
   m.ready.hidden = chips.length < 2;
+}
+
+// The summary's numbers: per side with four and two players (Wij/Zij, Jij
+// and the other), with three per player, the two who played together
+// sharing their side's points and roem.
+function sumTable(s, r, w, num) {
+  const total = s.total || [];
+  const n = seatCount(s);
+  if (n !== 3) {
+    const lbl = side => (n === 4 ? (side === w ? 'Wij' : 'Zij') : side === w ? 'Jij' : nameOf(s, side));
+    const row = (label, a, b, cls = '') => h('tr', { class: cls }, h('th', { text: label }), h('td', { class: 'wij' }, num(a)), h('td', { class: 'zij' }, num(b)));
+    const gains = r.gains || r.score;
+    return h('table', { class: 'sum-table' },
+      h('thead', {}, h('tr', {}, h('th'), h('th', { class: 'wij' }, playerName(lbl(w))), h('th', { class: 'zij' }, playerName(lbl(1 - w))))),
+      h('tbody', {},
+        row('Punten', r.points[w], r.points[1 - w]),
+        row('Roem', r.roem[w], r.roem[1 - w]),
+        row('Erbij', gains[w], gains[1 - w], 'sum-score'),
+        row('Stand', total[w] ?? 0, total[1 - w] ?? 0, 'sum-total')));
+  }
+  const order = scorerOrder(s);
+  const cls = k => (k === myScorer(s) ? 'wij' : 'zij');
+  const side = k => (k === r.trumpBy ? 0 : 1);
+  const row = (label, val, rcls = '', shared = false) => h('tr', { class: rcls }, h('th', { text: label }),
+    order.map(k => h('td', { class: cls(k) + (shared && side(k) === 1 ? ' shared' : '') }, num(val(k)))));
+  // The players by their faces, as in the score pill: three names do not
+  // fit a phone.
+  const face = k => {
+    if (k === s.you) return 'Jij';
+    const p = s.players[k];
+    return p?.bot ? p.emoji || '🤖' : (p?.name || '?').trim().charAt(0).toUpperCase();
+  };
+  return h('table', { class: 'sum-table sum-three' },
+    h('thead', {}, h('tr', {}, h('th'), order.map(k => h('th', { class: cls(k), title: nameOf(s, k, false) },
+      h('span', { class: 'face', text: face(k) }), h('small', { class: 'role', text: side(k) === 0 ? 'alleen' : 'samen' }))))),
+    h('tbody', {},
+      row('Punten', k => r.points[side(k)], '', true),
+      row('Roem', k => r.roem[side(k)], '', true),
+      row('Erbij', k => r.gains[k], 'sum-score'),
+      row('Stand', k => total[k] ?? 0, 'sum-total')));
+}
+
+// Three players: what the soloist laid away (its points counted for the
+// soloist), with the rule for playing alone behind an ⓘ. The headline
+// already says what was bid and made.
+function discardLine(s, r) {
+  const pts = (r.discards || []).reduce((n, c) => n + cardPoints(c, r.trump), 0);
+  return h('p', { class: 'sum-why' }, infoBtn('Alleen spelen', [
+    'Wie alleen speelt, moet minstens het bod halen: punten plus roem, de weggelegde kaarten meegeteld.',
+    'Gehaald: ieder krijgt wat hij haalde, en de andere twee delen hun punten, ieder de helft. Nat: wie alleen speelde krijgt niets en de andere twee delen alle 162 punten en alle roem.',
+  ]), ' Weggelegd: ', suitify(r.discards.map(c => cardShort(c)).join(' ')), ` (${pts} ${pts === 1 ? 'punt' : 'punten'}).`);
+}
+
+// Card points (design §2), for the discards.
+function cardPoints(code, trump) {
+  const rank = code[0];
+  if (code[1] === trump) return { J: 20, 9: 14, A: 11, T: 10, K: 4, Q: 3 }[rank] ?? 0;
+  return { A: 11, T: 10, K: 4, Q: 3, J: 2 }[rank] ?? 0;
+}
+
+// Why a hand went nat, with the rule behind an ⓘ.
+function natWhy(s, r, w) {
+  if (!r.nat) return null;
+  const n = seatCount(s);
+  const we = r.playingTeam === w;
+  const sub = n === 4 ? (we ? ' Waarom nat? Wij haalden niet meer dan de helft.' : ' Zij haalden niet meer dan de helft.')
+    : we ? ' Waarom nat? Je haalde niet meer dan de helft.' : ` ${nameOf(s, 1 - w)} haalde niet meer dan de helft.`;
+  return h('p', { class: 'sum-why' }, infoBtn('Nat', [
+    n === 4 ? 'De spelende partij moet meer dan de helft van alle punten plus roem halen. Lukt dat niet, dan gaan ze nat.'
+      : 'Wie speelt, moet meer dan de helft van alle punten plus roem halen. Lukt dat niet, dan is het nat.',
+    'Bij nat krijgt de tegenpartij alle 162 punten en alle roem van beide kanten.',
+  ]), sub);
 }
 
 function countdownRing() {
@@ -690,11 +820,12 @@ function showGameOver(s, ev) {
     byId('over').refresh?.(s);
     return;
   }
-  const w = s.you % 2;
+  const w = myScorer(s);
   const total = (ev?.type === 'gameOver' && ev.total) || s.total || [0, 0];
   const winner = ev?.type === 'gameOver' ? ev.winner : s.winner;
   const won = winner === w;
-  const draw = winner === -1;
+  // A shared first place is a draw for those who share it.
+  const draw = winner === -1 && total[w] === Math.max(...total);
   const title = draw ? 'Gelijkspel' : won ? 'Gewonnen!' : 'Verloren';
   const sub = draw ? 'Precies gelijk. Dat zie je niet vaak!' : won ? 'Wat een spel. Gefeliciteerd!' : 'Volgende keer beter. Nog een partij?';
   const host = s.host === s.you;
@@ -718,10 +849,11 @@ function showGameOver(s, ev) {
       h('div', { class: 'over-emoji', 'aria-hidden': 'true', text: draw ? '🤝' : won ? '🏆' : '🃏' }),
       h('div', { class: 'over-title', text: title }),
       h('div', { class: 'over-sub', text: sub }),
-      h('div', { class: 'over-score' },
-        h('div', { class: 'os wij' + (winner === w ? ' top' : '') }, h('span', { text: 'Wij' }), h('b', { text: total[w] }), teamNamesEl(s, w)),
-        h('div', { class: 'os-vs', text: '–' }),
-        h('div', { class: 'os zij' + (winner === 1 - w ? ' top' : '') }, h('span', { text: 'Zij' }), h('b', { text: total[1 - w] }), teamNamesEl(s, 1 - w))),
+      h('div', { class: 'over-score' + (total.length > 2 ? ' many' : '') }, scorerOrder(s).flatMap((k, i) => [
+        i ? h('div', { class: 'os-vs', text: '–' }) : null,
+        h('div', { class: 'os ' + (k === w ? 'wij' : 'zij') + (winner === k ? ' top' : '') },
+          h('span', { text: scorerName(s, k) }), h('b', { text: total[k] }), seatCount(s) === 4 ? teamNamesEl(s, k) : null),
+      ]).filter(Boolean)),
       s.prevHand?.result ? h('div', { class: 'over-last' }, h('small', { text: 'Laatste potje' }), resultLine(s, s.prevHand.result)) : null,
       h('div', { class: 'btn-col' },
         again,

@@ -1,12 +1,12 @@
 # Klaverjas
 
 Klaverjassen in the browser: the Dutch trick-taking card game for four players
-in two pairs, with friends, with bots, or both. The interface is entirely in
-Dutch. It runs at <https://klaverjas.kroes.dev>.
+in two pairs, or for three or two, with friends, with bots, or both. The
+interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
 
 ## Features
 
-- **Start in one tap.** *Snel spelen* starts a game against three bots at once,
+- **Start in one tap.** *Snel spelen* starts a game against bots at once,
   without even asking for a name (as does *Oefenen*). A hosted game gets a
   four-letter code and a link (`/ABCD`); friends join by typing the code or
   opening the link, and only need to give a name.
@@ -14,6 +14,11 @@ Dutch. It runs at <https://klaverjas.kroes.dev>.
   gedraaid (a turned suit to play or pass), with Amsterdams or Rotterdams
   trumping; roem on the table, nat and pit, scored over a *boom* of 16 hands
   or another length. Illegal cards cannot be played, and the game says why.
+- **Two, three or four players** (*Spelers*): with three, everyone for
+  themselves: ten cards each, an auction on points, and the highest bidder
+  takes the two cards on the table, lays two away and plays alone against
+  the other two; with two, each plays from eight piles of two cards on the
+  table, the top ones face up for both to see. Seats nobody takes get bots.
 - **Eight bots with a character of their own**, from Opa Dirk to Bakker Vera,
   shown as "Naam (AI)", at three strengths. The strongest counts cards, infers
   voids and gives and reads signals. They fill empty seats and chat in
@@ -23,8 +28,9 @@ Dutch. It runs at <https://klaverjas.kroes.dev>.
   every move register. Sound effects are synthesised in the browser.
 - **Score sheet, last trick and the whole previous hand** to look back on;
   chat with quick reactions.
-- **Handleiding**: the controls, the rules, card values, roem, signals
-  (*seinen*, also called *voorkaarten*), tips and a glossary.
+- **Handleiding**: the controls, the rules (also for two and three players),
+  card values, roem, signals (*seinen*, also called *voorkaarten*), tips and a
+  glossary.
 - **Oefenen**: a training game with Juf Ans as partner, hints on every turn,
   an explanation after every trick, and optionally all cards face up.
 - Built for phones (touch, portrait and landscape), tablets and desktop
@@ -57,6 +63,7 @@ Browser checks with Puppeteer live in `test/ui` and run against a server
 cd test/ui
 node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # full games by tapping, reload, rematch
 node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
+node app-play.mjs ... --players 3 | --players 2                                  # the auction and laying away; the piles
 node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at five sizes, into test/ui/out/
 node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 26 behaviour checks (coach, taps, back button, lost socket, full table, summary on a phone…); needs -fast, ~15 min
 node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image

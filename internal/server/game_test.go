@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -36,40 +37,65 @@ func checkUpdate(t *testing.T, c *tclient, m *msg) {
 	if s.You != c.seat {
 		t.Errorf("you = %d, joined as %d", s.You, c.seat)
 	}
+	n := len(s.Players)
+	if n != s.Opts.Players || len(s.Bids) != n {
+		t.Fatalf("%d players and %d bids at a table of %d", n, len(s.Bids), s.Opts.Players)
+	}
+	size := map[int]int{2: 16, 3: 10, 4: 8}[n]
 	me := s.Players[s.You]
 	if me == nil || me.Bot {
 		t.Fatalf("own seat is not a human: %+v", me)
 	}
 	switch e := m.evType(); e {
-	case "deal", "trump", "trick", "handEnd", "gameOver":
+	case "deal", "trump", "contract", "trick", "handEnd", "gameOver":
 		// Pauses: nobody may act.
 		if s.Turn != -1 {
 			t.Errorf("turn %d after %s", s.Turn, e)
 		}
 	case "collect":
-		last := s.TricksWon[0]+s.TricksWon[1] == 8 // the hand ends: nobody leads
+		last := s.TricksWon[0]+s.TricksWon[1] == size // the hand ends: nobody leads
 		if s.Phase == phasePlay && !last && (s.Turn != int(s.Trick.Leader) || len(s.Trick.Cards) != 0) {
 			t.Errorf("after collect: turn %d, trick %+v", s.Turn, s.Trick)
 		}
 	}
-	inHand := s.Phase == phaseTrump || s.Phase == phaseBid || s.Phase == phasePlay
-	if inHand {
+	switch s.Phase {
+	case phaseAuction, phaseDiscard, phaseTrump, phaseBid, phasePlay:
 		played := s.TricksWon[0] + s.TricksWon[1]
-		if s.Trick != nil && len(s.Trick.Cards) < 4 {
+		if s.Trick != nil && len(s.Trick.Cards) < n {
 			for _, p := range s.Trick.Cards {
 				if int(p.Seat) == s.You {
 					played++
 				}
 			}
 		}
-		if len(s.Hand) != 8-played {
+		left := size - played
+		if s.Phase == phaseDiscard && s.Soloist == s.You {
+			left += 2 // the talon
+			if len(s.Talon) != 2 {
+				t.Errorf("soloist sees talon %v", s.Talon)
+			}
+		}
+		if me.Cards != left {
+			t.Errorf("players[you].cards = %d after %d played (phase %s)", me.Cards, played, s.Phase)
+		}
+		switch {
+		case n == 2 && (s.Piles == nil || len(s.Hand) > 8):
+			// The face-up cards: none while the card under the one just
+			// played waits for the trick to be complete.
+			t.Errorf("two players: %d open cards, piles %v", len(s.Hand), s.Piles)
+		case n != 2 && len(s.Hand) != left:
 			t.Errorf("hand %d cards after %d played (phase %s)", len(s.Hand), played, s.Phase)
 		}
-		if me.Cards != len(s.Hand) {
-			t.Errorf("players[you].cards = %d, hand has %d", me.Cards, len(s.Hand))
+	default:
+		if len(s.Hand) != 0 {
+			t.Errorf("hand outside a hand: %v", s.Hand)
 		}
-	} else if len(s.Hand) != 0 {
-		t.Errorf("hand outside a hand: %v", s.Hand)
+	}
+	switch {
+	case n == 3 && s.Soloist >= 0 && (s.Soloist != s.Bidder || s.Bid < game.MinBid || s.Phase == phaseAuction):
+		t.Errorf("three players: soloist %d, bid %d by %d in phase %s", s.Soloist, s.Bid, s.Bidder, s.Phase)
+	case n != 3 && (s.Bid != 0 || s.Bidder != -1 || s.Soloist != -1):
+		t.Errorf("%d players: bid %d by %d, soloist %d", n, s.Bid, s.Bidder, s.Soloist)
 	}
 	if s.Turn == s.You && s.Phase == phasePlay {
 		if len(s.Legal) == 0 {
@@ -86,15 +112,17 @@ func checkUpdate(t *testing.T, c *tclient, m *msg) {
 	} else if s.Legal != nil || s.Rule != "" {
 		t.Errorf("legal/rule while not my turn: %v %q", s.Legal, s.Rule)
 	}
-	sum := [2]int{}
+	sum := make([]int, game.Scorers(n))
 	for k, row := range s.Scores {
-		if row.Hand != k+1 {
-			t.Errorf("score row %d has hand %d", k, row.Hand)
+		if row.Hand != k+1 || len(row.Gains) != len(sum) {
+			t.Errorf("score row %d has hand %d, gains %v", k, row.Hand, row.Gains)
+			continue
 		}
-		sum[0] += row.Score[0]
-		sum[1] += row.Score[1]
+		for j, g := range row.Gains {
+			sum[j] += g
+		}
 	}
-	if sum != s.Total {
+	if !slices.Equal(sum, s.Total) {
 		t.Errorf("total %v, scores add up to %v", s.Total, sum)
 	}
 	if m.evType() == "handEnd" {
@@ -111,8 +139,11 @@ func checkUpdate(t *testing.T, c *tclient, m *msg) {
 		} else if r.Score[0] != r.Points[0]+r.Roem[0] || r.Score[1] != r.Points[1]+r.Roem[1] {
 			t.Errorf("score %v from points %v roem %v", r.Score, r.Points, r.Roem)
 		}
-		if len(s.PrevHand.Tricks) != 8 {
+		if len(s.PrevHand.Tricks) != size {
 			t.Errorf("prevHand has %d tricks", len(s.PrevHand.Tricks))
+		}
+		if n == 3 && (r.Bid < game.MinBid || r.Nat != (r.Points[0]+r.Roem[0] < r.Bid)) {
+			t.Errorf("three players: bid %d, result %+v", r.Bid, r)
 		}
 		if len(s.Scores) != s.HandNo {
 			t.Errorf("%d score rows after hand %d", len(s.Scores), s.HandNo)
@@ -165,13 +196,7 @@ func playGame(t *testing.T, rng *rand.Rand, hands int, clients ...*tclient) {
 		if s.HandNo != hands || len(s.Scores) != hands {
 			t.Errorf("game over after hand %d with %d rows, want %d", s.HandNo, len(s.Scores), hands)
 		}
-		want := -1
-		if s.Total[0] > s.Total[1] {
-			want = 0
-		} else if s.Total[1] > s.Total[0] {
-			want = 1
-		}
-		if s.Winner != want {
+		if want := topScorer(s.Total); s.Winner != want {
 			t.Errorf("winner %d for total %v", s.Winner, s.Total)
 		}
 	}
@@ -216,30 +241,38 @@ func phases(cs []*tclient) []string {
 }
 
 func TestQuickPlayToGameOver(t *testing.T) {
-	_, ts, _ := newTestServer(t)
-	rng := rand.New(rand.NewPCG(1, 2))
-	c := dial(t, ts)
-	c.create("Piet", map[string]any{"humans": 1, "hands": 4}, false, true)
-	if c.s.Phase != phaseLobby {
-		t.Fatalf("first state is %q, want lobby", c.s.Phase)
-	}
-	c.waitEvent("deal")
-	for i, p := range c.s.Players {
-		if i == 0 {
-			if p.Bot || p.Name != "Piet" {
-				t.Errorf("seat 0: %+v", p)
+	for _, players := range []int{4, 3, 2} {
+		_, ts, _ := newTestServer(t)
+		rng := rand.New(rand.NewPCG(1, uint64(players)))
+		c := dial(t, ts)
+		c.create("Piet", map[string]any{"players": players, "hands": 4}, false, true)
+		if c.s.Phase != phaseLobby {
+			t.Fatalf("first state is %q, want lobby", c.s.Phase)
+		}
+		c.waitEvent("deal")
+		if len(c.s.Players) != players {
+			t.Fatalf("%d seats for %d players", len(c.s.Players), players)
+		}
+		for i, p := range c.s.Players {
+			if i == 0 {
+				if p.Bot || p.Name != "Piet" {
+					t.Errorf("seat 0: %+v", p)
+				}
+				continue
 			}
-			continue
+			if p == nil || !p.Bot || p.Name != fakeName(p.BotID)+" (AI)" {
+				t.Errorf("seat %d: %+v", i, p)
+			}
 		}
-		if p == nil || !p.Bot || p.Name != fakeName(p.BotID)+" (AI)" {
-			t.Errorf("seat %d: %+v", i, p)
+		playGame(t, rng, 4, c)
+		want := []string{"deal", "play", "trick", "collect", "handEnd", "gameOver"}
+		if players == 3 {
+			want = append(want, "auction", "contract", "trump")
 		}
-	}
-	playGame(t, rng, 4, c)
-	want := []string{"deal", "play", "trick", "collect", "handEnd", "gameOver"}
-	for _, ev := range want {
-		if !slices.Contains(c.events, ev) {
-			t.Errorf("never saw event %q", ev)
+		for _, ev := range want {
+			if !slices.Contains(c.events, ev) {
+				t.Errorf("%d players: never saw event %q", players, ev)
+			}
 		}
 	}
 }
@@ -261,19 +294,24 @@ func fakeName(id string) string {
 	return "?"
 }
 
-func TestFourBotsToGameOver(t *testing.T) {
+func TestBotsToGameOver(t *testing.T) {
 	s, _, _ := newTestServer(t)
-	for _, mode := range []game.TrumpMode{game.Utrechts, game.Gedraaid} {
+	for _, tc := range []struct {
+		players int
+		mode    game.TrumpMode
+	}{{4, game.Utrechts}, {4, game.Gedraaid}, {3, game.Utrechts}, {2, game.Utrechts}, {2, game.Gedraaid}} {
+		mode := fmt.Sprintf("%d players %s", tc.players, tc.mode)
 		r := newRoom(s, "TEST")
 		r.alwaysOn = true
+		r.opts.Players = tc.players
 		r.opts.Hands = 8
-		r.opts.TrumpMode = mode
+		r.opts.TrumpMode = tc.mode
 		r.opts.Rules = game.Rotterdams
 		s.mu.Lock()
 		s.rooms[r.code] = r
 		s.mu.Unlock()
 		go r.loop()
-		done := make(chan [2]int, 1)
+		done := make(chan []int, 1)
 		r.post(func() {
 			r.fillSeats()
 			r.startMatch()
@@ -284,7 +322,7 @@ func TestFourBotsToGameOver(t *testing.T) {
 				ok := r.post(func() {
 					if r.phase == phaseGameOver {
 						select {
-						case done <- r.total:
+						case done <- slices.Clone(r.total):
 						default:
 						}
 					}
@@ -296,23 +334,24 @@ func TestFourBotsToGameOver(t *testing.T) {
 		}()
 		select {
 		case total := <-done:
-			var sum [2]int
+			sum := make([]int, game.Scorers(tc.players))
 			var rows int
 			call(r, func() {
 				rows = len(r.scores)
 				for _, row := range r.scores {
-					sum[0] += row.Score[0]
-					sum[1] += row.Score[1]
+					for k, g := range row.Gains {
+						sum[k] += g
+					}
 				}
 			})
 			if rows != 8 {
 				t.Errorf("%s: %d hands scored, want 8", mode, rows)
 			}
-			if sum != total {
+			if !slices.Equal(sum, total) {
 				t.Errorf("%s: total %v, rows add up to %v", mode, total, sum)
 			}
 		case <-time.After(60 * time.Second):
-			t.Fatalf("%s: four bots did not finish", mode)
+			t.Fatalf("%s: the bots did not finish", mode)
 		}
 		call(r, func() { r.close("test") })
 	}
@@ -324,9 +363,12 @@ func TestHumansOverWebsocket(t *testing.T) {
 		humans int
 		opts   map[string]any
 	}{
-		{"two-utrechts-amsterdams", 2, map[string]any{"humans": 2, "hands": 4}},
-		{"four-gedraaid-rotterdams", 4, map[string]any{"humans": 4, "hands": 4, "trumpMode": "gedraaid", "rules": "rotterdams"}},
-		{"three-gedraaid", 3, map[string]any{"humans": 3, "hands": 4, "trumpMode": "gedraaid", "tempo": "snel"}},
+		{"two-of-four-utrechts-amsterdams", 2, map[string]any{"hands": 4}},
+		{"four-gedraaid-rotterdams", 4, map[string]any{"hands": 4, "trumpMode": "gedraaid", "rules": "rotterdams"}},
+		{"three-of-four-gedraaid", 3, map[string]any{"hands": 4, "trumpMode": "gedraaid", "tempo": "snel"}},
+		{"three-players-rotterdams", 3, map[string]any{"players": 3, "hands": 4, "rules": "rotterdams"}},
+		{"two-of-three-players", 2, map[string]any{"players": 3, "hands": 4}},
+		{"two-players-gedraaid", 2, map[string]any{"players": 2, "hands": 4, "trumpMode": "gedraaid"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, ts, _ := newTestServer(t)
@@ -354,7 +396,7 @@ func TestHumansOverWebsocket(t *testing.T) {
 			host.send(map[string]any{"t": "rematch"})
 			for _, c := range clients {
 				c.waitState("rematch deal", func(s *state) bool { return s.Phase != phaseGameOver && s.HandNo == 1 })
-				if len(c.s.Scores) != 0 || c.s.Total != [2]int{} {
+				if len(c.s.Scores) != 0 || slices.ContainsFunc(c.s.Total, func(n int) bool { return n != 0 }) {
 					t.Errorf("rematch kept scores %v %v", c.s.Scores, c.s.Total)
 				}
 			}
@@ -365,7 +407,7 @@ func TestHumansOverWebsocket(t *testing.T) {
 func TestPauseWithoutHumans(t *testing.T) {
 	s, ts, _ := newTestServer(t)
 	c := dial(t, ts)
-	c.create("Piet", map[string]any{"humans": 1, "hands": 4}, false, true)
+	c.create("Piet", map[string]any{"hands": 4}, false, true)
 	drive(t, func() bool { return c.s.Phase == phasePlay && c.s.Turn > 0 }, c)
 	c.conn.CloseNow()
 	s.mu.Lock()
@@ -398,7 +440,7 @@ func TestPauseWithoutHumans(t *testing.T) {
 func TestReconnectMidGame(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	a := dial(t, ts)
-	a.create("Anna", map[string]any{"humans": 2, "hands": 4}, false, false)
+	a.create("Anna", map[string]any{"hands": 4}, false, false)
 	b := dial(t, ts)
 	b.join(a.code, "Bert", "")
 	a.send(map[string]any{"t": "start"})
@@ -440,7 +482,7 @@ func TestReconnectMidGame(t *testing.T) {
 func TestAwaySubstitute(t *testing.T) {
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	a := dial(t, ts)
-	a.create("Anna", map[string]any{"humans": 2, "hands": 4}, false, false)
+	a.create("Anna", map[string]any{"hands": 4}, false, false)
 	b := dial(t, ts)
 	b.join(a.code, "Bert", "")
 	a.send(map[string]any{"t": "start"})
@@ -488,7 +530,7 @@ func TestIllegalPlayRejected(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	rng := rand.New(rand.NewPCG(7, 7))
 	c := dial(t, ts)
-	c.create("Piet", map[string]any{"humans": 1, "hands": 4}, false, true)
+	c.create("Piet", map[string]any{"hands": 4}, false, true)
 	acted := 0
 	for tries := 0; ; tries++ {
 		if tries > 2000 {
@@ -535,9 +577,9 @@ func TestTrainingHintsAndTips(t *testing.T) {
 	_, ts, ai := newTestServer(t)
 	rng := rand.New(rand.NewPCG(9, 9))
 	c := dial(t, ts)
-	c.create("Leerling", map[string]any{"open": true, "hands": 4, "humans": 3}, true, true)
+	c.create("Leerling", map[string]any{"open": true, "hands": 4, "players": 3}, true, true)
 	s := c.s
-	if !s.Training || s.Opts.Humans != 1 || s.Opts.Tempo != "rustig" || !s.Opts.Open {
+	if !s.Training || s.Opts.Players != 4 || s.Opts.Tempo != "rustig" || !s.Opts.Open {
 		t.Fatalf("training opts: %+v training=%v", s.Opts, s.Training)
 	}
 	if p := s.Players[2]; p == nil || p.BotID != "ans" {
@@ -659,7 +701,7 @@ func TestRejoinSpamDecidesOnce(t *testing.T) {
 	ai := newCountAI(false)
 	_, ts := newTestServerWith(t, ai, func(s *Server) { s.scale = 0.1 }) // a bot turn: about 90 ms
 	a := dial(t, ts)
-	a.create("Anna", map[string]any{"humans": 2, "hands": 4}, false, false)
+	a.create("Anna", map[string]any{"hands": 4}, false, false)
 	d := dial(t, ts) // stays at the table all along
 	d.join(a.code, "Dirk", "")
 	a.send(map[string]any{"t": "start"})
@@ -716,7 +758,7 @@ func toHandEnd(t *testing.T) (*Server, *tclient, *tclient) {
 	t.Helper()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	h := dial(t, ts)
-	h.create("Host", map[string]any{"humans": 2, "hands": 4}, false, false)
+	h.create("Host", map[string]any{"hands": 4}, false, false)
 	g := dial(t, ts)
 	g.join(h.code, "Gast", "")
 	h.send(map[string]any{"t": "start"})
@@ -759,7 +801,7 @@ func TestLeaveAtHandEnd(t *testing.T) {
 func TestRematchByNewHost(t *testing.T) {
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	h := dial(t, ts)
-	h.create("Host", map[string]any{"humans": 2, "hands": 4}, false, false)
+	h.create("Host", map[string]any{"hands": 4}, false, false)
 	g := dial(t, ts)
 	g.join(h.code, "Gast", "")
 	h.send(map[string]any{"t": "start"})
@@ -789,7 +831,8 @@ func TestRematchByNewHost(t *testing.T) {
 func TestBackToLobby(t *testing.T) {
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	h := dial(t, ts)
-	h.create("Host", map[string]any{"humans": 2, "hands": 4, "rules": "rotterdams"}, false, false)
+	h.create("Host", map[string]any{"hands": 4, "rules": "rotterdams"}, false, false)
+	placeBots(h, 1, 3)
 	h.send(map[string]any{"t": "lobby"})
 	h.waitError(errInvalid)
 	h.send(map[string]any{"t": "start"})
@@ -818,13 +861,13 @@ func TestBackToLobby(t *testing.T) {
 	}) {
 		t.Errorf("no invitation in the lobby line: %+v", h.chats)
 	}
-	if st.HandNo != 0 || len(st.Scores) != 0 || st.Total != [2]int{} || st.PrevHand != nil {
+	if st.HandNo != 0 || len(st.Scores) != 0 || !slices.Equal(st.Total, []int{0, 0}) || st.PrevHand != nil {
 		t.Errorf("lobby keeps the old match: hand %d, %d scores, total %v", st.HandNo, len(st.Scores), st.Total)
 	}
-	if st.Opts.Rules != game.Rotterdams || st.Opts.Hands != 4 || st.Opts.Humans != 2 || st.Code != h.code {
+	if st.Opts.Rules != game.Rotterdams || st.Opts.Hands != 4 || st.Opts.Players != 4 || st.Code != h.code {
 		t.Errorf("lobby changed the options: %+v", st.Opts)
 	}
-	// humans 2: bots at 1 and 3 in the lobby; seat 2 was filled at the start.
+	// The bots placed at 1 and 3 stay; seat 2 was filled at the start.
 	if p := st.Players; p[0] == nil || p[0].Bot || p[1] == nil || !p[1].Bot || p[2] != nil || p[3] == nil || !p[3].Bot {
 		t.Errorf("lobby seats %+v %+v %+v %+v", p[0], p[1], p[2], p[3])
 	}
@@ -840,15 +883,25 @@ func TestBackToLobby(t *testing.T) {
 	f.waitEvent("deal")
 }
 
+// placeBots lets host h put random bots on seats in the lobby.
+func placeBots(h *tclient, seats ...int) {
+	h.t.Helper()
+	for _, seat := range seats {
+		h.send(map[string]any{"t": "bot", "seat": seat, "id": ""})
+		h.waitState("bot placed", func(s *state) bool { return s.Players[seat] != nil })
+	}
+}
+
 // TestBotReplyContext: a bot answering a chat line learns whether it is the
 // speaker's partner and, while tricks are played, whether its team plays.
 func TestBotReplyContext(t *testing.T) {
 	ai := &replyAI{}
 	s, ts := newTestServerWith(t, ai)
 	h := dial(t, ts)
-	h.create("Host", map[string]any{"humans": 2, "hands": 4}, false, false)
+	h.create("Host", map[string]any{"hands": 4}, false, false)
+	placeBots(h, 1, 3)
 	g := dial(t, ts)
-	g.join(h.code, "Gast", "")
+	g.join(h.code, "Gast", "") // at 2, the host's partner
 	r := roomOf(t, s, h.code)
 	ask := func() []ChatEvent {
 		var got []ChatEvent
@@ -1113,7 +1166,7 @@ func TestMissedText(t *testing.T) {
 func TestReclaimSeatByName(t *testing.T) {
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.002 }) // 3 min → 360 ms
 	a := dial(t, ts)
-	a.create("Anna", map[string]any{"humans": 2, "hands": 4}, false, false)
+	a.create("Anna", map[string]any{"hands": 4}, false, false)
 	b := dial(t, ts)
 	b.join(a.code, "Bob", "")
 	a.send(map[string]any{"t": "start"})

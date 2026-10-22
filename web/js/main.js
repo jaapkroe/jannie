@@ -7,10 +7,10 @@ import * as table from './table.js';
 import * as panels from './panels.js';
 import * as home from './home.js';
 
-const PLAYING = new Set(['trump', 'bid', 'play']);
+const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
 const ROUTE = /^\/([A-Za-z]{4})\/?$/;
 // Moves the server answers at once; silence after one means a dead socket.
-const ACKED = new Set(['play', 'trump', 'bid']);
+const ACKED = new Set(['play', 'trump', 'bid', 'auction', 'discard']);
 const ACK_MS = 4000;
 const START_HOLD_MS = 2500; // quick play: how long the lobby may stay hidden
 
@@ -257,12 +257,13 @@ function onError(m) {
 function onRefused(name) {
   const s = app.s;
   if (!s || s.host !== s.you || s.training) return;
+  const n = s.players.length;
   const humans = s.players.filter(p => p && !p.bot).length;
-  const more = humans >= s.opts.humans && s.opts.humans < 4 ? `zet Spelers op ${s.opts.humans + 1}` : '';
+  const more = humans >= n && n < 4 ? `zet Spelers op ${n + 1}` : '';
   let sub = '';
   if (s.phase === 'lobby') {
-    if (more) sub = `Wil je er nog iemand bij? Zet Spelers op ${s.opts.humans + 1}.`;
-    else if (!s.players.some(p => !p) && s.players.some(p => p?.bot)) sub = 'Haal een AI-speler weg om een plaats vrij te maken.';
+    if (s.players.some(p => p?.bot)) sub = 'Haal een AI-speler weg om een plaats vrij te maken.';
+    else if (more) sub = `Wil je er nog iemand bij? Zet Spelers op ${n + 1}.`;
   } else if (s.phase === 'gameOver') {
     sub = `Tik op Spelers of regels wijzigen${more ? ' en ' + more : ''} om een plaats vrij te maken.`;
   }

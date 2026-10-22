@@ -55,6 +55,8 @@ JS tests (`node --test`).
 
 Source: <https://nl.wikipedia.org/wiki/Klaverjassen>. Four players, two pairs;
 partners sit opposite. 32 cards (7–A in four suits), 8 cards each, dealt 3-2-3.
+Tables of three and two players follow the same rules with the changes in
+"Three players" and "Two players" at the end of this section.
 
 ### Cards
 
@@ -155,13 +157,64 @@ or 9s are worth nothing. Roem items are reported per kind:
 A match is `hands` hands (default 16, *een boom*); highest total wins; a tie
 is a draw ("gelijkspel").
 
+### Three players (Wikipedia "Klaverjassen met drie personen")
+
+- Seats `0..2` clockwise; every player has a score of their own. Each gets
+  10 cards (dealt 3, then 2 to the **talon**, 4, 3); the talon's two cards
+  lie closed on the table.
+- **Auction** (phase `auction`), starting with voorhand, clockwise: a bid is
+  the points (card points plus roem) one promises to make playing alone:
+  at least `MinBid` 80, then each bid at least `BidStep` 10 higher, at most
+  `MaxBid` 300; or pass. Who passed is out. Once two players passed, the
+  third plays alone (the **soloist**) at its highest bid; when nobody bid,
+  the last one left plays for 80 (`forced`). Trump mode does not apply.
+- **Discards** (phase `discard`): the soloist takes the talon (12 cards) and
+  lays two cards away face down; their card points count for the soloist at
+  the end of the hand (roem in them does not). Then the soloist chooses
+  trump (phase `trump`, any suit). Voorhand leads the first trick.
+- Tricks of three cards; roem per trick as with four (driekaart and stuk can
+  occur). The soloist's two opponents are partners for the hand: the
+  Amsterdams partner rule applies between them.
+- Sides: the soloist is side 0, the other two side 1 (`Deal.Side`).
+  `points`, `roem` and `score` of a hand are per side; card points of both
+  sides add up to 162 with the discards.
+- **Scoring**: the soloist makes it when its points plus roem are at least
+  the bid (`ScoreSolo`). Made: each side scores its own points plus roem.
+  Nat: the soloist scores 0 and side 1 scores 162 plus all roem. Side 1's
+  two players each get half of side 1's score, rounded up (`gains`). Pit
+  (all 10 tricks): +100 roem for that side.
+- Choices made where Wikipedia leaves room: the discards count for the
+  soloist (one of its variants; the total stays 162), the minimum bid is 80
+  in steps of 10, a forced soloist plays for 80, and nat gives the other two
+  everything, as with four.
+
+### Two players (Wikipedia "Klaverjassen met twee personen")
+
+- Seats `0` and `1`, opposite. Each gets 16 cards laid out as **eight piles
+  of two** in two rows of four: pile `i` (0..7) is cards `i` (on top) and
+  `8+i` (under it) of the dealt 16; piles 0..3 are the front row, nearest
+  the player. The top cards of the front rows are face up from the deal.
+- Trump as `trumpMode` says (utrechts: voorhand chooses; gedraaid: a turned
+  suit, voorhand then dealer say spelen or passen, both pass → voorhand
+  chooses another suit). Then the top cards of the back rows turn face up.
+- **Roem in the open cards**: the moment trump is known, the roem in each
+  player's eight face-up cards counts for that player (`SetRoem`: every run
+  of three (20) or four or more (50) in a suit, all four of a rank (100,
+  boeren 200), stuk). In a two-card trick only stuk can still occur.
+- Only face-up cards can be played; following suit and trumping apply to
+  the face-up cards (no partner: Amsterdams and Rotterdams agree). When a
+  trick is complete, the cards under the ones played turn face up.
+- 16 tricks; last trick +10, pit (all 16) +100 roem. Scoring as with four:
+  the player who made trump must make more than half, else nat. Sides are
+  the seats.
+
 ## 3. Options
 
 Set by the host in the lobby; JSON keys on the wire:
 
 | Key | Values | Default | Meaning |
 |---|---|---|---|
-| `humans` | 1–4 | 4 | Maximum human seats. Seats beyond it hold bots from the start; empty seats at start get random bots |
+| `players` | 2, 3, 4 | 4 | Seats at the table: the game of §2 for four, three or two players. Empty seats at the start get random bots. Training is always 4 |
 | `hands` | 4, 8, 12, 16, 20, 24 | 16 | Hands in the match |
 | `trumpMode` | `utrechts`, `gedraaid` | `utrechts` | §2 |
 | `rules` | `amsterdams`, `rotterdams` | `amsterdams` | §2 |
@@ -170,7 +223,8 @@ Set by the host in the lobby; JSON keys on the wire:
 | `open` | bool | false | Training only: show all hands face up |
 
 The UI label for the variant is "Utrechts/Amsterdams" etc.: `trumpMode` +
-`rules`.
+`rules`; with three players "Met z'n drieën, Amsterdams" (no trump mode: they
+bid), with two "Met z'n tweeën, Utrechts" (no rules: nobody has a partner).
 
 **Training mode** (`training: true` at create) is a solo room: 1 human at seat
 0, partner bot **Juf Ans** at seat 2, two random opponents, tempo `rustig` by
@@ -195,7 +249,7 @@ func (c Card) MarshalJSON / UnmarshalJSON // as the string code; same for Suit
 func NewDeck() []Card                    // 32 cards, ordered
 func SuitNameNL(s Suit) string           // "harten"; also CardNameNL(c) "harten boer"
 
-type Seat int                            // 0..3; func (s Seat) Next() Seat; Partner(); Team() int
+type Seat int                            // 0..3; func (s Seat) Next() Seat; Partner(); Team() int (four players)
 type Rules uint8                         // Amsterdams, Rotterdams  (JSON "amsterdams"/"rotterdams")
 type TrumpMode uint8                     // Utrechts, Gedraaid      (JSON "utrechts"/"gedraaid")
 
@@ -214,7 +268,8 @@ func (t Trick) CurrentWinner(trump Suit) (Seat, bool)  // who is winning so far
 type RoemItem struct{ Kind string; Points int }       // JSON {"kind":"stuk","points":20}
 func TrickRoem(cards []Card, trump Suit) []RoemItem
 
-// Legal cards for `seat` holding `hand`, given the current (incomplete) trick.
+// Legal cards for `seat` holding `hand`, given the current (incomplete) trick
+// (four players: the partner is the seat opposite; a Deal knows every table).
 func LegalMoves(hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) []Card
 // Short Dutch explanation of the constraint, shown above the hand on your turn:
 // "Je komt uit: speel wat je wilt", "Bekennen: speel ♦", "Troef gevraagd: overtroeven",
@@ -228,22 +283,37 @@ func ExplainIllegal(card Card, hand []Card, trick Trick, seat Seat, trump Suit, 
 // by the order that applies (trump order for trump).
 func SortHand(hand []Card, trump Suit, trumpKnown bool) []Card
 
-type Phase string // "trump", "bid", "play", "done"
+type Phase string // "auction", "discard" (three players), "trump", "bid", "play", "done"
 
-// One hand ("potje"): a pure state machine. No timing, no randomness inside.
+// One hand ("potje") for 2, 3 or 4 players: a pure state machine. No timing,
+// no randomness inside.
 type Deal struct { /* unexported fields */ }
-func NewDeal(dealer Seat, hands [4][]Card, mode TrumpMode, rules Rules, turned Suit) *Deal
+func NewDeal(dealer Seat, hands [4][]Card, mode TrumpMode, rules Rules, turned Suit) *Deal  // four players
+func NewDealFor(players int, dealer Seat, hands [4][]Card, talon []Card, mode TrumpMode, rules Rules, turned Suit) *Deal
 func Shuffle(rng *rand.Rand) [4][]Card   // math/rand/v2, deal 3-2-3
+func ShuffleFor(players int, rng *rand.Rand) (hands [4][]Card, talon []Card) // §2: 3-2-3; 3, talon, 4, 3; 16 each (piles)
 func (d *Deal) Phase() Phase
 func (d *Deal) Turn() Seat               // whose action is awaited; -1 if done
-func (d *Deal) ChooseTrump(seat Seat, s Suit) error   // utrechts, or forced after 4 passes (not the turned suit)
+func (d *Deal) ChooseTrump(seat Seat, s Suit) error   // utrechts, forced after all passed (not the turned suit), or the soloist
 func (d *Deal) Bid(seat Seat, play bool) error        // gedraaid
-func (d *Deal) Play(seat Seat, c Card) error          // validates with LegalMoves
-func (d *Deal) Hand(seat Seat) []Card
+func (d *Deal) Auction(seat Seat, bid int) error      // three players: bid (MinNextBid()..MaxBid, steps of BidStep) or 0 to pass
+func (d *Deal) Discard(seat Seat, cards []Card) error // three players: the soloist lays two cards away
+func (d *Deal) Play(seat Seat, c Card) error          // validates the rules (partner per table)
+func (d *Deal) Hand(seat Seat) []Card                 // the cards seat can play: with two players its face-up ones
 func (d *Deal) Trump() (Suit, bool)
 func (d *Deal) TrumpBy() Seat            // -1 before trump is known
-func (d *Deal) PlayingTeam() int         // -1 before trump is known
-func (d *Deal) Forced() bool             // gedraaid: all passed, voorhand must choose
+func (d *Deal) PlayingTeam() int         // side of the trump maker (Side), -1 before trump is known
+func (d *Deal) Forced() bool             // gedraaid: all passed, voorhand must choose; three players: nobody bid
+func (d *Deal) Players() int
+func (d *Deal) Side(seat Seat) int       // team with four; with three 0 = soloist, 1 = the other two; with two the seat
+func (d *Deal) Partner(seat Seat) Seat   // opposite with four; with three the other opponent of the soloist; else NoSeat
+func (d *Deal) Contract() (Seat, int)    // three players: highest bid and bidder (the soloist once the auction is over)
+func (d *Deal) MinNextBid() int
+func (d *Deal) Talon() []Card            // three players: the two cards of the talon
+func (d *Deal) Discards() []Card         // three players: what the soloist laid away (after phase discard)
+func (d *Deal) Piles(seat Seat) [8]Pile  // two players: {N, Up, Card} per pile
+func (d *Deal) OpenRoem(seat Seat) []RoemItem // two players: roem of the face-up cards once trump is known
+func (d *Deal) Constraint() string       // ExplainConstraint for the seat on turn
 func (d *Deal) Turned() Suit
 func (d *Deal) Bids() [4]int             // -1 none yet, 0 pass, 1 play
 func (d *Deal) Current() Trick           // trick in progress (may be complete until next Play)
@@ -252,20 +322,29 @@ func (d *Deal) Result() HandResult       // valid when Phase()=="done"
 func (d *Deal) View(seat Seat) View      // everything `seat` may know
 
 type HandResult struct {
-    PlayingTeam int; TrumpBy Seat; Trump Suit; Dealer Seat
-    Points [2]int; Roem [2]int            // raw, before nat
-    Score  [2]int                         // what goes on the score sheet
+    Players int; PlayingTeam int; TrumpBy Seat; Trump Suit; Dealer Seat
+    Points [2]int; Roem [2]int            // per side, raw, before nat
+    Score  [2]int                         // per side
     Nat bool; Pit bool; PitTeam int       // PitTeam -1 if none
+    Bid int; Discards [2]Card             // three players
+    Gains [4]int                          // per scorer (Scorers): what goes on the score sheet
 }
+func Scorers(players int) int             // 2 teams with four players, else one per player
+func ScorerOf(seat Seat, players int) int
+func ScoreSolo(bid int, points, roem [2]int) (score [2]int, nat bool) // three players
+func SetRoem(cards []Card, trump Suit) []RoemItem // roem in up to eight open cards (two players)
+type Pile struct{ N int; Up bool; Card Card }     // JSON {"n":2,"card":"JH"|null}
 
 type View struct {
-    Seat Seat; Hand []Card; Dealer Seat; Voorhand Seat
+    Players int; Seat Seat; Hand []Card; Dealer Seat; Voorhand Seat
     Mode TrumpMode; Rules Rules; Phase Phase; Turn Seat   // Turn: NoSeat when done
-    Trump Suit; TrumpKnown bool; TrumpBy Seat; PlayingTeam int
+    Trump Suit; TrumpKnown bool; TrumpBy Seat; PlayingTeam int; Partner Seat
     Turned Suit; Bids [4]int; Forced bool
+    Bid int; Bidder Seat; Talon, Discards []Card   // three players (talon and discards: the soloist only)
+    Piles [2][8]Pile; OpenRoem [2][]RoemItem       // two players
     Current Trick; Tricks []Trick          // full history of this hand (bots may remember)
     Legal []Card                           // when it is Seat's turn in phase play
-    HandNo, HandsTotal int; MatchScore [2]int   // zero from Deal.View; the server fills them
+    HandNo, HandsTotal int; MatchScore []int    // zero from Deal.View; the server fills them
 }
 ```
 
@@ -279,7 +358,8 @@ Semantics and additions (implemented in `internal/game`):
 - `Deal.Tricks()` includes a completed trick that is still `Current()`.
 - `HandResult.Roem` includes the `PitBonus` (100); `Deal.HandRoem()` does not.
 - Errors (Dutch texts, safe to show): `ErrWrongPhase`, `ErrNotYourTurn`,
-  `ErrBadSuit`, `ErrTurnedSuit`, `ErrNotInHand`, `ErrIllegal`; `Play` returns
+  `ErrBadSuit`, `ErrTurnedSuit`, `ErrNotInHand`, `ErrIllegal`, `ErrBadBid`
+  (wrapped with the lowest bid allowed), `ErrBadDiscard`; `Play` returns
   `*IllegalError{Card, Reason}` (Reason = `ExplainIllegal` text,
   `errors.Is(err, ErrIllegal)`).
 - Constants/names: `NumSuits`, `NumRanks`, `NoSeat` (-1), `PhaseTrump/Bid/Play/Done`,
@@ -302,7 +382,12 @@ Semantics and additions (implemented in `internal/game`):
   independent copy; `d.AppendLegal(dst)`/`d.Legal()` for the seat on turn,
   `d.AppendHand(dst, seat)`, `d.HandLen(seat)`, `d.TrickCount()`.
   `Resume(v View, hands [4][]Card) (*Deal, error)` rebuilds a deal in phase play
-  from a view plus every seat's remaining cards (e.g. sampled hidden hands).
+  from a view plus every seat's remaining cards (e.g. sampled hidden hands);
+  with three players `v.Discards` must hold the (sampled) discards, with two
+  `hands[s]` holds only seat s's face-down cards, pile by pile.
+- A Deal holds every seat's cards at the places they were dealt (16 places
+  per seat) with masks for played and face-up cards, so copying it stays a
+  full copy for every table size.
 - Deal accessors for the server: `Dealer()`, `Voorhand()`, `Mode()`, `Rules()`,
   `TricksWon() [2]int`, `HandPoints() [2]int` (incl. last trick),
   `HandRoem() [2]int`.
@@ -311,7 +396,9 @@ Tests in `internal/game` are table-driven and exhaustive for: legal moves in
 both rule sets (all branches above), trick winner, roem (each kind, combos,
 stuk+sequence, four of a kind, no false positives), scoring (normal, nat, tie =
 nat, pit, pit by defenders), deal state machine (both trump modes, forced
-choice, turn order, last-trick bonus, 162 total).
+choice, turn order, last-trick bonus, 162 total); for three and two players
+the auction, discards, piles, open roem, random deals against the reference
+rules, and Resume.
 
 ### 4.2 `internal/bot`
 
@@ -328,8 +415,10 @@ func Roster() []Persona                       // 8 personas, §5
 func ByID(id string) (Persona, bool)
 
 type Player interface {
-    ChooseTrump(v game.View) game.Suit       // utrechts, or forced (must not return v.Turned when v.Forced)
+    ChooseTrump(v game.View) game.Suit       // utrechts, forced (must not return v.Turned when v.Forced), or the soloist
     Bid(v game.View) bool                    // gedraaid: play on v.Turned?
+    Auction(v game.View) int                 // three players: a bid of at least v.MinNextBid(), or 0 to pass
+    Discard(v game.View) [2]game.Card        // three players: two cards of v.Hand to lay away
     Play(v game.View) game.Card              // must be in v.Legal
 }
 func New(p Persona, lvl Level, seed uint64) Player
@@ -400,6 +489,23 @@ Each persona modulates its level's choices (Aggression shifts thresholds) and
 chat. `internal/bot` has an arena test (skipped with `-short`) that plays many
 hands between levels and asserts sterk > normaal > makkelijk in average points.
 
+At a table of three or two (`internal/bot/small.go`, `smallsearch.go`) the
+levels keep their meaning with their own policy; the signals of §8 play no
+part. Normaal plays by rules of thumb: the side that made trump draws trumps
+while it holds the strongest, everyone cashes cards that win for sure (with
+two players the opponent's answers are known from its face-up cards), the
+soloist's opponents give points to each other's sure tricks, otherwise win
+cheaply or throw the least useful card. Sterk samples the hidden cards
+(three players: the others' hands and, for the opponents, the soloist's
+discards, within the voids play has shown; two players: the face-down cards)
+and plays every legal card out with that policy, three times as many deals
+as with four (the playouts are short). In the auction every level plays out
+deals in which it plays alone with the talon (soloPlan lays away a bare 10
+or a short side suit and picks trump) and bids while playing alone is worth
+more than defending (fitted in self-play); makkelijk with few deals and too
+boldly. The arena test also checks sterk > normaal > makkelijk at both
+smaller tables.
+
 ### 4.3 `internal/server`
 
 `internal/server` does **not** import `internal/bot`: it defines the interface
@@ -411,6 +517,8 @@ type Persona struct{ ID, Name, Emoji, Color, Bio string; Chattiness, Speed float
 type Brain interface {
     ChooseTrump(v game.View) game.Suit
     Bid(v game.View) bool
+    Auction(v game.View) int            // three players
+    Discard(v game.View) [2]game.Card   // three players
     Play(v game.View) game.Card
 }
 type Advice struct{ Card *game.Card; Suit *game.Suit; Play *bool; Text string }
@@ -500,17 +608,17 @@ reply attempt.
   over until then). Max 500 rooms (`Config.MaxRooms`): when full, a new game
   replaces the room that has had no human connected for longest (at least
   2 min), else error `te-veel-spellen`.
-- Bots in the lobby: when `humans < 4`, seats are prefilled with random distinct
-  personas so that remaining human seats are partners where possible
-  (`humans`=2 → bots at 1 and 3; 3 → bot at 3; 1 → bots at 1,2,3). Changing
-  `humans` in the lobby adds/removes bots (never removes humans; cannot go
-  below the current human count). The host can put a bot (chosen or random) on
-  any empty seat and remove bots. Humans may move to any empty seat. At start,
-  empty seats get random distinct bots.
-- Joining a lobby: first empty seat, unless `humans` humans are already seated
-  → error `vol`, whose text says what to ask the host: a seat more under
-  *Spelers*, or, when bots the host placed fill every seat, one bot less
-  (with four people seated, nothing can be done). Joining a
+- Seats: `players` seats (`0..players-1`). The lobby starts with only the
+  creator seated; nobody places bots by option. The host can put a bot (chosen
+  or random) on any empty seat and remove bots. Humans may move to any empty
+  seat. At start, empty seats get random distinct bots. Changing `players` in
+  the lobby keeps everyone whose seat stays; a human on a seat that goes moves
+  to the first free seat (a bot makes way if needed), a bot on it leaves; with
+  more humans seated than the new number, error `ongeldig` ("Er zitten al 3
+  mensen aan tafel.").
+- Joining a lobby: first empty seat; with none → error `vol`, whose text says
+  what to ask the host: one bot less when bots fill a seat, else a seat more
+  under *Spelers* (with four people seated, nothing can be done). Joining a
   running game: allowed only to take over a *vacated* seat (a human left; a
   bot plays it meanwhile), else error `gestart` (after game over its text asks
   the host to set the table up again).
@@ -525,8 +633,8 @@ reply attempt.
   lobby stay, and the seats that bots filled at the start or after a human left
   are empty again, so a late friend can join and the host can change seats,
   bots and options before starting. Scores and the previous hand are cleared.
-  The system line says "Wie wil, kan nu aanschuiven." only when a seat for a
-  human is free. Training has no lobby.
+  The system line says "Wie wil, kan nu aanschuiven." only when a seat is
+  free. Training has no lobby.
 - Reconnect: `join` with the room's code and the seat token returns you to your
   seat, mid-game included. Without the token (another device, cleared storage),
   a `join` with exactly the same name takes back a human seat that has been
@@ -571,11 +679,13 @@ auto-continue at all: the learner looks back at the hand and goes on with
 `ready` (`nextAt` is 0).
 
 During a pause nobody may act (`turn` is -1). Humans have no time limit.
-Pauses start with `deal`, `trump` (and a `bid` with `play: true`), `trick` and
-`handEnd`. A pause ends with the event that follows it (`turned` opens the
+Pauses start with `deal`, `trump` (and a `bid` with `play: true`), `contract`
+(three players: the announcement pause, then the soloist lays away), `trick`
+and `handEnd`. A pause ends with the event that follows it (`turned` opens the
 bidding in gedraaid, `collect` gives the lead to the winner, `deal` or
 `gameOver` after the summary), or else with an update whose `ev` is null that
-opens the turn (utrechts after the deal; voorhand's first lead after trump).
+opens the turn (utrechts and the auction after the deal; the soloist's
+discards after the contract; voorhand's first lead after trump).
 
 ### Limits
 
@@ -604,8 +714,8 @@ the Host (coder/websocket default) or an `-origin` pattern. Server pings every
 ## 7. Wire protocol
 
 One websocket at `/ws` (same origin, `wss:` in production). All messages are
-JSON objects with a type field `t`. Seats are absolute (0..3); the client
-rotates so `you` is at the bottom.
+JSON objects with a type field `t`. Seats are absolute (`0..players-1`); the
+client rotates so `you` is at the bottom.
 
 ### Client → server
 
@@ -620,6 +730,8 @@ rotates so `you` is at the bottom.
 | `start` | | Host, lobby |
 | `trump` | `suit` | Your turn, phase `trump` |
 | `bid` | `play` bool | Your turn, phase `bid` |
+| `auction` | `bid` (points; 0 = pass) | Three players: your turn, phase `auction` |
+| `discard` | `cards` [2] | Three players: you play alone, phase `discard` |
 | `play` | `card` | Your turn, phase `play` |
 | `ready` | | Phase `handEnd`: continue now (ignored once the next hand is dealt: a late tap on the summary) |
 | `chat` | `text` | Any time |
@@ -654,40 +766,47 @@ is an `update` with `ev: null`; so is a change without animation (a pause ends
 and a turn opens, `ready` flags, a host change). `seq` increases per room with
 every event; a resync carries the current `seq` (the joiner gets `ev: null`
 where the others get `join`/`back` with the same `seq`). A choice by `bid` with
-`play: true` sends `bid`, then `trump`.
+`play: true` sends `bid`, then `trump`; the bid that ends an auction sends
+`auction`, then `contract`.
 
 ### Events (`ev.type`)
 
 | type | fields | client animation |
 |---|---|---|
 | `lobby` | | none (seat/option changes) |
-| `deal` | `handNo`, `dealer` | cards fly from the dealer to each seat, 3-2-3 |
+| `deal` | `handNo`, `dealer` | cards fly from the dealer to each seat, 3-2-3 (three players: 3, the talon, 4, 3; two: to the piles, then the front rows turn) |
 | `turned` | `suit` | gedraaid: show the turned suit |
 | `bid` | `seat`, `play` | speech bubble "Spelen!"/"Pas" at the seat |
-| `trump` | `seat`, `suit`, `forced` | banner "Opa Dirk (AI) kiest ♥ als troef" |
+| `auction` | `seat`, `bid` (0 = pass) | three players: speech bubble "90"/"Pas" at the seat |
+| `contract` | `seat`, `bid`, `forced` | three players: banner "Opa Dirk (AI) speelt alleen" with the bid; the talon flies to the soloist |
+| `discard` | `seat` | three players: two closed cards leave the soloist |
+| `trump` | `seat`, `suit`, `forced` | banner "Opa Dirk (AI) kiest ♥ als troef"; two players: the back rows turn, then the roem of each side's open cards bursts |
 | `play` | `seat`, `card` | card flies from the seat to its trick slot |
 | `trick` | `winner`, `points`, `roem` [], `last` bool | highlight winning card; roem burst "+20 Stuk!" |
 | `collect` | `winner` | trick slides to the winner and fades |
 | `handEnd` | `result` (HandResult as JSON, below) | summary overlay: gehaald/nat/pit, seen from the viewer's team (§9 Review) |
-| `gameOver` | `total` [2], `winner` (0,1, or -1 draw) | celebration |
+| `gameOver` | `total` [per scorer], `winner` (scorer, or -1 when the top is shared) | celebration |
 | `join` / `leave` / `away` / `back` | `seat` | small toast |
 
 ### State `s`
 
 ```jsonc
 {
-  "code": "KQXB", "phase": "lobby|trump|bid|play|handEnd|gameOver",
-  "opts": { "humans":4, "hands":16, "trumpMode":"utrechts", "rules":"amsterdams",
+  "code": "KQXB", "phase": "lobby|auction|discard|trump|bid|play|handEnd|gameOver",
+  "opts": { "players":4, "hands":16, "trumpMode":"utrechts", "rules":"amsterdams",
             "ai":"normaal", "tempo":"normaal", "open":false },
   "training": false, "you": 0, "host": 0,
   "roster": [ {"id":"dirk","name":"Opa Dirk","emoji":"👴","color":"#8a5a2b","bio":"…"} ],  // lobby only: bot picker
-  "players": [ // always 4 entries; null = empty seat
+  "players": [ // opts.players entries; null = empty seat
     { "name":"Piet", "bot":false, "botId":"", "emoji":"", "color":"",
       "connected":true, "away":false, "cards":8, "ready":false },
     { "name":"Opa Dirk (AI)", "bot":true, "botId":"dirk", "emoji":"👴", "color":"#8a5a2b",
       "connected":true, "away":false, "cards":8, "ready":false }, null, null ],
   "handNo": 3, "hands": 16, "dealer": 1, "voorhand": 2,
-  "turned": null, "bids": [-1,-1,-1,-1], "forced": false,
+  "turned": null, "bids": [-1,-1,-1,-1], "forced": false,   // bids: one per seat
+  "bid": 0, "bidder": -1, "soloist": -1,   // three players: highest bid and bidder; the soloist once the auction is over
+  "talon": [], "discards": [],             // three players, the soloist only: the talon it took, what it laid away
+  "piles": null, "openRoem": null,         // two players: [[8 × {"n":2,"card":"JH"|null}], [...]], [[roem items], [...]]
   "trump": "H", "trumpBy": 2, "playingTeam": 0,
   "turn": 0,                       // -1 while paused or nobody's turn
   "hand": ["JH","9H","AH","TS","KS","8C","AD","7D"],   // yours, display-sorted
@@ -696,9 +815,9 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
   "trick": { "leader":3, "cards":[{"seat":3,"card":"QH"}], "winner":-1 },
   "lastTrick": { "leader":2, "cards":[...4], "winner":3, "points":21, "roem":[] },   // or null
   "tricksWon": [2,1], "handPoints": [43,21], "handRoem": [20,0],
-  "scores": [ { "hand":1, "dealer":0, "trump":"S", "trumpBy":1, "playingTeam":1,
-                "points":[70,92], "roem":[0,20], "score":[70,112], "nat":false, "pit":false } ],
-  "total": [ 418, 391 ],
+  "scores": [ { "hand":1, "dealer":0, "trump":"S", "trumpBy":1, "playingTeam":1, "bid":0,
+                "points":[70,92], "roem":[0,20], "score":[70,112], "gains":[70,112], "nat":false, "pit":false } ],
+  "total": [ 418, 391 ],           // per scorer: two teams, or one per player with three or two
   "prevHand": { "tricks":[ /* 8 completed tricks */ ], "result": { /* HandResult */ } }, // after a hand ends, until the next hand ends
   "nextAt": 0,                     // handEnd: unix ms of auto-continue (0 in training: waits for ready)
   "hint": null,                    // training, your turn: {"card":"AH"} | {"suit":"H"} | {"play":true}, plus "text"
@@ -707,15 +826,18 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
 }
 ```
 
-`HandResult` JSON: `{"playingTeam":0,"trumpBy":2,"trump":"H","dealer":1,
-"points":[104,58],"roem":[20,0],"score":[124,58],"nat":false,"pit":false,"pitTeam":-1}`.
+`HandResult` JSON: `{"players":4,"playingTeam":0,"trumpBy":2,"trump":"H","dealer":1,
+"points":[104,58],"roem":[20,0],"score":[124,58],"nat":false,"pit":false,"pitTeam":-1,
+"bid":0,"discards":[],"gains":[124,58]}`; `points`, `roem` and `score` are per
+side (§2), `gains` per scorer, `discards` the soloist's two cards with three
+players.
 
 Every key above is always present, except `roster` (lobby only) and `legal` and
 `rule` (only on your turn in phase `play`). Further:
 
 - `turned`: the turned suit in gedraaid from the deal on (the `turned` event
   opens the bidding), else null.
-- `trick`: null outside `trump`/`bid`/`play`; a complete trick stays until
+- `trick`: null outside a hand (`auction` to `play`); a complete trick stays until
   `collect`, then it is the empty next trick led by the winner (`turn` = winner).
   Tricks carry `points` and `roem` too (0 and `[]` while in progress).
 - `lastTrick`: the latest completed trick of this hand (null after a new deal;
@@ -723,7 +845,11 @@ Every key above is always present, except `roster` (lobby only) and `legal` and
 - `hand` is `[]` and `turn` -1 outside a hand; during `handEnd`/`gameOver`,
   `dealer`, `voorhand`, `trump`, `trumpBy`, `playingTeam`, `tricksWon`,
   `handPoints` and `handRoem` still describe the finished hand.
-- `players[i].cards` is 0 outside a hand; `ready` only counts in `handEnd`.
+- `players[i].cards` is 0 outside a hand (with two players it counts the
+  face-down cards too; `hand` is then the face-up ones); `ready` only counts
+  in `handEnd`.
+- With three players `playingTeam` is 0 (the soloist's side) once trump is
+  known; `tricksWon`, `handPoints` and `handRoem` are per side.
 - `hint` and `hands4` are null unless they apply; `hint.text` is always set.
 
 ## 8. Seinen (signals) — used by normaal and sterk bots and explained in the manual
@@ -825,8 +951,8 @@ export const sound = {
 
 // web/js/manual.js — the in-game handleiding (Dutch content + renderer)
 export const SECTIONS = [ {id:'bediening',title:'Bediening'}, {id:'regels',title:'Spelregels'},
-  {id:'punten',title:'Kaartwaarden'}, {id:'roem',title:'Roem'}, {id:'seinen',title:'Seinen'},
-  {id:'tips',title:'Tips'}, {id:'woorden',title:'Woordenlijst'} ];
+  {id:'twee-drie',title:'Met 2 of 3'}, {id:'punten',title:'Kaartwaarden'}, {id:'roem',title:'Roem'},
+  {id:'seinen',title:'Seinen'}, {id:'tips',title:'Tips'}, {id:'woorden',title:'Woordenlijst'} ];
 export function renderManual(sectionId, opts = {}) // → HTMLElement with that section's content (uses cards.js for illustrations);
                                                   // opts.icon(name) (util.icon) puts the buttons' pictograms in the Bediening chips
 // Styles for the manual content live in web/css/manual.css (classes prefixed man-).
@@ -835,11 +961,13 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
 ### Screens and flows (minimal clicks)
 
 - **Home**: name field (remembered), and big buttons: *Snel spelen*
-  (one tap: solo vs 3 bots, starts immediately, straight from home to the table
+  (one tap: solo vs bots, starts immediately, straight from home to the table
   without showing the lobby; it uses the options last chosen for a new game,
-  named under the button when they differ from the defaults; "AI-spelers"
-  never breaks at its hyphen), *Nieuw spel*
-  (options sheet with defaults → *Maak spel*), *Meedoen* (4-letter code field;
+  the number of players included, named under the button when they differ
+  from the defaults: "Twee AI-spelers · 8 potjes"; "AI-spelers" never breaks
+  at its hyphen), *Nieuw spel*
+  (options sheet with defaults → *Maak spel*; rows that do not apply to the
+  number of players hide: *Troef* with three, *Regels* with two), *Meedoen* (4-letter code field;
   joins as soon as 4 letters are typed), *Oefenen* (training), *Handleiding*.
   Snel spelen and Oefenen (bots only) never ask for a name: without one the
   player is "Speler", which is not stored as their name. *Nieuw spel* and
@@ -851,19 +979,23 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   invite, or the code typed before the name was asked for.
 - **Lobby**: big code + *Kopieer link* + *Delen* (`navigator.share` where
   available; when copying fails the link is shown in a field to copy by hand);
-  a mini table with the four seats (teams visible); tap an empty seat to
+  a mini table with the seats of `players` around it (with four the teams
+  visible; with three bottom, left and right, raised a little; with two
+  opposite), "2 van de 4 plaatsen bezet"; tap an empty seat to
   sit there; host taps an empty seat to add a bot (choose a character or random),
   ✕ to remove one; host edits options; *Start* (ignores taps for 0.8 s after
   the lobby first shows, so a double tap on *Maak spel* cannot start the game
-  before friends can join). The hint under the code says when every seat for
-  a human is taken ("Zet Spelers hoger als er nog iemand mee wil doen."). A
-  `refused` gives the host a toast "… wil meedoen, maar de tafel is vol" with
-  what to do (*Zet Spelers op 3*; after game over *Spelers of regels
-  wijzigen*). A joiner turned away with `vol` or `gestart` lands on home with
+  before friends can join). The hint under the code says when every seat is
+  taken, and how the host makes room (a bot away, or "Zet Spelers hoger als
+  er nog iemand mee wil doen."). A `refused` gives the host a toast "… wil
+  meedoen, maar de tafel is vol" with what to do (a bot away, *Zet Spelers
+  op 3*; after game over *Spelers of regels wijzigen*). A joiner turned away with `vol` or `gestart` lands on home with
   the code back in the *Meedoen* field, so trying again is one tap.
 - **Table**: you at the bottom with your hand as a fan; partner on top, opponents
   left/right with card backs and names; dealer chip; turn glow; trump indicator;
-  score bar *Wij – Zij* with names; potje n/16; buttons for chat (with unread
+  score bar *Wij – Zij* with names (with three or two players one part per
+  player: *Jij* and the others' faces, emoji or initial as on their seats);
+  potje n/16; buttons for chat (with unread
   badge), score sheet, last trick, help, settings, sound (a toggle:
   `aria-pressed` while the sound is on, tooltip "Geluid aan" / "Geluid uit",
   icon to match; on phones it is in the ⋯ menu). Where a name must
@@ -879,6 +1011,24 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   plays; the trump/bid panel and the hand summary focus their main button on
   fine pointers, and dialogs keep Tab inside. Trump choice: four big suit
   buttons (forced: turned suit disabled). Bidding: *Spelen* / *Passen*.
+- **Three players**: the others sit left and right, raised towards the top
+  (their speech bubbles open downwards); the trick is a triangle. During the
+  auction the talon lies closed in the middle, every seat shows its bid
+  ("bod 90", "pas") under its name, and on our turn a panel shows the
+  highest bid, a bid to offer with − and + (from the lowest allowed, steps
+  of 10, at most 300), *Bied 90* and *Passen*. The contract banner shows the
+  bid; the soloist's seat says "alleen voor 100" for the rest of the hand.
+  Playing alone, the talon's two cards come into the hand with a gold edge;
+  tapping two cards chooses them (lifted), *Wegleggen* sends them, then the
+  trump panel ("Jij speelt alleen en moet minstens 100 punten halen, roem
+  telt mee.").
+- **Two players**: our eight piles take the hand's place, two rows of four,
+  the front row nearest us, each pile showing the closed card under its top
+  card; the opponent's piles mirror ours in the top seat, beside its name.
+  Face-up cards of ours play like hand cards (tap or click, keyboard). After
+  the trump choice the back rows turn over and each side's open-card roem
+  bursts with whose it is. A freed card shows face up once its trick is
+  complete.
 - **Back button**: every closable overlay (dialog, chat drawer) has a history
   entry, so back (the Android gesture) closes the top one; at a table one more
   entry makes back ask *Spel verlaten?* instead of leaving the page.
@@ -902,7 +1052,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   offline sends `join` (with the seat token) + `leave` over a short-lived
   connection of its own once the network is back. Without `localStorage` the
   name and seat tokens live in memory for the life of the page.
-- **Game over**: final score with the team names; the host gets *Nog een
+- **Game over**: final score with the team names (with three or two players
+  one score per player, the top one marked); the host gets *Nog een
   partij* (`rematch`) and, outside training, *Spelers of regels wijzigen*
   (`lobby`: back to *Klaarzetten* under the same code, where the start guard
   runs again); everyone gets *Scorebord* and *Naar start*.
@@ -910,8 +1061,11 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   toward the winner, roem burst, trump banner, speech bubbles for bids and bot
   chat, nat/pit splash, animated score count-up, confetti on winning; short
   waits so every move can be followed; `prefers-reduced-motion` shortens all.
-- **Score sheet**: per hand: trump suit, who played (marker), points+roem per
-  team, nat (red) / pit (gold), running totals ("stand" under each hand).
+- **Score sheet**: per hand: trump suit, who played (marker; with three
+  players the bid too), points+roem per team (with three or two players a
+  column per player, the gains; roem under the soloist only, as the other
+  two share theirs), nat (red) / pit (gold), running totals ("stand" under
+  each hand).
   Team names keep "(AI)", one name per line.
 - **Review**: *Laatste slag* shows the previous trick at the seats with winner,
   points and roem; the hand summary (and the score sheet for the previous hand,
@@ -921,11 +1075,17 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   speaks from the viewer's team (`handHeadline` in util.js): we played and
   made it *Gehaald!*, went nat *Nat!*; they made it *Zij halen het*, went nat
   *Zij gaan nat!*; our pit *Pit!* (gold, also when they went nat), theirs
-  *Zij halen pit*; good news for us in our colour, bad news in red. The
+  *Zij halen pit*; good news for us in our colour, bad news in red. With two
+  players the sides are *Jij* and the other's name ("Opa Dirk (AI) haalt
+  het"); with three the headline names the soloist, the bid and what it made
+  ("Kees speelde alleen voor 100 en haalde 110. Jullie delen de rest."), the
+  table has a column per player (faces as in the score bar; points and roem
+  of the two who played together, marked "samen"; then each one's gains and
+  stand) and a line shows the discards and their points. The
   whole summary fits without scrolling: on phones (< 600 px wide) the tricks
-  are a 4 × 2 grid of small tiles (number and points over the cards), in
-  short landscape they sit beside the score; the ready chips show only with
-  another person at the table.
+  are a 4 × 2 grid of small tiles (number and points over the cards; 5 × 2
+  with three players, 8 × 2 with two), in short landscape they sit beside
+  the score; the ready chips show only with another person at the table.
 - **Chat**: drawer (side panel on wide screens), quick reactions (👍 😂 😱 "Mooi!"
   "Nat!" "Goed gespeeld"), bot lines, system lines, unread badge (counts what
   people write; system lines and bot chatter, shown as speech bubbles, do not).

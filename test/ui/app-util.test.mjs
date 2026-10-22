@@ -22,7 +22,10 @@ class FakeNode {
 }
 globalThis.Node = FakeNode;
 globalThis.document = { createElement: tag => new FakeNode(tag) };
-const { store, roemText, cap, playerName, keyboardOpen, textField, handHeadline, DEFAULT_NAME } = await import('../../web/js/util.js');
+const {
+  store, roemText, cap, playerName, keyboardOpen, textField, handHeadline, DEFAULT_NAME,
+  posOf, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText, countWord,
+} = await import('../../web/js/util.js');
 
 test('store keeps values in memory when localStorage is blocked', () => {
   mode = 'blocked';
@@ -142,6 +145,84 @@ test('the hand summary headline speaks from our side', () => {
     if (goodForUs) assert.match(cls, /\bgood\b/, `${pl} ${nat} ${pt}`);
     else assert.doesNotMatch(cls, /\bgood\b/, `${pl} ${nat} ${pt}`);
   }
+});
+
+// A state with n seats, seen from seat you; soloist for three players.
+const table = (n, you, soloist = -1) => ({
+  you, soloist, players: Array.from({ length: n }, (_, i) => ({ name: ['Anna', 'Opa Dirk (AI)', 'Kees', 'Bram (AI)'][i] })),
+});
+
+test('seats sit around the table by its size, you at the bottom', () => {
+  const where = (n, you) => Array.from({ length: n }, (_, seat) => posOf(table(n, you), seat)).join(' ');
+  assert.equal(where(4, 0), 'bottom left top right');
+  assert.equal(where(4, 2), 'top right bottom left');
+  assert.equal(where(3, 0), 'bottom left right');
+  assert.equal(where(3, 1), 'right bottom left');
+  assert.equal(where(2, 1), 'top bottom');
+});
+
+test('sides: teams of four, each for themselves with two, the soloist alone with three', () => {
+  const four = table(4, 1);
+  assert.deepEqual([0, 1, 2, 3].map(s => isWij(four, s)), [false, true, false, true]);
+  assert.equal(teamName(four, 1), 'Wij');
+  const two = table(2, 1);
+  assert.deepEqual([0, 1].map(s => isWij(two, s)), [false, true]);
+  assert.equal(teamName(two, 0), 'Anna');
+  assert.equal(teamName(two, 1), 'Jij');
+  // During the auction nobody plays together yet.
+  const bidding = table(3, 0);
+  assert.deepEqual([0, 1, 2].map(s => sideOf(bidding, s)), [-1, -1, -1]);
+  assert.deepEqual([0, 1, 2].map(s => isWij(bidding, s)), [true, false, false]);
+  // Seat 2 plays alone: 0 and 1 play together.
+  const three = table(3, 0, 2);
+  assert.deepEqual([0, 1, 2].map(s => isWij(three, s)), [true, true, false]);
+  assert.equal(teamName(three, 0), 'Kees');
+  assert.equal(teamName(three, 1), 'Wij');
+  assert.equal(teamName(table(3, 2, 2), 0), 'Jij');
+});
+
+test('scores: per team with four players, else per player, ours first', () => {
+  assert.deepEqual(scorerOrder(table(4, 3)), [1, 0]);
+  assert.equal(scorerOf(table(4, 3), 2), 0);
+  assert.equal(scorerName(table(4, 3), 1), 'Wij');
+  assert.deepEqual(scorerOrder(table(3, 1)), [1, 2, 0]);
+  assert.equal(scorerOf(table(3, 1), 2), 2);
+  assert.equal(scorerName(table(3, 1), 1), 'Jij');
+  assert.equal(scorerName(table(3, 1), 2), 'Kees');
+  assert.deepEqual(scorerOrder(table(2, 0)), [0, 1]);
+});
+
+test('the variant names the table size where it matters', () => {
+  assert.equal(variantText({ players: 4, trumpMode: 'gedraaid', rules: 'rotterdams' }), 'Gedraaid/Rotterdams');
+  assert.equal(variantText({ players: 3, trumpMode: 'gedraaid', rules: 'rotterdams' }), 'Met z\'n drieën, Rotterdams');
+  assert.equal(variantText({ players: 2, trumpMode: 'gedraaid', rules: 'rotterdams' }), 'Met z\'n tweeën, Gedraaid');
+  assert.equal(variantText({ trumpMode: 'utrechts', rules: 'amsterdams' }), 'Utrechts/Amsterdams');
+  assert.equal(countWord(1), 'één');
+  assert.equal(countWord(3), 'drie');
+});
+
+test('the headline with two and three players names who played', () => {
+  const s3 = table(3, 0, 2);
+  const solo = (nat, made, pitTeam = -1) => ({
+    players: 3, playingTeam: 0, trumpBy: 2, bid: 100, nat, pit: pitTeam >= 0, pitTeam,
+    points: [made, 162 - made], roem: [0, 0],
+  });
+  assert.deepEqual(handHeadline(solo(false, 110), 1, s3),
+    { t: 'Kees haalt het', sub: 'Kees speelde alleen voor 100 en haalde 110. Jullie delen de rest.', cls: 'neutral' });
+  assert.deepEqual(handHeadline(solo(true, 90), 1, s3),
+    { t: 'Kees gaat nat!', sub: 'Kees speelde alleen voor 100 en haalde 90. Jullie krijgen alles, ieder de helft.', cls: 'nat good' });
+  const s3me = table(3, 2, 2);
+  assert.equal(handHeadline(solo(false, 110), 0, s3me).t, 'Gehaald!');
+  assert.equal(handHeadline(solo(false, 110), 0, s3me).sub, 'Jij speelde alleen voor 100 en haalde 110.');
+  assert.equal(handHeadline(solo(true, 90), 0, s3me).cls, 'nat bad');
+  assert.equal(handHeadline(solo(false, 162, 0), 0, s3me).cls, 'pit good');
+  const duo = (playingTeam, nat, pitTeam = -1) => ({ players: 2, playingTeam, nat, pit: pitTeam >= 0, pitTeam, points: [0, 0], roem: [0, 0] });
+  const s2 = table(2, 1);
+  assert.equal(handHeadline(duo(1, false), 1, s2).t, 'Gehaald!');
+  assert.equal(handHeadline(duo(0, false), 1, s2).t, 'Anna haalt het');
+  assert.equal(handHeadline(duo(0, true), 1, s2).t, 'Anna gaat nat!');
+  assert.equal(handHeadline(duo(0, true), 1, s2).cls, 'nat good');
+  assert.equal(handHeadline(duo(1, false, 1), 1, s2).sub, 'Jij haalt alle zestien slagen: 100 roem extra.');
 });
 
 test('a player without a name is "Speler", as the server calls one', () => {

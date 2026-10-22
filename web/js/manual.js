@@ -4,6 +4,7 @@ import { createCard, SUITS, cardShort } from './cards.js';
 export const SECTIONS = [
   { id: 'bediening', title: 'Bediening' },
   { id: 'regels', title: 'Spelregels' },
+  { id: 'twee-drie', title: 'Met 2 of 3' },
   { id: 'punten', title: 'Kaartwaarden' },
   { id: 'roem', title: 'Roem' },
   { id: 'seinen', title: 'Seinen' },
@@ -48,7 +49,7 @@ export const CONTENT = {
     { h: 'Een spel beginnen' },
     {
       dl: [
-        ['Snel spelen', 'Eén tik en je zit aan tafel met drie AI-spelers. Het spel begint meteen, met de spelregels die je het laatst bij Nieuw spel koos.', 'bolt'],
+        ['Snel spelen', 'Eén tik en je zit aan tafel met AI-spelers. Het spel begint meteen, met de spelregels die je het laatst bij Nieuw spel koos, ook het aantal spelers.', 'bolt'],
         ['Nieuw spel', 'Speel met vrienden. Kies de spelregels (zie hieronder) en tik op [Maak spel]. Je krijgt een spelcode en een link om te delen.', 'users'],
         ['Meedoen', 'Typ de spelcode van vier letters bij **Meedoen met een code**. Zodra de vierde letter staat, schuif je aan. Een link zoals **klaverjas.kroes.dev/ABCD** werkt ook: openen en je zit erin.', 'enter'],
         ['Oefenen', 'Leer het spel met Juf Ans (AI) als maat en een tip bij elke zet. Meer daarover onderaan.', 'school'],
@@ -61,10 +62,10 @@ export const CONTENT = {
     { h4: 'Spelregels bij Nieuw spel' },
     {
       dl: [
-        ['Spelers', 'Hoeveel mensen er mogen meespelen, jij meegerekend: 1 tot 4 (standaard **4**). Er zitten altijd vier spelers aan tafel; de andere plaatsen krijgen AI-spelers.'],
+        ['Spelers', 'Met hoeveel spelers je klaverjast, jij meegerekend: **2**, **3** of **4** (standaard). Met z’n vieren speel je in koppels; met z’n drieën en tweeën gaat het anders, zie Met 2 of 3. Een plaats waar bij de start niemand zit, krijgt een AI-speler.'],
         ['Potjes', '4 tot 24 (standaard **16**, een boom).'],
-        ['Troef', '**Utrechts** (standaard): voorhand moet troef kiezen. **Gedraaid**: spelen of passen op een gedraaide kleur.'],
-        ['Regels', '**Amsterdams** (standaard) of **Rotterdams**: wanneer je moet troeven. De standaardvariant is dus Utrechts/Amsterdams.'],
+        ['Troef', '**Utrechts** (standaard): voorhand moet troef kiezen. **Gedraaid**: spelen of passen op een gedraaide kleur. Met z’n drieën wordt er geboden; dan staat deze keus er niet.'],
+        ['Regels', '**Amsterdams** (standaard) of **Rotterdams**: wanneer je moet troeven. De standaardvariant is dus Utrechts/Amsterdams. Met z’n tweeën heb je geen maat; dan staat deze keus er niet.'],
         ['AI-sterkte', '**Makkelijk**, **Normaal** (standaard) of **Sterk**: hoe goed de AI-spelers spelen.'],
         ['Tempo', '**Rustig**, **Normaal** (standaard) of **Snel**: hoe vlot de AI-spelers spelen en hoe lang een slag blijft liggen.'],
       ],
@@ -74,9 +75,9 @@ export const CONTENT = {
     {
       ul: [
         'Bovenaan staat de **spelcode**. Met [Kopieer link] of [Delen] stuur je de uitnodiging door, bijvoorbeeld via WhatsApp.',
-        'Je ziet de vier plaatsen rond de tafel. Wie tegenover je zit, is je **maat**; de kleuren laten zien wie bij Wij en wie bij Zij hoort.',
+        'Je ziet de plaatsen rond de tafel, zoveel als bij **Spelers** staat. Met z’n vieren is wie tegenover je zit je **maat**; de kleuren laten zien wie bij Wij en wie bij Zij hoort.',
         'Tik op een vrije plaats om daar te gaan zitten.',
-        'Hoeveel mensen er mee kunnen doen, staat bij **Spelers**. Zijn die plaatsen bezet, dan kan er niemand meer bij: wie de link dan nog opent, hoort dat de tafel vol is, en de host krijgt een melding. Zet Spelers dan hoger om een plaats vrij te maken.',
+        'Zijn alle plaatsen bezet, dan kan er niemand meer bij: wie de link dan nog opent, hoort dat de tafel vol is, en de host krijgt een melding. Haal dan een AI-speler weg of zet Spelers hoger.',
         'De **host** (wie het spel heeft gemaakt) kan op een vrije plaats ook een AI-speler zetten: kies een karakter of laat het toeval beslissen. Tik op een AI-speler om een ander karakter te kiezen; met ✕ gaat hij weer weg.',
         'AI-spelers herken je aan **(AI)** achter de naam, zoals Opa Dirk (AI). Ieder heeft een eigen karakter en kletst op zijn eigen manier mee.',
         'Plaatsen die bij de start nog vrij zijn, krijgen vanzelf een willekeurige AI-speler. De host tikt op [Start spel] en er wordt gedeeld.',
@@ -87,7 +88,7 @@ export const CONTENT = {
     { h: 'Aan tafel' },
     {
       ul: [
-        'Jouw kaarten liggen onderaan als een waaier. Je **maat** zit tegenover je, de tegenstanders links en rechts.',
+        'Jouw kaarten liggen onderaan als een waaier. Je **maat** zit tegenover je, de tegenstanders links en rechts. Met z’n drieën zitten de twee anderen links en rechts; met z’n tweeën liggen jouw stapeltjes onderaan en die van de ander bovenaan.',
         'Er wordt met de klok mee gespeeld: na jou is links aan de beurt.',
         'Wie aan de beurt is, licht op. Het fiche met de **G** staat bij de gever.',
         'De terugknop van je telefoon of browser sluit eerst wat er open staat, zoals het scorebord of de chat. Aan tafel vraagt hij of je het spel wilt verlaten.',
@@ -105,12 +106,14 @@ export const CONTENT = {
     },
     { h4: 'Troef kiezen' },
     { p: 'Moet jij troef maken, dan verschijnen vier grote knoppen met de kleuren: tik er één aan. Bij Gedraaid kies je [Spelen] of [Passen] voor de gedraaide kleur. Past iedereen, dan moet voorhand toch kiezen; de gedraaide kleur kan dan niet meer.' },
+    { h4: 'Bieden en wegleggen (met z’n drieën)' },
+    { p: 'Ben je aan de beurt om te bieden, dan zet je met − en + je bod en tik je op [Bied], of je tikt op [Passen]. Speel jij alleen, dan zitten de twee kaarten van tafel in je hand, met een gouden rand. Tik twee kaarten aan die je weglegt en tik op [Wegleggen]; daarna kies je troef.' },
 
     { h: 'Knoppen tijdens het spel' },
     { p: 'Bovenaan zie je de stand, het potje en de troef, met daarnaast de knoppen hieronder. Die tonen alleen een pictogram. Op een smalle telefoon staan sommige onder de knop ⋯ (Meer).' },
     {
       dl: [
-        ['Wij – Zij', 'De stand van de partij. Wij zijn jij en je maat, Zij de tegenstanders. Tik erop voor het scorebord.'],
+        ['Wij – Zij', 'De stand van de partij. Wij zijn jij en je maat, Zij de tegenstanders. Met z’n drieën of tweeën heeft ieder een eigen stand: Jij, en de anderen met hun gezicht zoals op hun plaats. Tik erop voor het scorebord.'],
         ['Potje 3/16', 'Het hoeveelste potje dit is.'],
         ['Troef', 'De troefkleur van dit potje. Tik erop om te zien wie hem koos, hoe het potje ervoor staat en welke variant jullie spelen.'],
         ['Laatste slag', 'Bekijk de vorige slag nog eens: wie wat speelde, wie hem won en hoeveel punten en roem erin zaten.', 'history'],
@@ -126,8 +129,8 @@ export const CONTENT = {
     { tip: 'Zie je ergens een ⓘ? Tik erop voor een korte uitleg.' },
 
     { h: 'Na elk potje' },
-    { p: 'Na de achtste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle acht slagen. Tik op een slag om te zien wie wat speelde. Het volgende potje begint na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt.' },
-    { p: 'Na het laatste potje wint het koppel met de meeste punten. De host kan met [Nog een partij] meteen opnieuw beginnen, met dezelfde spelers en spelregels.' },
+    { p: 'Na de laatste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle slagen. Tik op een slag om te zien wie wat speelde. Het volgende potje begint na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt.' },
+    { p: 'Na het laatste potje wint het koppel met de meeste punten, of met z’n drieën of tweeën de speler met de meeste punten. De host kan met [Nog een partij] meteen opnieuw beginnen, met dezelfde spelers en spelregels.' },
     { p: 'Wil je eerst iets veranderen, of is er nog iemand bij gekomen? Met [Spelers of regels wijzigen] gaat de tafel terug naar Klaarzetten, met dezelfde spelcode. De AI-spelers die bij de start de lege plaatsen opvulden, staan dan weer op, zodat vrienden kunnen aanschuiven (zet zo nodig **Spelers** hoger), en de host kan de spelregels aanpassen.' },
 
     { h: 'Oefenen' },
@@ -327,6 +330,41 @@ export const CONTENT = {
     { note: '**Verzaken** (een kaart spelen die niet mag) kan in dit spel niet: de computer laat alleen toegestane kaarten toe. Aan de cafétafel kost verzaken je meestal het hele potje.' },
   ],
 
+  'twee-drie': [
+    { lead: 'Bij **Spelers** kies je met hoeveel je klaverjast. Met z’n vieren speel je in koppels, zoals bij Spelregels. Met z’n drieën of tweeën blijven de kaartwaarden, de roem en de regels voor bekennen en troeven gelijk; dit is wat er anders is.' },
+
+    { h: 'Met z’n drieën' },
+    { p: 'Iedereen speelt voor zich en heeft een eigen stand. Iedereen krijgt **tien kaarten**; de twee die overblijven, liggen **dicht op tafel**.' },
+    { h4: 'Bieden' },
+    { p: 'Te beginnen bij voorhand bied je om de beurt een aantal punten, of je past. Het eerste bod is minstens **80**, elk volgend bod **10 hoger**. Wie gepast heeft, doet niet meer mee. Hebben twee spelers gepast, dan is het bieden voorbij.' },
+    { p: 'Wie het hoogst bood, speelt **alleen** tegen de andere twee. Heeft niemand geboden, dan speelt de laatste die nog niet paste, voor 80.' },
+    { h4: 'Wegleggen en troef kiezen' },
+    { p: 'Wie alleen speelt, pakt de twee dichte kaarten, **legt er twee weg** (dat mogen ook de opgepakte zijn) en kiest dan troef. De punten van de weggelegde kaarten tellen aan het eind mee voor wie alleen speelt; roem tellen ze niet.' },
+    { tip: 'Leg een kale 10 weg: dan zijn die 10 punten binnen. Of maak een bijkleur leeg, zodat je die later kunt introeven.' },
+    { h4: 'Spelen' },
+    { p: 'Voorhand komt uit, ook als iemand anders alleen speelt. Een slag heeft drie kaarten. De twee tegenspelers zijn dit potje elkaars **maat**: bij Amsterdams hoeven ze niet te troeven als de ander de slag al heeft.' },
+    { h4: 'Tellen' },
+    {
+      ul: [
+        'Wie alleen speelt, moet minstens het **bod** halen: kaartpunten plus roem, de weggelegde kaarten meegeteld.',
+        'Gehaald? Dan krijgt die speler zijn punten plus roem. De andere twee **delen** wat zij samen haalden: ieder de helft, naar boven afgerond.',
+        'Niet gehaald? Dan is het **nat**: wie alleen speelde krijgt 0, de andere twee delen alles, 162 plus alle roem.',
+        'Alle tien slagen halen is **pit**: 100 roem extra.',
+      ],
+    },
+
+    { h: 'Met z’n tweeën' },
+    { p: 'Jullie zitten tegenover elkaar. Iedereen krijgt **zestien kaarten**, op tafel in **acht stapeltjes van twee**: twee rijen van vier. Van de voorste rij, het dichtst bij je, liggen de bovenste kaarten open; de rest ligt dicht.' },
+    { h4: 'Troef en de achterste rij' },
+    { p: 'Troef bepalen gaat zoals bij **Troef** ingesteld: bij Utrechts kiest voorhand, bij Gedraaid zeg je om de beurt spelen of passen op de gedraaide kleur. Daarna gaan ook de bovenste kaarten van de achterste rijen open. Iedereen heeft er dan acht open liggen en ziet die van de ander ook.' },
+    { h4: 'Roem van je open kaarten' },
+    { p: 'De roem in je **acht open kaarten**, zodra troef bekend is, telt voor jou: drie of vier op een rij, vier gelijke en stuk. In een slag van twee kaarten kan alleen nog stuk vallen.' },
+    { h4: 'Spelen' },
+    { p: 'Je speelt alleen kaarten die open liggen, en je bekent en troeft met wat er open ligt. Is een slag af, dan gaan de kaarten open die vrijkwamen. Er zijn zestien slagen; de laatste is 10 punten extra waard.' },
+    { p: 'Tellen gaat als met z’n vieren: wie troef maakte, moet meer dan de helft halen, anders is het nat. Alle zestien slagen halen is pit.' },
+    { note: 'Met z’n tweeën heb je geen maat, dus maakt Amsterdams of Rotterdams geen verschil.' },
+  ],
+
   punten: [
     { lead: 'Hoeveel een kaart waard is en hoe hoog hij is, hangt ervan af of hij troef is. Let vooral op de **boer** en de **9**: in troef zijn dat de twee hoogste kaarten.' },
     { h: 'Volgorde en punten' },
@@ -490,6 +528,7 @@ export const CONTENT = {
         ['Achterhand', 'Wie als laatste bijspeelt in een slag. Bij de eerste slag is dat de gever.'],
         ['Amsterdams', 'Variant waarin je niet hoeft te troeven als je maat de slag al heeft.'],
         ['Bekennen', 'De gevraagde kleur bijspelen. Moet als je die kleur hebt.'],
+        ['Bieden', 'Met z’n drieën: zeggen hoeveel punten je denkt te halen als je alleen speelt. Wie het hoogst biedt, speelt alleen.'],
         ['Bijkleur', 'Een kleur die geen troef is.'],
         ['Boer (jas)', 'In troef de hoogste kaart, 20 punten; de troefboer heet ook **jas**. Buiten troef maar 2 punten.'],
         ['Boom', 'Een partij van 16 potjes, waarin iedereen vier keer deelt.'],
@@ -512,6 +551,7 @@ export const CONTENT = {
         ['Slag', 'De vier kaarten van één ronde. Wie de slag wint, komt weer uit.'],
         ['Spekken (ook wel smeren)', 'Punten (een 10 of aas) bijspelen op een slag die je maat zeker wint.'],
         ['Spelende partij', 'Het koppel dat troef heeft gemaakt en moet halen.'],
+        ['Stapeltje', 'Met z’n tweeën: twee kaarten op elkaar op tafel, de bovenste open. Je hebt er acht.'],
         ['Stuk', 'Heer en vrouw van troef in dezelfde slag: 20 roem.'],
         ['Troef', 'De sterkste kleur van het potje. Elke troef wint van elke kaart van een andere kleur.'],
         ['Troeven', 'Een troef spelen. Moet als je de gevraagde kleur niet hebt, met uitzonderingen bij Amsterdams.'],
@@ -519,6 +559,7 @@ export const CONTENT = {
         ['Verplicht (Utrechts)', 'Troef bepalen waarbij voorhand altijd een troefkleur moet kiezen.'],
         ['Verzaken', 'Een kaart spelen die niet mag, zoals niet bekennen terwijl het kon. Kan in dit spel niet.'],
         ['Voorhand', 'De speler links van de gever. Komt bij de eerste slag uit en maakt bij Utrechts troef.'],
+        ['Wegleggen', 'Met z’n drieën: wie alleen speelt, pakt de twee dichte kaarten van tafel en legt er twee weg. Hun punten tellen voor die speler.'],
         ['Wij en Zij', 'Jouw koppel (jij en je maat) en de tegenstanders, zoals op het scoreblok.'],
       ],
     },

@@ -212,6 +212,7 @@ function allStrings(value, out = []) {
 test('sections match the section 9 contract', () => {
   assert.deepEqual(SECTIONS, [
     { id: 'bediening', title: 'Bediening' }, { id: 'regels', title: 'Spelregels' },
+    { id: 'twee-drie', title: 'Met 2 of 3' },
     { id: 'punten', title: 'Kaartwaarden' }, { id: 'roem', title: 'Roem' },
     { id: 'seinen', title: 'Seinen' }, { id: 'tips', title: 'Tips' },
     { id: 'woorden', title: 'Woordenlijst' },

@@ -297,11 +297,53 @@ export function vibrate(ms) {
 // ---------- game helpers ----------
 
 export const POS = ['bottom', 'left', 'top', 'right'];
-export const posOf = (seat, you) => POS[(seat - you + 4) % 4];
-export const myTeam = s => s.you % 2;
-export const isWij = (s, seat) => seat % 2 === s.you % 2;
+// The places at a table of 2, 3 or 4, from the bottom (you) clockwise: with
+// three players the others sit left and right, with two opposite.
+const POS_AT = { 2: ['bottom', 'top'], 3: ['bottom', 'left', 'right'], 4: POS };
+export const seatCount = s => s?.players?.length || 4;
+export const posOf = (s, seat) => {
+  const n = seatCount(s);
+  return POS_AT[n][(seat - s.you + n) % n];
+};
+
+// The side a seat plays on in this hand: its team with four players,
+// itself with two, and with three the soloist (0) against the other two
+// (1); -1 while the auction has no soloist yet.
+export function sideOf(s, seat) {
+  const n = seatCount(s);
+  if (n === 4) return seat % 2;
+  if (n === 2) return seat;
+  return s.soloist < 0 ? -1 : seat === s.soloist ? 0 : 1;
+}
+export const mySide = s => sideOf(s, s.you);
+export const isWij = (s, seat) => seat === s.you || (sideOf(s, seat) >= 0 && sideOf(s, seat) === mySide(s));
 export const teamCls = (s, seat) => (isWij(s, seat) ? 'wij' : 'zij');
-export const teamName = (s, team) => (team === s.you % 2 ? 'Wij' : 'Zij');
+// The name of a side in this hand: "Wij" or "Zij", and for a side of one
+// player "Jij" or the name.
+export function teamName(s, side) {
+  const n = seatCount(s);
+  if (n === 4) return side === s.you % 2 ? 'Wij' : 'Zij';
+  if (n === 2) return nameOf(s, side);
+  if (side === 0) return nameOf(s, s.soloist);
+  return mySide(s) === 1 ? 'Wij' : 'Zij';
+}
+
+// The scores of a match: the two teams with four players, else every
+// player has their own (s.total, gains in a score row).
+export const scorerOf = (s, seat) => (seatCount(s) === 4 ? seat % 2 : seat);
+export const myScorer = s => scorerOf(s, s.you);
+// "Wij"/"Zij" with four players, else "Jij" or the player's name.
+export const scorerName = (s, k) => (seatCount(s) === 4 ? (k === s.you % 2 ? 'Wij' : 'Zij') : nameOf(s, k));
+// Scorers from the viewer's: ours first, then the others in seat order
+// from our left.
+export function scorerOrder(s) {
+  const n = seatCount(s);
+  if (n === 4) return [s.you % 2, 1 - (s.you % 2)];
+  return Array.from({ length: n }, (_, k) => (s.you + k) % n);
+}
+
+// Dutch number words for counts at the table ("drie AI-spelers").
+export const countWord = n => ['geen', 'één', 'twee', 'drie', 'vier'][n] ?? String(n);
 
 // The name for whoever gave none: Snel spelen and Oefenen do not ask for
 // one (nobody else sees it), and the server calls a nameless player so too.
@@ -350,15 +392,22 @@ export const roemText = roem => (roem || []).map(r => `${(ROEM_NAMES[r.kind] || 
 // First letter upper case: "harten is troef" → "Harten is troef".
 export const cap = text => (text ? text[0].toUpperCase() + text.slice(1) : '');
 
-export const variantText = o =>
-  `${o.trumpMode === 'gedraaid' ? 'Gedraaid' : 'Utrechts'}/${o.rules === 'rotterdams' ? 'Rotterdams' : 'Amsterdams'}`;
+export function variantText(o) {
+  const trump = o.trumpMode === 'gedraaid' ? 'Gedraaid' : 'Utrechts';
+  const rules = o.rules === 'rotterdams' ? 'Rotterdams' : 'Amsterdams';
+  if (o.players === 3) return `Met z'n drieën, ${rules}`;
+  if (o.players === 2) return `Met z'n tweeën, ${trump}`;
+  return `${trump}/${rules}`;
+}
 
 // The hand summary's headline, seen from team w (the viewer's): t the title,
 // sub the line under it, cls its colour: good news for us is 'good',
 // bad news 'bad', the opponents making their game 'neutral'; 'nat' and
 // 'pit' mark the two big outcomes. A pit by the defenders means the
-// players went nat as well.
-export function handHeadline(r, w) {
+// players went nat as well. With two or three players (r.players) w is the
+// viewer's side and s gives the names (smallHeadline).
+export function handHeadline(r, w, s = null) {
+  if (r.players === 2 || r.players === 3) return smallHeadline(r, w, s);
   const we = r.playingTeam === w;
   if (r.pit) {
     const ours = r.pitTeam === w;
@@ -375,6 +424,46 @@ export function handHeadline(r, w) {
   return we
     ? { t: 'Gehaald!', sub: 'Wij spelen en halen het.', cls: 'good' }
     : { t: 'Zij halen het', sub: 'Zij spelen en halen meer dan de helft van de punten.', cls: 'neutral' };
+}
+
+// handHeadline for two players (w: the viewer's seat) or three (w: the
+// viewer's side, 0 when playing alone). Sides of one player speak in the
+// singular; the soloist's opponents share their side's score.
+function smallHeadline(r, w, s) {
+  const name = seat => (s ? nameOf(s, seat, false) : 'De ander');
+  const made = r.points[0] + r.roem[0];
+  if (r.players === 3) {
+    const solo = r.trumpBy;
+    const who = w === 0 ? 'Jij speelde' : `${name(solo)} speelde`;
+    const what = `${who} alleen voor ${r.bid} en haalde ${made}.`;
+    if (r.pit && r.pitTeam === 0) {
+      return w === 0 ? { t: 'Pit!', sub: `${what} Alle tien slagen: 100 roem extra.`, cls: 'pit good' }
+        : { t: `${name(solo)} haalt pit`, sub: `${what} Alle tien slagen: 100 roem extra.`, cls: 'pit bad' };
+    }
+    if (r.nat) {
+      return w === 0 ? { t: 'Nat!', sub: `${what} De anderen krijgen alles, ieder de helft.`, cls: 'nat bad' }
+        : { t: `${name(solo)} gaat nat!`, sub: `${what} Jullie krijgen alles, ieder de helft.`, cls: 'nat good' };
+    }
+    return w === 0 ? { t: 'Gehaald!', sub: what, cls: 'good' }
+      : { t: `${name(solo)} haalt het`, sub: `${what} Jullie delen de rest.`, cls: 'neutral' };
+  }
+  const we = r.playingTeam === w;
+  const other = name(1 - w);
+  if (r.pit) {
+    const ours = r.pitTeam === w;
+    if (ours && we) return { t: 'Pit!', sub: 'Jij haalt alle zestien slagen: 100 roem extra.', cls: 'pit good' };
+    if (ours) return { t: 'Pit!', sub: `${other} gaat nat en jij haalt alle zestien slagen: 100 roem extra.`, cls: 'pit good' };
+    if (!we) return { t: `${other} haalt pit`, sub: `${other} haalt alle zestien slagen en krijgt 100 roem extra.`, cls: 'pit bad' };
+    return { t: 'Nat!', sub: `Jij speelt en haalt geen slag. ${other} krijgt alles, plus 100 roem voor pit.`, cls: 'nat bad' };
+  }
+  if (r.nat) {
+    return we
+      ? { t: 'Nat!', sub: `Jij speelt en haalt het niet. Alle punten gaan naar ${other}.`, cls: 'nat bad' }
+      : { t: `${other} gaat nat!`, sub: `${other} speelt en haalt het niet. Alle punten voor jou.`, cls: 'nat good' };
+  }
+  return we
+    ? { t: 'Gehaald!', sub: 'Jij speelt en haalt het.', cls: 'good' }
+    : { t: `${other} haalt het`, sub: `${other} speelt en haalt meer dan de helft van de punten.`, cls: 'neutral' };
 }
 
 // Avatar circle for a player: emoji for bots, initial for humans.

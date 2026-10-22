@@ -18,6 +18,7 @@ type step uint8
 const (
 	stepNone      step = iota
 	stepDealt          // the deal animation: then the first turn opens
+	stepContract       // three players: the auction is over: then the soloist lays two cards away
 	stepAnnounced      // trump was announced: then voorhand leads
 	stepCollect        // a complete trick lies on the table: then it is collected
 	stepNextHand       // the hand summary: then the next hand (or game over)
@@ -28,15 +29,20 @@ type actKind uint8
 const (
 	actTrump actKind = iota + 1
 	actBid
+	actAuction
+	actDiscard
 	actPlay
 )
 
-// action is one decision by a seat: a trump suit, a bid or a card.
+// action is one decision by a seat: a trump suit, spelen or passen, a bid
+// in the auction (0: pass), two cards to lay away or a card to play.
 type action struct {
-	kind actKind
-	suit game.Suit
-	play bool
-	card game.Card
+	kind  actKind
+	suit  game.Suit
+	play  bool
+	bid   int
+	cards [2]game.Card
+	card  game.Card
 }
 
 // brainBox serialises calls into one Brain and guards against bad answers.
@@ -62,13 +68,27 @@ func (bb *brainBox) decide(v game.View) (a action) {
 	switch v.Phase {
 	case game.PhaseTrump:
 		s := bb.b.ChooseTrump(v)
-		if s >= game.NumSuits || (v.Forced && s == v.Turned) {
+		if s >= game.NumSuits || (turnedBarred(v) && s == v.Turned) {
 			bb.log.Error("bot chose an invalid trump", "err", errBadBrain)
 			return fallback(v)
 		}
 		return action{kind: actTrump, suit: s}
 	case game.PhaseBid:
 		return action{kind: actBid, play: bb.b.Bid(v)}
+	case game.PhaseAuction:
+		bid := bb.b.Auction(v)
+		if bid != 0 && (bid < v.MinNextBid() || bid > game.MaxBid || bid%game.BidStep != 0) {
+			bb.log.Error("bot made an invalid bid", "err", errBadBrain)
+			return fallback(v)
+		}
+		return action{kind: actAuction, bid: bid}
+	case game.PhaseDiscard:
+		cs := bb.b.Discard(v)
+		if cs[0] == cs[1] || !slices.Contains(v.Hand, cs[0]) || !slices.Contains(v.Hand, cs[1]) {
+			bb.log.Error("bot laid away cards it does not hold", "err", errBadBrain)
+			return fallback(v)
+		}
+		return action{kind: actDiscard, cards: cs}
 	case game.PhasePlay:
 		c := bb.b.Play(v)
 		if !slices.Contains(v.Legal, c) {
@@ -81,7 +101,8 @@ func (bb *brainBox) decide(v game.View) (a action) {
 }
 
 // fallback is a legal decision without any thought: the longest allowed
-// suit as trump, pass, or the first legal card.
+// suit as trump, pass, the last two cards to lay away, or the first legal
+// card.
 func fallback(v game.View) action {
 	switch v.Phase {
 	case game.PhaseTrump:
@@ -89,18 +110,27 @@ func fallback(v game.View) action {
 		for _, c := range v.Hand {
 			n[c.Suit]++
 		}
+		barred := turnedBarred(v)
 		best := game.Suit(0)
-		if v.Forced && v.Turned == best {
+		if barred && v.Turned == best {
 			best = 1
 		}
 		for s := game.Suit(0); s < game.NumSuits; s++ {
-			if !(v.Forced && s == v.Turned) && n[s] > n[best] {
+			if !(barred && s == v.Turned) && n[s] > n[best] {
 				best = s
 			}
 		}
 		return action{kind: actTrump, suit: best}
 	case game.PhaseBid:
 		return action{kind: actBid}
+	case game.PhaseAuction:
+		return action{kind: actAuction}
+	case game.PhaseDiscard:
+		a := action{kind: actDiscard}
+		if n := len(v.Hand); n >= 2 {
+			a.cards = [2]game.Card{v.Hand[n-2], v.Hand[n-1]}
+		}
+		return a
 	default:
 		legal := v.Legal
 		if len(legal) == 0 {
@@ -113,15 +143,25 @@ func fallback(v game.View) action {
 	}
 }
 
-// inHand reports whether a hand is being played (trump, bid or play).
+// turnedBarred reports whether the turned suit may not be chosen as trump:
+// gedraaid after everyone passed. A forced soloist with three players
+// chooses freely.
+func turnedBarred(v game.View) bool { return v.Forced && v.Players != 3 }
+
+// inHand reports whether a hand is being played (auction, discard, trump,
+// bid or play).
 func (r *room) inHand() bool {
-	return r.phase == phaseTrump || r.phase == phaseBid || r.phase == phasePlay
+	switch r.phase {
+	case phaseAuction, phaseDiscard, phaseTrump, phaseBid, phasePlay:
+		return true
+	}
+	return false
 }
 
 // startMatch fills the empty seats and deals the first hand.
 func (r *room) startMatch() {
 	if r.phase == phaseLobby {
-		r.sysChat("Het spel begint: %d potjes, %s/%s. Veel plezier!", r.opts.Hands, r.opts.TrumpMode.NameNL(), r.opts.Rules.NameNL())
+		r.sysChat("Het spel begint: %d potjes, %s. Veel plezier!", r.opts.Hands, r.opts.variantNL())
 	}
 	r.fillSeats()
 	for i := range r.seats {
@@ -134,12 +174,12 @@ func (r *room) startMatch() {
 	r.handNo = 0
 	r.deal = nil
 	r.scores = nil
-	r.total = [2]int{}
+	r.total = make([]int, game.Scorers(r.players()))
 	r.prev = nil
 	r.lastTrick = nil
 	r.winner = -1
 	r.overAt = time.Time{}
-	r.log.Info("match started", "humans", r.humanCount(), "hands", r.opts.Hands,
+	r.log.Info("match started", "players", r.players(), "humans", r.humanCount(), "hands", r.opts.Hands,
 		"trumpMode", r.opts.TrumpMode.String(), "rules", r.opts.Rules.String(), "ai", r.opts.AI, "training", r.training)
 	r.startHand()
 	r.greet()
@@ -147,13 +187,15 @@ func (r *room) startMatch() {
 
 // startHand shuffles and deals the next hand; the first dealer is random.
 func (r *room) startHand() {
-	dealer := game.Seat(r.rng.IntN(4))
+	n := r.players()
+	dealer := game.Seat(r.rng.IntN(n))
 	if r.deal != nil {
-		dealer = r.deal.Dealer().Next()
+		dealer = r.deal.Voorhand()
 	}
 	r.handNo++
 	r.missed, r.misses = nil, nil
-	r.deal = game.NewDeal(dealer, game.Shuffle(r.rng), r.opts.TrumpMode, r.opts.Rules, game.Suit(r.rng.IntN(game.NumSuits)))
+	hands, talon := game.ShuffleFor(n, r.rng)
+	r.deal = game.NewDealFor(n, dealer, hands, talon, r.opts.TrumpMode, r.opts.Rules, game.Suit(r.rng.IntN(game.NumSuits)))
 	r.phase = string(r.deal.Phase())
 	r.collected = false
 	r.lastTrick = nil
@@ -258,7 +300,7 @@ func (r *room) runPending() {
 		} else {
 			r.emit(nil)
 		}
-	case stepAnnounced:
+	case stepContract, stepAnnounced:
 		r.openTurn()
 		r.emit(nil)
 	case stepCollect:
@@ -283,7 +325,7 @@ func (r *room) viewFor(i game.Seat) game.View {
 	v := r.deal.View(i)
 	v.HandNo = r.handNo
 	v.HandsTotal = r.opts.Hands
-	v.MatchScore = r.total
+	v.MatchScore = slices.Clone(r.total)
 	return v
 }
 
@@ -410,6 +452,30 @@ func (r *room) act(i game.Seat, a action) error {
 		r.pause(stepAnnounced, p.announce)
 		r.emit(evTrump{Type: "trump", Seat: i, Suit: a.suit, Forced: forced})
 		r.chatTrump(i)
+	case actAuction:
+		if err := d.Auction(i, a.bid); err != nil {
+			return err
+		}
+		r.phase = string(d.Phase())
+		if d.Phase() == game.PhaseDiscard {
+			soloist, bid := d.Contract()
+			r.pause(stepContract, p.announce)
+			r.emit(evAuction{Type: "auction", Seat: i, Bid: a.bid})
+			r.emit(evContract{Type: "contract", Seat: soloist, Bid: bid, Forced: d.Forced()})
+			break
+		}
+		r.openTurn()
+		r.emit(evAuction{Type: "auction", Seat: i, Bid: a.bid})
+		if a.bid == 0 {
+			r.botSay(i, ChatEvent{Kind: "pass", Mine: true}, 300*time.Millisecond)
+		}
+	case actDiscard:
+		if err := d.Discard(i, a.cards[:]); err != nil {
+			return err
+		}
+		r.phase = string(d.Phase())
+		r.openTurn()
+		r.emit(evSeat{Type: "discard", Seat: i})
 	case actBid:
 		if err := d.Bid(i, a.play); err != nil {
 			return err
@@ -431,7 +497,7 @@ func (r *room) act(i game.Seat, a action) error {
 			return err
 		}
 		t := d.Current()
-		if !t.Complete() {
+		if len(t.Cards) < d.Players() {
 			r.openTurn()
 			r.emit(evPlay{Type: "play", Seat: i, Card: a.card})
 			if r.rng.Float64() < 0.1 {
@@ -654,13 +720,15 @@ func (r *room) advise(v game.View) (a Advice, ok bool) {
 func (r *room) endHand() {
 	d := r.deal
 	res := d.Result()
+	gains := res.Gains[:len(r.total)]
 	r.scores = append(r.scores, scoreRow{
 		Hand: r.handNo, Dealer: res.Dealer, Trump: res.Trump, TrumpBy: res.TrumpBy,
-		PlayingTeam: res.PlayingTeam, Points: res.Points, Roem: res.Roem, Score: res.Score,
-		Nat: res.Nat, Pit: res.Pit,
+		PlayingTeam: res.PlayingTeam, Bid: res.Bid, Points: res.Points, Roem: res.Roem, Score: res.Score,
+		Gains: slices.Clone(gains), Nat: res.Nat, Pit: res.Pit,
 	})
-	r.total[0] += res.Score[0]
-	r.total[1] += res.Score[1]
+	for k, g := range gains {
+		r.total[k] += g
+	}
 	r.prev = &prevHand{Tricks: d.Tricks(), Result: res}
 	r.phase = phaseHandEnd
 	for i := range r.seats {
@@ -687,16 +755,27 @@ func (r *room) nextHand() {
 	}
 	r.phase = phaseGameOver
 	r.overAt = time.Now()
-	switch {
-	case r.total[0] > r.total[1]:
-		r.winner = 0
-	case r.total[1] > r.total[0]:
-		r.winner = 1
-	default:
-		r.winner = -1
-	}
-	r.emit(evGameOver{Type: "gameOver", Total: r.total, Winner: r.winner})
+	r.winner = topScorer(r.total)
+	r.emit(evGameOver{Type: "gameOver", Total: slices.Clone(r.total), Winner: r.winner})
 	r.chatGameOver()
-	r.log.Info("match over", "hands", r.handNo, "total0", r.total[0], "total1", r.total[1])
+	r.log.Info("match over", "hands", r.handNo, "total", r.total)
 	r.drive()
+}
+
+// topScorer returns the index of the highest total, -1 when the highest
+// is shared (a draw).
+func topScorer(total []int) int {
+	best, shared := -1, false
+	for k, t := range total {
+		switch {
+		case best < 0 || t > total[best]:
+			best, shared = k, false
+		case t == total[best]:
+			shared = true
+		}
+	}
+	if shared {
+		return -1
+	}
+	return best
 }

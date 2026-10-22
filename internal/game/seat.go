@@ -2,7 +2,9 @@ package game
 
 import "errors"
 
-// Seat is a player position 0..3, clockwise. Team of a seat is s%2.
+// Seat is a player position, clockwise: 0..3 with four players (team of a
+// seat is s%2), 0..2 with three, 0..1 with two. Next, Partner and Team are
+// the four-player relations; a Deal knows them for every table.
 // NoSeat (-1) means "nobody".
 type Seat int
 
@@ -20,6 +22,9 @@ func (s Seat) Team() int { return int(s & 1) }
 
 // Valid reports whether s is one of the four seats.
 func (s Seat) Valid() bool { return s >= 0 && s < 4 }
+
+// ValidFor reports whether s is a seat at a table of players.
+func (s Seat) ValidFor(players int) bool { return s >= 0 && int(s) < players }
 
 // Rules selects the obligation to trump when you cannot follow suit.
 type Rules uint8

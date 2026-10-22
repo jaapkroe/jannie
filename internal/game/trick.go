@@ -183,6 +183,59 @@ func RoemPoints(cards []Card, trump Suit) int {
 	return n
 }
 
+// SetRoem returns the roem in a set of cards that lie together, such as
+// the open cards in front of a player in the two-player game (design §2):
+// every run of three (20) or of four or more (50) in one suit, all four
+// cards of a rank (100, boeren 200) and stuk (20). nil if there is none.
+func SetRoem(cards []Card, trump Suit) []RoemItem {
+	var out []RoemItem
+	setRoem(cards, trump, func(it RoemItem) { out = append(out, it) })
+	return out
+}
+
+// SetRoemPoints returns the total of SetRoem without allocating.
+func SetRoemPoints(cards []Card, trump Suit) int {
+	n := 0
+	setRoem(cards, trump, func(it RoemItem) { n += it.Points })
+	return n
+}
+
+func setRoem(cards []Card, trump Suit, add func(RoemItem)) {
+	masks := suitMasks(cards)
+	for r := Rank(0); r < NumRanks; r++ {
+		if masks[0]&masks[1]&masks[2]&masks[3]&(1<<r) == 0 {
+			continue
+		}
+		switch r {
+		case Jack:
+			add(RoemItem{RoemVierBoeren, 200})
+		case Ace, Ten, King, Queen:
+			add(RoemItem{RoemVierGelijk, 100})
+		}
+	}
+	for _, m := range masks {
+		for run := 0; ; m >>= 1 {
+			if m&1 != 0 {
+				run++
+				continue
+			}
+			switch {
+			case run >= 4:
+				add(RoemItem{RoemVier, 50})
+			case run == 3:
+				add(RoemItem{RoemDrie, 20})
+			}
+			if m == 0 {
+				break
+			}
+			run = 0
+		}
+	}
+	if trump < NumSuits && masks[trump]&stukMask == stukMask {
+		add(RoemItem{RoemStuk, 20})
+	}
+}
+
 // CardPoints returns the summed card points of cards.
 func CardPoints(cards []Card, trump Suit) int {
 	n := 0
@@ -257,10 +310,11 @@ func infoFromTrick(t Trick, trump Suit) trickInfo {
 	return ti
 }
 
-// infoFromCards is infoFromTrick for the compact form used inside Deal.
-func infoFromCards(leader Seat, cards []Card, trump Suit) trickInfo {
+// infoFromCards is infoFromTrick for the compact form used inside Deal,
+// with n players.
+func infoFromCards(leader Seat, cards []Card, trump Suit, n uint8) trickInfo {
 	ti := trickInfo{high: -1, winner: NoSeat}
-	if len(cards) == 0 || len(cards) >= 4 {
+	if len(cards) == 0 || len(cards) >= int(n) {
 		return ti
 	}
 	ti.n = len(cards)
@@ -269,7 +323,7 @@ func infoFromCards(leader Seat, cards []Card, trump Suit) trickInfo {
 	ti.winner = leader
 	for i, c := range cards {
 		if i > 0 && Beats(c, ti.best, ti.led, trump) {
-			ti.best, ti.winner = c, (leader+Seat(i))&3
+			ti.best, ti.winner = c, (leader+Seat(i))%Seat(n)
 		}
 		if c.Suit == trump && trumpOrder[c.Rank] > ti.high {
 			ti.high = trumpOrder[c.Rank]
@@ -278,7 +332,7 @@ func infoFromCards(leader Seat, cards []Card, trump Suit) trickInfo {
 	return ti
 }
 
-// trickWinner returns the offset (0..3) from the leader of the winning card.
+// trickWinner returns the offset from the leader of the winning card.
 func trickWinner(cards []Card, trump Suit) int {
 	best, led := 0, cards[0].Suit
 	for i := 1; i < len(cards); i++ {

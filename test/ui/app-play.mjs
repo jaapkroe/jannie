@@ -3,17 +3,21 @@
 // is over. Then checks the score sheet and totals.
 //
 //   cd test/ui && node app-play.mjs [--url http://127.0.0.1:18100] [--cdp URL] [--only phone,desktop] [--gedraaid] [--multi] [--training]
+//     [--players 2|3|4]
 //
 // Phone uses touch with two taps per card; desktop uses single mouse clicks.
 // --multi: a host (desktop) and a guest who opens the /CODE link (phone)
 // chat, the host seats a bot, and both play one game to the end.
 // --training: two potjes of Oefenen, checking hints and tips.
+// --players: the table size for the solo games (default 4): with three the
+// auction and laying away, with two the piles.
 import {
   args, connect, openPage, VIEWPORTS, press, pressEl, type, shot, waitFor, sleep, playLegal, addressProxy, ownAddress,
 } from './app-lib.mjs';
 
 const A = args();
 const names = A.only ? A.only.split(',') : ['phone', 'desktop'];
+const PLAYERS = Number(process.argv[process.argv.indexOf('--players') + 1]) || 4;
 const proxy = await addressProxy(A.url);
 const BASE = proxy.url;
 
@@ -31,11 +35,11 @@ async function pick(P, row, value) {
   throw new Error(`option ${value} not found`);
 }
 
-async function newGame(P, humans) {
+async function newGame(P, players) {
   await press(P, '#btn-new');
   await waitFor(P, () => document.querySelector('.m-new.open'), { label: 'new game sheet' });
   await sleep(300);
-  await pick(P, 1, String(humans));
+  await pick(P, 1, String(players));
   await pick(P, 2, '4');
   if (A.has('gedraaid')) await pick(P, 3, 'Gedraaid');
   await pick(P, 6, 'Snel');
@@ -56,10 +60,29 @@ async function playLoop(P, stats, reloadAfter = 0) {
       over: !!document.querySelector('.m-over.open'),
       trump: !!document.querySelector('.panel-trump .suit-btn:not(:disabled)'),
       bid: !!document.querySelector('.panel-bid .btn-go:not(:disabled)'),
+      auction: !!document.querySelector('.panel-auction .btn-pass:not(:disabled)'),
+      discard: !!document.querySelector('.panel-discard'),
       play: !!document.querySelector('.hand.my-turn .card.legal'),
       summary: !!document.querySelector('.m-summary.open .btn-go:not(:disabled)'),
     }));
     if (st.over) return;
+    if (st.auction) {
+      await press(P, Math.random() < 0.4 ? '.panel-auction .btn-go' : '.panel-auction .btn-pass');
+      stats.bids++;
+      await sleep(120);
+      continue;
+    }
+    if (st.discard) {
+      // Two cards, then Wegleggen; the button only works with two chosen.
+      for (const el of (await P.page.$$('.hand .card:not(.picked)')).slice(0, 2 - (await P.page.$$('.hand .card.picked')).length)) {
+        await pressEl(P, el);
+        await sleep(150);
+      }
+      await press(P, '.panel-discard .btn-go:not(:disabled)', { timeout: 3000 }).catch(() => {});
+      stats.discards = (stats.discards || 0) + 1;
+      await sleep(120);
+      continue;
+    }
     if (st.trump) {
       await press(P, '.panel-trump .suit-btn.advised:not(:disabled), .panel-trump .suit-btn:not(:disabled)');
       stats.trumps++;
@@ -121,7 +144,7 @@ async function run(name) {
   try {
     await P.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
     await type(P, '#name', 'Tester');
-    await newGame(P, 1);
+    await newGame(P, PLAYERS);
     await press(P, '#btn-start:not(:disabled)');
     await playLoop(P, stats, 3);
     await sleep(800);
@@ -136,8 +159,8 @@ async function run(name) {
     await waitFor(P, () => !document.querySelector('.m-over') && document.querySelector('.hand .card') && document.querySelector('.potje-n b')?.textContent === '1',
       { label: 'rematch dealt' });
     const fresh = await P.page.$$eval('.sp-num', els => els.map(e => Number(e.dataset.n ?? e.textContent)));
-    if (fresh.some(n => n !== 0)) throw new Error(`rematch starts at ${fresh}, want 0-0`);
-    console.log(`  ${P.name}: game over in ${Math.round((Date.now() - t0) / 1000)} s, ${stats.plays} cards, ${stats.trumps} trump choices, ${stats.bids} bids, totals ${totals}`);
+    if (fresh.some(n => n !== 0)) throw new Error(`rematch starts at ${fresh}, want all 0`);
+    console.log(`  ${P.name}: game over in ${Math.round((Date.now() - t0) / 1000)} s, ${stats.plays} cards, ${stats.trumps} trump choices, ${stats.bids} bids${stats.discards ? `, ${stats.discards} discards` : ''}, totals ${totals}`);
   } catch (e) {
     await shot(P, 'zz-failure').catch(() => {});
     P.errors.push(`[${P.name}] ${e.message || e}`);

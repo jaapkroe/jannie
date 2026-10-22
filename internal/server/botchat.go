@@ -108,7 +108,7 @@ func (r *room) aiChat(id string, ev ChatEvent) (text string) {
 // botsReact offers ev to the bots in random order until n of them spoke;
 // mk adapts the event per bot. Later lines get a little more delay.
 func (r *room) botsReact(n int, delay time.Duration, mk func(i game.Seat) (ChatEvent, bool)) {
-	order := r.rng.Perm(4)
+	order := r.rng.Perm(r.players())
 	for _, k := range order {
 		if n == 0 {
 			return
@@ -133,22 +133,24 @@ func (r *room) greet() {
 }
 
 // chatTrump: the bot that made trump comments on it; if it says nothing (or
-// a human chose), a bot of the other team may comment instead.
+// a human chose), a bot of the other side may comment instead.
 func (r *room) chatTrump(maker game.Seat) {
 	if r.botSay(maker, ChatEvent{Kind: "trump", Mine: true}, 700*time.Millisecond) {
 		return
 	}
+	d := r.deal
 	r.botsReact(1, 1200*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
-		return ChatEvent{Kind: "trump"}, i.Team() != maker.Team()
+		return ChatEvent{Kind: "trump"}, d.Side(i) != d.Side(maker)
 	})
 }
 
 // chatTrick: comments on roem, a big trick, or a partner's good trick.
 func (r *room) chatTrick(t game.Trick) {
-	team := t.Winner.Team()
+	d := r.deal
+	team := d.Side(t.Winner)
 	if roem := t.RoemTotal(); roem > 0 {
 		r.botsReact(1, 900*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
-			return ChatEvent{Kind: "roem", Mine: i.Team() == team, Points: roem}, true
+			return ChatEvent{Kind: "roem", Mine: d.Side(i) == team, Points: roem}, true
 		})
 		return
 	}
@@ -160,18 +162,20 @@ func (r *room) chatTrick(t game.Trick) {
 		return
 	}
 	// A human took it: the partner praises it, or else an opponent sighs.
-	if r.botSay(t.Winner.Partner(), ChatEvent{Kind: "partnerGood", Mine: true, Points: t.Points}, 700*time.Millisecond) {
+	if p := d.Partner(t.Winner); p != game.NoSeat &&
+		r.botSay(p, ChatEvent{Kind: "partnerGood", Mine: true, Points: t.Points}, 700*time.Millisecond) {
 		return
 	}
 	r.botsReact(1, 900*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
-		return ChatEvent{Kind: "wonTrick", Points: t.Points}, i.Team() != team
+		return ChatEvent{Kind: "wonTrick", Points: t.Points}, d.Side(i) != team
 	})
 }
 
 // chatHandEnd: one bot comments on pit, nat or the result.
 func (r *room) chatHandEnd(res game.HandResult) {
+	d := r.deal
 	r.botsReact(1, 1500*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
-		team := i.Team()
+		team := d.Side(i)
 		switch {
 		case res.Pit:
 			return ChatEvent{Kind: "pit", Mine: team == res.PitTeam, Points: game.PitBonus}, true
@@ -193,7 +197,7 @@ func (r *room) chatGameOver() {
 		return
 	}
 	r.botsReact(2, 1800*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
-		if i.Team() == r.winner {
+		if game.ScorerOf(i, r.players()) == r.winner {
 			return ChatEvent{Kind: "gameWon", Mine: true}, true
 		}
 		return ChatEvent{Kind: "gameLost", Mine: true}, true
@@ -202,7 +206,9 @@ func (r *room) chatGameOver() {
 
 // botReply: now and then a bot answers a human's chat line. The event says
 // whether the bot is the speaker's partner and, while tricks are played,
-// whether the bot's team made trump: "Nat!" means something else then.
+// whether the bot's side made trump: "Nat!" means something else then.
+// With fewer than four players partners exist only within a hand: the
+// soloist's two opponents.
 func (r *room) botReply(from game.Seat, text string) {
 	if r.rng.Float64() > 0.6 {
 		return
@@ -213,7 +219,15 @@ func (r *room) botReply(from game.Seat, text string) {
 		playing = r.deal.PlayingTeam()
 	}
 	r.botsReact(1, 1400*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
-		return ChatEvent{Kind: "reply", Text: text, Mine: i.Team() == from.Team(),
-			InHand: inHand, Playing: i.Team() == playing}, i != from
+		partner := i.Team() == from.Team()
+		side := i.Team()
+		if r.players() != 4 {
+			partner, side = false, -2
+			if r.deal != nil {
+				partner, side = r.deal.Partner(i) == from, r.deal.Side(i)
+			}
+		}
+		return ChatEvent{Kind: "reply", Text: text, Mine: partner,
+			InHand: inHand, Playing: side == playing}, i != from
 	})
 }
