@@ -23,11 +23,18 @@ interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
   shown as "Naam (AI)", at three strengths. The strongest counts cards, infers
   voids and gives and reads signals. They fill empty seats and chat in
   character.
+- **No AI plays a seat unasked.** When a player loses the connection or
+  leaves, the game waits for them; an AI stands in only when everyone else at
+  the table agrees, and a friend with the code can take a seat that was left.
 - **Easy to follow**: cards fly to the table, the winning card lights up, tricks
   slide to their winner, roem and trump get a banner, and short pauses let
   every move register. Sound effects are synthesised in the browser.
 - **Score sheet, last trick and the whole previous hand** to look back on;
   chat with quick reactions.
+- **Spelanalyse** at the end of a game of four, for each player alone: a
+  percentage for their own choices, judged by the strongest bot from what
+  they knew at the time, how good their cards were, and the moves that
+  gained or left the most points, each with its trick.
 - **Handleiding**: the controls, the rules (also for two and three players),
   card values, roem, signals (*seinen*, also called *voorkaarten*), tips and a
   glossary.
@@ -64,8 +71,8 @@ cd test/ui
 node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # full games by tapping, reload, rematch
 node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
 node app-play.mjs ... --players 3 | --players 2                                  # the auction and laying away; the piles
-node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at five sizes, into test/ui/out/
-node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 26 behaviour checks (coach, taps, back button, lost socket, full table, summary on a phone…); needs -fast, ~15 min
+node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at six sizes, into test/ui/out/
+node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 28 behaviour checks (coach, taps, back button, lost socket, full table, takeover vote, summary on a phone, card corners…); needs -fast, ~15 min
 node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image
 ```
 

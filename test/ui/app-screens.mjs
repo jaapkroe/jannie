@@ -1,4 +1,4 @@
-// Drives the app through every screen at five viewport sizes and saves
+// Drives the app through every screen at six viewport sizes and saves
 // screenshots to test/ui/out/. Fails on console errors, uncaught exceptions,
 // failed requests or horizontal overflow.
 //
@@ -197,7 +197,17 @@ async function mainFlow(P) {
 
   await playUntil(P, '.m-over.open');
   await sleep(1200);
+  await waitFor(P, () => document.querySelector('.m-over .review-line:not([hidden]):not(:disabled)'), { label: 'review line' });
   await snap(P, '14-game-over');
+
+  await press(P, '.m-over .review-line');
+  await waitFor(P, () => document.querySelector('.m-review.open'), { label: 'review' });
+  await sleep(300);
+  await snap(P, '14b-review');
+  await press(P, '.m-review .rv-moment:not(:disabled)');
+  await waitFor(P, () => document.querySelector('.m-last.open'), { label: 'review moment' });
+  await sleep(300);
+  await snap(P, '14c-review-moment');
 }
 
 // Gedraaid: the bidding panel.
@@ -215,7 +225,10 @@ async function trainingFlow(P) {
   await home(P);
   await press(P, '#btn-train');
   await waitFor(P, () => document.querySelector('.m-train.open'), { label: 'training sheet' });
+  // A tap while the sheet still slides in can miss the switch.
+  await waitFor(P, () => !document.querySelector('.m-train').getAnimations({ subtree: true }).some(a => a.effect.getComputedTiming().endTime < Infinity), { label: 'training sheet in place' });
   await press(P, '.m-train .switch input');
+  await waitFor(P, () => document.querySelector('.m-train .switch input:checked'), { label: 'open cards switched on' });
   await press(P, '#btn-train-go');
   await playUntil(P, '.hand.my-turn .card.hint', { timeout: 60000 });
   await sleep(500);

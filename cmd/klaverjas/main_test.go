@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"math/rand/v2"
 	"net"
 	"net/http"
@@ -117,6 +118,9 @@ func TestBotAI(t *testing.T) {
 		}
 		mode := game.TrumpMode(k % 2)
 		d := game.NewDeal(game.Seat(k%4), game.Shuffle(rng), mode, game.Rules(k/2%2), game.Suit(k))
+		if l := ai.HandLuck(d.View(0)); l == 0 || math.Abs(l) > 200 {
+			t.Errorf("hand luck %v", l)
+		}
 		for d.Phase() != game.PhaseDone {
 			s := d.Turn()
 			v := d.View(s)
@@ -130,10 +134,15 @@ func TestBotAI(t *testing.T) {
 			case game.PhaseBid:
 				err = d.Bid(s, brains[s].Bid(v))
 			case game.PhasePlay:
-				if a := ai.Advise(v); a.Card == nil || !slices.Contains(v.Legal, *a.Card) {
+				a := ai.Advise(v)
+				if a.Card == nil || !slices.Contains(v.Legal, *a.Card) {
 					t.Errorf("play advice %+v for legal %v", a, v.Legal)
 				}
-				err = d.Play(s, brains[s].Play(v))
+				c := brains[s].Play(v)
+				if g := ai.Grade(v, server.Choice{Card: &c}); g.Lost > 0 && (g.Better.Card == nil || *g.Better.Card != *a.Card || g.Text != a.Text) {
+					t.Errorf("grade %+v of %v, advice %+v", g, c, a)
+				}
+				err = d.Play(s, c)
 				if tr := d.Current(); tr.Complete() {
 					if text := ai.ExplainTrick(tr, v.Trump, [4]string{"Jij", "Opa Dirk (AI)", "Juf Ans (AI)", "Bram (AI)"}); text == "" {
 						t.Errorf("no explanation for trick %+v", tr)

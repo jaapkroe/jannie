@@ -131,6 +131,7 @@ export const CONTENT = {
     { h: 'Na elk potje' },
     { p: 'Na de laatste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle slagen. Tik op een slag om te zien wie wat speelde. Het volgende potje begint na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt.' },
     { p: 'Na het laatste potje wint het koppel met de meeste punten, of met z’n drieën of tweeën de speler met de meeste punten. De host kan met [Nog een partij] meteen opnieuw beginnen, met dezelfde spelers en spelregels.' },
+    { p: 'Onder de eindstand staat **Jouw spelanalyse**: een percentage voor je eigen keuzes, berekend door de game engine met alleen wat jij op dat moment wist. Tik erop voor hoe je kaarten waren, je sterkste zetten en waar punten bleven liggen. Alleen jij ziet je eigen analyse. De analyse is er alleen bij een spel met z’n vieren.' },
     { p: 'Wil je eerst iets veranderen, of is er nog iemand bij gekomen? Met [Spelers of regels wijzigen] gaat de tafel terug naar Klaarzetten, met dezelfde spelcode. De AI-spelers die bij de start de lege plaatsen opvulden, staan dan weer op, zodat vrienden kunnen aanschuiven (zet zo nodig **Spelers** hoger), en de host kan de spelregels aanpassen.' },
 
     { h: 'Oefenen' },
@@ -151,8 +152,10 @@ export const CONTENT = {
       ul: [
         'Je plaats blijft van jou. Open het spel opnieuw in dezelfde browser en je zit weer op je plek, ook midden in een potje.',
         'Op een ander apparaat of in een andere browser? Doe mee met de spelcode en precies dezelfde naam. Ben je minstens drie minuten weg geweest, dan krijg je je plaats terug.',
-        'Ben je weg terwijl je aan de beurt bent, dan speelt na 20 seconden een AI-speler voor je, tot je terug bent.',
-        'Kies je **Spel verlaten**, dan neemt een AI-speler je plaats in. Iemand anders kan die plaats met de spelcode overnemen.',
+        'Niemand speelt zomaar voor je. Ben je weg terwijl je aan de beurt bent, dan wacht het spel op je. Na tien seconden vraagt het de anderen of een AI-speler zolang voor je mag spelen. Dat gebeurt alleen als iedereen akkoord is. Ben je terug, dan speel je zelf weer.',
+        'Kies je **Spel verlaten**, dan blijft je plaats vrij voor wie met de spelcode aanschuift. Op jouw beurt vraagt het spel de anderen of een AI-speler je plaats mag innemen, ook dan alleen als iedereen akkoord is.',
+        'Is iemand anders weg of vertrokken, dan krijg jij die vraag. Tik op [AI laten spelen] of [Wachten]. Je ziet wie al akkoord is, en je kunt van gedachten veranderen zolang de vraag openstaat.',
+        'Speel je alleen met AI-spelers, zoals bij Snel spelen of Oefenen, dan valt er niets te vragen: het spel wacht tot je terug bent.',
         'Zit er geen enkele mens meer aan tafel, dan wacht het spel, tot een half uur lang. Is het spel nog niet begonnen of al afgelopen, dan wordt de tafel na vijf minuten zonder spelers opgeruimd.',
       ],
     },
@@ -514,7 +517,7 @@ export const CONTENT = {
       ul: [
         'Speel tegen de AI-spelers op **Makkelijk**, dan **Normaal** en dan **Sterk**. Elke stap leert je iets nieuws.',
         'Gebruik **Oefenen**: Juf Ans geeft bij elke zet een tip en legt na elke slag uit wat er gebeurde.',
-        'Bekijk de **laatste slag** en het **scorebord** om te zien waar het potje gewonnen of verloren werd.',
+        'Bekijk de **laatste slag** en het **scorebord** om te zien waar het potje gewonnen of verloren werd, en na de partij **Jouw spelanalyse**.',
       ],
     },
     { tip: 'Geen haast: je hebt alle tijd om na te denken. Niemand aan tafel heeft een klok.' },

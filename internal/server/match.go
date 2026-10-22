@@ -167,6 +167,9 @@ func (r *room) startMatch() {
 	for i := range r.seats {
 		st := &r.seats[i]
 		st.ready = false
+		// The others let an AI play for an absent player in the match that
+		// ended: in this one they are waited for and asked again.
+		st.away, st.asked = false, false
 		if st.kind == seatBot {
 			st.brain = r.newBrain(st.persona.ID, r.opts.AI)
 		}
@@ -179,6 +182,7 @@ func (r *room) startMatch() {
 	r.lastTrick = nil
 	r.winner = -1
 	r.overAt = time.Time{}
+	r.startReviews()
 	r.log.Info("match started", "players", r.players(), "humans", r.humanCount(), "hands", r.opts.Hands,
 		"trumpMode", r.opts.TrumpMode.String(), "rules", r.opts.Rules.String(), "ai", r.opts.AI, "training", r.training)
 	r.startHand()
@@ -204,6 +208,7 @@ func (r *room) startHand() {
 		r.seats[i].ready = false
 	}
 	r.pause(stepDealt, r.pace().deal)
+	r.gradeHands()
 	r.emit(evDeal{Type: "deal", HandNo: r.handNo, Dealer: dealer})
 	r.drive()
 }
@@ -218,6 +223,7 @@ func (r *room) pause(s step, d time.Duration) {
 // cache key.
 func (r *room) openTurn() {
 	r.turnAt = time.Now()
+	r.openedAt = r.turnAt
 	r.step++
 	r.think = r.thinkTime(r.deal.Turn())
 }
@@ -238,9 +244,9 @@ func (r *room) thinkTime(i game.Seat) time.Duration {
 }
 
 // drive schedules whatever happens next: the end of a pause, a bot's move,
-// or a substitute for a human who is away. It cancels everything scheduled
-// before, so it is called after every state change. A bot decides once per
-// turn however often drive runs (see botMove).
+// or the question about a human who dropped out on their turn. It cancels
+// everything scheduled before, so it is called after every state change. A
+// bot decides once per turn however often drive runs (see botMove).
 func (r *room) drive() {
 	r.gen++
 	if r.timer != nil {
@@ -269,16 +275,17 @@ func (r *room) drive() {
 	}
 	st := &r.seats[turn]
 	switch {
-	case st.kind == seatBot:
+	case r.botPlays(turn):
 		r.botMove(turn, r.turnAt.Add(r.think))
-	case st.client != nil:
-		// A connected human: their move, no time limit.
-	case st.away:
-		r.botMove(turn, latest(r.turnAt, st.awayAt).Add(r.think))
-	default:
-		due := latest(r.turnAt, st.leftAt).Add(r.scaled(awayAfter))
-		r.after(time.Until(due), func() { r.goAway(turn) })
+	case st.kind == seatHuman && st.client == nil && !st.asked:
+		// Gone on their turn: after a while the others are asked whether
+		// an AI may play for them meanwhile.
+		due := latest(r.openedAt, st.leftAt).Add(r.scaled(askAfter))
+		r.after(time.Until(due), func() { r.ask(turn) })
 	}
+	// Anyone else is waited for, without a time limit: a connected human,
+	// and an absent player until they return, someone takes their seat or
+	// everyone lets an AI play it (see question).
 }
 
 func latest(a, b time.Time) time.Time {
@@ -390,20 +397,6 @@ func (r *room) applyBot(i game.Seat) {
 	}
 }
 
-// goAway lets a substitute play for a human who is still disconnected on
-// their turn.
-func (r *room) goAway(i game.Seat) {
-	st := &r.seats[i]
-	if st.kind != seatHuman || st.client != nil || st.away {
-		return
-	}
-	st.away = true
-	st.awayAt = time.Now()
-	r.sysChat("%s is even weg; een AI-speler neemt zolang de beurten over.", st.name)
-	r.emit(evSeat{Type: "away", Seat: i})
-	r.drive()
-}
-
 var errPaused = errors.New("Even geduld, het spel gaat zo verder.")
 
 // humanAct applies a decision of a connected human and reports errors.
@@ -416,12 +409,19 @@ func (r *room) humanAct(c *client, i game.Seat, a action) {
 	if a.kind == actPlay {
 		r.missed = miss // explained with the trick
 	}
+	v, graded := r.beforeChoice(i, a)
 	err := r.act(i, a)
 	switch {
 	case err != nil:
 		r.missed = nil
+		if graded {
+			r.reviewOf(i).roemAt = 0
+		}
 	case miss != nil && a.kind != actPlay:
 		r.misses = append(r.misses, *miss) // explained with the first trick
+	}
+	if err == nil && graded {
+		r.gradeChoice(i, v, a)
 	}
 	switch {
 	case err == nil:
@@ -515,6 +515,7 @@ func (r *room) act(i game.Seat, a action) error {
 			roem = []game.RoemItem{}
 		}
 		r.emit(evTrick{Type: "trick", Winner: t.Winner, Points: t.Points, Roem: roem, Last: d.Phase() == game.PhaseDone})
+		r.reviewTrick(t)
 		r.sendTips(t)
 		r.chatTrick(t)
 	default:
@@ -593,23 +594,18 @@ func (r *room) missedText(i game.Seat, m *missedHint) string {
 		who = p.persona.Name
 	}
 	h := &m.hint
-	var advised, app, why string
-	ok := false
+	var advised string
 	switch {
 	case h.Card != nil:
-		cs := game.CardShortNL(*h.Card)
-		advised = "had " + cs + " aangeraden"
-		app, why, ok = cardWhy(h.Text, cs)
+		advised = "had " + game.CardShortNL(*h.Card) + " aangeraden"
 	case h.Suit != nil:
 		advised = "had " + h.Suit.Symbol() + " als troef aangeraden"
-		_, why, ok = strings.Cut(h.Text, "Kies "+h.Suit.Symbol()+" als troef: ")
 	case h.Play != nil && *h.Play:
 		advised = "had aangeraden om te spelen"
-		why, ok = strings.CutPrefix(h.Text, "Spelen: ")
 	case h.Play != nil:
 		advised = "had aangeraden om te passen"
-		why, ok = strings.CutPrefix(h.Text, "Passen: ")
 	}
+	app, why, ok := splitHint(h)
 	switch {
 	case ok && why != "" && app != "":
 		return who + " " + advised + ", " + app + ": " + why
@@ -619,6 +615,24 @@ func (r *room) missedText(i game.Seat, m *missedHint) string {
 		return who + " " + advised + "."
 	}
 	return who + " " + advised + ". " + h.Text
+}
+
+// splitHint splits the text of hint h into its reason and, for a card,
+// what the opening says of the card besides naming it (app). The opening
+// only names the advice: "Speel ♣9: ", "Kies ♥ als troef: ", "Passen: ".
+// ok is false for a hint that opens otherwise (see cardWhy).
+func splitHint(h *hint) (app, why string, ok bool) {
+	switch {
+	case h.Card != nil:
+		return cardWhy(h.Text, game.CardShortNL(*h.Card))
+	case h.Suit != nil:
+		_, why, ok = strings.Cut(h.Text, "Kies "+h.Suit.Symbol()+" als troef: ")
+	case h.Play != nil && *h.Play:
+		why, ok = strings.CutPrefix(h.Text, "Spelen: ")
+	case h.Play != nil:
+		why, ok = strings.CutPrefix(h.Text, "Passen: ")
+	}
+	return "", why, ok
 }
 
 // cardVerbs open a card hint that names the card right after them.
@@ -730,6 +744,7 @@ func (r *room) endHand() {
 		r.total[k] += g
 	}
 	r.prev = &prevHand{Tricks: d.Tricks(), Result: res}
+	r.handTricks = append(r.handTricks, d.Tricks())
 	r.phase = phaseHandEnd
 	for i := range r.seats {
 		r.seats[i].ready = false

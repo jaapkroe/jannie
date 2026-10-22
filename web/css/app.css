@@ -98,6 +98,19 @@ button:disabled {
   display: none !important;
 }
 
+/* For screen readers only. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 h1,
 h2,
 h3 {
@@ -397,14 +410,15 @@ body[data-screen="game"] #game {
 
 .rule:not(.mine) .ss.red,
 .toast .ss.red,
-.msg .ss.red {
+.msg .ss.red,
+.rv-text .ss.red {
   color: #ff7a85;
 }
 
 .four-color .ss[data-suit="C"] { color: #13813b; }
 .four-color .ss[data-suit="D"] { color: #1557c0; }
-.four-color :is(.rule:not(.mine), .toast, .msg) .ss[data-suit="C"] { color: #5fd38a; }
-.four-color :is(.rule:not(.mine), .toast, .msg) .ss[data-suit="D"] { color: #7cb3ff; }
+.four-color :is(.rule:not(.mine), .toast, .msg, .rv-text) .ss[data-suit="C"] { color: #5fd38a; }
+.four-color :is(.rule:not(.mine), .toast, .msg, .rv-text) .ss[data-suit="D"] { color: #7cb3ff; }
 
 .wij {
   --team: var(--wij);
@@ -1657,7 +1671,8 @@ body.busy::after {
   animation: kj-turn 1.3s ease-in-out infinite;
 }
 
-.seat.empty .ring {
+.seat.empty .ring,
+.seat.left .ring {
   opacity: 0.5;
 }
 
@@ -1716,6 +1731,16 @@ body.busy::after {
   font-weight: 800;
   color: var(--gold-hi);
   white-space: nowrap;
+}
+
+/* A status longer than a narrow side seat ("AI speelt even mee") wraps
+   inside its plate instead of running off the screen. */
+.seat-left .st,
+.seat-right .st {
+  max-width: calc(var(--side-w) - 20px);
+  white-space: normal;
+  text-align: center;
+  line-height: 1.1;
 }
 
 .dealer-chip {
@@ -1804,8 +1829,11 @@ body.busy::after {
   margin-left: 0;
 }
 
+/* Stacked downwards, each card shows its top 0.68 card widths: room for
+   an index 1.2 times the regular one (cards.css), suit included. */
 .seat-left .backs.open,
 .seat-right .backs.open {
+  --card-index-max: 1.2;
   flex-direction: column;
   align-items: center;
 }
@@ -1914,8 +1942,16 @@ body.busy::after {
   min-height: 0;
 }
 
+/* The trick's cards overlap at their corners, so they keep the regular
+   index (cards.css), and whatever the play order each keeps one corner
+   index in view: the top and left cards their top-left one, the bottom and
+   right cards their bottom-right one. The left card sits a little low and
+   the right card a little high, so a winner there, scaled up with its
+   ring, stays clear of the top and bottom cards' corners (app-checks.mjs
+   --only corners measures it). */
 .trick {
   --card-w: var(--trick-w);
+  --card-index-max: 1;
   position: absolute;
   left: 50%;
   top: 50%;
@@ -1933,8 +1969,8 @@ body.busy::after {
 
 .slot-bottom { translate: 0 calc(var(--trick-w) * 0.62); }
 .slot-top { translate: 0 calc(var(--trick-w) * -0.62); }
-.slot-left { translate: calc(var(--trick-w) * -0.84) 0; }
-.slot-right { translate: calc(var(--trick-w) * 0.84) 0; }
+.slot-left { translate: calc(var(--trick-w) * -0.84) calc(var(--trick-w) * 0.2); }
+.slot-right { translate: calc(var(--trick-w) * 0.84) calc(var(--trick-w) * -0.2); }
 
 .slot > .card {
   position: absolute;
@@ -1970,6 +2006,18 @@ body.busy::after {
 .stage.mine {
   align-items: end;
   padding-bottom: 10px;
+}
+
+/* The takeover question also takes the prompt row, whose line ("… is aan
+   de beurt") it says itself: as low as it goes, so the trick and the side
+   seats stay in view. */
+.stage.ask {
+  grid-area: 2 / 1 / 4 / 4;
+  padding-bottom: 4px;
+}
+
+.table.asking .rule {
+  visibility: hidden;
 }
 
 .panel {
@@ -2162,6 +2210,192 @@ body.busy::after {
 
   .panel-bid .panel-hint {
     grid-column: 1 / -1;
+  }
+}
+
+/* The takeover question: may an AI play for someone who is gone? Who
+   agrees so far, then two big answers like the bid panel's. */
+.panel-vote {
+  width: min(100%, 480px);
+}
+
+.vote-q {
+  margin: -2px 0 10px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+
+.vote-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.vote-btns .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 54px;
+  padding: 0 12px;
+  font-size: 17px;
+  font-weight: 900;
+  border-radius: 16px;
+}
+
+.vote-btns .btn .icon {
+  display: none;
+  stroke-width: 3;
+}
+
+/* The answer given carries a tick and a dark ring inside, apart from the
+   gold focus ring outside; the other steps back (a duller face, its text
+   still clear) but stays a tap away, for a change of mind. */
+.vote-btns .btn.chosen .icon {
+  display: block;
+}
+
+.vote-btns .btn-go.chosen {
+  box-shadow: inset 0 0 0 3px var(--gold-ink), inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 4px 0 #a96d10, 0 10px 24px rgba(242, 182, 50, 0.25);
+}
+
+.vote-btns .btn-pass.chosen {
+  box-shadow: inset 0 0 0 3px #3b3427, 0 4px 0 #a99f88, 0 10px 20px rgba(0, 0, 0, 0.25);
+}
+
+.answered .vote-btns .btn-go:not(.chosen) {
+  background: linear-gradient(180deg, #e8d7a6, #c9ad69);
+  box-shadow: 0 2px 0 #8a6d33;
+}
+
+.answered .vote-btns .btn-pass:not(.chosen) {
+  background: linear-gradient(180deg, #d3ccbc, #b6ae9b);
+  box-shadow: 0 2px 0 #807865;
+}
+
+/* Answered: the question itself is read out with the buttons
+   (aria-describedby) but no longer takes room on the table. */
+.panel-vote.answered .vote-q {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The chips run on from the rule. */
+.vote-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.vote-rule {
+  margin-right: 2px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.vote-list {
+  display: contents;
+}
+
+.vote-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.vote-chip .icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
+}
+
+.vote-name {
+  max-width: 9.5em;
+}
+
+.vote-st {
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.vote-st.open .dots i {
+  width: 4px;
+  height: 4px;
+  margin-left: 2px;
+}
+
+.vote-chip.yes {
+  background: color-mix(in srgb, var(--team) 30%, transparent);
+  color: var(--ink);
+}
+
+.vote-chip.yes .vote-st {
+  color: var(--ink);
+}
+
+.vote-chip.no {
+  background: rgba(242, 193, 78, 0.16);
+  color: var(--ink);
+}
+
+.vote-chip.no .vote-st {
+  color: var(--gold-hi);
+}
+
+/* Phones upright: compact, so the side seats (often the one it is about)
+   and the trick stay in view. */
+@media (max-width: 599px) {
+  .panel-vote {
+    padding: 8px 12px;
+  }
+
+  .panel-vote .panel-title {
+    margin-bottom: 3px;
+    font-size: 16px;
+  }
+
+  .vote-q {
+    margin-bottom: 8px;
+    font-size: 13px;
+    line-height: 1.3;
+  }
+
+  .vote-btns {
+    gap: 8px;
+  }
+
+  .vote-btns .btn {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .vote-who {
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .vote-chip {
+    padding: 3px 8px;
+  }
+
+  .vote-name {
+    max-width: 7em;
   }
 }
 
@@ -3904,6 +4138,234 @@ body.busy::after {
   margin: 0;
 }
 
+/* The line that opens the review (spelanalyse). */
+.review-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 14px;
+  padding: 8px 10px 8px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.review-line b {
+  font-weight: 900;
+  color: var(--gold-hi);
+}
+
+.review-line:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.review-line:disabled {
+  color: var(--ink-3);
+}
+
+.review-line .icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--ink-3);
+}
+
+/* the review */
+
+.m-review > .dialog {
+  width: min(100%, 540px);
+}
+
+.rv-head {
+  text-align: center;
+}
+
+.rv-pct {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+}
+
+.rv-pct b {
+  font-size: 44px;
+  font-weight: 900;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-hi);
+}
+
+.rv-pct span {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.rv-pct .info-btn {
+  align-self: center;
+}
+
+.rv-head small {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.rv-table {
+  width: 100%;
+  margin: 12px 0 4px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.rv-table th,
+.rv-table td {
+  padding: 5px 4px;
+  border-top: 1px solid var(--line);
+}
+
+.rv-table th {
+  text-align: left;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.rv-table th .info-btn {
+  margin: -4px 0 -4px 2px;
+}
+
+.rv-table td {
+  text-align: right;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rv-risky {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.rv-sec h3 {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.rv-sec h3 small {
+  font-size: inherit;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.rv-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rv-moment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  padding: 8px 8px 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.rv-moment:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.rv-where {
+  grid-column: 1;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+
+.rv-text {
+  grid-column: 1;
+  color: var(--ink-2);
+}
+
+.rv-text b {
+  color: var(--ink);
+}
+
+.rv-moment .icon {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  width: 18px;
+  height: 18px;
+  color: var(--ink-3);
+}
+
+.rv-moment:disabled .icon {
+  visibility: hidden;
+}
+
+.rv-prev {
+  margin: 14px 0 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.rv-prev b {
+  font-variant-numeric: tabular-nums;
+}
+
+.rv-hand-cap {
+  margin: 0 0 10px;
+  color: var(--ink-2);
+}
+
+.rv-hand {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* The review line takes the room of the decoration on a short phone: the
+   last hand is on the score sheet too. */
+@media (orientation: portrait) and (max-height: 760px) {
+  .m-over.with-review .over-emoji {
+    display: none;
+  }
+}
+
+@media (orientation: portrait) and (max-height: 680px) {
+  .m-over.with-review .over-last {
+    display: none;
+  }
+}
+
 .confetti {
   position: absolute;
   inset: 0;
@@ -4246,6 +4708,36 @@ body.chat-open .chat-scrim {
     font-size: 40px;
   }
 
+  /* With the review line everything still fits above the fold. */
+  :where(html:not(.kb)) .m-over.with-review .over-sub {
+    display: none;
+  }
+
+  :where(html:not(.kb)) .m-over.with-review .over-title {
+    font-size: 32px;
+  }
+
+  :where(html:not(.kb)) .m-over.with-review .over-score {
+    margin: 6px 0 8px;
+  }
+
+  :where(html:not(.kb)) .m-over.with-review .os {
+    padding: 4px 12px;
+  }
+
+  :where(html:not(.kb)) .m-over.with-review .os b {
+    font-size: 26px;
+  }
+
+  :where(html:not(.kb)) .m-over.with-review .btn {
+    min-height: 44px;
+  }
+
+  :where(html:not(.kb)) .review-line {
+    min-height: 40px;
+    margin-bottom: 8px;
+  }
+
   :where(html:not(.kb)) .over-score {
     margin: 10px 0;
   }
@@ -4306,6 +4798,7 @@ body.chat-open .chat-scrim {
   :where(html:not(.kb)) .seat-left .backs.open,
   :where(html:not(.kb)) .seat-right .backs.open {
     --card-w: clamp(24px, 7.5dvh, 32px);
+    --card-index-max: initial;
     flex-direction: row;
   }
 
@@ -4360,6 +4853,69 @@ body.chat-open .chat-scrim {
   :where(html:not(.kb)) .panel-bid .turned {
     grid-row: span 2;
     margin: 0;
+  }
+
+  /* The question and who agrees so far beside the answers, which keep to
+     the foot of the panel: low, and once answered (the question out of
+     sight) lower still. */
+  :where(html:not(.kb)) .panel-vote {
+    display: grid;
+    grid-template-columns: minmax(0, auto) auto;
+    column-gap: 16px;
+    width: fit-content;
+    max-width: min(100%, 620px);
+    padding: 8px 10px 8px 14px;
+    text-align: left;
+  }
+
+  :where(html:not(.kb)) .panel-vote .panel-title {
+    grid-column: 1;
+    margin-bottom: 2px;
+    font-size: 16px;
+  }
+
+  :where(html:not(.kb)) .vote-q {
+    grid-column: 1;
+    margin: 0 0 4px;
+    font-size: 12.5px;
+    line-height: 1.3;
+  }
+
+  :where(html:not(.kb)) .vote-who {
+    grid-column: 1;
+    justify-content: flex-start;
+    gap: 4px;
+    margin: 0;
+  }
+
+  :where(html:not(.kb)) .vote-rule {
+    font-size: 12px;
+  }
+
+  :where(html:not(.kb)) .vote-chip {
+    padding: 3px 8px;
+    font-size: 12px;
+  }
+
+  :where(html:not(.kb)) .vote-name {
+    max-width: 6.5em;
+  }
+
+  /* Two equal answers, as wide as the longer one needs. */
+  :where(html:not(.kb)) .vote-btns {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: end;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  :where(html:not(.kb)) .vote-btns .btn {
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 14.5px;
+    white-space: nowrap;
   }
 
   /* The coach goes to the free top-left corner of the table instead of

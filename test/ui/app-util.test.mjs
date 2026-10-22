@@ -25,6 +25,7 @@ globalThis.document = { createElement: tag => new FakeNode(tag) };
 const {
   store, roemText, cap, playerName, keyboardOpen, textField, handHeadline, DEFAULT_NAME,
   posOf, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText, countWord,
+  reviewVerdict, luckText, momentWhere, strongLine, missedLine, reviewHistory,
 } = await import('../../web/js/util.js');
 
 test('store keeps values in memory when localStorage is blocked', () => {
@@ -227,4 +228,51 @@ test('the headline with two and three players names who played', () => {
 
 test('a player without a name is "Speler", as the server calls one', () => {
   assert.equal(DEFAULT_NAME, 'Speler');
+});
+
+test('the review states its numbers plainly', () => {
+  assert.equal(reviewVerdict(100), 'sterk gespeeld');
+  assert.equal(reviewVerdict(95), 'sterk gespeeld');
+  assert.equal(reviewVerdict(87), 'goed gespeeld');
+  assert.equal(reviewVerdict(82), 'goed gespeeld');
+  assert.equal(reviewVerdict(65), 'kan beter');
+  assert.equal(luckText(-6), 'Onder gemiddeld\u00a0(−6)');
+  assert.equal(luckText(8), 'Boven gemiddeld\u00a0(+8)');
+  assert.equal(luckText(1), 'Gemiddeld\u00a0(+1)');
+  assert.equal(luckText(0), 'Gemiddeld\u00a0(0)');
+  assert.equal(luckText(-4), 'Gemiddeld\u00a0(−4)');
+  assert.equal(momentWhere({ hand: 5, trick: 3 }), 'Potje 5, slag 3');
+  assert.equal(momentWhere({ hand: 9, trick: 0 }), 'Potje 9');
+});
+
+test('a review moment names the choice, the better one and the reason', () => {
+  const why = 'je maat heeft de slag nog niet en de aas is hoog';
+  assert.equal(missedLine({ played: { card: 'TS' }, better: { card: 'AS' }, points: 18, why, text: `Speel ♠A: ${why}` }),
+    `♠10 gespeeld, ♠A 18\u00a0punten beter: ${why}`);
+  assert.equal(missedLine({ played: { suit: 'H' }, better: { suit: 'C' }, points: 14, why: 'je hebt de boer.', text: '' }),
+    '♥ als troef, ♣ 14\u00a0punten beter: je hebt de boer.');
+  assert.equal(missedLine({ played: { play: false }, better: { play: true }, points: 12, why: 'x.' }), 'Gepast, spelen 12\u00a0punten beter: x.');
+  assert.equal(missedLine({ played: { play: true }, better: { play: false }, points: 1, why: 'x.' }), 'Gespeeld, passen 1\u00a0punt beter: x.');
+  // A hint that opens otherwise follows as a sentence of its own.
+  assert.equal(missedLine({ played: { card: '7H' }, better: { card: 'TH' }, points: 9, why: '', text: 'Je maat heeft de slag: spek hem.' }),
+    '♥7 gespeeld, ♥10 9\u00a0punten beter. Je maat heeft de slag: spek hem.');
+  assert.deepEqual(strongLine({ played: { card: 'AS' }, why: 'de aas is hoog.' }), { what: '♠A', rest: ': de aas is hoog.' });
+  assert.deepEqual(strongLine({ played: { suit: 'C' }, why: '', text: 'Kies dit.' }), { what: '♣ als troef', rest: '. Kies dit.' });
+  assert.deepEqual(strongLine({ played: { play: true }, why: 'x.' }), { what: 'Gespeeld', rest: ': x.' });
+});
+
+test('the review history on the device lists the earlier percentages once', () => {
+  mode = 'ok';
+  store.del('reviews');
+  assert.deepEqual(reviewHistory({ id: 'a', pct: 79 }), []);
+  assert.deepEqual(reviewHistory({ id: 'b', pct: 83 }), [79]);
+  assert.deepEqual(reviewHistory({ id: 'b', pct: 83 }), [79], 'the same match is kept once');
+  assert.deepEqual(reviewHistory({ id: 'c', pct: 87 }), [79, 83]);
+  assert.deepEqual(reviewHistory({ id: 'b', pct: 83 }), [79], 'an earlier match sees only the ones before it');
+  for (let i = 0; i < 30; i++) reviewHistory({ id: 'x' + i, pct: i });
+  assert.equal(store.json('reviews', []).length, 20);
+  assert.deepEqual(reviewHistory({ id: 'new', pct: 50 }), [25, 26, 27, 28, 29]);
+  store.set('reviews', '{"broken":');
+  assert.deepEqual(reviewHistory({ id: 'z', pct: 1 }), []);
+  store.del('reviews');
 });

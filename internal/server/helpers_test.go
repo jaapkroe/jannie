@@ -26,6 +26,8 @@ type fakeAI struct {
 	advised   atomic.Int64
 	explained atomic.Int64
 	greets    atomic.Int64
+	graded    atomic.Int64
+	lucked    atomic.Int64
 }
 
 var fakePersonas = []Persona{
@@ -55,6 +57,33 @@ func (a *fakeAI) Advise(v game.View) Advice {
 	}
 	c := v.Legal[0]
 	return Advice{Card: &c, Text: "Speel " + game.CardShortNL(c) + ": de eerste kaart die mag."}
+}
+
+// Grade agrees with Advise: another option loses 10 of 20 points, and the
+// advised card on a lead is a strong move of 12.
+func (a *fakeAI) Grade(v game.View, c Choice) Grade {
+	a.graded.Add(1)
+	adv := a.Advise(v)
+	a.advised.Add(-1)
+	g := Grade{Stake: 20, Text: adv.Text}
+	switch {
+	case c.Card != nil && *c.Card != *adv.Card,
+		c.Suit != nil && *c.Suit != *adv.Suit,
+		c.Play != nil && *c.Play != *adv.Play:
+		g.Lost, g.Better = 10, Choice{Card: adv.Card, Suit: adv.Suit, Play: adv.Play}
+	case c.Card != nil && len(v.Current.Cards) == 0:
+		g.Gain = 12
+	}
+	if c.Play != nil && *c.Play {
+		g.Nat = 0.5
+	}
+	return g
+}
+
+// HandLuck rates every hand 3 points above average.
+func (a *fakeAI) HandLuck(v game.View) float64 {
+	a.lucked.Add(1)
+	return 3
 }
 
 func (a *fakeAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
@@ -177,6 +206,18 @@ func (a *countAI) decisions() (n int, twice []string) {
 	return n, twice
 }
 
+// seatDecisions is the number of decisions made for seat i.
+func (a *countAI) seatDecisions(i int) (n int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for k, c := range a.turns {
+		if strings.Contains(k, fmt.Sprintf(" seat %d ", i)) {
+			n += c
+		}
+	}
+	return n
+}
+
 type countBrain struct{ a *countAI }
 
 // note counts a decision for the turn of v: the hand, phase, seat, cards
@@ -264,6 +305,7 @@ type tclient struct {
 	errc chan error
 
 	s      *state // latest state
+	resync bool   // joined: the next update may show what this connection missed
 	seq    int
 	code   string
 	seat   int
@@ -366,7 +408,13 @@ func (c *tclient) track(m *msg) {
 	switch m.T {
 	case "joined":
 		c.code, c.seat, c.token = m.Code, m.Seat, m.Token
+		c.resync = true
 	case "update":
+		prev := c.s
+		if c.resync {
+			prev, c.resync = nil, false
+		}
+		checkConsent(c.t, prev, m)
 		if m.ev != nil && m.Seq <= c.seq {
 			c.t.Errorf("seq went from %d to %d", c.seq, m.Seq)
 		}

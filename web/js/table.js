@@ -23,6 +23,10 @@ let bidValue = 0;         // three players, our turn in the auction: the bid on 
 let actionAt = 0;         // when pendingAction was sent
 let actionPhase = '';     // the phase it was sent in: the soloist keeps the turn from discard to trump
 let talonHand = 0;        // three players: the hand whose talon still lies on the table (until the contract)
+let pendingVote = null;   // {seat, left, ai, at} our answer to the takeover question, awaiting the server
+let voteSentAt = -1e9;    // when we last answered the takeover question
+let voteIds = 0;          // ids that tie the question's title and text to its panel and buttons
+let rejoinSent = null;    // after a rejoin: {card, action} we sent just before the connection went
 let heldTrick = null;     // completed trick kept on the table until "collect"
 let tip = '';             // training explanation after a trick, until our next card
 let dismissed = '';       // training hint closed with ✕ (JSON of s.hint)
@@ -36,6 +40,7 @@ const BID_STEP = 10;
 const MAX_BID = 300;
 // A move still unanswered this long after it was sent did not arrive.
 const STUCK_MS = 1500;
+const STALE_MS = 5000; // a refusal this soon after our vote answers it
 const LIFT_HINTS = 3;     // times the swipe is mentioned after lifting a card
 const touch = matchMedia('(pointer: coarse)');
 
@@ -61,7 +66,10 @@ export function init() {
   E.center.append(E.trick, E.talon);
   E.stage = h('div', { class: 'stage' });
   E.fx = h('div', { class: 'fx', 'aria-live': 'polite' });
-  E.table.append(E.center, E.stage, E.fx);
+  // Says the takeover question aloud when it opens: on a touch screen the
+  // focus does not move to the panel.
+  E.ask = h('div', { class: 'sr-only', 'aria-live': 'polite' });
+  E.table.append(E.center, E.stage, E.fx, E.ask);
 
   E.coach = h('div', { class: 'coach', hidden: true },
     E.coachIcon = h('span', { class: 'coach-ico', 'aria-hidden': 'true', text: '💡' }),
@@ -201,6 +209,7 @@ function renderSeat(s, seat, o) {
   if (!p) cls.push('empty');
   if (p?.bot) cls.push('bot');
   if (p?.away) cls.push('away');
+  if (p?.left) cls.push('left');
   if (p && !p.bot && !p.connected) cls.push('offline');
   const keep = S.root.classList.contains('talking') ? ' talking' : '';
   S.root.className = cls.join(' ') + keep;
@@ -208,7 +217,8 @@ function renderSeat(s, seat, o) {
   S.name.textContent = p ? (pos === 'bottom' ? `${p.name}` : p.name) : 'Vrij';
   S.root.title = p ? `${p.name}${seatCount(s) === 4 ? ` · ${isWij(s, seat) ? 'Wij' : 'Zij'}` : ''}${seat === s.you ? ' (jij)' : ''}` : 'Lege plaats';
   S.chip.hidden = s.dealer !== seat || s.phase === 'lobby';
-  const status = p?.away ? 'AI speelt even mee' : p && !p.bot && !p.connected ? 'verbinding weg' : bidStatus(s, seat);
+  // A seat someone left keeps their name until a joiner or an AI takes it.
+  const status = p?.left ? 'vertrokken' : p?.away ? 'AI speelt even mee' : p && !p.bot && !p.connected ? 'verbinding weg' : bidStatus(s, seat);
   S.status.hidden = !status;
   S.status.textContent = status;
 
@@ -343,22 +353,34 @@ function renderTalon(s, o = {}) {
 
 function renderStage(s) {
   const my = s.turn === s.you;
+  const q = s.takeover;
   let key = '';
-  if (s.phase === 'trump' && !shownTrick(s)) key = my ? `trump-me-${s.forced}-${s.turned}` : s.turn >= 0 ? `trump-wait-${s.turn}` : '';
+  // The question whether an AI may play for someone who is gone takes the
+  // stage instead of the waiting text.
+  if (q) key = `vote-${q.seat}-${q.left}-${nameOf(s, q.seat)}`;
+  else if (s.phase === 'trump' && !shownTrick(s)) key = my ? `trump-me-${s.forced}-${s.turned}` : s.turn >= 0 ? `trump-wait-${s.turn}` : '';
   else if (s.phase === 'bid' && s.turn >= 0) key = `bid-${my}-${s.turn}-${s.turned}`;
   else if (s.phase === 'auction' && s.turn >= 0) key = `auction-${my}-${s.turn}-${s.bid}-${s.bidder}`;
   else if (s.phase === 'discard' && s.turn >= 0) key = my ? `discard-me-${picked.join()}` : `discard-wait-${s.turn}`;
   const hintKey = s.hint ? JSON.stringify(s.hint) : '';
-  if (key + '|' + hintKey + '|' + pendingAction === stageKey) return;
+  if (key + '|' + hintKey + '|' + pendingAction === stageKey) {
+    if (q) fillVote(s); // the answers so far change in place: the focus stays
+    return;
+  }
   stageKey = key + '|' + hintKey + '|' + pendingAction;
   clear(E.stage);
-  E.stage.className = 'stage' + (key ? ' on' : '') + (my ? ' mine' : '') + (s.phase === 'discard' && my ? ' low' : '');
+  E.stage.className = 'stage' + (key ? ' on' : '') + (my || q ? ' mine' : '') + (q ? ' ask' : '') +
+    (s.phase === 'discard' && my && !q ? ' low' : '');
+  // The question says who the game waits for: the line under the table
+  // steps aside, and the panel takes its room as well.
+  E.table.classList.toggle('asking', !!q);
   if (!key) return;
-  if (s.phase === 'trump') E.stage.append(my ? trumpPanel(s) : waitPanel(s, 'kiest troef'));
+  if (q) E.stage.append(votePanel(s));
+  else if (s.phase === 'trump') E.stage.append(my ? trumpPanel(s) : waitPanel(s, 'kiest troef'));
   else if (s.phase === 'auction') E.stage.append(auctionPanel(s, my));
   else if (s.phase === 'discard') E.stage.append(my ? discardPanel(s) : waitPanel(s, 'legt twee kaarten weg'));
   else E.stage.append(bidPanel(s, my));
-  if (my && !pendingAction) focusStage();
+  if ((my && !pendingAction) || q) focusStage();
 }
 
 // Three players: bid or pass. The bid on offer starts at the lowest one
@@ -494,6 +516,101 @@ function sendAction(m) {
   renderHand(app.s);
 }
 
+// The game waits on someone who left or lost the connection: every other
+// person at the table says whether an AI may play that seat, and only if
+// all agree does one (design §6). The answer can be changed while the
+// question is open; above the buttons, who agrees so far. Once answered,
+// the panel keeps to its title, who agrees and the answers, so it covers
+// less of the table while the others think. The buttons are last: at the
+// foot of the stage they stay put when the text above them changes.
+function votePanel(s) {
+  const q = s.takeover;
+  const name = nameOf(s, q.seat);
+  const id = `vote-${++voteIds}`;
+  const btn = (ai, cls, text) => h('button', {
+    class: 'btn ' + cls, type: 'button', 'aria-pressed': 'false', 'aria-describedby': id + '-q', onclick: () => sendVote(ai),
+  }, icon('check'), h('span', { text }));
+  const yes = btn(true, 'btn-go', 'AI laten spelen');
+  const no = btn(false, 'btn-pass', 'Wachten');
+  E.vote = {
+    panel: h('div', { class: 'panel panel-vote', role: 'group', 'aria-labelledby': id + '-t', 'aria-describedby': id + '-q' }),
+    q: h('p', { class: 'vote-q', id: id + '-q' }),
+    yes, no, btns: h('div', { class: 'vote-btns' }, yes, no), who: h('div', { class: 'vote-who' }),
+  };
+  E.vote.panel.append(h('div', { class: 'panel-title', id: id + '-t', text: q.left ? `${name} is vertrokken` : `${name} is weg` }),
+    E.vote.q, E.vote.who, E.vote.btns);
+  fillVote(s);
+  return E.vote.panel;
+}
+
+// What we answered: sent and on its way, else as the server has it.
+function myVote(s) {
+  const q = s.takeover;
+  if (pendingVote && pendingVote.seat === q?.seat && pendingVote.left === q.left) return pendingVote.ai;
+  return s.players[s.you]?.vote ?? null;
+}
+
+// Everyone asked: the people at the table but for the one it is about,
+// you first, and anyone who said no and lost the connection a moment ago
+// (that no still holds, design §6).
+function voters(s) {
+  const n = seatCount(s);
+  return Array.from({ length: n }, (_, k) => (s.you + k) % n).filter(seat => {
+    const p = s.players[seat];
+    return p && !p.bot && seat !== s.takeover.seat && (p.connected || p.vote === false);
+  });
+}
+
+// Marks the chosen answer and lists everyone asked with their answer so
+// far; alone, you are asked only (the list would say just "Jij").
+function fillVote(s) {
+  const q = s.takeover;
+  const name = nameOf(s, q.seat);
+  const mine = myVote(s);
+  const asked = voters(s);
+  const alone = asked.length < 2;
+  E.vote.q.textContent = q.left
+    ? `Mag een AI-speler de plaats van ${name} innemen? ${alone ? 'Je kunt' : 'Jullie kunnen'} ook wachten tot iemand anders met de code aanschuift.`
+    : `Het spel wacht op ${name}. Mag een AI-speler zolang voor ${name} spelen?`;
+  E.vote.panel.classList.toggle('answered', mine !== null);
+  for (const [b, ai] of [[E.vote.yes, true], [E.vote.no, false]]) {
+    b.classList.toggle('chosen', mine === ai);
+    b.setAttribute('aria-pressed', String(mine === ai));
+  }
+  const chips = asked.map(seat => {
+    const v = seat === s.you ? mine : s.players[seat].vote;
+    // Not answered yet: the dots of someone thinking, not a text ellipsis
+    // that would run into a shortened name.
+    const st = v === null
+      ? h('span', { class: 'vote-st open' }, h('span', { class: 'dots', 'aria-hidden': 'true' }, h('i'), h('i'), h('i')), h('span', { class: 'sr-only', text: 'nog niet gekozen' }))
+      : h('span', { class: 'vote-st', text: v ? 'akkoord' : 'wil wachten' });
+    return h('span', { class: `vote-chip ${teamCls(s, seat)}${v === true ? ' yes' : v === false ? ' no' : ''}` },
+      v === true ? icon('check') : null, playerName(nameOf(s, seat), { cls: 'vote-name', title: true }), st);
+  });
+  E.vote.who.hidden = alone;
+  E.vote.who.replaceChildren(h('div', { class: 'vote-rule', text: 'Iedereen moet akkoord zijn:' }), h('div', { class: 'vote-list' }, chips));
+}
+
+function sendVote(ai) {
+  const s = app.view || app.s; // the question as the table shows it
+  const q = s?.takeover;
+  if (!q || myVote(s) === ai) return;
+  sound.play('click');
+  pendingVote = { seat: q.seat, left: q.left, ai, at: performance.now() };
+  voteSentAt = pendingVote.at;
+  // Which question it answers: a yes for a stand-in is none for a seat given away.
+  app.send({ t: 'vote', seat: q.seat, left: q.left, ai });
+  fillVote(s);
+}
+
+// The question as one line for screen readers, '' when none is open.
+function askText(s) {
+  const q = s.takeover;
+  if (!q) return '';
+  const name = nameOf(s, q.seat);
+  return q.left ? `${name} is vertrokken. Mag een AI-speler de plaats van ${name} innemen?` : `${name} is weg. Mag een AI-speler zolang voor ${name} spelen?`;
+}
+
 function renderPrompt(s) {
   const my = s.turn === s.you;
   let text = '';
@@ -511,6 +628,8 @@ function renderPrompt(s) {
     E.rule.dataset.text = text;
     E.rule.replaceChildren(suitify(text));
   }
+  const ask = askText(s);
+  if (E.ask.textContent !== ask) E.ask.textContent = ask;
 
   const key = s.hint?.text && PLAYING.has(s.phase) && my ? JSON.stringify(s.hint) : '';
   if (dismissed !== key) dismissed = ''; // a new hint shows again
@@ -776,7 +895,7 @@ function tryPlay(code) {
   sound.play('card');
   app.send({ t: 'play', card: code });
   const p = pending;
-  p.flight = fly(code, from, slots.bottom, { rotFrom: rot, ms: 360 }).then(() => {
+  p.flight = fly(code, from, slots.bottom, { rotFrom: rot, ms: 360, index: indexOf(el) }).then(() => {
     if (pending === p) { p.placed = true; renderTrick(app.s); }
   });
   renderHand(s);
@@ -826,6 +945,22 @@ export function onError() {
       renderHand(app.s);
     }
   }
+  if (pendingVote) {
+    pendingVote = null;
+    if (app.s?.takeover && E.vote) fillVote(app.s);
+  }
+}
+
+// A vote that comes too late is no mistake of the player: the question
+// closed (they are back, the others agreed) or changed meanwhile, often
+// in an update that came just before this answer. Our answer goes without
+// the error sound and toast; the panel shows what still is to be answered.
+// Reports whether the error was that.
+export function staleVote(m) {
+  if (m.code !== 'ongeldig' || m.msg !== 'Die vraag staat niet (meer) open.' || performance.now() - voteSentAt > STALE_MS) return false;
+  pendingVote = null;
+  if (app.s?.takeover && E.vote) fillVote(app.s);
+  return true;
 }
 
 // ---------- flights ----------
@@ -836,8 +971,14 @@ function layer() {
   return flyLayer;
 }
 
+// The corner index scale a face shows (cards.css), for a flight from it.
+const indexOf = card => getComputedStyle(card.querySelector('.card-svg')).getPropertyValue('--_index');
+
 // FLIP flight of a card (or back) from a source rect to a target element.
-function fly(code, from, target, { rotFrom = 0, flip = false, back = false, ms = 400, fade = false } = {}) {
+// The card has the size and index of where it lands (a trick slot keeps the
+// regular index); `index` (indexOf the card it leaves) tweens the index from
+// the one it took off with, so the face never jumps.
+function fly(code, from, target, { rotFrom = 0, flip = false, back = false, ms = 400, fade = false, index = '' } = {}) {
   const to = target.getBoundingClientRect();
   const d = dur(ms);
   if (!d || !to.width) return Promise.resolve();
@@ -848,6 +989,7 @@ function fly(code, from, target, { rotFrom = 0, flip = false, back = false, ms =
   else el = createCard(code);
   el.classList.add('flyer');
   el.style.setProperty('--card-w', w + 'px');
+  el.style.setProperty('--card-index-max', getComputedStyle(target).getPropertyValue('--card-index-max'));
   el.style.left = to.left + 'px';
   el.style.top = to.top + 'px';
   layer().append(el);
@@ -856,10 +998,13 @@ function fly(code, from, target, { rotFrom = 0, flip = false, back = false, ms =
   const sc = Math.max(0.2, from.width / w);
   const rotTo = code && !back ? tilt(code) : 0;
   const yFrom = flip ? ' rotateY(180deg)' : '';
+  const timing = { duration: d, easing: EASE, fill: 'forwards' };
   const a = el.animate([
     { transform: `perspective(900px) translate(${dx}px, ${dy}px) rotate(${rotFrom}deg) scale(${sc})${yFrom}`, opacity: fade ? 0.4 : 1 },
     { transform: `perspective(900px) translate(0, 0) rotate(${rotTo}deg) scale(1)${flip ? ' rotateY(0deg)' : ''}`, opacity: 1 },
-  ], { duration: d, easing: EASE, fill: 'forwards' });
+  ], timing);
+  const end = index && indexOf(el);
+  if (end && end !== index) el.querySelector('.card-svg').animate([{ '--_index': index }, { '--_index': end }], timing);
   return a.finished.catch(() => {}).then(() => { el.remove(); });
 }
 
@@ -892,7 +1037,7 @@ export async function animate(ev, prev, next) {
     case 'collect': return animCollect(ev, next);
     case 'handEnd': return animHandEnd(ev, next);
     case 'gameOver': sound.play(next.winner === -1 ? 'click' : next.winner === myScorer(next) ? 'win' : 'lose'); return;
-    case 'join': case 'leave': case 'away': case 'back': return seatToast(ev, prev, next);
+    case 'join': case 'leave': case 'away': case 'back': case 'takeover': return seatToast(ev, prev, next);
     default: return;
   }
 }
@@ -1103,9 +1248,10 @@ async function animPlay(ev, prev, next) {
     const el = handEls.get(ev.card);
     const from = el ? rectOf(el) : rectOf(E.hand);
     const rot = el ? parseFloat(el.style.getPropertyValue('--rot')) || 0 : 0;
+    const index = el ? indexOf(el) : '';
     if (el) el.style.visibility = 'hidden';
     sound.play('card');
-    await fly(ev.card, from, slots[pos], { rotFrom: rot, ms: 380 });
+    await fly(ev.card, from, slots[pos], { rotFrom: rot, ms: 380, index });
     return;
   }
   const S = seats[pos];
@@ -1121,7 +1267,7 @@ async function animPlay(ev, prev, next) {
     if (n > 0) setBacks(S, n - 1);
   }
   sound.play('card');
-  await fly(ev.card, from, slots[pos], { flip: !openCard, ms: 420 });
+  await fly(ev.card, from, slots[pos], { flip: !openCard, ms: 420, index: openCard ? indexOf(openCard) : '' });
 }
 
 async function animTrick(ev, next) {
@@ -1225,17 +1371,23 @@ async function splash(title, sub, kind) {
 }
 
 function seatToast(ev, prev, next) {
-  // Whoever left is only in the previous state: mid-game a bot already holds the seat.
+  // Whoever left a lobby seat is only in the previous state; a seat left
+  // mid-game keeps the name, and an AI that takes it over is in the next.
   const p = ev.type === 'leave'
     ? prev?.players?.[ev.seat] || next.players?.[ev.seat]
     : next.players?.[ev.seat] || prev?.players?.[ev.seat];
   if (ev.seat === next.you) return;
   const name = p?.name || 'Een speler';
   const running = PLAYING.has(next.phase) || next.phase === 'handEnd';
-  if (ev.type === 'join') { sound.play('join'); toast(`${name} doet mee`); }
-  else if (ev.type === 'leave') toast(`${name} is vertrokken`, { sub: running ? 'Een AI-speler neemt de plaats over.' : '' });
-  else if (ev.type === 'away') toast(`${name} is even weg`, { sub: next.players?.[ev.seat]?.away ? 'Een AI-speler speelt tijdelijk mee.' : '' });
+  // The name of who left again: they may be back, or someone with the same name.
+  const again = ev.type === 'join' && prev?.players?.[ev.seat]?.left && prev.players[ev.seat].name === name;
+  if (ev.type === 'join') { sound.play('join'); toast(again ? `${name} doet weer mee` : `${name} doet mee`); }
+  else if (ev.type === 'leave') toast(`${name} is vertrokken`, { sub: running ? 'Een AI-speler neemt de plaats pas in als iedereen akkoord is.' : '' });
+  else if (ev.type === 'away') toast(`${name} is even weg`);
   else if (ev.type === 'back') toast(`${name} is terug`);
+  // Everyone agreed: a bot in the seat of who left, or one that plays for
+  // who dropped out until they are back.
+  else if (ev.type === 'takeover') toast(p?.bot ? `${name} neemt het over` : `Een AI-speler speelt nu voor ${name}`);
 }
 
 // Speech bubble at a seat (bids, chat lines). Bubbles never pile up (on a
@@ -1332,14 +1484,41 @@ export function settle(next, ev = null) {
     pendingAction = false;
     stageKey = '';
   }
+  if (pendingVote) {
+    const q = next.takeover;
+    if (q?.seat !== pendingVote.seat || q.left !== pendingVote.left || next.players[next.you]?.vote === pendingVote.ai
+      || (!ev && performance.now() - pendingVote.at > STUCK_MS)) pendingVote = null;
+  }
+}
+
+// After a rejoin: tells the player when an AI played for them meanwhile,
+// with the others' consent (design §6). A decision for our seat that we
+// did not send can only be the AI's; what we sent just before the
+// connection went may have been ours.
+export function welcomeBack(prev, next) {
+  const sent = rejoinSent;
+  rejoinSent = null;
+  if (!sent || !prev || prev.you !== next.you || !PLAYING.has(prev.phase)) return;
+  // Laying away (three players) takes two cards out of the hand: we may
+  // have sent that ourselves.
+  if (sent.action && prev.phase === 'discard') return;
+  const me = next.you;
+  const ours = prev.hand.filter(c => c !== sent.card);
+  const moved = next.handNo !== prev.handNo || !PLAYING.has(next.phase)
+    ? ours.length > 0 // the hand went on without us
+    : ours.some(c => !next.hand.includes(c))
+      || (!sent.action && (prev.bids[me] !== next.bids[me] || (!prev.trump && next.trumpBy === me)));
+  if (moved) toast('Een AI-speler speelde even voor je', { sub: 'De anderen waren akkoord. Nu speel je zelf weer.' });
 }
 
 // After a rejoin: forget everything sent but unanswered, so the resync
 // that follows renders the table purely from the server's state.
 export function resync() {
   talonHand = 0;
+  rejoinSent = { card: pending?.card || '', action: pendingAction };
   pending = null;
   pendingAction = false;
+  pendingVote = null;
   selected = '';
   stageKey = '';
   heldTrick = null;
@@ -1354,6 +1533,8 @@ export function resetRoom() {
   heldTrick = null;
   pending = null;
   pendingAction = false;
+  pendingVote = null;
+  rejoinSent = null;
   selected = '';
   tip = '';
   dismissed = '';

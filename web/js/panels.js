@@ -7,6 +7,7 @@ import {
   app, h, $$, icon, prefs, savePrefs, store, toast, dur, posOf, seatCount, mySide, isWij, teamCls, teamName,
   scorerOrder, scorerName, myScorer, nameOf, suitSym, suitName, suitText, isRed, roemTotal, roemText, variantText, countUp, avatar,
   playerName, suitify, cap, handHeadline,
+  reviewVerdict, luckText, pointsText, momentWhere, strongLine, missedLine, reviewHistory,
 } from './util.js';
 
 const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
@@ -241,12 +242,16 @@ function openMenu() {
   });
 }
 
+// Mid-game the seat stays empty until someone joins in it, or until the
+// others agree that an AI takes it (design §6); alone with bots there is
+// nobody to ask.
 export function confirmLeave() {
   const s = app.s;
   const running = s && s.phase !== 'lobby' && s.phase !== 'gameOver';
+  const others = s && s.players.some((p, seat) => p && !p.bot && !p.left && seat !== s.you);
   const m = openModal({
     id: 'leave', title: 'Spel verlaten?', cls: 'm-confirm', body: [
-      h('p', { text: running ? 'Een AI-speler neemt je plaats aan tafel over.' : 'Je verlaat de tafel.' }),
+      h('p', { text: running && others ? 'De anderen beslissen samen of een AI-speler je plaats inneemt.' : 'Je verlaat de tafel.' }),
       h('div', { class: 'btn-row' },
         h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => m.close() }, 'Blijven'),
         h('button', { class: 'btn btn-danger', type: 'button', onclick: () => { m.close(true); app.leave(); } }, 'Verlaten')),
@@ -658,7 +663,11 @@ export function sync(s, ev) {
     if (byId('trick')?.owner === 'summary') byId('trick').close(true);
   }
   if (s.phase === 'gameOver') showGameOver(s, ev);
-  else byId('over')?.close(true);
+  else {
+    byId('over')?.close(true);
+    byId('review')?.close(true);
+    if (byId('trick')?.owner === 'review') byId('trick').close(true);
+  }
   if (s.phase === 'lobby') { byId('score')?.close(true); byId('last')?.close(true); }
   byId('score')?.refresh?.();
 }
@@ -705,8 +714,9 @@ function showSummary(s, ev) {
   const mine = s.players[s.you]?.ready;
   if (mine) { m.go.disabled = true; m.go.lastChild.textContent = 'Wachten op de rest'; }
   // Who is ready, when there is anyone to wait for; alone with bots the
-  // chip would only say "Jij" and cost a phone a row of tricks.
-  const chips = s.players.map((p, seat) => p && !p.bot ? h('span', { class: 'ready-chip ' + (p.ready ? 'on ' : '') + teamCls(s, seat) },
+  // chip would only say "Jij" and cost a phone a row of tricks. Who left
+  // is no longer at the table.
+  const chips = s.players.map((p, seat) => p && !p.bot && !p.left ? h('span', { class: 'ready-chip ' + (p.ready ? 'on ' : '') + teamCls(s, seat) },
     p.ready ? icon('check') : null, nameOf(s, seat)) : null).filter(Boolean);
   m.ready.replaceChildren(...(chips.length > 1 ? chips : []));
   m.ready.hidden = chips.length < 2;
@@ -844,6 +854,8 @@ function showGameOver(s, ev) {
   const again = h('button', { class: 'btn btn-go btn-big', type: 'button', disabled: !host, onclick: () => send('rematch') }, label(host));
   const setup = h('button', { class: 'btn btn-ghost btn-block btn-setup', type: 'button', hidden: !host || s.training, onclick: () => send('lobby') },
     icon('users'), 'Spelers of regels wijzigen');
+  const rv = h('button', { class: 'review-line', type: 'button', onclick: () => openReview() });
+  reviewLine(rv, s.review);
   const m = openModal({
     id: 'over', cls: 'm-over passive' + (won ? ' won' : draw ? ' draw' : ' lost'), closable: false, label: title, body: [
       h('div', { class: 'over-emoji', 'aria-hidden': 'true', text: draw ? '🤝' : won ? '🏆' : '🃏' }),
@@ -854,6 +866,7 @@ function showGameOver(s, ev) {
         h('div', { class: 'os ' + (k === w ? 'wij' : 'zij') + (winner === k ? ' top' : '') },
           h('span', { text: scorerName(s, k) }), h('b', { text: total[k] }), seatCount(s) === 4 ? teamNamesEl(s, k) : null),
       ]).filter(Boolean)),
+      rv,
       s.prevHand?.result ? h('div', { class: 'over-last' }, h('small', { text: 'Laatste potje' }), resultLine(s, s.prevHand.result)) : null,
       h('div', { class: 'btn-col' },
         again,
@@ -869,13 +882,93 @@ function showGameOver(s, ev) {
     again.textContent = label(hst);
     setup.hidden = !hst || st.training;
     setup.disabled = sent;
+    reviewLine(rv, st.review);
+    m.root.classList.toggle('with-review', !!st.review);
   };
+  m.root.classList.toggle('with-review', !!s.review);
   m.reset = () => {
     sent = false;
     if (app.s) m.refresh(app.s);
   };
   if (won && ev?.type === 'gameOver') confetti(m.root);
   if (host) focusMain(again);
+}
+
+// ---------- spelanalyse ----------
+
+// The line under the final score that opens the review of the player's
+// own play; the grades of the last choices may still be on their way.
+function reviewLine(btn, r) {
+  btn.hidden = !r;
+  if (!r) return;
+  btn.disabled = r.pending;
+  if (r.pending) {
+    btn.replaceChildren(h('span', { text: 'Jouw spelanalyse wordt berekend…' }));
+    return;
+  }
+  reviewHistory(r);
+  btn.replaceChildren(h('span', {}, 'Jouw spelanalyse: ', h('b', { text: `${r.pct}%` }), ` (${reviewVerdict(r.pct)})`), icon('forward'));
+}
+
+// The review (design §9 Spelanalyse): numbers and facts about the
+// player's own play, for them alone.
+function openReview() {
+  const s = app.s;
+  const r = s?.review;
+  if (!r || r.pending) return;
+  sound.play('click');
+  const prev = reviewHistory(r);
+  const row = (label, value, ib = null) => h('tr', {}, h('th', {}, label, ib), h('td', { text: value }));
+  const zetten = n => `${n}\u00a0${n === 1 ? 'zet' : 'zetten'}`;
+  const moments = (title, list, total, line) => (list?.length ? h('section', { class: 'rv-sec' },
+    h('h3', {}, title, total > list.length ? h('small', { text: ` · de ${list.length > 1 ? list.length + ' ' : ''}grootste van ${total}` }) : null),
+    h('ul', { class: 'rv-list' }, list.map(m => h('li', {},
+      h('button', {
+        class: 'rv-moment', type: 'button', disabled: !m.table && !m.cards?.length,
+        title: m.table ? 'Tik om de slag te zien' : 'Tik om je kaarten te zien', onclick: () => openMoment(s, m),
+      }, h('span', { class: 'rv-where', text: momentWhere(m) }), line(m), icon('forward')))))) : null);
+  openModal({
+    id: 'review', title: 'Jouw spelanalyse', cls: 'm-review', body: [
+      h('div', { class: 'rv-head' },
+        h('div', { class: 'rv-pct' }, h('b', { text: `${r.pct}%` }), h('span', { text: `(${reviewVerdict(r.pct)})` }), infoBtn('Spelanalyse', [
+          'Bij elke keuze rekent de game engine uit wat elke kaart, troefkleur of elk bod gemiddeld oplevert, met alleen wat jij op dat moment wist. Punten zijn het verschil tussen Wij en Zij.',
+          'Het percentage zegt hoeveel van de punten die met je keuzes te winnen waren, je ook haalde. Je kaarten tellen niet mee: ook met slechte kaarten kun je 100% halen.',
+          'Laten liggen: wat een betere keuze gemiddeld meer had opgeleverd. Verschillen van minder dan 5 punten tellen niet mee.',
+          'Sterke zet: de beste keuze, terwijl de voor de hand liggende keuze minstens 10 punten minder opleverde.',
+        ])),
+        h('small', { text: (r.hands ? `${r.hands} ${r.hands === 1 ? 'potje' : 'potjes'} · ` : '') + `${r.choices} ${r.choices === 1 ? 'keuze' : 'keuzes'}` })),
+      h('table', { class: 'rv-table' }, h('tbody', {},
+        // A player who took a seat over during a hand has no dealt hand measured.
+        r.hands ? row('Jouw kaarten', luckText(r.luck), infoBtn('Jouw kaarten', [
+          'Wat je kaarten bij het delen gemiddeld per potje waard waren voor jouw koppel, vergeleken met een gemiddelde hand op dezelfde plaats aan tafel.',
+        ])) : null,
+        row('Sterke zetten', String(r.strongN)),
+        row('Laten liggen', r.lostN ? `${pointsText(r.lost)} in ${zetten(r.lostN)}` : '0 punten'),
+        r.leads[1] ? row('Uitkomen', `${r.leads[0]} van ${r.leads[1]} keer de beste kaart`) : null,
+        r.trumps[1] ? row('Troefkeuze', `${r.trumps[0]} van ${r.trumps[1]} keer de beste keuze`) : null,
+        row('Roem weggegeven', r.roem[1] ? `${r.roem[0]} (${r.roem[1]} keer)` : '0', infoBtn('Roem weggegeven', [
+          'Roem die jouw kaart toevoegde aan de kaarten die al op tafel lagen, terwijl je een kaart had die minder roem gaf, in slagen die de tegenstanders haalden.',
+        ])))),
+      r.risky[0] ? h('p', { class: 'rv-risky', text: `Gespeeld met meer dan 40% kans op nat: ${r.risky[0]} keer, ${r.risky[1]} keer nat` }) : null,
+      moments('Sterke zetten', r.strong, r.strongN, m => {
+        const l = strongLine(m);
+        return h('span', { class: 'rv-text' }, h('b', {}, suitify(l.what)), suitify(l.rest));
+      }),
+      moments('Laten liggen', r.missed, r.lostN, m => h('span', { class: 'rv-text' }, suitify(missedLine(m)))),
+      prev.length ? h('p', { class: 'rv-prev' }, 'Vorige partijen ', h('b', { text: prev.map(p => `${p}%`).join(' · ') })) : null,
+      h('p', { class: 'legend', text: 'Disclaimer: Niet mee eens? Deze analyse is gebaseerd op de game engine en kan fouten bevatten.' }),
+    ],
+  });
+}
+
+// What lay on the table at a moment of the review: the trick a card went
+// into, or the player's hand at a trump choice or bid.
+function openMoment(s, m) {
+  sound.play('click');
+  const body = m.table ? trickCross(s, m.table) : [
+    h('p', { class: 'rv-hand-cap', text: m.played?.suit ? 'Jouw kaarten bij de troefkeuze' : 'Jouw kaarten bij het bieden' }),
+    h('div', { class: 'rv-hand' }, (m.cards || []).map(c => mini(c)))];
+  openModal({ id: 'trick', title: momentWhere(m), cls: 'm-last', body }).owner = 'review';
 }
 
 // The server refused something: a rematch in flight can be tried again.

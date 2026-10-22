@@ -10,7 +10,8 @@ import * as home from './home.js';
 const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
 const ROUTE = /^\/([A-Za-z]{4})\/?$/;
 // Moves the server answers at once; silence after one means a dead socket.
-const ACKED = new Set(['play', 'trump', 'bid', 'auction', 'discard']);
+// A vote is only sent when it changes the answer, so an update follows it too.
+const ACKED = new Set(['play', 'trump', 'bid', 'auction', 'discard', 'vote']);
 const ACK_MS = 4000;
 const START_HOLD_MS = 2500; // quick play: how long the lobby may stay hidden
 
@@ -241,6 +242,7 @@ function onError(m) {
     joining = false;
     home.setBusy(false);
   }
+  if (table.staleVote(m)) return; // the question closed as we answered: no mistake
   sound.play('error');
   toast(msg, { kind: 'error' });
   table.onError();
@@ -258,7 +260,7 @@ function onRefused(name) {
   const s = app.s;
   if (!s || s.host !== s.you || s.training) return;
   const n = s.players.length;
-  const humans = s.players.filter(p => p && !p.bot).length;
+  const humans = s.players.filter(p => p && !p.bot && !p.left).length;
   const more = humans >= n && n < 4 ? `zet Spelers op ${n + 1}` : '';
   let sub = '';
   if (s.phase === 'lobby') {
@@ -341,6 +343,7 @@ async function applyUpdate(u) {
   table.settle(next, ev);
   table.render(next);
   panels.sync(next, ev);
+  table.welcomeBack(prev, next);
   turnCue(prev, next);
 }
 
@@ -364,24 +367,32 @@ function holdLobby() {
   }, START_HOLD_MS);
 }
 
-// Sound and buzz when a turn opens, also in a background tab; only a long
-// backlog (a rejoin catching up) is history rather than news.
+// Sound and buzz when a turn opens, or when the table is asked whether an
+// AI may play for someone who is gone (that asks for attention as much),
+// also in a background tab; only a long backlog (a rejoin catching up) is
+// history rather than news.
 function turnCue(prev, next) {
   const mine = next.turn === next.you && PLAYING.has(next.phase);
   const was = prev && prev.turn === prev.you && prev.phase === next.phase;
-  if (mine && !was && !app.backlog) {
+  const q = next.takeover;
+  const asked = !!q && !(prev?.takeover?.seat === q.seat && prev.takeover.left === q.left);
+  if (((mine && !was) || asked) && !app.backlog) {
     sound.play('turn');
     vibrate(15);
   }
   titleCue();
 }
 
-// The tab title says when it is your turn while you look elsewhere.
+// The tab title says when it is your turn while you look elsewhere, and
+// while the table waits for your answer to the takeover question.
 function titleCue() {
   const s = app.s;
   const mine = inRoom && s && s.turn === s.you && PLAYING.has(s.phase);
+  const asked = inRoom && !!s?.takeover && s.players[s.you]?.vote == null;
   const base = inRoom && app.code ? `Klaverjas · ${app.code}` : 'Klaverjas';
-  const want = mine && document.hidden ? '● Jouw beurt · Klaverjas' : base;
+  let want = base;
+  if (document.hidden && mine) want = '● Jouw beurt · Klaverjas';
+  else if (document.hidden && asked) want = '● Vraag aan tafel · Klaverjas';
   if (document.title !== want) document.title = want;
 }
 

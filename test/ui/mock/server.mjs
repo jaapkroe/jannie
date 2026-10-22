@@ -9,6 +9,11 @@
 // --scale multiplies the real server's pauses (default 1, as in design §6);
 // --fast is --scale 0.15. The hand summary always uses the full pause.
 //
+// As the server, it never lets an AI play a person's seat unasked: the game
+// waits on whoever left or lost the connection, and asks everyone else
+// (state takeover, message vote) until all agree. With only bots left, the
+// game pauses.
+//
 // --rig makes the first hand of every room deterministic: seat 0 is voorhand
 // and holds KH AH TH 9H 8H AS TS AC; leading KH with hearts as trump gives a
 // trick with driekaart + stuk (40 roem). In gedraaid the turned suit is hearts.
@@ -183,6 +188,8 @@ const PACE = {
   normaal: { think: 900, deal: 1500, announce: 900, trick: 1500, summary: 12000 },
   snel: { think: 450, deal: 900, announce: 500, trick: 800, summary: 8000 },
 };
+const ASK_AFTER = 10000; // ms, scaled: a dropped-out person's turn before the table is asked
+const PLAYING = new Set(['trump', 'bid', 'play']);
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const rooms = new Map();
 const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', open: false };
@@ -216,6 +223,7 @@ function later(room, ms, fn) {
 function clearTimers(room) {
   for (const t of room.timers) clearTimeout(t);
   room.timers.clear();
+  clearTimeout(room.turnTimer);
 }
 
 function createRoom(opts, training) {
@@ -224,6 +232,7 @@ function createRoom(opts, training) {
     players: [null, null, null, null], phase: 'lobby', handNo: 0, dealer: -1, deal: null,
     scores: [], total: [0, 0], prevHand: null, lastTrick: null, nextAt: 0, winner: -1,
     chat: [], timers: new Set(), rigged: RIG, lastBotChat: 0,
+    turnKey: '', turnAt: 0, openedAt: 0, think: 0, turnTimer: 0, question: null, takeover: null, summaryWaits: false,
   };
   if (training) room.opts = { ...room.opts, tempo: opts?.tempo || 'rustig' };
   rooms.set(room.code, room);
@@ -253,10 +262,12 @@ function stateFor(room, seat) {
   const s = {
     code: room.code, phase: room.phase, opts: room.opts, training: room.training, you: seat, host: room.host,
     roster: room.phase === 'lobby' ? ROSTER : undefined,
-    players: room.players.map(p => p && {
+    players: room.players.map((p, i) => p && {
       name: p.name, bot: p.bot, botId: p.botId || '', emoji: p.emoji || '', color: p.color || '',
-      connected: p.bot ? true : p.connected, away: !!p.away, cards: playing ? d.hands[room.players.indexOf(p)].length : 0, ready: !!p.ready,
+      connected: p.bot ? true : p.connected, away: !!p.away, left: !!p.left, cards: playing ? d.hands[i].length : 0, ready: !!p.ready,
+      vote: room.takeover && typeof p.vote === 'boolean' ? p.vote : null,
     }),
+    takeover: room.takeover && { seat: room.takeover.seat, left: room.takeover.left },
     handNo: room.handNo || 1, hands: room.opts.hands, dealer: room.dealer, voorhand: (room.dealer + 1) % 4,
     turned: d?.turned || null, bids: d?.bids || [-1, -1, -1, -1], forced: !!d?.forced,
     trump: d?.trump || null, trumpBy: d?.trumpBy ?? -1, playingTeam: d?.trumpBy >= 0 ? d.trumpBy % 2 : -1,
@@ -267,16 +278,41 @@ function stateFor(room, seat) {
     tricksWon: d ? d.tricksWon : [0, 0], handPoints: d ? d.points : [0, 0], handRoem: d ? d.roem : [0, 0],
     scores: room.scores, total: room.total, prevHand: room.prevHand, nextAt: room.phase === 'handEnd' ? room.nextAt : 0,
     hint: null, hands4: null, winner: room.winner,
+    review: room.phase === 'gameOver' && !room.players[seat]?.bot ? mockReview(room, seat) : null,
   };
   if (room.training && myTurn) s.hint = hintFor(room, seat);
   if (room.training && room.opts.open && playing) s.hands4 = d.hands.map((h, i) => (i === seat ? null : sortHand(h, d.trump)));
   return s;
 }
 
-function broadcast(room, ev) {
+// The review at game over (design §9 Spelanalyse), with its moments taken
+// from the tricks of the last hand.
+function mockReview(room, seat) {
+  const tricks = room.prevHand?.tricks || [];
+  const moment = (k, m) => {
+    const t = tricks[k];
+    const pc = t?.cards.find(c => c.seat === seat);
+    return pc ? { hand: room.handNo, trick: k + 1, played: { card: pc.card }, text: '', table: t, ...m } : null;
+  };
+  const strong = [moment(1, { points: 21, why: 'de slag is zeker voor jullie, dus zo zijn de 11 punten binnen.' })].filter(Boolean);
+  const missed = [
+    { hand: 1, trick: 0, played: { suit: 'H' }, better: { suit: 'C' }, points: 14, text: '', cards: ['JC', '9C', 'AC', '7C', 'AH', '8H', 'TS', '7D'],
+      why: 'je hebt de boer, de nel en de aas, in totaal vier klaveren. Je haalt het zo naar schatting in 8 van de 10 potjes.' },
+    moment(3, { better: { card: 'AS' }, points: 18, why: 'je maat heeft de slag nog niet en de aas is hoog.' }),
+  ].filter(Boolean);
+  return {
+    id: room.reviewId, pending: false, pct: 87, hands: room.opts.hands, choices: 31, luck: -6, lost: 41, lostN: 3,
+    strongN: 2, leads: [9, 11], trumps: [3, 4], roem: [40, 2], risky: room.opts.trumpMode === 'gedraaid' ? [2, 1] : [0, 0], strong, missed,
+  };
+}
+
+// One update for everyone; as the server, fresh (a connection that just
+// joined) gets it as a resync, with ev null.
+function broadcast(room, ev, fresh = null) {
+  refreshQuestion(room);
   room.seq++;
   room.players.forEach((p, seat) => {
-    if (p && !p.bot && p.ws && p.connected) send(p.ws, { t: 'update', seq: room.seq, ev, s: stateFor(room, seat) });
+    if (p && !p.bot && p.ws && p.connected) send(p.ws, { t: 'update', seq: room.seq, ev: p.ws === fresh ? null : ev, s: stateFor(room, seat) });
   });
 }
 
@@ -306,7 +342,11 @@ function botSay(room, seat, kind, force = false) {
 // ---------- game flow ----------
 
 function startGame(room) {
-  for (let s = 0; s < 4; s++) if (!room.players[s]) room.players[s] = botPlayer(room);
+  // Empty seats, and those of whoever left, get bots (a rematch too). The
+  // consent for an AI that played for someone who is gone was for the match
+  // that ended: in this one they are waited for and asked about again.
+  for (let s = 0; s < 4; s++) if (!room.players[s] || room.players[s].left) room.players[s] = botPlayer(room);
+  for (const p of room.players) if (!p.bot) { p.away = false; p.asked = false; }
   room.scores = [];
   room.total = [0, 0];
   room.handNo = 0;
@@ -350,18 +390,137 @@ function startHand(room) {
   });
 }
 
+// Schedules what the current turn needs, in place of what it scheduled
+// before: the move of a bot (or of the AI that plays for someone who is
+// away), or the moment the table is asked about a person who dropped out.
+// With only bots left nothing moves: the game pauses. Called after every
+// change.
 function schedule(room) {
+  clearTimeout(room.turnTimer);
+  room.turnTimer = 0;
   const d = room.deal;
-  if (!d || d.turn < 0 || !['trump', 'bid', 'play'].includes(room.phase)) return;
-  const p = room.players[d.turn];
-  if (!p.bot && !p.away) return;
+  if (!d || d.turn < 0 || !PLAYING.has(room.phase) || !live(room)) return;
+  trackTurn(room);
   const seat = d.turn;
-  later(room, delay(room, 'think') * (0.7 + rand() * 0.6), () => {
-    if (room.deal !== d || d.turn !== seat) return;
-    if (room.phase === 'trump') doTrump(room, seat, botTrump(d.hands[seat], d.forced ? d.turned : null));
-    else if (room.phase === 'bid') doBid(room, seat, botBid(d.hands[seat], d.turned));
-    else if (room.phase === 'play') doPlay(room, seat, botPlay(room, seat));
-  });
+  const p = room.players[seat];
+  if (p.bot || p.away) {
+    // Thinking counts from the turn, or from when the AI took over.
+    const due = Math.max(room.turnAt, p.since || 0) + room.think;
+    room.turnTimer = setTimeout(() => botMove(room, d, seat), Math.max(0, due - Date.now()));
+  } else if (!p.connected && !room.takeover) {
+    room.turnTimer = setTimeout(() => { if (askedSeat(room) === seat) broadcast(room, null); }, Math.max(0, askAt(room, p) - Date.now()) + 5);
+  }
+}
+
+function botMove(room, d, seat) {
+  const p = room.players[seat];
+  if (room.deal !== d || d.turn !== seat || !(p.bot || p.away) || !live(room)) return;
+  if (room.phase === 'trump') doTrump(room, seat, botTrump(d.hands[seat], d.forced ? d.turned : null));
+  else if (room.phase === 'bid') doBid(room, seat, botBid(d.hands[seat], d.turned));
+  else if (room.phase === 'play') doPlay(room, seat, botPlay(room, seat));
+}
+
+// When the current turn opened, and how long a bot thinks in it (turnAt
+// starts over when play resumes; openedAt does not).
+function trackTurn(room) {
+  const d = room.deal;
+  const key = d && d.turn >= 0 && PLAYING.has(room.phase) ? [room.handNo, room.phase, d.tricks.length, d.trick.cards.length, d.turn].join('|') : '';
+  if (key === room.turnKey) return;
+  room.turnKey = key;
+  room.turnAt = room.openedAt = Date.now();
+  room.think = delay(room, 'think') * (0.7 + rand() * 0.6);
+}
+
+// ---------- takeover (design §6) ----------
+
+// The game runs while a person is connected.
+const live = room => room.players.some(p => p && !p.bot && p.connected);
+
+// Who is asked about a seat: every connected person but its own.
+const voters = (room, seat) => room.players.flatMap((p, i) => (p && !p.bot && p.connected && i !== seat ? [i] : []));
+
+// A dropped-out person is asked about askAfter after the later of the turn
+// opening and the drop-out (once asked, until they are back, at once); who
+// left, at once. A pause with nobody there does not reset that clock.
+const askAt = (room, p) => (p.left || p.asked ? 0 : Math.max(room.openedAt, p.droppedAt || 0) + ASK_AFTER * SCALE);
+
+// The seat the game waits on and the question is about, or -1: the turn
+// (no pause) of a person who is gone, once it is time to ask. While nobody
+// is connected to answer, the question rests: nobody sees it, and it keeps
+// its votes.
+function questionSeat(room) {
+  const d = room.deal;
+  if (!d || d.turn < 0 || !PLAYING.has(room.phase)) return -1;
+  const p = room.players[d.turn];
+  return p.bot || p.away || p.connected || Date.now() < askAt(room, p) ? -1 : d.turn;
+}
+
+// The seat the table is asked about, or -1: as questionSeat, when there
+// is anyone to ask.
+function askedSeat(room) {
+  const seat = questionSeat(room);
+  return seat >= 0 && voters(room, seat).length ? seat : -1;
+}
+
+// Opens or closes the question as the state now asks (before every
+// update). The votes last as long as it is about the same seat, also
+// while it rests, so a no held for someone who dropped out still counts
+// for whoever is back first.
+function refreshQuestion(room) {
+  trackTurn(room);
+  const seat = questionSeat(room);
+  const q = room.question;
+  if (q && (q.seat !== seat || q.left !== !!room.players[seat].left)) closeQuestion(room);
+  if (seat >= 0 && !room.question) {
+    room.question = { seat, left: !!room.players[seat].left };
+    room.players[seat].asked = true;
+  }
+  room.takeover = room.question && voters(room, seat).length ? room.question : null;
+}
+
+function closeQuestion(room) {
+  room.question = room.takeover = null;
+  for (const p of room.players) if (p) p.vote = null;
+}
+
+// Settles the question once everyone asked agrees, checked after a vote and
+// whenever who is asked changes. Who left gets a bot in their seat, which
+// a joiner can still take over; who dropped out gets an AI that plays for
+// them until they are back. Reports whether it took over.
+function decide(room) {
+  const q = room.takeover;
+  if (!q) return false;
+  const asked = voters(room, q.seat);
+  if (!asked.length || !asked.every(i => room.players[i].vote === true)) return false;
+  if (room.players.some(p => p && !p.bot && p.vote === false)) return false; // a no held after a drop-out
+  const p = room.players[q.seat];
+  closeQuestion(room);
+  if (q.left) {
+    room.players[q.seat] = { ...botPlayer(room), vacated: true, since: Date.now() };
+    sys(room, `Iedereen is akkoord: ${room.players[q.seat].name} neemt de plaats van ${p.name} in.`);
+  } else {
+    p.away = true;
+    p.asked = false;
+    p.since = Date.now();
+    sys(room, `Iedereen is akkoord: een AI-speler speelt zolang voor ${p.name}.`);
+  }
+  broadcast(room, { type: 'takeover', seat: q.seat });
+  schedule(room);
+  return true;
+}
+
+// The hand summary ends early once every person still connected is ready.
+const allReady = room => live(room) && room.players.every(p => !p || p.bot || !p.connected || p.ready);
+
+// Play pauses while nobody is connected. Once someone is back, bots think
+// anew and the hand summary's countdown starts over; the question about a
+// person gone for askAfter meanwhile is there at once.
+function resume(room) {
+  room.turnAt = Date.now();
+  if (room.phase !== 'handEnd' || !room.summaryWaits) return;
+  room.summaryWaits = false;
+  room.nextAt = Date.now() + PACE[room.opts.tempo].summary;
+  later(room, room.nextAt - Date.now(), () => nextHand(room));
 }
 
 function botTrump(hand, not) {
@@ -523,10 +682,12 @@ function endHand(room, lastWinner) {
 
 function nextHand(room) {
   if (room.phase !== 'handEnd') return;
+  if (!live(room)) { room.summaryWaits = true; return; }
   clearTimers(room);
   if (room.handNo >= room.opts.hands) {
     room.phase = 'gameOver';
     room.deal = null;
+    room.reviewId = `${room.code}-${Date.now()}`;
     room.winner = room.total[0] === room.total[1] ? -1 : room.total[0] > room.total[1] ? 0 : 1;
     broadcast(room, { type: 'gameOver', total: room.total, winner: room.winner });
     return;
@@ -561,16 +722,23 @@ function onMessage(ws, m) {
       if (!r) return err('onbekend', `Spel ${code} bestaat niet (meer).`);
       const back = r.players.findIndex(p => p && !p.bot && p.token && p.token === m.token);
       if (back >= 0) {
+        // Back at the seat: whoever played for them stops, and the
+        // question about them (or the one they are asked) is as it now is.
         const p = r.players[back];
+        const wasAway = p.away;
+        const paused = !live(r);
         p.ws = ws;
         p.connected = true;
+        p.away = false;
+        p.asked = false; // a later drop-out asks again
         conn.room = r;
         conn.seat = back;
+        if (paused) resume(r);
         send(ws, { t: 'joined', code: r.code, seat: back, token: p.token });
         send(ws, { t: 'chatlog', msgs: r.chat });
-        r.seq++;
-        send(ws, { t: 'update', seq: r.seq, ev: null, s: stateFor(r, back) });
-        broadcast(r, { type: 'back', seat: back });
+        if (wasAway) sys(r, `${p.name} is terug.`);
+        broadcast(r, { type: 'back', seat: back }, ws);
+        schedule(r);
         return;
       }
       if (r.training) return err('vol', 'Dit is een oefenspel; daar kun je niet bij.');
@@ -585,14 +753,29 @@ function onMessage(ws, m) {
             : 'Deze tafel is vol: alle vier de plaatsen zijn bezet.');
         }
         seatHuman(ws, r, free, m.name);
-        broadcast(r, { type: 'join', seat: free });
         sys(r, `${r.players[free].name} schuift aan.`);
+        broadcast(r, { type: 'join', seat: free }, ws);
         return;
       }
-      const vac = r.players.findIndex(p => p?.vacated);
+      // A running game: only the seat of someone who left can be taken
+      // over, still empty or with the bot the table agreed on. As the
+      // server: who left gets their own seat back (by name), else the one
+      // whose turn it is goes first; the line for the same name claims no
+      // more than the name.
+      const clean = cleanName(m.name);
+      const turn = r.deal && PLAYING.has(r.phase) ? r.deal.turn : -1;
+      let vac = r.players.findIndex(p => p?.left && p.name === clean);
+      if (vac < 0) vac = r.players[turn]?.left ? turn : r.players.findIndex(p => p?.left);
+      if (vac < 0) vac = r.players.findIndex(p => p?.vacated);
       if (vac < 0) return err('gestart', 'Dit spel is al begonnen.');
+      const old = r.players[vac].name;
+      const paused = !live(r);
       seatHuman(ws, r, vac, m.name);
-      broadcast(r, { type: 'join', seat: vac });
+      if (paused) resume(r);
+      const name = r.players[vac].name;
+      sys(r, name === old ? `${name} neemt de plaats weer in.` : `${name} neemt de plaats van ${old} over.`);
+      broadcast(r, { type: 'join', seat: vac }, ws);
+      schedule(r);
       return;
     }
     default: break;
@@ -646,8 +829,23 @@ function onMessage(ws, m) {
       if (room.phase !== 'handEnd') return;
       room.players[seat].ready = true;
       broadcast(room, null);
-      if (room.players.every(p => !p || p.bot || p.ready || !p.connected)) later(room, 200, () => nextHand(room));
+      if (allReady(room)) later(room, 200, () => nextHand(room));
       return;
+    case 'vote': {
+      // As the server: a field of the wrong type is a message it cannot
+      // read; a vote answers one question (seat, and left when it says);
+      // the same answer again changes nothing, so no update.
+      const q = room.takeover;
+      const typed = (v, type) => v == null || (type === 'int' ? Number.isInteger(v) : typeof v === type);
+      if (!typed(m.seat, 'int') || !typed(m.ai, 'boolean') || !typed(m.left, 'boolean')) return err('ongeldig', 'Dat bericht begrijp ik niet.');
+      if (m.seat == null || m.seat < 0 || m.seat > 3) return err('ongeldig', 'Die plaats bestaat niet.');
+      if (m.ai == null) return err('ongeldig', 'Kies of een AI-speler mag spelen of dat jullie wachten.');
+      if (!q || q.seat !== m.seat || seat === q.seat || (m.left != null && q.left !== m.left)) return err('ongeldig', 'Die vraag staat niet (meer) open.');
+      if (room.players[seat].vote === m.ai) return;
+      room.players[seat].vote = m.ai;
+      if (!decide(room)) broadcast(room, null);
+      return;
+    }
     case 'chat': {
       const text = String(m.text || '').slice(0, 200).trim();
       if (!text) return;
@@ -664,16 +862,26 @@ function onMessage(ws, m) {
     case 'leave': {
       const p = room.players[seat];
       conn.room = null;
+      // In a game (or at game over) the seat keeps the name, and nobody
+      // plays it until someone joins in it or the others agree on an AI.
       if (room.phase === 'lobby') room.players[seat] = null;
-      else room.players[seat] = { ...botPlayer(room), vacated: true };
+      else room.players[seat] = { name: p.name, bot: false, botId: '', emoji: '', color: '', connected: false, away: false, ready: false, left: true };
       if (room.host === seat) {
-        const next = room.players.findIndex(x => x && !x.bot);
+        const next = room.players.findIndex(x => x && !x.bot && !x.left);
         room.host = next >= 0 ? next : room.host;
       }
-      broadcast(room, { type: 'leave', seat });
       sys(room, `${p?.name || 'Een speler'} is vertrokken.`);
-      if (!room.players.some(x => x && !x.bot)) { clearTimers(room); rooms.delete(room.code); }
-      else schedule(room);
+      broadcast(room, { type: 'leave', seat });
+      // As the server: an empty lobby goes at once; a game everyone left
+      // waits five minutes for someone with the code to take a seat.
+      if (!room.players.some(x => x && !x.bot && !x.left)) {
+        if (room.phase === 'lobby') { clearTimers(room); rooms.delete(room.code); return; }
+        setTimeout(() => {
+          if (rooms.get(room.code) === room && !room.players.some(x => x && !x.bot && !x.left)) { clearTimers(room); rooms.delete(room.code); }
+        }, 5 * 60000);
+      }
+      if (room.phase === 'handEnd' && allReady(room)) later(room, 200, () => nextHand(room));
+      if (!decide(room)) schedule(room); // the rest may all agree already
       return;
     }
     default:
@@ -681,8 +889,10 @@ function onMessage(ws, m) {
   }
 }
 
+const cleanName = name => String(name || '').replace(/[\x00-\x1f]/g, '').trim().slice(0, 20) || 'Speler';
+
 function seatHuman(ws, room, seat, name) {
-  const clean = String(name || '').replace(/[\x00-\x1f]/g, '').trim().slice(0, 20) || 'Speler';
+  const clean = cleanName(name);
   const p = { name: clean, bot: false, botId: '', emoji: '', color: '', connected: true, away: false, ready: false, token: token(), ws };
   room.players[seat] = p;
   ws.kj.room = room;
@@ -724,13 +934,26 @@ wss.on('connection', ws => {
     try { m = JSON.parse(data); } catch { return; }
     try { onMessage(ws, m); } catch (e) { console.error(e); }
   });
+  // A connection lost keeps the seat; nobody plays it unasked (design §6).
   ws.on('close', () => {
     const { room, seat } = ws.kj;
     const p = room?.players[seat];
     if (!p || p.ws !== ws) return;
     p.connected = false;
     p.ws = null;
+    const at = p.droppedAt = Date.now();
+    // No longer asked, but a no outlasts a short drop-out: it holds for
+    // askAfter, as on the server.
+    if (p.vote === false && room.takeover) {
+      later(room, ASK_AFTER * SCALE, () => {
+        if (p.ws || p.droppedAt !== at || p.vote !== false) return;
+        p.vote = null;
+        if (!decide(room)) broadcast(room, null);
+      });
+    } else p.vote = null;
     broadcast(room, { type: 'away', seat });
+    if (room.phase === 'handEnd' && allReady(room)) later(room, 200, () => nextHand(room));
+    if (!decide(room)) schedule(room); // the rest may all agree already
   });
 });
 

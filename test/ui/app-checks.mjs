@@ -9,13 +9,16 @@
 // trip over a full run.
 import { WebSocket as NodeWS } from 'ws';
 import {
-  args, connect, openPage, VIEWPORTS, press, pressEl, type, shot, waitFor, sleep, playLegal, addressProxy, nextIP, ownAddress,
+  args, connect, openPage, VIEWPORTS, press, pressEl, type, shot, waitFor, sleep, playLegal, addressProxy, nextIP, ownAddress, checkOverflow,
 } from './app-lib.mjs';
 
 const A = args();
 const VP = {
   ...VIEWPORTS,
   smallLandscape: { width: 640, height: 360, isMobile: true, hasTouch: true, isLandscape: true, deviceScaleFactor: 1 },
+  // The first iPhone SE, upright and on its side: the smallest cards there are.
+  oldSE: { width: 320, height: 568, isMobile: true, hasTouch: true, deviceScaleFactor: 1 },
+  oldSELandscape: { width: 568, height: 320, isMobile: true, hasTouch: true, isLandscape: true, deviceScaleFactor: 1 },
 };
 
 const proxy = await addressProxy(A.url);
@@ -1134,6 +1137,9 @@ CHECKS.keys = async browser => {
     await P.page.keyboard.press('Escape');
     await sleep(300);
     await P.page.evaluate(() => document.activeElement?.blur());
+    // A trump choice that opened while the settings were open rightly left
+    // the focus there (voorhand in the first potje): choose, look at the next.
+    if (await P.page.$('.panel-trump .suit-btn:not(:disabled)')) await press(P, '.panel-trump .suit-btn:not(:disabled)');
     await playUntil(P, () => !!document.querySelector('.panel-trump .suit-btn:not(:disabled)') || !!document.querySelector('.m-summary.open'),
       { label: 'trump choice or summary', ready: false, timeout: 240000 });
     await sleep(300);
@@ -1311,6 +1317,126 @@ CHECKS.bubbles = async browser => {
       if (r.collided && (!r.chatWaited || !r.chatLater)) throw new Error(`chat line after a bid: ${JSON.stringify(r)}`);
       // The case of the report: on a 360×640 screen the top and left bubbles meet.
       if (P.name === 'bubbles-phone' && !r.collided) throw new Error('phone: the top and left bubbles did not meet; the check proves nothing');
+    });
+  }
+};
+
+// Card values stay readable where cards overlap. Whatever the order of play
+// and whoever wins (scaled up, with its ring), every card in the trick keeps
+// one corner index clear of the cards above it: the top and left cards their
+// top-left one, the bottom and right cards their bottom-right one. In open
+// hands and the hand each card's top-left index is clear of the cards after
+// it. The table renders made-up states: every card in every slot and seeded
+// deals, each trick led and won from every seat.
+CHECKS.corners = async browser => {
+  for (const vp of ['iphonese', 'oldSE', 'oldSELandscape', 'phone', 'landscape']) {
+    const P = await page(browser, VP[vp], `corners-${vp}`, { hooks: true });
+    await run(P, async () => {
+      await home(P);
+      await quick(P);
+      await waitFor(P, () => document.querySelectorAll('.hand .card').length === 8, { label: 'the dealt hand' });
+      // The table holds still meanwhile.
+      await P.page.evaluate(() => { window.__kj.last().__hold = []; });
+      await sleep(1500);
+      const r = await P.page.evaluate(async () => {
+        const table = await import('/js/table.js');
+        const { app, posOf } = await import('/js/util.js');
+        const s0 = app.s;
+        const POS = ['bottom', 'left', 'top', 'right'];
+        const seatAt = pos => [0, 1, 2, 3].find(seat => posOf(s0, seat) === pos);
+        const SUITS = ['C', 'D', 'H', 'S'];
+        const RANKS = ['7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+        // A box in an SVG element's own units, grown by g of them, as a polygon on screen.
+        const quad = (el, b, g = 0) => [[b.x - g, b.y - g], [b.x + b.width + g, b.y - g], [b.x + b.width + g, b.y + b.height + g], [b.x - g, b.y + b.height + g]]
+          .map(([x, y]) => new DOMPoint(x, y).matrixTransform(el.getScreenCTM())).map(p => [p.x, p.y]);
+        // A corner index's ink: the rank's box grown by half its stroke, and the suit's box.
+        const ink = idx => [...idx.querySelectorAll('path')].map(p => quad(p, p.getBBox(), (Number(p.getAttribute('stroke-width')) || 0) / 2));
+        // A card's outline (a winner's with its 5 px ring, which hit tests
+        // such as covered() do not see): the rectangle inside its rounded
+        // corners (cards.css: radius 0.075 × width) and that radius.
+        const outline = c => {
+          const svg = c.querySelector('.card-svg');
+          const ring = c.classList.contains('winner') ? 5 * 200 / c.offsetWidth : 0;
+          const m = svg.getScreenCTM();
+          return { poly: quad(svg, { x: 15, y: 15, width: 170, height: 250 }), r: (15 + ring) * Math.hypot(m.a, m.b) };
+        };
+        // Distance between convex polygons: the shortest vertex-edge distance,
+        // or, when they overlap, the (negative) separating axis gap.
+        const toSeg = ([px, py], [x1, y1], [x2, y2]) => {
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+          return Math.hypot(px - x1 - t * dx, py - y1 - t * dy);
+        };
+        const apart = (p, q) => {
+          const gap = Math.max(...[p, q].flatMap(poly => poly.map(([x1, y1], i) => {
+            const [x2, y2] = poly[(i + 1) % poly.length];
+            const len = Math.hypot(x2 - x1, y2 - y1);
+            const along = pts => pts.map(([x, y]) => (x * (y1 - y2) + y * (x2 - x1)) / len);
+            return Math.max(Math.min(...along(q)) - Math.max(...along(p)), Math.min(...along(p)) - Math.max(...along(q)));
+          })));
+          if (gap < 0) return gap;
+          return Math.min(...[[p, q], [q, p]].flatMap(([a, b]) => a.flatMap(v => b.map((e, i) => toSeg(v, e, b[(i + 1) % b.length])))));
+        };
+        // How far part of an index is from a card above it (negative: under it).
+        const clear = (part, over) => {
+          const o = outline(over);
+          return apart(o.poly, part) - o.r;
+        };
+        const worst = { trick: { gap: Infinity }, open: { gap: Infinity }, hand: { gap: Infinity } };
+        const note = (kind, gap, what) => { if (gap < worst[kind].gap) worst[kind] = { gap, what }; };
+        // Each card's top-left index against the cards after it.
+        const stack = (kind, cards) => cards.forEach((c, i) => {
+          for (const part of ink(c.querySelector('.card-index'))) {
+            for (const d of cards.slice(i + 1)) note(kind, clear(part, d), `${c.dataset.card} under ${d.dataset.card}`);
+          }
+        });
+
+        // A made-up state on the table, its cards moved and scaled at once.
+        const show = st => {
+          table.render({ ...s0, phase: 'play', turn: -1, ...st });
+          for (const a of document.getAnimations()) if (a instanceof CSSTransition) a.finish();
+        };
+
+        const sets = RANKS.flatMap(rank => [0, 1, 2, 3].map(k => POS.map((_, i) => rank + SUITS[(i + k) % 4])));
+        let seed = 7;
+        const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+        for (let n = 0; n < 64; n++) {
+          const pool = SUITS.flatMap(s => RANKS.map(rank => rank + s));
+          sets.push(POS.map(() => pool.splice(Math.floor(rnd() * pool.length), 1)[0]));
+        }
+        for (const set of sets) {
+          for (let lead = 0; lead < 4; lead++) {
+            for (const win of POS) {
+              const cards = [0, 1, 2, 3].map(i => ({ seat: seatAt(POS[(lead + i) % 4]), card: set[(lead + i) % 4] }));
+              show({ hands4: null, trick: { leader: cards[0].seat, cards, winner: seatAt(win) } });
+              const els = POS.map(pos => document.querySelector(`.trick .slot-${pos} .card`));
+              const z = el => Number(el.parentElement.style.zIndex);
+              POS.forEach((pos, i) => {
+                const own = els[i].querySelectorAll('.card-index')[pos === 'top' || pos === 'left' ? 0 : 1];
+                for (const part of ink(own)) {
+                  for (const over of els.filter(e => z(e) > z(els[i]))) {
+                    note('trick', clear(part, over), `${pos} ${els[i].dataset.card} under ${over.dataset.card}${over.classList.contains('winner') ? ' (winner)' : ''}, led from ${POS[lead]}`);
+                  }
+                }
+              });
+            }
+          }
+        }
+        // Open hands and the hand: each suit, in both orders, at every seat.
+        const suits = SUITS.flatMap(s => [RANKS.map(rank => rank + s), RANKS.map(rank => rank + s).reverse()]);
+        for (let k = 0; k < suits.length; k++) {
+          const hands4 = [0, 1, 2, 3].map(seat => suits[(k + 2 * seat) % suits.length]);
+          show({ trick: null, hands4, hand: hands4[s0.you] });
+          for (const pos of ['left', 'top', 'right']) stack('open', [...document.querySelectorAll(`.seat-${pos} .backs.open > .card`)]);
+          stack('hand', [...document.querySelectorAll('.hand .card')].sort((a, b) => a.style.zIndex - b.style.zIndex));
+        }
+        table.render(s0);
+        return worst;
+      });
+      await P.page.evaluate(() => window.__kj.release());
+      const bad = Object.entries(r).filter(([, w]) => !(w.gap >= 0 && w.gap < Infinity)).map(([kind, w]) => `${kind}: ${w.what ? `${w.what} (${w.gap.toFixed(2)} px)` : 'nothing measured'}`);
+      if (bad.length) throw new Error(`corner index covered: ${bad.join('; ')}`);
     });
   }
 };
@@ -1531,6 +1657,413 @@ CHECKS.keyboard = async browser => {
     }
     await shot(T, 'settings-360x330');
   });
+};
+
+// The takeover question (design §6): nobody plays a person's seat unasked.
+// When the game waits on someone who lost the connection or left, everyone
+// else is asked whether an AI may play for them, and only if all agree does
+// one. A returning player closes the question; their next drop-out asks
+// again. Also how the question fits, with two people asked and with three
+// and long names, on phones (upright and on their side) and on a desktop:
+// on the turn of who is gone with two cards in the trick, what stays in
+// view, and that the answers stay put as you answer. A chip without an
+// answer yet reads "…" here (it shows thinking dots).
+const VOTE = () => {
+  const p = document.querySelector('.stage .panel-vote');
+  if (!p) return null;
+  const who = p.querySelector('.vote-who');
+  return {
+    title: p.querySelector('.panel-title').textContent,
+    q: p.querySelector('.vote-q').textContent,
+    btns: [...p.querySelectorAll('.vote-btns .btn')].map(b => `${b.textContent}|${b.getAttribute('aria-pressed')}`),
+    rule: who.hidden ? '' : who.querySelector('.vote-rule').textContent,
+    chips: who.hidden ? [] : [...p.querySelectorAll('.vote-chip')].map(c => c.querySelector('.vote-name').textContent
+      + (c.querySelector('.vote-st.open') ? '…' : c.querySelector('.vote-st').textContent)),
+    stage: document.querySelectorAll('.stage > *').length,
+    focus: document.activeElement?.closest('.panel-vote .btn')?.textContent || '',
+  };
+};
+
+// How the question reads to a screen reader: the panel a group named by its
+// title and described by the question, the answers described by it too, the
+// live line that says it, and the open chips' hidden words.
+const VOTE_A11Y = () => {
+  const p = document.querySelector('.stage .panel-vote');
+  const text = id => document.getElementById(id)?.textContent || '';
+  const q = p.querySelector('.vote-q').getBoundingClientRect();
+  return {
+    role: p.getAttribute('role'), name: text(p.getAttribute('aria-labelledby')), desc: text(p.getAttribute('aria-describedby')),
+    btnDesc: [...p.querySelectorAll('.vote-btns .btn')].map(b => text(b.getAttribute('aria-describedby'))),
+    live: [...document.querySelectorAll('.table [aria-live]')].map(e => e.textContent).filter(t => t.includes('Mag een AI-speler')),
+    open: [...p.querySelectorAll('.vote-st.open')].map(e => e.textContent),
+    answered: p.classList.contains('answered'), qShown: q.width > 2 && q.height > 2,
+  };
+};
+
+// The seat of a player by name: its status line and whether it has the turn.
+const SEAT_OF = name => {
+  const el = [...document.querySelectorAll('.seat')].find(e => e.querySelector('.nm')?.textContent === name);
+  const st = el?.querySelector('.st');
+  return el ? { status: st.hidden ? '' : st.textContent, turn: el.classList.contains('turn') } : null;
+};
+const SEAT_SAYS = (name, status) => {
+  const el = [...document.querySelectorAll('.seat')].find(e => e.querySelector('.nm')?.textContent === name);
+  const st = el?.querySelector('.st');
+  return !!st && (st.hidden ? '' : st.textContent) === status;
+};
+
+// The question fits: on the screen and under the top bar, ending above the
+// hand; both answers whole, at least 44 px high and not covered; every chip
+// inside the panel.
+const VOTE_FIT = () => {
+  const r = el => el.getBoundingClientRect();
+  const p = document.querySelector('.stage .panel-vote');
+  const b = r(p);
+  const bad = [];
+  const top = r(document.querySelector('.topbar')).bottom;
+  const hand = Math.min(...[...document.querySelectorAll('.hand .card')].map(c => r(c).top));
+  if (b.left < 0 || b.right > innerWidth || b.top < top - 1 || b.bottom > hand + 1) {
+    bad.push(`panel at [${Math.round(b.left)},${Math.round(b.top)}..${Math.round(b.right)},${Math.round(b.bottom)}], bar ends ${Math.round(top)}, hand starts ${Math.round(hand)}`);
+  }
+  for (const btn of p.querySelectorAll('.vote-btns .btn')) {
+    const x = r(btn);
+    const hit = document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2);
+    if (x.height < 44) bad.push(`"${btn.textContent}" ${Math.round(x.height)} px high`);
+    if (btn.scrollWidth > btn.clientWidth + 1) bad.push(`"${btn.textContent}" cut off`);
+    if (hit?.closest('.btn') !== btn) bad.push(`"${btn.textContent}" covered by ${hit?.className}`);
+  }
+  for (const c of p.querySelectorAll('.vote-chip')) {
+    const x = r(c);
+    if (x.left < b.left || x.right > b.right || x.bottom > b.bottom) bad.push(`chip "${c.textContent}" outside the panel`);
+  }
+  return { bad, size: `${Math.round(b.width)}×${Math.round(b.height)}`, chips: p.querySelectorAll('.vote-chip').length };
+};
+
+// The parts of the side seats (ring, and name plate with the status) that
+// something else covers.
+const SIDES_COVERED = () => ['left', 'right'].flatMap(pos => {
+  const seat = document.querySelector(`.seat-${pos}`);
+  return [...seat.querySelectorAll('.ring, .plate')].filter(el => {
+    const r = el.getBoundingClientRect();
+    return !seat.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+  }).map(el => `${pos} ${el.className}`);
+});
+
+// The cards in the trick whose centre the question covers.
+const TRICK_COVERED = () => [...document.querySelectorAll('.trick .slot > .card')].filter(c => {
+  const r = c.getBoundingClientRect();
+  return !!document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest('.panel-vote');
+}).map(c => c.parentElement.className);
+
+// Where the answers are: they must not move under the finger as you answer.
+const BTNS_AT = () => [...document.querySelectorAll('.stage .panel-vote .vote-btns .btn')]
+  .map(b => { const r = b.getBoundingClientRect(); return `${Math.round(r.left)},${Math.round(r.top)}`; }).join(' ');
+const SE = { width: 375, height: 548, isMobile: true, hasTouch: true, deviceScaleFactor: 1 };
+
+// At each size the question fits, and leaves these in view: the side seats
+// ('sides'), whose status says who is gone, and the trick ('trick').
+async function voteInView(P, sizes, keep, label) {
+  for (const [name, vp] of Object.entries(sizes)) {
+    await P.page.setViewport(vp);
+    await sleep(500);
+    const fit = await P.page.evaluate(VOTE_FIT);
+    const sides = keep.includes('sides') ? await P.page.evaluate(SIDES_COVERED) : [];
+    const trick = keep.includes('trick') ? await P.page.evaluate(TRICK_COVERED) : [];
+    await shot(P, `${label}-${name}`);
+    if (fit.bad.length || sides.length || trick.length) {
+      throw new Error(`the question ${label} at ${vp.width}×${vp.height}: ${JSON.stringify(fit)}, covered: ${[...sides, ...trick]}`);
+    }
+  }
+}
+
+CHECKS.takeover = async browser => {
+  // Updates as they arrive, to see who moved.
+  const sniff = P => P.page.evaluate(() => {
+    window.__evs = [];
+    window.__kj.rewrite = data => {
+      if (data.startsWith('{"t":"update"')) {
+        const m = JSON.parse(data);
+        if (m.ev) window.__evs.push(m.ev);
+      }
+      return data;
+    };
+  });
+  const voteOpen = () => !!document.querySelector('.stage .panel-vote');
+  const vote = (P, ai) => press(P, `.stage .panel-vote ${ai ? '.btn-go' : '.btn-pass'}`);
+  const toastSeen = (P, text) => waitFor(P, t => [...document.querySelectorAll('.toast-main')].some(e => e.textContent === t), { label: `toast "${text}"`, timeout: 8000 }, text);
+  const drop = P => P.page.evaluate(() => { window.__kj.block = true; window.__kj.last().close(); });
+  const comeBack = async P => {
+    await P.page.evaluate(() => { window.__kj.block = false; dispatchEvent(new Event('online')); });
+    await waitFor(P, () => document.getElementById('net-banner').hidden && document.querySelector('.hand .card'), { label: 'back at the table', timeout: 15000 });
+  };
+  // A move of seat s after the takeover.
+  const aiMoved = s => {
+    const i = window.__evs.findIndex(e => e.type === 'takeover');
+    return i >= 0 && window.__evs.slice(i + 1).some(e => ['play', 'trump', 'bid'].includes(e.type) && e.seat === s);
+  };
+  const errorsOf = (...ps) => ps.flatMap(P => P.errors.filter(e => !e.includes('/blocked')));
+
+  // A connection lost: Bert's turn waits for him, then Anna and Kees are asked.
+  const H = await page(browser, VP.desktop, 'takeover-anna', { hooks: true });
+  const G = await page(browser, VP.phone, 'takeover-bert', { hooks: true });
+  const K = await page(browser, VP.iphone, 'takeover-kees', { hooks: true });
+  await run(H, async () => {
+    await home(H, 'Anna');
+    const code = await newGame(H, { hands: 8 });
+    for (const [P, name] of [[G, 'Bert'], [K, 'Kees']]) {
+      await home(P, name, '/' + code);
+      await press(P, '.invite .btn-hero');
+      await waitFor(P, () => document.body.dataset.screen === 'lobby', { label: 'in the lobby' });
+    }
+    await press(H, '#btn-start:not(:disabled)');
+    for (const P of [H, G, K]) await waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelector('.hand .card'), { label: 'dealt' });
+    await sniff(H);
+    await sniff(K);
+    await H.page.evaluate(async () => {
+      const { sound } = await import('/js/sound.js');
+      const play = sound.play.bind(sound);
+      window.__sounds = [];
+      sound.play = n => { window.__sounds.push(`${n}${document.querySelector('.panel-vote') ? ' (vote)' : ''}`); return play(n); };
+    });
+
+    // Bert loses the connection on his turn, with two cards in the trick.
+    const bertsTurn = () => [...document.querySelectorAll('.seat.turn .nm')].some(e => e.textContent === 'Bert')
+      && document.querySelectorAll('.trick .slot > .card').length >= 2;
+    await Promise.all([H, G, K].map(P => playUntil(P, bertsTurn, { label: "Bert's turn in a trick" })));
+    await drop(G);
+    await waitFor(H, SEAT_SAYS, { label: "Bert's seat: verbinding weg" }, 'Bert', 'verbinding weg');
+    await Promise.all([playUntil(H, voteOpen, { label: 'the question' }), playUntil(K, voteOpen, { label: 'the question' })]);
+    await sleep(400);
+    let v = await H.page.evaluate(VOTE);
+    const want = {
+      title: 'Bert is weg', q: 'Het spel wacht op Bert. Mag een AI-speler zolang voor Bert spelen?',
+      btns: ['AI laten spelen|false', 'Wachten|false'], rule: 'Iedereen moet akkoord zijn:', chips: ['Jij…', 'Kees…'], stage: 1, focus: 'AI laten spelen',
+    };
+    if (JSON.stringify(v) !== JSON.stringify(want)) throw new Error(`the question for Anna: ${JSON.stringify(v)}`);
+    const k = await K.page.evaluate(VOTE);
+    if (k.focus || String(k.chips) !== 'Jij…,Anna…') throw new Error(`the question for Kees (touch: no focus): ${JSON.stringify(k)}`);
+    const a11y = await K.page.evaluate(VOTE_A11Y);
+    const q = 'Het spel wacht op Bert. Mag een AI-speler zolang voor Bert spelen?';
+    if (a11y.role !== 'group' || a11y.name !== 'Bert is weg' || a11y.desc !== q || String(a11y.btnDesc) !== `${q},${q}`
+      || String(a11y.live) !== 'Bert is weg. Mag een AI-speler zolang voor Bert spelen?' || String(a11y.open) !== 'nog niet gekozen,nog niet gekozen'
+      || a11y.answered || !a11y.qShown) {
+      throw new Error(`the question for a screen reader: ${JSON.stringify(a11y)}`);
+    }
+    const bert = await H.page.evaluate(SEAT_OF, 'Bert');
+    if (!bert.turn || bert.status !== 'verbinding weg') throw new Error(`Bert's seat while asked: ${JSON.stringify(bert)}`);
+    if (!(await H.page.evaluate(() => window.__sounds.includes('turn (vote)')))) throw new Error(`no sound when asked: ${await H.page.evaluate(() => window.__sounds)}`);
+    await Promise.all([H, K].map(P => waitFor(P, () => !document.querySelector('.toast'), { label: 'no toasts', timeout: 10000 })));
+    await shot(H, 'gone');
+    await shot(K, 'gone');
+    // Low on the table, the question leaves the trick and the side seats
+    // (Bert's "verbinding weg" too) in view; on a short phone the side seats.
+    if (String(await H.page.evaluate(TRICK_COVERED))) throw new Error(`the question covers the trick on a desktop: ${await H.page.evaluate(TRICK_COVERED)}`);
+    await voteInView(K, { phone: VP.phone, iphone: VP.iphone }, 'sides trick', 'asked');
+    await voteInView(K, { se: SE }, 'sides', 'asked');
+    await K.page.setViewport(VP.iphone);
+    await sleep(500);
+    const at = await K.page.evaluate(BTNS_AT);
+
+    // Kees would rather wait, but his socket goes deaf as he answers: the
+    // watchdog reconnects, and his answer holds. Answered, the question text
+    // steps out of sight. Anna agrees. The game waits for Bert.
+    const socks = await K.page.evaluate(() => window.__kj.socks.length);
+    await K.page.evaluate(() => { window.__kj.last().__deaf = true; });
+    await vote(K, false);
+    await waitFor(K, n => window.__kj.socks.length > n, { label: "the watchdog reconnects after Kees's unanswered vote", timeout: 9000 }, socks);
+    await waitFor(H, () => [...document.querySelectorAll('.vote-chip')].some(c => c.textContent === 'Keeswil wachten'), { label: 'Kees waits' });
+    await waitFor(K, () => document.querySelector('.panel-vote .btn-pass')?.getAttribute('aria-pressed') === 'true', { label: "Kees's answer after the resync" });
+    const ka = await K.page.evaluate(VOTE_A11Y);
+    if (!ka.answered || ka.qShown || ka.desc !== q) throw new Error(`answered, the question takes no room but is still read: ${JSON.stringify(ka)}`);
+    await waitFor(K, () => document.getElementById('net-banner').hidden, { label: 'online again' });
+    await sleep(500);
+    const moved = await K.page.evaluate(BTNS_AT);
+    if (moved !== at) throw new Error(`the answers moved as Kees answered: ${at} → ${moved}`);
+    // Answered, the panel is smaller still: the side seats and the trick
+    // show, on a short phone and on one on its side too.
+    await voteInView(K, { phone: VP.phone, se: SE, landscape: VP.landscape }, 'sides trick', 'answered');
+    await K.page.setViewport(VP.iphone);
+    await vote(H, true);
+    await waitFor(K, () => [...document.querySelectorAll('.vote-chip')].some(c => c.textContent === 'Annaakkoord'), { label: 'Anna agrees' });
+    const moves = await H.page.evaluate(() => window.__evs.length);
+    await sleep(2500);
+    v = await H.page.evaluate(VOTE);
+    if (String(v?.btns) !== 'AI laten spelen|true,Wachten|false' || String(v.chips) !== 'Jijakkoord,Keeswil wachten') throw new Error(`while Kees waits: ${JSON.stringify(v)}`);
+    const still = await H.page.evaluate(() => window.__evs.length);
+    if (still !== moves || !(await H.page.evaluate(SEAT_OF, 'Bert')).turn) throw new Error(`the game went on although Kees waits: ${await H.page.evaluate(() => JSON.stringify(window.__evs.slice(-3)))}`);
+    await shot(K, 'waiting');
+
+    // Kees agrees after all: an AI plays for Bert until he is back.
+    await vote(K, true);
+    await Promise.all([H, K].map(P => toastSeen(P, 'Een AI-speler speelt nu voor Bert')));
+    if (await H.page.evaluate(voteOpen) || await K.page.evaluate(voteOpen)) throw new Error('the question stays after everyone agreed');
+    const seat = await H.page.evaluate(() => window.__evs.find(e => e.type === 'takeover')?.seat);
+    await Promise.all([H, K].map(P => playUntil(P, aiMoved, { label: 'the AI plays for Bert' }, seat)));
+    await waitFor(H, SEAT_SAYS, { label: "Bert's seat: AI speelt even mee" }, 'Bert', 'AI speelt even mee');
+
+    // Bert is back and plays himself, told that an AI played for him; his
+    // next drop-out asks again.
+    await comeBack(G);
+    await toastSeen(G, 'Een AI-speler speelde even voor je');
+    await toastSeen(H, 'Bert is terug');
+    await waitFor(H, SEAT_SAYS, { label: "Bert's seat without a status" }, 'Bert', '');
+    await drop(G);
+    await Promise.all([playUntil(H, voteOpen, { label: 'the question again' }), playUntil(K, voteOpen, { label: 'the question again' })]);
+    v = await H.page.evaluate(VOTE);
+    if (String(v.btns) !== 'AI laten spelen|false,Wachten|false' || String(v.chips) !== 'Jij…,Kees…') throw new Error(`asked again: ${JSON.stringify(v)}`);
+    await vote(K, false);
+    await waitFor(H, () => [...document.querySelectorAll('.vote-chip')].some(c => c.textContent === 'Keeswil wachten'), { label: 'Kees waits again' });
+    // Back, he closes the question himself and has his turn. Kees, on a slow
+    // line, still sees the question and changes his mind as Bert returns:
+    // too late, which is nobody's mistake (no error toast).
+    await K.page.evaluate(() => { window.__kj.last().__hold = []; });
+    await comeBack(G);
+    await waitFor(H, () => !document.querySelector('.panel-vote'), { label: 'the question closed by Bert', timeout: 8000 });
+    await vote(K, true);
+    await sleep(800);
+    await K.page.evaluate(() => window.__kj.release());
+    await waitFor(K, () => !document.querySelector('.panel-vote'), { label: 'the question closed for Kees', timeout: 8000 });
+    await sleep(500);
+    const late = await K.page.evaluate(() => [...document.querySelectorAll('.toast-error')].map(e => e.textContent));
+    if (late.length) throw new Error(`a vote too late shows an error: ${late}`);
+    await waitFor(G, () => !!document.querySelector('.panel-trump .suit-btn:not(:disabled), .panel-bid .btn-go:not(:disabled), .hand.my-turn .card.legal'), { label: "Bert's own turn" });
+
+    // Kees leaves: the others hear an AI takes his seat only if all agree,
+    // and so does he. Then Bert leaves on his turn: Anna alone is asked, so
+    // the question speaks to her alone and lists nobody.
+    const leaving = async P => {
+      await press(P, '.topbar .tb-menu');
+      await waitFor(P, () => document.querySelector('.m-menu.open'), { label: 'menu' });
+      await sleep(250);
+      await press(P, '.m-menu .menu-item.danger');
+      await waitFor(P, () => document.querySelector('.m-confirm.open'), { label: 'leave?' });
+      const text = await P.page.$eval('.m-confirm p', e => e.textContent);
+      if (text !== 'De anderen beslissen samen of een AI-speler je plaats inneemt.') throw new Error(`[${P.name}] leaving mid-game: ${text}`);
+      await sleep(250);
+      await press(P, '.m-confirm .btn-danger');
+      await waitFor(P, () => document.body.dataset.screen === 'home', { label: 'home again' });
+    };
+    await leaving(K);
+    await waitFor(H, () => [...document.querySelectorAll('.toast')].some(t => t.querySelector('.toast-main')?.textContent === 'Kees is vertrokken'
+      && t.querySelector('.toast-sub')?.textContent === 'Een AI-speler neemt de plaats pas in als iedereen akkoord is.'), { label: 'the leave toast', timeout: 8000 });
+    await leaving(G);
+    await waitFor(H, () => document.querySelector('.panel-vote .panel-title')?.textContent === 'Bert is vertrokken', { label: 'the question about Bert, who left' });
+    const alone = await H.page.evaluate(VOTE);
+    if (alone.q !== 'Mag een AI-speler de plaats van Bert innemen? Je kunt ook wachten tot iemand anders met de code aanschuift.' || alone.rule || alone.chips.length) {
+      throw new Error(`the question to Anna alone: ${JSON.stringify(alone)}`);
+    }
+    await shot(H, 'alone');
+    const bad = errorsOf(G, K);
+    if (bad.length) throw new Error(bad.join('\n'));
+  });
+  await G.ctx.close().catch(() => {});
+  await K.ctx.close().catch(() => {});
+
+  // Someone leaves for good: three people are asked about a long name, at
+  // once on that seat's turn. A friend with the code takes the seat (and
+  // leaves it at once); then the table lets an AI have it.
+  const LONG = 'Maximiliaan Wolfgang';
+  const A2 = await page(browser, VP.desktop, 'takeover-fit-desktop', { hooks: true });
+  const K2 = await page(browser, VP.phone, 'takeover-fit', { hooks: true });
+  const L2 = await page(browser, VP.phone, 'takeover-fit-lotte', { hooks: true });
+  const leavers = [];
+  // A player over a bare websocket, who leaves as soon as a game shows, or
+  // with trick, on its turn with two cards in the trick (playing the first
+  // card it may until then).
+  const leaver = async (code, name, trick = false) => {
+    const ws = new NodeWS(BASE.replace(/^http/, 'ws') + '/ws', { headers: { Origin: BASE, 'X-Real-IP': nextIP() } });
+    leavers.push(ws);
+    await new Promise((ok, fail) => { ws.once('open', ok); ws.once('error', fail); });
+    ws.on('message', data => {
+      const m = JSON.parse(String(data));
+      const s = m.s;
+      if (m.t !== 'update' || s.phase === 'lobby' || ws.gone) return;
+      if (!trick || s.turn === s.you && s.phase === 'play' && s.trick.cards.length >= 2) {
+        ws.gone = true;
+        ws.send(JSON.stringify({ t: 'leave' }));
+      } else if (s.phase === 'handEnd') ws.send(JSON.stringify({ t: 'ready' }));
+      else if (s.turn === s.you && s.phase === 'trump') ws.send(JSON.stringify({ t: 'trump', suit: ['C', 'D', 'H', 'S'].find(c => !(s.forced && c === s.turned)) }));
+      else if (s.turn === s.you && s.phase === 'bid') ws.send(JSON.stringify({ t: 'bid', play: false }));
+      else if (s.turn === s.you && s.phase === 'play') ws.send(JSON.stringify({ t: 'play', card: s.legal[0] }));
+    });
+    ws.send(JSON.stringify({ t: 'join', code, name }));
+  };
+  await run(K2, async () => {
+    await home(A2, 'Anna-Sophie de Groot');
+    const code = await newGame(A2, { hands: 8 });
+    for (const [P, name] of [[K2, 'Kees'], [L2, 'Lotte van der Linden']]) {
+      await home(P, name, '/' + code);
+      await press(P, '.invite .btn-hero');
+      await waitFor(P, () => document.body.dataset.screen === 'lobby', { label: 'in the lobby' });
+    }
+    await leaver(code, LONG, true);
+    await waitFor(A2, n => [...document.querySelectorAll('.lseat .ls-name')].some(e => e.textContent === n), { label: 'Maximiliaan seated' }, LONG);
+    await press(A2, '#btn-start:not(:disabled)');
+    await Promise.all([A2, K2, L2].map(P => playUntil(P, voteOpen, { label: 'the question' })));
+    await toastSeen(K2, `${LONG} is vertrokken`);
+    await waitFor(K2, SEAT_SAYS, { label: 'the seat left: vertrokken' }, LONG, 'vertrokken');
+    await sleep(400);
+    const v = await K2.page.evaluate(VOTE);
+    if (v.title !== `${LONG} is vertrokken` || v.q !== `Mag een AI-speler de plaats van ${LONG} innemen? Jullie kunnen ook wachten tot iemand anders met de code aanschuift.`
+      || String(v.chips) !== 'Jij…,Lotte van der Linden…,Anna-Sophie de Groot…') {
+      throw new Error(`the question about who left: ${JSON.stringify(v)}`);
+    }
+    // Unanswered, on an upright phone the side seats show (on a big one the
+    // trick too), and on a desktop the trick does.
+    await Promise.all([K2, A2].map(P => waitFor(P, () => !document.querySelector('.toast'), { label: 'no toasts', timeout: 10000 })));
+    await voteInView(K2, { phone: VP.phone }, 'sides', 'asked');
+    await voteInView(K2, { iphone: VP.iphone }, 'sides trick', 'asked');
+    await voteInView(A2, { desktop: VP.desktop }, 'sides trick', 'asked');
+    await vote(L2, false);
+    await vote(A2, true);
+    await waitFor(K2, () => document.querySelectorAll('.vote-chip.yes, .vote-chip.no').length === 2, { label: 'two answers' });
+    // The toasts of the start and the leave go first (they would cover the shots).
+    await Promise.all([K2, A2].map(P => waitFor(P, () => !document.querySelector('.toast'), { label: 'no toasts', timeout: 10000 })));
+    const sizes = { phone: VP.phone, se: SE, iphone: VP.iphone, landscape: VP.landscape, smallLandscape: VP.smallLandscape };
+    for (const [label, vp] of Object.entries(sizes)) {
+      await K2.page.setViewport(vp);
+      await sleep(500);
+      const fit = await K2.page.evaluate(VOTE_FIT);
+      await shot(K2, label);
+      if (fit.bad.length || fit.chips !== 3) throw new Error(`the question at ${vp.width}×${vp.height}: ${JSON.stringify(fit)}`);
+      await checkOverflow(K2, label);
+    }
+    // Answered, with three people asked and long names: the side seats and
+    // the trick show; on a short phone and the smallest one on its side,
+    // where the chips take three lines or the panel goes wide, the side
+    // seats do. The answers stay put as Kees answers.
+    await K2.page.setViewport(VP.phone);
+    await sleep(500);
+    const at = await K2.page.evaluate(BTNS_AT);
+    await vote(K2, false);
+    await waitFor(K2, () => !!document.querySelector('.panel-vote.answered'), { label: 'Kees answered' });
+    await sleep(500);
+    const moved = await K2.page.evaluate(BTNS_AT);
+    if (moved !== at) throw new Error(`the answers moved as Kees answered: ${at} → ${moved}`);
+    await voteInView(K2, { phone: VP.phone, iphone: VP.iphone, landscape: VP.landscape }, 'sides trick', 'answered');
+    await voteInView(K2, { se: SE, smallLandscape: VP.smallLandscape }, 'sides', 'answered');
+    await K2.page.setViewport(VP.phone);
+
+    // Joop joins with the code in the seat Maximiliaan left, which ends the
+    // question, and leaves again: a new question, nobody has answered it.
+    await leaver(code, 'Joop');
+    await waitFor(K2, () => [...document.querySelectorAll('.chat-list .msg.sys')].some(m => m.textContent === 'Joop neemt de plaats van Maximiliaan Wolfgang over.'), { label: 'Joop in the seat' });
+    await Promise.all([A2, K2, L2].map(P => waitFor(P, () => document.querySelector('.panel-vote .panel-title')?.textContent === 'Joop is vertrokken', { label: 'the question about Joop' })));
+    const j = await K2.page.evaluate(VOTE);
+    if (String(j.chips) !== 'Jij…,Lotte van der Linden…,Anna-Sophie de Groot…' || String(j.btns) !== 'AI laten spelen|false,Wachten|false') throw new Error(`the question about Joop: ${JSON.stringify(j)}`);
+
+    // Everyone agrees: a bot takes the seat.
+    for (const P of [L2, A2, K2]) await vote(P, true);
+    await waitFor(K2, () => [...document.querySelectorAll('.toast-main')].some(e => / \(AI\) neemt het over$/.test(e.textContent)), { label: 'the bot takes the seat', timeout: 8000 });
+    if (await K2.page.evaluate(voteOpen)) throw new Error('the question stays after everyone agreed');
+    const names = await K2.page.$$eval('.seat .nm', els => els.map(e => e.textContent));
+    if (names.includes('Joop') || names.filter(n => n.endsWith(' (AI)')).length !== 1) throw new Error(`seats after the takeover: ${names}`);
+    const bad = errorsOf(A2, L2);
+    if (bad.length) throw new Error(bad.join('\n'));
+  });
+  for (const ws of leavers) ws.close();
+  await A2.ctx.close().catch(() => {});
+  await L2.ctx.close().catch(() => {});
 };
 
 // ---------- runner ----------

@@ -307,17 +307,18 @@ func TestLeaveAndTakeOver(t *testing.T) {
 	h.send(map[string]any{"t": "start"})
 	h.waitEvent("deal")
 
-	// The host leaves mid-game: a bot takes the seat, the guest becomes host.
+	// The host leaves mid-game: the seat waits with the name, nobody plays
+	// it, and the guest becomes host.
 	h.send(map[string]any{"t": "leave"})
 	m := g.until(5*time.Second, "leave", func(m *msg) bool { return m.T == "update" && m.evType() == "leave" })
 	s := m.state
-	if p := s.Players[0]; p == nil || !p.Bot {
+	if p := s.Players[0]; p == nil || p.Bot || !p.Left || p.Connected || p.Name != "Host" {
 		t.Fatalf("seat 0 after leave: %+v", p)
 	}
 	if s.Host != 1 {
 		t.Errorf("host %d, want 1", s.Host)
 	}
-	if !slices.ContainsFunc(g.chats, func(c chatMsg) bool { return c.Sys && strings.HasPrefix(c.Text, "Host is vertrokken; ") }) {
+	if !slices.ContainsFunc(g.chats, func(c chatMsg) bool { return c.Sys && c.Text == "Host is vertrokken." }) {
 		t.Errorf("no leave line in %+v", g.chats)
 	}
 	// The old token no longer works, but a newcomer takes over the seat.
@@ -326,10 +327,13 @@ func TestLeaveAndTakeOver(t *testing.T) {
 	if n.seat != 0 {
 		t.Fatalf("newcomer at seat %d, want 0", n.seat)
 	}
-	if p := n.s.Players[0]; p.Bot || p.Name != "Nieuw" {
+	if p := n.s.Players[0]; p.Bot || p.Left || p.Name != "Nieuw" {
 		t.Errorf("seat 0 after takeover: %+v", p)
 	}
 	g.waitEvent("join")
+	if !slices.ContainsFunc(g.chats, func(c chatMsg) bool { return c.Sys && c.Text == "Nieuw neemt de plaats van Host over." }) {
+		t.Errorf("no takeover line in %+v", g.chats)
+	}
 	x := dial(t, ts)
 	x.send(map[string]any{"t": "join", "code": h.code, "name": "X"})
 	x.waitError(errStarted)

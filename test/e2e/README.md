@@ -26,8 +26,9 @@ podman stop kj-dev-18200
 With only a URL it plays the standard suite: tables of four, three and two,
 one to four humans, both ways of choosing trump, both rule sets, all AI
 levels, a training game with open cards, a full *boom* of 16 hands, and
-games where players drop their connection and come back. Any option below
-plays that one configuration instead:
+games where players drop their connection and come back while the others
+vote on an AI playing for them. Any option below plays that one
+configuration instead:
 
 ```sh
 node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --humans 2 --trump gedraaid \
@@ -49,7 +50,7 @@ node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --players 3 --humans 2 --rul
 | `--tempo` | `rustig`, `normaal`, `snel` | `normaal` (`rustig` in training) |
 | `--training` | training game: one player, Juf Ans as partner, hints and tips | off |
 | `--open` | training with open cards (`hands4`) | off |
-| `--reconnect` | players sometimes drop the connection for up to 1.5 s and rejoin with their seat token | off |
+| `--reconnect` | players sometimes drop the connection for up to 1.5 s and rejoin with their seat token; the others answer the question whether an AI may play for them (mostly yes, now and then a no that may turn into a yes) | off |
 | `--games` | games per configuration | 1 |
 | `--parallel` | play all games at the same time instead of one after another | off |
 | `--verbose` | print every event | off |
@@ -77,6 +78,18 @@ On every update:
   `rule` is set; otherwise neither is present. In training, every turn has a
   hint (a hinted card is legal); with open cards `hands4` matches the card
   counts.
+- No AI plays for an absent human without everyone's consent: a trump, bid or
+  card of a human seat comes from its connected player, or from the
+  substitute the others let in (`away`), never for a seat its player left.
+  `away` turns true only with a `takeover` event about that seat, and that
+  event comes only for the question that was open, after this player's own
+  last answer to it was yes; the event `away` comes once per lost
+  connection. `takeover` is set only on the turn of an absent human (`left`
+  as on the seat), never about yourself; votes are only there while it is,
+  from connected humans (a no may outlast its voter's drop-out a moment);
+  the turn of a seat its player left always comes with the question. A vote
+  refused as too late ("Die vraag staat niet (meer) open.") is fine only
+  when the question it answered has closed or changed by then.
 - The score sheet has one row per finished hand, numbered in order, and
   `total` is the sum of the rows.
 
@@ -96,5 +109,7 @@ set (0 in training, where the summary waits for *ready*).
 At game over: exactly `--hands` hands were played (and seen), the totals and
 the winner agree, and in training a tip arrived after every trick.
 
-Any `error` message from the server fails the game too, as does a closed
-connection or 30 seconds without any message (a stall).
+Any `error` message from the server fails the game too (except the answer to
+a vote that crossed the end of its question, see above), as does a closed connection or 30 seconds without any message (a
+stall). With `--reconnect` the result line counts the reconnects, the
+questions, the votes (and those too late) and the takeovers.

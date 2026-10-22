@@ -444,6 +444,28 @@ func Advise(v game.View) Advice
 // "Fatima (AI) wint de slag met ♥B, de hoogste troef. 25 punten, roem: stuk (20)."
 func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
 
+// The review at the end of a match (§9 Spelanalyse). GradeChoice runs the
+// search of Advise on the same view (same seed), so it agrees with the hint.
+// Points are expected score differences between the teams, as in the hints.
+type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool } // exactly one set
+type Grade struct {
+    Stake  float64 // best minus worst option; 0 without a choice (one legal card)
+    Lost   float64 // the hint's option minus the choice when that is at least
+                   // max(5, 2 paired SE), the hint's tolerance; else 0
+    Gain   float64 // a strong move: the choice is the hint's option, the normaal
+                   // choice differs and is worse by at least max(10, 2 paired SE); else 0
+    Better Choice  // the hint's option, when Lost > 0
+    Text   string  // the hint for Better (Lost > 0) or for the choice (Gain > 0)
+    Nat    float64 // a bid to play: the estimated chance of going nat
+}
+func GradeChoice(v game.View, c Choice) Grade
+// What the cards dealt to v.Seat are worth to its team against an average
+// hand in the same seat: the mean score difference when the hand is played
+// from the deal by the normaal policy (bids and trump choice included) over
+// 320 sampled deals of the other cards, minus the same over 20000 random
+// deals (computed once per trump mode and rules). v is the view at the deal.
+func HandLuck(v game.View) float64
+
 // Personality chat. Returns "" for silence; the server rate-limits on top.
 type ChatEvent struct {
     Kind string   // "greet","trump","pass","play","wonTrick","roem","nat","natOpp","pit","handWon",
@@ -522,12 +544,17 @@ type Brain interface {
     Play(v game.View) game.Card
 }
 type Advice struct{ Card *game.Card; Suit *game.Suit; Play *bool; Text string }
+type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool }                   // as bot.Choice
+type Grade struct{ Stake, Lost, Gain float64; Better Choice; Text string; Nat float64 } // as bot.Grade
 type ChatEvent struct{ Kind string; Mine bool; Text string; Points int; InHand, Playing bool } // as bot.ChatEvent
 type AI interface {
     Personas() []Persona
     NewBrain(personaID, level string, seed uint64) Brain   // level "makkelijk"|"normaal"|"sterk";
-                                                           // personaID "" = neutral substitute for an away human
+                                                           // personaID "" = neutral substitute for a human who
+                                                           // dropped out, once the others agreed (§6)
     Advise(v game.View) Advice
+    Grade(v game.View, c Choice) Grade    // the review (§6 Spelanalyse)
+    HandLuck(v game.View) float64
     ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
     Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
 }
@@ -604,8 +631,9 @@ reply attempt.
   still connected get `onbekend`) and at once when the last human leaves its
   lobby. With no human connected it is removed after 30 min while a game runs
   that still has a human seat, and after 5 min in the lobby, after game over,
-  or once every human has left (bots play all seats; a vacated seat can be taken
-  over until then). Max 500 rooms (`Config.MaxRooms`): when full, a new game
+  or once every human has left (a seat its player left counts as no human,
+  here and for the host; it can be taken over until then). Max 500 rooms
+  (`Config.MaxRooms`): when full, a new game
   replaces the room that has had no human connected for longest (at least
   2 min), else error `te-veel-spellen`.
 - Seats: `players` seats (`0..players-1`). The lobby starts with only the
@@ -619,9 +647,14 @@ reply attempt.
 - Joining a lobby: first empty seat; with none → error `vol`, whose text says
   what to ask the host: one bot less when bots fill a seat, else a seat more
   under *Spelers* (with four people seated, nothing can be done). Joining a
-  running game: allowed only to take over a *vacated* seat (a human left; a
-  bot plays it meanwhile), else error `gestart` (after game over its text asks
-  the host to set the table up again).
+  running game, or one that is over: allowed only to take over a seat a human
+  left, still waiting or played by the AI the others let in, else error
+  `gestart` (after game over its text asks the host to set the table up
+  again). A joiner with the name of a player who left gets that seat (their
+  team, their cards), else the waiting seat whose turn it is goes first. The
+  line is "Kees neemt de plaats van Jaap over." (or "… van Opa Dirk (AI)
+  over."), and "Jaap neemt de plaats weer in." for the same name again
+  (anyone with the code may type it, so the line claims no more).
 - A join refused from a full lobby or after game over is told to the table:
   the system line "… wilde aanschuiven, maar de tafel is vol." and, for the
   host only, a `refused` message (§7), at most once per 30 s per room whatever
@@ -630,9 +663,10 @@ reply attempt.
   the same seats and options; `lobby` takes the room back to phase `lobby`
   under the same code and options. There the humans keep their seats (except
   those disconnected for longer than the 30 s host grace), bots placed in the
-  lobby stay, and the seats that bots filled at the start or after a human left
-  are empty again, so a late friend can join and the host can change seats,
-  bots and options before starting. Scores and the previous hand are cleared.
+  lobby stay, and the seats humans left, or that bots filled at the start or
+  took over from a human who left, are empty again, so a late friend can join
+  and the host can change seats, bots and options before starting. Scores
+  and the previous hand are cleared.
   The system line says "Wie wil, kan nu aanschuiven." only when a seat is
   free. Training has no lobby.
 - Reconnect: `join` with the room's code and the seat token returns you to your
@@ -641,27 +675,77 @@ reply attempt.
   disconnected for at least 3 min (a locked phone keeps its seat): the seat
   gets a new token, the old one then gets `onbekend`, and a system line says
   "… speelt verder op een ander apparaat".
-- A human who disconnects keeps the seat (event `away`, `connected: false`). If
-  it is their turn and they are still away after 20 s, a substitute bot (level
-  normaal) plays for them (a second `away` event, `away: true`) until they
-  return (`back`). Explicit `leave` mid-game (or at game over) vacates the seat:
-  a random persona at the room's level plays it (system line "… neemt het
-  over") until a joiner takes it over. A second connection that joins with the
-  same token takes the seat over; the old one gets `onbekend`.
+- A human who disconnects keeps the seat (event `away`: the connection is
+  lost, `connected: false`) and plays it again on return (`back`). A second
+  connection that joins with the same token takes the seat over; the old one
+  gets `onbekend`. An explicit `leave` in the lobby empties the seat; in a
+  match (any phase from `auction` or `trump` to `handEnd`) or at game over
+  it makes a *left* seat: no connection, no token, the name stays for display (`left: true`),
+  event `leave`, system line "Jaap is vertrokken." Nobody plays a left seat
+  until a joiner takes it or the others let an AI take it; a rematch fills
+  it with a random bot like an empty seat, and `lobby` frees it.
+- **No AI plays a human's seat without the consent of every other connected
+  human.** (Bots placed in the lobby or filling seats at the start, and
+  training and solo games, are not affected.) On the turn of a player who
+  dropped out or left (phase `auction`, `discard`, `trump`, `bid` or `play`,
+  no pause pending) the game waits for them. The others are asked whether an AI may play that seat
+  (state `takeover`, `{seat, left}`) at once for a left seat, and for a
+  player who dropped out once they have been gone 10 s (`askAfter`, scaled
+  by `-fast` like every delay), counted from the later of the turn opening
+  and the drop-out; as long as someone is connected to answer. Every
+  connected human answers with `vote` (`players[i].vote`), naming the
+  question (`seat`, `left`), and may change the answer while the question is
+  open. When all of them said yes, an AI takes over (event `takeover`): for
+  a player who dropped out the substitute (a neutral bot, level normaal,
+  `away: true`) plays until they return ("Iedereen is akkoord: een AI-speler
+  speelt zolang voor Jaap."); a left seat goes to a random persona at the
+  room's level ("Iedereen is akkoord: Opa Dirk (AI) neemt de plaats van Jaap
+  in."), which a joiner may still take over. A no keeps the game waiting.
+  Unanimity is checked after every vote and whenever the voters change: who
+  leaves takes their vote along, and so does who drops out, except that a no
+  holds for `askAfter` after its voter dropped out (a reload or a phone
+  switching apps must not let the AI in against it; back sooner, they still
+  have it); who connects or joins has not voted yet. The question closes,
+  every vote cleared, when the player returns, an AI takes over, or a joiner
+  or a reclaim by name takes the seat. While nobody else is connected it
+  rests (`takeover` null, nobody is asked, the game pauses) but keeps a no
+  that still holds: whoever is back first cannot let the AI in against it
+  before that no has run out (a blip that drops the whole table). Consent
+  lasts until the player returns, and for this match only: a later drop-out
+  asks again, and so does a rematch for a player still gone. With one human
+  (training, solo) nobody can be asked: the game waits for the player.
 - A bot (or substitute) decides once per turn, in the background: a sterk
   search uses all cores for a moment. Reconnects, window switches and a seat
   changing hands during the turn reuse that decision; it is played when the
-  think time is up (counted from the turn, or from when a substitute starts).
+  think time is up (counted from the turn, or from the takeover).
 - If no human is connected, the game pauses (bots do not play, the hand summary
-  waits); when someone returns, bots think again and the summary countdown
-  restarts.
+  waits, nobody is asked); when someone returns, bots think again and the
+  summary countdown restarts. If the game waits for an absent player, the
+  question is back at once when it had been asked or that player has been
+  gone 10 s by then (counted as above: the pause does not reset that clock),
+  else once they have.
+- Spelanalyse (§9), at a table of four only (three and two players get no
+  review: `review` stays null): every decision a connected human makes with a
+  choice (a card when more than one is legal, a trump choice, a bid) is
+  graded in the background with `AI.Grade` on the view it was made on, and
+  each human's cards with `AI.HandLuck` at the deal. A substitute's decisions are not
+  graded. At most GOMAXPROCS/4 analyses (at least 1) run at once over all
+  rooms, each on one core; one whose match is over, or whose room is gone,
+  is skipped when its turn comes. The roem a human's card adds to the
+  cards on the table, beyond the least that one of their legal cards would
+  add, counts as given away when the opponents take the trick. A match starts
+  every review afresh; a seat that changes hands starts a new one. At game
+  over each human's state carries their own review and nobody else's
+  (`review`, §7); while grades are still out it is `{"pending": true, …}`,
+  and the player gets an update without event once the last one is in.
 - Bot chat (limits in §5): a bot does not repeat one of its last two lines for
   the same kind of event (numbers aside: "20 roem" and "50 roem" are one line);
   it asks for another line a few times and otherwise stays silent.
 - System chat lines (`sys`, seat -1): start, joining, a join refused because
-  the table is full, leaving (and which bot takes over), away/back of a
-  substitute, a seat taken back on another device, host changes, rematch, back
-  to the lobby (and a gone player's seat freed).
+  the table is full, leaving, an AI taking a seat with everyone's consent, a
+  player back from a substitute ("… is terug."), a seat taken back on another
+  device, host changes, rematch, back to the lobby (and a gone player's seat
+  freed).
 
 ### Pacing (ms, scaled by tempo; `-fast` multiplies everything by 0.05)
 
@@ -734,6 +818,7 @@ client rotates so `you` is at the bottom.
 | `discard` | `cards` [2] | Three players: you play alone, phase `discard` |
 | `play` | `card` | Your turn, phase `play` |
 | `ready` | | Phase `handEnd`: continue now (ignored once the next hand is dealt: a late tap on the summary) |
+| `vote` | `seat`, `ai` bool, `left` bool (optional) | While state `takeover` is set, every connected human: may an AI play that seat (`true`), or wait (`false`)? `seat`, and `left` when sent, as in `takeover`: the question it answers (the client sends `left`, so a yes for a stand-in never counts for a seat given away). Can change while the question is open (§6); the same answer again changes nothing, so no `update` follows |
 | `chat` | `text` | Any time |
 | `rematch` | | Host, phase `gameOver`: new match, same seats and options |
 | `lobby` | | Host, phase `gameOver`, not training: back to the lobby, same code and options (§6) |
@@ -756,14 +841,17 @@ client rotates so `you` is at the bottom.
 Error codes: `onbekend` (no such room, or no longer in it: room removed, seat
 taken over by another window, or taken back by name on another device), `vol`,
 `gestart`, `geen-host`, `niet-jouw-beurt`, `ongeldig` (bad card/suit/fields;
-`msg` from `ExplainIllegal` for cards), `limiet` (rate limit, also for joins
-after too many failed ones), `te-veel-spellen`, `herstart` (server restarting;
-client reconnects after a delay).
+`msg` from `ExplainIllegal` for cards; a `vote` with no open question about
+that seat, or another one (`left` sent and different), also one that comes too late:
+"Die vraag staat niet (meer) open."), `limiet` (rate limit, also for joins after too many failed ones),
+`te-veel-spellen`, `herstart` (server restarting; client reconnects after a
+delay).
 
 Every state change is one `update`: the client queues updates, animates `ev`
 from its previous state to `s`, then renders `s`. A resync (join, reconnect)
 is an `update` with `ev: null`; so is a change without animation (a pause ends
-and a turn opens, `ready` flags, a host change). `seq` increases per room with
+and a turn opens, `ready` flags, a host change, the takeover question opening
+after 10 s, a vote). `seq` increases per room with
 every event; a resync carries the current `seq` (the joiner gets `ev: null`
 where the others get `join`/`back` with the same `seq`). A choice by `bid` with
 `play: true` sends `bid`, then `trump`; the bid that ends an auction sends
@@ -786,7 +874,12 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
 | `collect` | `winner` | trick slides to the winner and fades |
 | `handEnd` | `result` (HandResult as JSON, below) | summary overlay: gehaald/nat/pit, seen from the viewer's team (§9 Review) |
 | `gameOver` | `total` [per scorer], `winner` (scorer, or -1 when the top is shared) | celebration |
-| `join` / `leave` / `away` / `back` | `seat` | small toast |
+| `join` / `leave` / `away` / `back` / `takeover` | `seat` | small toast |
+
+`away`: the connection is lost; `back`: the player is at their seat again;
+`leave`: they left (in a match the seat waits, `left`); `takeover`: an AI plays
+the seat now, with everyone's consent (the substitute, `away: true`, or a
+persona on a seat its player left). `away` comes once per lost connection.
 
 ### State `s`
 
@@ -799,9 +892,11 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
   "roster": [ {"id":"dirk","name":"Opa Dirk","emoji":"👴","color":"#8a5a2b","bio":"…"} ],  // lobby only: bot picker
   "players": [ // opts.players entries; null = empty seat
     { "name":"Piet", "bot":false, "botId":"", "emoji":"", "color":"",
-      "connected":true, "away":false, "cards":8, "ready":false },
+      "connected":true, "away":false, "left":false, "vote":null, "cards":8, "ready":false },
+    { "name":"Jaap", "bot":false, "botId":"", "emoji":"", "color":"",
+      "connected":false, "away":false, "left":false, "vote":null, "cards":8, "ready":false },
     { "name":"Opa Dirk (AI)", "bot":true, "botId":"dirk", "emoji":"👴", "color":"#8a5a2b",
-      "connected":true, "away":false, "cards":8, "ready":false }, null, null ],
+      "connected":true, "away":false, "left":false, "vote":null, "cards":8, "ready":false }, null ],
   "handNo": 3, "hands": 16, "dealer": 1, "voorhand": 2,
   "turned": null, "bids": [-1,-1,-1,-1], "forced": false,   // bids: one per seat
   "bid": 0, "bidder": -1, "soloist": -1,   // three players: highest bid and bidder; the soloist once the auction is over
@@ -809,6 +904,7 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
   "piles": null, "openRoem": null,         // two players: [[8 × {"n":2,"card":"JH"|null}], [...]], [[roem items], [...]]
   "trump": "H", "trumpBy": 2, "playingTeam": 0,
   "turn": 0,                       // -1 while paused or nobody's turn
+  "takeover": null,                // {"seat":1,"left":false}: the game waits for that absent seat; may an AI play it?
   "hand": ["JH","9H","AH","TS","KS","8C","AD","7D"],   // yours, display-sorted
   "legal": ["JH","9H"],            // only on your turn in phase play
   "rule": "Troef gevraagd: overtroeven",   // ExplainConstraint, on your turn
@@ -822,9 +918,32 @@ where the others get `join`/`back` with the same `seq`). A choice by `bid` with
   "nextAt": 0,                     // handEnd: unix ms of auto-continue (0 in training: waits for ready)
   "hint": null,                    // training, your turn: {"card":"AH"} | {"suit":"H"} | {"play":true}, plus "text"
   "hands4": null,                  // training with open: all four hands [[...],...]
-  "winner": -1                     // gameOver
+  "winner": -1,                    // gameOver
+  "review": null                   // gameOver: your own review (§6, §9 Spelanalyse), below
 }
 ```
+
+`review` (null before game over, at a table of three or two, and for a
+player without a graded decision, or one on its way):
+`{"id":"9f2c…","pending":false,"pct":87,"hands":16,"choices":118,"luck":-6,
+"lost":41,"lostN":3,"strongN":2,"leads":[9,11],"trumps":[4,5],"roem":[40,2],
+"risky":[2,1],"strong":[moment…],"missed":[moment…]}`: `id` names the match
+(for the history on the device), `pct` is 100 × (1 − Σ lost / Σ stake),
+rounded, `luck` the mean HandLuck per hand, `lost` and `lostN` the points
+and decisions with `Lost > 0`, `strongN` those with `Gain > 0`, `leads` and
+`trumps` [graded without loss, graded] for leads and for trump choices and
+bids, `roem` [points, times] given away, `risky` [bids to play with more than
+40% chance of nat, of which nat]. `strong` and `missed` list at most three
+moments each, those with the most points, in the order played:
+`{"hand":5,"trick":3,"played":{"card":"TS"},"better":{"card":"AS"},"points":18,
+"why":"je maat heeft de slag nog niet …","text":"Speel ♠A: je maat …","table":Trick}`
+— `trick` 0 and `cards` (the player's hand, display-sorted) instead of
+`table` for a trump choice or bid; `played` and `better` hold one of `card`,
+`suit` or `play`; `better` only in `missed`; `why` is the hint's reason
+without its opening ("Speel ♠A: ", "Kies ♣ als troef: ", "Passen: "), or ""
+when the hint opens otherwise (then `text` says it all). While `pending` is
+true only `id` and `pending` mean anything. `hands` is 0 for a player who
+took a seat over during a hand and saw no deal: no *Jouw kaarten* then.
 
 `HandResult` JSON: `{"players":4,"playingTeam":0,"trumpBy":2,"trump":"H","dealer":1,
 "points":[104,58],"roem":[20,0],"score":[124,58],"nat":false,"pit":false,"pitTeam":-1,
@@ -851,6 +970,19 @@ Every key above is always present, except `roster` (lobby only) and `legal` and
 - With three players `playingTeam` is 0 (the soloist's side) once trump is
   known; `tricksWon`, `handPoints` and `handRoem` are per side.
 - `hint` and `hands4` are null unless they apply; `hint.text` is always set.
+- `takeover` is set while the game waits for seat `seat` (it is its turn:
+  `turn` = `seat`) and someone else is connected: `left` false for a player
+  who dropped out (asked after 10 s), true for a seat its player left (asked
+  at once). Everyone connected is asked; the absent player is not connected,
+  so never sees it. Else null (§6).
+- `players[i].left`: a seat its player left in a match or at game over
+  (`connected` false, the name kept, nobody plays it). `players[i].vote`: a
+  connected human's answer to the question, `true` (an AI may play) or
+  `false` (wait); null before answering and whenever `takeover` is null, and
+  always for bots and absent players, except a no that still holds for a
+  moment after its voter dropped out (§6). `away`: the substitute plays for a
+  player who dropped out, with everyone's consent, until they return (or the
+  match ends).
 
 ## 8. Seinen (signals) — used by normaal and sterk bots and explained in the manual
 
@@ -938,8 +1070,14 @@ export function createBack(opts={})       // → HTMLElement .card.back
 // Extras: parseCard(code) → {rank,suit}|null; suitIcon(suit, {colored}) → <svg.suit-icon> (1em);
 //   createBack({size, color:'blue'|'red'}). State classes: .legal .selected (lifted) .disabled
 //   .hint (pulsing glow) .winner (gold ring) .selectable (hover/press only); they use the
-//   individual `translate`/`scale` properties, so layout may use `transform`. Cards < 60 px wide
-//   show a compact face (big index + one big pip).
+//   individual `translate`/`scale` properties, so layout may use `transform`. Every face, at any
+//   size, shows its picture (pips, ace medallion, court figure) and the index (rank over suit) in
+//   the top-left and, turned, the bottom-right corner; the boer's B has a square-cornered stem.
+//   Below 60, 40 and 30 px wide the index grows to 1.25, 1.4 and 1.6 times its regular size and
+//   the picture shrinks to keep clear of it. --card-index-max on an ancestor caps that growth
+//   where cards overlap at their corners or show only a strip (the trick: 1, the regular index).
+//   The scale a face shows is --_index on its .card-svg, a registered <number> that an
+//   animation may tween (a flight from a hand to the trick does).
 
 // web/js/sound.js — synthesised with WebAudio, no audio files
 export const sound = {
@@ -1001,16 +1139,25 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   icon to match; on phones it is in the ⋯ menu). Where a name must
   shorten (lobby seat, score bar, *Laatste slag*), only the name does: its
   "(AI)" stays readable ("Kees de Vi… (AI)"). The trump badge's details show
-  what the badge shows, also during the trump banner.
+  what the badge shows, also during the trump banner. Whatever the order of
+  play, every card in the trick keeps one corner index in view, also under a
+  winner scaled up with its ring: the top and left cards their top-left one,
+  the bottom and right cards their bottom-right one (the left card sits a
+  little low, the right card a little high). Open hands and your own hand
+  show each card's whole index (`app-checks.mjs --only corners` measures
+  the trick and the hands). A card flying from a hand to the trick takes
+  off with that hand's index and grows or shrinks it to the trick's on the
+  way.
   Playing: on fine pointers one click plays a legal card; on touch the first tap
   lifts the card and a second tap (or swipe up) plays it (setting: one tap /
   two taps); the prompt then says so ("Tik nog eens om ♠A te spelen"), and the
   only legal card plays on the first tap. Illegal cards are dimmed; tapping one
   shows `ExplainIllegal`-style text (the client may derive it from `rule`); a
   tap during a pause (`turn` -1) says to wait. Keyboard: ←/→ select, Enter
-  plays; the trump/bid panel and the hand summary focus their main button on
-  fine pointers, and dialogs keep Tab inside. Trump choice: four big suit
-  buttons (forced: turned suit disabled). Bidding: *Spelen* / *Passen*.
+  plays; the trump/bid panel, the takeover question and the hand summary
+  focus their main button on fine pointers, and dialogs keep Tab inside.
+  Trump choice: four big suit buttons (forced: turned suit disabled).
+  Bidding: *Spelen* / *Passen*.
 - **Three players**: the others sit left and right, raised towards the top
   (their speech bubbles open downwards); the trick is a triangle. During the
   auction the talon lies closed in the middle, every seat shows its bid
@@ -1029,6 +1176,50 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   the trump choice the back rows turn over and each side's open-card roem
   bursts with whose it is. A freed card shows face up once its trick is
   complete.
+- **Someone gone** (§6): a seat says *verbinding weg* while its player is
+  disconnected, *vertrokken* once they left (the name stays until a joiner
+  or an AI takes the seat) and *AI speelt even mee* while an AI plays for
+  them (`away`); on a narrow side seat the status wraps inside its plate.
+  While `takeover` is set, everyone asked (connected, so never the one it
+  is about) sees the question in the centre stage, instead of the waiting
+  text, in a panel like the trump and bid panels: "Jaap is weg" with "Het
+  spel wacht op Jaap. Mag een AI-speler zolang voor Jaap spelen?", or for a
+  seat left "Jaap is vertrokken" with "Mag een AI-speler de plaats van Jaap
+  innemen? Jullie kunnen ook wachten tot iemand anders met de code
+  aanschuift." ("Je kunt ook wachten …" when you are the only one asked);
+  then "Iedereen moet akkoord zijn:" with a chip for everyone asked (you
+  first, then anyone whose no still holds after a drop-out): *akkoord*,
+  *wil wachten*, or three thinking dots ("nog niet gekozen" for screen
+  readers) for no answer yet; with you the only one asked, rule and chips
+  are left out. Last *AI laten spelen* and *Wachten* (`vote`, with the
+  question's `seat` and `left`), the answer given marked (tick, a dark ring
+  inside the button, `aria-pressed`; the other one duller but readable)
+  and open to change. Once you answered, the question text steps out of
+  sight (still read with the buttons), so the panel covers less of the
+  table while the others think. The panel is a `group` named by its title
+  and described by the question; a polite live region says the question
+  when it opens. It opens with the turn sound and buzz, and on fine
+  pointers focuses *AI laten spelen*; answers change in place, so the focus
+  stays. While it is open the stage also takes the prompt row, whose "…
+  is aan de beurt" steps aside (the panel says it), and the panel sits as
+  low as it goes, just above the hand, so the trick and the side seats
+  stay in view (on phones your own seat and the last-trick button are
+  under it meanwhile). The answers come last, so they stay put when what
+  is above them changes (the question stepping aside, chips getting longer
+  as people answer). On phones upright it is compact; in short landscape
+  title, question and chips go beside the answers. `app-checks.mjs --only
+  takeover` checks what stays in view at each size.
+  A vote refused as too late (the question closed as you answered) passes
+  without the error sound and toast. Toasts: "Jaap is even weg" (`away`),
+  "Jaap is vertrokken" (mid-game with "Een AI-speler neemt de plaats pas in
+  als iedereen akkoord is."), "Jaap is terug", "Jaap doet weer mee" (a
+  joiner with the name of who left that seat), and for `takeover` "Een
+  AI-speler speelt nu voor Jaap" or "Opa Dirk (AI) neemt het over". Back
+  after an AI played for you (a decision for your seat you did not send),
+  you get "Een AI-speler speelde even voor je". *Spel verlaten?* says
+  mid-game "De anderen beslissen samen of een AI-speler je plaats inneemt."
+  ("Je verlaat de tafel." with nobody else to ask). `app-checks.mjs --only
+  takeover` plays it through, also on the mock.
 - **Back button**: every closable overlay (dialog, chat drawer) has a history
   entry, so back (the Android gesture) closes the top one; at a table one more
   entry makes back ask *Spel verlaten?* instead of leaving the page.
@@ -1045,13 +1236,16 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   the home screen hides its banner and footer, and the focused field is
   scrolled into view when the keyboard covers it. A phone on its side keeps
   its landscape layout. `app-checks.mjs --only keyboard` emulates it.
-- **Connection**: a `play`, `trump` or `bid` without any answer within 4 s
-  means a dead socket: the client reconnects. Every rejoin drops what was sent
-  but unanswered and renders purely from the resync. A tab in the background
-  still sounds the turn and shows "● Jouw beurt" in its title. Leaving while
-  offline sends `join` (with the seat token) + `leave` over a short-lived
-  connection of its own once the network is back. Without `localStorage` the
-  name and seat tokens live in memory for the life of the page.
+- **Connection**: a `play`, `trump`, `bid`, `auction`, `discard` or `vote`
+  (sent only when it changes the answer) without any answer within 4 s means
+  a dead socket: the client reconnects. Every rejoin drops what was sent
+  but unanswered and renders purely from the resync. A tab in the background still sounds
+  the turn (and the takeover question) and shows "● Jouw beurt" in its
+  title on your turn, and "● Vraag aan tafel" while the question waits for
+  your answer. Leaving while offline sends `join` (with the seat
+  token) + `leave` over a short-lived connection of its own once the network
+  is back. Without `localStorage` the name and seat tokens live in memory
+  for the life of the page.
 - **Game over**: final score with the team names (with three or two players
   one score per player, the top one marked); the host gets *Nog een
   partij* (`rematch`) and, outside training, *Spelers of regels wijzigen*
@@ -1085,7 +1279,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   whole summary fits without scrolling: on phones (< 600 px wide) the tricks
   are a 4 × 2 grid of small tiles (number and points over the cards; 5 × 2
   with three players, 8 × 2 with two), in short landscape they sit beside
-  the score; the ready chips show only with another person at the table.
+  the score; the ready chips show only with another person at the table
+  (who left no longer counts).
 - **Chat**: drawer (side panel on wide screens), quick reactions (👍 😂 😱 "Mooi!"
   "Nat!" "Goed gespeeld"), bot lines, system lines, unread badge (counts what
   people write; system lines and bot chatter, shown as speech bubbles, do not).
@@ -1101,10 +1296,35 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   0) and waits for *Volgend potje*. In short landscape the bubble sits in the
   top-left corner and never covers the left seat (who plays after you): a
   long text shows the lines that fit and *Lees verder* (then *Minder*).
+- **Spelanalyse** (issue #6, four players only): under the final score, a
+  line for the player alone: *Jouw spelanalyse: 87% (goed gespeeld) ›* (*… wordt berekend…*,
+  disabled, while grades are out; hidden without a review). The verdict is
+  *sterk gespeeld* from 95%, *goed gespeeld* from 82%, else *kan beter*
+  (`reviewVerdict`; the bounds fit the bots' averages in `TestGradeLevels`:
+  sterk ≈ 99, normaal ≈ 87, makkelijk ≈ 76). It opens *Jouw spelanalyse*:
+  the percentage with ⓘ (how it is computed), potjes and keuzes, then
+  *Jouw kaarten* (*Boven gemiddeld (+8)*, *Gemiddeld (+1)* within ±4,
+  *Onder gemiddeld (−6)*: points per potje, ⓘ), *Sterke zetten*, *Laten
+  liggen* (points in zetten), *Uitkomen* (*9 van 11 keer de beste kaart*),
+  *Troefkeuze* (*4 van 5 keer de beste keuze*), *Roem weggegeven* (ⓘ), and
+  in gedraaid when it happened *Gespeeld met meer dan 40% kans op nat: 2
+  keer, 1 keer nat*. Below, the listed moments: *Potje 3, slag 2 · ♠A: …*
+  and *Potje 5, slag 3 · ♠10 gespeeld, ♠A 18 punten beter: …* (*♥ als
+  troef, ♣ 14 punten beter: …*, *Gepast, spelen 12 punten beter: …*); a tap
+  shows the trick at the seats, or the hand of a trump choice or bid. Then
+  *Vorige partijen 79% · 83%* (the percentages of up to five earlier matches
+  on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
+  Niet mee eens? Deze analyse is gebaseerd op de game engine en kan fouten
+  bevatten.* Apart from the verdict, the wording is plain and factual:
+  numbers, cards and the hint's reasons, no praise or consolation. The game-over buttons stay in view with
+  the line: on a short phone it takes the place of the emoji (portrait up to
+  760 px high) and of *Laatste potje* (up to 680 px); in short landscape the
+  sub-line goes and the title and score shrink.
 - **Help**: the manual (SECTIONS) in a modal, plus `title` tooltips and small ⓘ
   explanations on UI elements.
-- **Responsive**: phones portrait (360×640 up) and landscape (≥ 640×360),
-  tablets and desktop; touch targets ≥ 44 px; no horizontal scroll.
+- **Responsive**: phones portrait (360×640 up, and an iPhone SE in Safari:
+  375×548) and landscape (≥ 640×360), tablets and desktop; touch targets
+  ≥ 44 px; no horizontal scroll.
 - **Look**: green felt table with vignette, wooden rim, gold accents, team colours
   (Wij teal/blue, Zij coral/red), dark UI chrome; four-colour deck option.
 

@@ -246,6 +246,10 @@ type optionStats struct {
 	total int64
 	n     int
 	made  int // worlds where our team played and did not go nat
+	// diffSq[j] sums, over the worlds, the squared difference between this
+	// option's value and that of option j (a suit, or 0 spelen and 1
+	// passen), which is played out in the same worlds: see pairSE.
+	diffSq [game.NumSuits]int64
 }
 
 func (o optionStats) mean() float64 {
@@ -260,6 +264,33 @@ func (o optionStats) madeRate() float64 {
 		return 0
 	}
 	return float64(o.made) / float64(o.n)
+}
+
+// pairSE is the standard error of o.mean() - p.mean(), where p is option j
+// in the same worlds (as pairSE of playResults).
+func (o optionStats) pairSE(p optionStats, j int) float64 {
+	n := float64(o.n)
+	if n < 2 || p.n != o.n {
+		return 0
+	}
+	d := float64(o.total-p.total) / n
+	v := float64(o.diffSq[j])/n - d*d
+	return math.Sqrt(max(v, 0) / (n - 1))
+}
+
+// addPairs adds the squared differences of one world's values to stats;
+// skip is an option that was not played out (-1 for none).
+func addPairs(stats []optionStats, vals []int64, skip int) {
+	for i := range vals {
+		for j := range i {
+			if i == skip || j == skip {
+				continue
+			}
+			d := vals[i] - vals[j]
+			stats[i].diffSq[j] += d * d
+			stats[j].diffSq[i] += d * d
+		}
+	}
 }
 
 // dealWorlds samples full deals for a decision before play: our own hand
@@ -315,8 +346,13 @@ func searchTrump(v *game.View, cfg searchConfig, seed uint64, aggr float64) [gam
 			return
 		}
 		rng := chunkRNG(seed, ch)
+		skip := -1
+		if v.Forced {
+			skip = int(v.Turned)
+		}
 		for _, w := range dealWorlds(v, rng, n) {
 			base := startDeal(v, &w)
+			var vals [game.NumSuits]int64
 			for s := game.Suit(0); s < game.NumSuits; s++ {
 				if v.Forced && s == v.Turned {
 					continue
@@ -326,6 +362,7 @@ func searchTrump(v *game.View, cfg searchConfig, seed uint64, aggr float64) [gam
 					panic("bot: trump: " + err.Error())
 				}
 				val, made := playOut(&d, team, aggr, v.Seat)
+				vals[s] = int64(val)
 				st := &stats[ch][s]
 				st.total += int64(val)
 				st.n++
@@ -333,6 +370,7 @@ func searchTrump(v *game.View, cfg searchConfig, seed uint64, aggr float64) [gam
 					st.made++
 				}
 			}
+			addPairs(stats[ch][:], vals[:], skip)
 		}
 	})
 	var out [game.NumSuits]optionStats
@@ -341,6 +379,9 @@ func searchTrump(v *game.View, cfg searchConfig, seed uint64, aggr float64) [gam
 			out[s].total += stats[ch][s].total
 			out[s].n += stats[ch][s].n
 			out[s].made += stats[ch][s].made
+			for j := range out[s].diffSq {
+				out[s].diffSq[j] += stats[ch][s].diffSq[j]
+			}
 		}
 	}
 	return out
@@ -377,6 +418,7 @@ func searchBid(v *game.View, cfg searchConfig, seed uint64, aggr float64) (play,
 		rng := chunkRNG(seed, ch)
 		for _, w := range dealWorlds(v, rng, n) {
 			base := startDeal(v, &w)
+			var vals [2]int64
 			for opt := range 2 {
 				d := base
 				if err := d.Bid(v.Seat, opt == 0); err != nil {
@@ -391,6 +433,7 @@ func searchBid(v *game.View, cfg searchConfig, seed uint64, aggr float64) (play,
 					_ = d.ChooseTrump(s, bestTrumpNormal(w[s], true, v.Turned))
 				}
 				val, made := playOut(&d, team, aggr, v.Seat)
+				vals[opt] = int64(val)
 				st := &stats[ch][opt]
 				st.total += int64(val)
 				st.n++
@@ -398,15 +441,18 @@ func searchBid(v *game.View, cfg searchConfig, seed uint64, aggr float64) (play,
 					st.made++
 				}
 			}
+			addPairs(stats[ch][:], vals[:], -1)
 		}
 	})
 	for ch := range chunks {
 		play.total += stats[ch][0].total
 		play.n += stats[ch][0].n
 		play.made += stats[ch][0].made
+		play.diffSq[1] += stats[ch][0].diffSq[1]
 		pass.total += stats[ch][1].total
 		pass.n += stats[ch][1].n
 		pass.made += stats[ch][1].made
+		pass.diffSq[0] += stats[ch][1].diffSq[0]
 	}
 	return play, pass
 }

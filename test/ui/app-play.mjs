@@ -265,7 +265,7 @@ async function multi() {
     const want = partners ? a : a.split('-').reverse().join('-');
     if (b !== want) throw new Error(`host sees Wij-Zij ${a}, guest sees ${b}, want ${want}`);
 
-    // The guest leaves; the host is told by name, although a bot takes the seat.
+    // The guest leaves; the host is told by name (the seat keeps it until a rematch gives it a bot).
     await G.page.keyboard.press('Escape');
     await sleep(300);
     await press(G, '.m-over .btn-row .btn-ghost:last-child');
