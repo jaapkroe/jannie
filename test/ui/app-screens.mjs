@@ -1,4 +1,4 @@
-// Drives the app through every screen at five viewport sizes and saves
+// Drives the app through every screen at six viewport sizes and saves
 // screenshots to test/ui/out/. Fails on console errors, uncaught exceptions,
 // failed requests or horizontal overflow.
 //
@@ -215,7 +215,10 @@ async function trainingFlow(P) {
   await home(P);
   await press(P, '#btn-train');
   await waitFor(P, () => document.querySelector('.m-train.open'), { label: 'training sheet' });
+  // A tap while the sheet still slides in can miss the switch.
+  await waitFor(P, () => !document.querySelector('.m-train').getAnimations({ subtree: true }).some(a => a.effect.getComputedTiming().endTime < Infinity), { label: 'training sheet in place' });
   await press(P, '.m-train .switch input');
+  await waitFor(P, () => document.querySelector('.m-train .switch input:checked'), { label: 'open cards switched on' });
   await press(P, '#btn-train-go');
   await playUntil(P, '.hand.my-turn .card.hint', { timeout: 60000 });
   await sleep(500);

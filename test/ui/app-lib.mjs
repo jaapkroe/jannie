@@ -13,6 +13,8 @@ export const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'out'
 
 export const VIEWPORTS = {
   phone: { width: 360, height: 640, isMobile: true, hasTouch: true, deviceScaleFactor: 1 },
+  // iPhone SE in Safari with its toolbars: the smallest common phone, trick cards under 60 px.
+  iphonese: { width: 375, height: 548, isMobile: true, hasTouch: true, deviceScaleFactor: 1 },
   iphone: { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 1 },
   landscape: { width: 844, height: 390, isMobile: true, hasTouch: true, isLandscape: true, deviceScaleFactor: 1 },
   tablet: { width: 768, height: 1024, isMobile: true, hasTouch: true, deviceScaleFactor: 1 },

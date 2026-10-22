@@ -16,6 +16,9 @@ const A = args();
 const VP = {
   ...VIEWPORTS,
   smallLandscape: { width: 640, height: 360, isMobile: true, hasTouch: true, isLandscape: true, deviceScaleFactor: 1 },
+  // The first iPhone SE, upright and on its side: the smallest cards there are.
+  oldSE: { width: 320, height: 568, isMobile: true, hasTouch: true, deviceScaleFactor: 1 },
+  oldSELandscape: { width: 568, height: 320, isMobile: true, hasTouch: true, isLandscape: true, deviceScaleFactor: 1 },
 };
 
 const proxy = await addressProxy(A.url);
@@ -1299,6 +1302,126 @@ CHECKS.bubbles = async browser => {
       if (r.collided && (!r.chatWaited || !r.chatLater)) throw new Error(`chat line after a bid: ${JSON.stringify(r)}`);
       // The case of the report: on a 360×640 screen the top and left bubbles meet.
       if (P.name === 'bubbles-phone' && !r.collided) throw new Error('phone: the top and left bubbles did not meet; the check proves nothing');
+    });
+  }
+};
+
+// Card values stay readable where cards overlap. Whatever the order of play
+// and whoever wins (scaled up, with its ring), every card in the trick keeps
+// one corner index clear of the cards above it: the top and left cards their
+// top-left one, the bottom and right cards their bottom-right one. In open
+// hands and the hand each card's top-left index is clear of the cards after
+// it. The table renders made-up states: every card in every slot and seeded
+// deals, each trick led and won from every seat.
+CHECKS.corners = async browser => {
+  for (const vp of ['iphonese', 'oldSE', 'oldSELandscape', 'phone', 'landscape']) {
+    const P = await page(browser, VP[vp], `corners-${vp}`, { hooks: true });
+    await run(P, async () => {
+      await home(P);
+      await quick(P);
+      await waitFor(P, () => document.querySelectorAll('.hand .card').length === 8, { label: 'the dealt hand' });
+      // The table holds still meanwhile.
+      await P.page.evaluate(() => { window.__kj.last().__hold = []; });
+      await sleep(1500);
+      const r = await P.page.evaluate(async () => {
+        const table = await import('/js/table.js');
+        const { app, posOf } = await import('/js/util.js');
+        const s0 = app.s;
+        const POS = ['bottom', 'left', 'top', 'right'];
+        const seatAt = pos => [0, 1, 2, 3].find(seat => posOf(seat, s0.you) === pos);
+        const SUITS = ['C', 'D', 'H', 'S'];
+        const RANKS = ['7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+        // A box in an SVG element's own units, grown by g of them, as a polygon on screen.
+        const quad = (el, b, g = 0) => [[b.x - g, b.y - g], [b.x + b.width + g, b.y - g], [b.x + b.width + g, b.y + b.height + g], [b.x - g, b.y + b.height + g]]
+          .map(([x, y]) => new DOMPoint(x, y).matrixTransform(el.getScreenCTM())).map(p => [p.x, p.y]);
+        // A corner index's ink: the rank's box grown by half its stroke, and the suit's box.
+        const ink = idx => [...idx.querySelectorAll('path')].map(p => quad(p, p.getBBox(), (Number(p.getAttribute('stroke-width')) || 0) / 2));
+        // A card's outline (a winner's with its 5 px ring, which hit tests
+        // such as covered() do not see): the rectangle inside its rounded
+        // corners (cards.css: radius 0.075 × width) and that radius.
+        const outline = c => {
+          const svg = c.querySelector('.card-svg');
+          const ring = c.classList.contains('winner') ? 5 * 200 / c.offsetWidth : 0;
+          const m = svg.getScreenCTM();
+          return { poly: quad(svg, { x: 15, y: 15, width: 170, height: 250 }), r: (15 + ring) * Math.hypot(m.a, m.b) };
+        };
+        // Distance between convex polygons: the shortest vertex-edge distance,
+        // or, when they overlap, the (negative) separating axis gap.
+        const toSeg = ([px, py], [x1, y1], [x2, y2]) => {
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)));
+          return Math.hypot(px - x1 - t * dx, py - y1 - t * dy);
+        };
+        const apart = (p, q) => {
+          const gap = Math.max(...[p, q].flatMap(poly => poly.map(([x1, y1], i) => {
+            const [x2, y2] = poly[(i + 1) % poly.length];
+            const len = Math.hypot(x2 - x1, y2 - y1);
+            const along = pts => pts.map(([x, y]) => (x * (y1 - y2) + y * (x2 - x1)) / len);
+            return Math.max(Math.min(...along(q)) - Math.max(...along(p)), Math.min(...along(p)) - Math.max(...along(q)));
+          })));
+          if (gap < 0) return gap;
+          return Math.min(...[[p, q], [q, p]].flatMap(([a, b]) => a.flatMap(v => b.map((e, i) => toSeg(v, e, b[(i + 1) % b.length])))));
+        };
+        // How far part of an index is from a card above it (negative: under it).
+        const clear = (part, over) => {
+          const o = outline(over);
+          return apart(o.poly, part) - o.r;
+        };
+        const worst = { trick: { gap: Infinity }, open: { gap: Infinity }, hand: { gap: Infinity } };
+        const note = (kind, gap, what) => { if (gap < worst[kind].gap) worst[kind] = { gap, what }; };
+        // Each card's top-left index against the cards after it.
+        const stack = (kind, cards) => cards.forEach((c, i) => {
+          for (const part of ink(c.querySelector('.card-index'))) {
+            for (const d of cards.slice(i + 1)) note(kind, clear(part, d), `${c.dataset.card} under ${d.dataset.card}`);
+          }
+        });
+
+        // A made-up state on the table, its cards moved and scaled at once.
+        const show = st => {
+          table.render({ ...s0, phase: 'play', turn: -1, ...st });
+          for (const a of document.getAnimations()) if (a instanceof CSSTransition) a.finish();
+        };
+
+        const sets = RANKS.flatMap(rank => [0, 1, 2, 3].map(k => POS.map((_, i) => rank + SUITS[(i + k) % 4])));
+        let seed = 7;
+        const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+        for (let n = 0; n < 64; n++) {
+          const pool = SUITS.flatMap(s => RANKS.map(rank => rank + s));
+          sets.push(POS.map(() => pool.splice(Math.floor(rnd() * pool.length), 1)[0]));
+        }
+        for (const set of sets) {
+          for (let lead = 0; lead < 4; lead++) {
+            for (const win of POS) {
+              const cards = [0, 1, 2, 3].map(i => ({ seat: seatAt(POS[(lead + i) % 4]), card: set[(lead + i) % 4] }));
+              show({ hands4: null, trick: { leader: cards[0].seat, cards, winner: seatAt(win) } });
+              const els = POS.map(pos => document.querySelector(`.trick .slot-${pos} .card`));
+              const z = el => Number(el.parentElement.style.zIndex);
+              POS.forEach((pos, i) => {
+                const own = els[i].querySelectorAll('.card-index')[pos === 'top' || pos === 'left' ? 0 : 1];
+                for (const part of ink(own)) {
+                  for (const over of els.filter(e => z(e) > z(els[i]))) {
+                    note('trick', clear(part, over), `${pos} ${els[i].dataset.card} under ${over.dataset.card}${over.classList.contains('winner') ? ' (winner)' : ''}, led from ${POS[lead]}`);
+                  }
+                }
+              });
+            }
+          }
+        }
+        // Open hands and the hand: each suit, in both orders, at every seat.
+        const suits = SUITS.flatMap(s => [RANKS.map(rank => rank + s), RANKS.map(rank => rank + s).reverse()]);
+        for (let k = 0; k < suits.length; k++) {
+          const hands4 = [0, 1, 2, 3].map(seat => suits[(k + 2 * seat) % suits.length]);
+          show({ trick: null, hands4, hand: hands4[s0.you] });
+          for (const pos of ['left', 'top', 'right']) stack('open', [...document.querySelectorAll(`.seat-${pos} .backs.open > .card`)]);
+          stack('hand', [...document.querySelectorAll('.hand .card')].sort((a, b) => a.style.zIndex - b.style.zIndex));
+        }
+        table.render(s0);
+        return worst;
+      });
+      await P.page.evaluate(() => window.__kj.release());
+      const bad = Object.entries(r).filter(([, w]) => !(w.gap >= 0 && w.gap < Infinity)).map(([kind, w]) => `${kind}: ${w.what ? `${w.what} (${w.gap.toFixed(2)} px)` : 'nothing measured'}`);
+      if (bad.length) throw new Error(`corner index covered: ${bad.join('; ')}`);
     });
   }
 };

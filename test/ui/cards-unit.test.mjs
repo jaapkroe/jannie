@@ -1,7 +1,35 @@
-// DOM-free parts of web/js/cards.js: node --test test/ui/cards-unit.test.mjs
+// web/js/cards.js without a browser: node --test test/ui/cards-unit.test.mjs
+// (a minimal stand-in DOM for the faces; cards-shot.mjs checks how they render).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SUITS, RANKS, parseCard, cardName, cardShort } from '../../web/js/cards.js';
+import { SUITS, RANKS, parseCard, cardName, cardShort, createCard } from '../../web/js/cards.js';
+
+// Just enough DOM for the faces: attributes, classes, dataset, children and deep clones.
+class FakeElement {
+  constructor(tag) {
+    Object.assign(this, { tagName: tag, attrs: {}, dataset: {}, children: [] });
+    this.classList = { add: (...c) => { this.className = [this.className, ...c].join(' ').trim(); } };
+  }
+  get className() { return this.attrs.class || ''; }
+  set className(v) { this.attrs.class = v; }
+  setAttribute(k, v) { this.attrs[k] = String(v); }
+  getAttribute(k) { return k in this.attrs ? this.attrs[k] : null; }
+  appendChild(c) { this.children.push(c); return c; }
+  cloneNode(deep) {
+    const n = new FakeElement(this.tagName);
+    Object.assign(n.attrs, this.attrs);
+    Object.assign(n.dataset, this.dataset);
+    if (deep) n.children = this.children.map(c => c.cloneNode(true));
+    return n;
+  }
+}
+globalThis.document = { createElement: tag => new FakeElement(tag), createElementNS: (ns, tag) => new FakeElement(tag) };
+
+const ALL = Object.keys(SUITS).flatMap(s => Object.keys(RANKS).map(r => r + s));
+const has = (el, cls) => el.className.split(' ').includes(cls);
+const markup = el => `<${el.tagName}${Object.entries(el.attrs).map(([k, v]) => ` ${k}="${v}"`).join('')}>${el.children.map(markup).join('')}</${el.tagName}>`;
+// The rank glyph of a face's top-left index.
+const glyph = code => createCard(code).children[0].children.find(g => has(g, 'card-index')).children[0].children[0];
 
 test('SUITS and RANKS match the contract', () => {
   assert.deepEqual(Object.keys(SUITS).sort(), ['C', 'D', 'H', 'S']);
@@ -47,4 +75,37 @@ test('anything else is rejected without throwing', () => {
     assert.equal(cardName(bad), '');
     assert.equal(cardShort(bad), '');
   }
+});
+
+test('every face is its picture with the index in both corners (no compact face)', () => {
+  for (const code of ALL) {
+    const svg = createCard(code).children[0];
+    const art = code[0] === 'A' ? 'card-ace' : 'JQK'.includes(code[0]) ? 'card-court' : 'card-pips';
+    // The picture, then the two indices over it; no second, compact face.
+    assert.deepEqual(svg.children.map(g => g.className), [art, 'card-index', 'card-index'], code);
+    const [, top, bottom] = svg.children;
+    assert.equal(top.getAttribute('transform'), null, code);
+    assert.equal(bottom.getAttribute('transform'), 'rotate(180 100 140)', code);
+    // One inner group (what cards.css scales on narrow cards): rank glyph over suit.
+    for (const idx of [top, bottom]) {
+      assert.equal(idx.children.length, 1, code);
+      const [rank, suit] = idx.children[0].children;
+      assert.equal(rank.getAttribute('stroke'), 'currentColor', code);
+      assert.equal(suit.getAttribute('fill'), 'currentColor', code);
+    }
+    const turned = top.cloneNode(true);
+    turned.setAttribute('transform', 'rotate(180 100 140)');
+    assert.equal(markup(bottom), markup(turned), code);
+  }
+});
+
+test('the boer\'s B has a straight stem with square corners, so it never reads as an 8', () => {
+  const b = glyph('JH');
+  assert.equal(b.getAttribute('stroke-linejoin'), 'miter');
+  const loops = b.getAttribute('d').split('M').slice(1);
+  assert.equal(loops.length, 2);
+  assert.ok(loops.every(l => l.endsWith('Z')), 'closed loops: no line ends to round off');
+  assert.match(loops[0], /^1 47\.5V3H/, 'the upper loop starts up the stem at x = 1');
+  assert.match(loops[1], /H1Z$/, 'the lower loop ends back on the stem');
+  for (const code of ['7H', '8H', '9H', 'TH', 'QH', 'KH', 'AH']) assert.equal(glyph(code).getAttribute('stroke-linejoin'), 'round', code);
 });

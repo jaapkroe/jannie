@@ -1,5 +1,5 @@
-// Checks the card module in headless Chromium (contract, sizes, inks, compact
-// layout, caching, speed) and screenshots the gallery for visual review.
+// Checks the card module in headless Chromium (contract, sizes, faces at narrow
+// widths, inks, caching, speed) and screenshots the gallery for visual review.
 //
 //   scripts/chrome 9311
 //   python3 -m http.server 18110 --bind 127.0.0.1   (from the repo root)
@@ -59,7 +59,9 @@ try {
     expect(back.matches('.card.back.card-sm[data-back="red"]') && back.getAttribute('aria-label') === 'dichte kaart', 'back attributes wrong');
     expect(suitIcon('H', { colored: true }).matches('svg.suit-icon.suit-ink[data-suit="H"]'), 'suitIcon markup wrong');
 
-    // layout: --card-w drives size, mini layout below 60 px, inks per suit and four-colour mode
+    // layout: --card-w drives size; at every width a face shows its picture and
+    // both corner indices, apart, the index bigger on narrow cards unless
+    // --card-index-max caps it; inks per suit and four-colour mode
     const box = document.createElement('div');
     document.body.append(box);
     const at = (w, code, cls) => {
@@ -74,12 +76,55 @@ try {
     const c90 = at(90, 'QS');
     const r = c90.getBoundingClientRect();
     expect(Math.round(r.width) === 90 && Math.round(r.height) === 126, `90 px card measures ${r.width}x${r.height}`);
-    const mini = (c) => getComputedStyle(c.querySelector('.card-mini')).display !== 'none';
-    const full = (c) => getComputedStyle(c.querySelector('.card-full')).display !== 'none';
-    const c59 = at(59, 'QS');
-    const c60 = at(60, 'QS');
-    expect(mini(c59) && !full(c59), 'compact layout missing at 59 px');
-    expect(full(c60) && !mini(c60), 'full layout missing at 60 px');
+    const scale = (c, sel) => new DOMMatrixReadOnly(getComputedStyle(c.querySelector(sel)).transform).a;
+    // The boxes a group's ink covers: each shape's box (which leaves out its
+    // stroke) grown by half its stroke width on screen; and their union.
+    const inkBoxes = (g) => [...g.querySelectorAll('path, rect, circle, ellipse')].map((s) => {
+      const r = s.getBoundingClientRect();
+      const m = s.getScreenCTM();
+      const half = (s.getAttribute('stroke') ? (Number(s.getAttribute('stroke-width')) || 1) / 2 : 0) * Math.hypot(m.a, m.b);
+      return { left: r.left - half, top: r.top - half, right: r.right + half, bottom: r.bottom + half, width: r.width + 2 * half };
+    });
+    const union = (bs) => {
+      const b = { left: Math.min(...bs.map((x) => x.left)), top: Math.min(...bs.map((x) => x.top)), right: Math.max(...bs.map((x) => x.right)), bottom: Math.max(...bs.map((x) => x.bottom)) };
+      return { ...b, width: b.right - b.left };
+    };
+    // An index's box clear of the picture's box, or of the circle in the ace's.
+    const apart = (a, b, round) => {
+      if (!round) return a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top;
+      const cx = (b.left + b.right) / 2;
+      const cy = (b.top + b.bottom) / 2;
+      return Math.hypot(Math.max(a.left - cx, 0, cx - a.right), Math.max(a.top - cy, 0, cy - a.bottom)) >= b.width / 2;
+    };
+    // An index in the card's top-left (end 0) or bottom-right (end 1) corner:
+    // inside the card and its own half, its outer corner at most a tenth of
+    // the card's width from the card's, and inside the rounding (0.075 × width).
+    const inCorner = (b, card, end) => {
+      const cx = (card.left + card.right) / 2;
+      const inside = b.left >= card.left && b.top >= card.top && b.right <= card.right && b.bottom <= card.bottom && (end ? b.left >= cx : b.right <= cx);
+      const gx = end ? card.right - b.right : b.left - card.left;
+      const gy = end ? card.bottom - b.bottom : b.top - card.top;
+      const tenth = card.width * 0.1;
+      const r = card.width * 0.075;
+      return inside && gx <= tenth && gy <= tenth && (gx >= r || gy >= r || Math.hypot(r - gx, r - gy) <= r);
+    };
+    const codes = Object.keys(mod.SUITS).flatMap((s) => Object.keys(mod.RANKS).map((rank) => rank + s));
+    // The index steps up below 60, 40 and 30 px: 59.95 px is already a step up.
+    for (const [w, want] of [[20, 1.6], [29.95, 1.6], [30, 1.4], [39.95, 1.4], [40, 1.25], [59.95, 1.25], [60, 1], [116, 1]]) {
+      for (const code of codes) {
+        const c = at(w, code);
+        const art = union(inkBoxes(c.querySelector('.card-pips, .card-ace, .card-court')));
+        const idx = [...c.querySelectorAll('.card-index')].map(inkBoxes);
+        expect(art.width > 0 && idx.length === 2 && idx.every((bs) => bs.length === 2 && bs.every((b) => b.width > 0)), `${code} at ${w} px lacks its picture or an index`);
+        expect(idx.flat().every((b) => apart(b, art, code[0] === 'A')), `${code} at ${w} px: an index touches the picture`);
+        const card = c.getBoundingClientRect();
+        expect(idx.every((bs, end) => inCorner(union(bs), card, end)), `${code} at ${w} px: an index is not in its corner`);
+        expect(scale(c, '.card-index > g') === want, `${code} at ${w} px: index scale ${scale(c, '.card-index > g')}, want ${want}`);
+      }
+    }
+    const capped = at(46, 'KH');
+    capped.parentElement.style.setProperty('--card-index-max', '1');
+    expect(scale(capped, '.card-index > g') === 1 && scale(capped, '.card-court') === 1, '--card-index-max: 1 does not keep the regular face');
     const ink = (c) => getComputedStyle(c).color;
     expect(ink(at(90, 'AH')) === 'rgb(178, 16, 43)', 'harten not deep red');
     expect(ink(at(90, 'AC')) === 'rgb(23, 23, 28)', 'klaveren not near-black');
