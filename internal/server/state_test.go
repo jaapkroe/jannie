@@ -15,7 +15,7 @@ var baseKeys = []string{
 	"code", "phase", "opts", "training", "you", "host", "players", "handNo", "hands",
 	"dealer", "voorhand", "turned", "bids", "forced", "trump", "trumpBy", "playingTeam",
 	"turn", "hand", "trick", "lastTrick", "tricksWon", "handPoints", "handRoem", "scores",
-	"total", "prevHand", "nextAt", "hint", "hands4", "winner",
+	"total", "prevHand", "nextAt", "hint", "hands4", "winner", "review",
 }
 
 func keysOf(t *testing.T, raw json.RawMessage) []string {
@@ -76,7 +76,7 @@ func TestStateKeys(t *testing.T) {
 	var roster []json.RawMessage
 	json.Unmarshal(field(t, lobby.S, "roster"), &roster)
 	wantKeys(t, "roster entry", roster[0], []string{"id", "name", "emoji", "color", "bio"})
-	for _, k := range []string{"trick", "lastTrick", "prevHand", "hint", "hands4", "turned", "trump"} {
+	for _, k := range []string{"trick", "lastTrick", "prevHand", "hint", "hands4", "turned", "trump", "review"} {
 		if v := string(field(t, lobby.S, k)); v != "null" {
 			t.Errorf("lobby %s = %s, want null", k, v)
 		}

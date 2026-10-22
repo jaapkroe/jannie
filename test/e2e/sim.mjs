@@ -352,6 +352,14 @@ class Player {
     } else {
       this.check(s.hands4 === null, 'hands4 outside open training');
     }
+    if (s.phase !== 'gameOver') this.check(s.review === null, `review in phase ${s.phase}`);
+    else if (s.review && !s.review.pending) {
+      const r = s.review;
+      this.check(Number.isInteger(r.pct) && r.pct >= 0 && r.pct <= 100, `review percentage ${r.pct}`);
+      this.check(r.leads[0] <= r.leads[1] && r.trumps[0] <= r.trumps[1] && r.risky[1] <= r.risky[0], 'review counts out of order');
+      this.check(r.missed.length <= Math.min(3, r.lostN) && r.strong.length <= Math.min(3, r.strongN), 'review lists too many moments');
+      for (const m of [...r.missed, ...r.strong]) this.check(m.hand >= 1 && m.hand <= s.handNo && (m.table || m.cards), `review moment ${JSON.stringify(m)}`);
+    }
 
     this.check(s.scores.length === (s.phase === 'handEnd' || s.phase === 'gameOver' ? s.handNo : s.handNo - 1),
       `${s.scores.length} score rows in hand ${s.handNo} (${s.phase})`);

@@ -139,6 +139,7 @@ func (r *room) startMatch() {
 	r.lastTrick = nil
 	r.winner = -1
 	r.overAt = time.Time{}
+	r.startReviews()
 	r.log.Info("match started", "humans", r.humanCount(), "hands", r.opts.Hands,
 		"trumpMode", r.opts.TrumpMode.String(), "rules", r.opts.Rules.String(), "ai", r.opts.AI, "training", r.training)
 	r.startHand()
@@ -162,6 +163,7 @@ func (r *room) startHand() {
 		r.seats[i].ready = false
 	}
 	r.pause(stepDealt, r.pace().deal)
+	r.gradeHands()
 	r.emit(evDeal{Type: "deal", HandNo: r.handNo, Dealer: dealer})
 	r.drive()
 }
@@ -374,12 +376,19 @@ func (r *room) humanAct(c *client, i game.Seat, a action) {
 	if a.kind == actPlay {
 		r.missed = miss // explained with the trick
 	}
+	v, graded := r.beforeChoice(i, a)
 	err := r.act(i, a)
 	switch {
 	case err != nil:
 		r.missed = nil
+		if graded {
+			r.reviewOf(i).roemAt = 0
+		}
 	case miss != nil && a.kind != actPlay:
 		r.misses = append(r.misses, *miss) // explained with the first trick
+	}
+	if err == nil && graded {
+		r.gradeChoice(i, v, a)
 	}
 	switch {
 	case err == nil:
@@ -449,6 +458,7 @@ func (r *room) act(i game.Seat, a action) error {
 			roem = []game.RoemItem{}
 		}
 		r.emit(evTrick{Type: "trick", Winner: t.Winner, Points: t.Points, Roem: roem, Last: d.Phase() == game.PhaseDone})
+		r.reviewTrick(t)
 		r.sendTips(t)
 		r.chatTrick(t)
 	default:
@@ -527,23 +537,18 @@ func (r *room) missedText(i game.Seat, m *missedHint) string {
 		who = p.persona.Name
 	}
 	h := &m.hint
-	var advised, app, why string
-	ok := false
+	var advised string
 	switch {
 	case h.Card != nil:
-		cs := game.CardShortNL(*h.Card)
-		advised = "had " + cs + " aangeraden"
-		app, why, ok = cardWhy(h.Text, cs)
+		advised = "had " + game.CardShortNL(*h.Card) + " aangeraden"
 	case h.Suit != nil:
 		advised = "had " + h.Suit.Symbol() + " als troef aangeraden"
-		_, why, ok = strings.Cut(h.Text, "Kies "+h.Suit.Symbol()+" als troef: ")
 	case h.Play != nil && *h.Play:
 		advised = "had aangeraden om te spelen"
-		why, ok = strings.CutPrefix(h.Text, "Spelen: ")
 	case h.Play != nil:
 		advised = "had aangeraden om te passen"
-		why, ok = strings.CutPrefix(h.Text, "Passen: ")
 	}
+	app, why, ok := splitHint(h)
 	switch {
 	case ok && why != "" && app != "":
 		return who + " " + advised + ", " + app + ": " + why
@@ -553,6 +558,24 @@ func (r *room) missedText(i game.Seat, m *missedHint) string {
 		return who + " " + advised + "."
 	}
 	return who + " " + advised + ". " + h.Text
+}
+
+// splitHint splits the text of hint h into its reason and, for a card,
+// what the opening says of the card besides naming it (app). The opening
+// only names the advice: "Speel ♣9: ", "Kies ♥ als troef: ", "Passen: ".
+// ok is false for a hint that opens otherwise (see cardWhy).
+func splitHint(h *hint) (app, why string, ok bool) {
+	switch {
+	case h.Card != nil:
+		return cardWhy(h.Text, game.CardShortNL(*h.Card))
+	case h.Suit != nil:
+		_, why, ok = strings.Cut(h.Text, "Kies "+h.Suit.Symbol()+" als troef: ")
+	case h.Play != nil && *h.Play:
+		why, ok = strings.CutPrefix(h.Text, "Spelen: ")
+	case h.Play != nil:
+		why, ok = strings.CutPrefix(h.Text, "Passen: ")
+	}
+	return "", why, ok
 }
 
 // cardVerbs open a card hint that names the card right after them.
@@ -662,6 +685,7 @@ func (r *room) endHand() {
 	r.total[0] += res.Score[0]
 	r.total[1] += res.Score[1]
 	r.prev = &prevHand{Tricks: d.Tricks(), Result: res}
+	r.handTricks = append(r.handTricks, d.Tricks())
 	r.phase = phaseHandEnd
 	for i := range r.seats {
 		r.seats[i].ready = false

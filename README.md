@@ -23,6 +23,10 @@ Dutch. It runs at <https://klaverjas.kroes.dev>.
   every move register. Sound effects are synthesised in the browser.
 - **Score sheet, last trick and the whole previous hand** to look back on;
   chat with quick reactions.
+- **Spelanalyse** at the end of a game, for each player alone: a percentage
+  for their own choices, judged by the strongest bot from what they knew at
+  the time, how good their cards were, and the moves that gained or left the
+  most points, each with its trick.
 - **Handleiding**: the controls, the rules, card values, roem, signals
   (*seinen*, also called *voorkaarten*), tips and a glossary.
 - **Oefenen**: a training game with Juf Ans as partner, hints on every turn,

@@ -197,7 +197,17 @@ async function mainFlow(P) {
 
   await playUntil(P, '.m-over.open');
   await sleep(1200);
+  await waitFor(P, () => document.querySelector('.m-over .review-line:not([hidden]):not(:disabled)'), { label: 'review line' });
   await snap(P, '14-game-over');
+
+  await press(P, '.m-over .review-line');
+  await waitFor(P, () => document.querySelector('.m-review.open'), { label: 'review' });
+  await sleep(300);
+  await snap(P, '14b-review');
+  await press(P, '.m-review .rv-moment:not(:disabled)');
+  await waitFor(P, () => document.querySelector('.m-last.open'), { label: 'review moment' });
+  await sleep(300);
+  await snap(P, '14c-review-moment');
 }
 
 // Gedraaid: the bidding panel.

@@ -204,6 +204,7 @@ type state struct {
 	Hint        *hint           `json:"hint"`
 	Hands4      *[4][]game.Card `json:"hands4"`
 	Winner      int             `json:"winner"`
+	Review      *reviewState    `json:"review"`
 }
 
 type rosterEntry struct {

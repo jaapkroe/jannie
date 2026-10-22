@@ -44,6 +44,7 @@ func (r *room) stateFor(i game.Seat) *state {
 		s.NextAt = unixMilli(r.nextAt)
 	case phaseGameOver:
 		s.Winner = r.winner
+		s.Review = r.reviewFor(i)
 	}
 	d := r.deal
 	if d == nil {

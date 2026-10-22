@@ -31,6 +31,25 @@ type Advice struct {
 	Text string
 }
 
+// Choice is one decision of a player: exactly one of Card, Suit or Play is
+// set.
+type Choice struct {
+	Card *game.Card
+	Suit *game.Suit
+	Play *bool
+}
+
+// Grade is the analysis of one decision for the review at the end of the
+// match (see bot.Grade): points are expected score differences.
+type Grade struct {
+	Stake  float64 // between the best and the worst option; 0 without a choice
+	Lost   float64 // given up against Better; 0 within the noise
+	Gain   float64 // a strong choice: gained over the rule-based choice
+	Better Choice  // the advised option, when Lost > 0
+	Text   string  // the hint for Better (Lost > 0) or for the choice (Gain > 0)
+	Nat    float64 // a bid to play: the chance of going nat
+}
+
 // ChatEvent is something a bot may comment on (see bot.ChatEvent).
 type ChatEvent struct {
 	Kind            string
@@ -48,6 +67,12 @@ type AI interface {
 	// or "sterk". An empty personaID asks for a neutral player (substitutes).
 	NewBrain(personaID, level string, seed uint64) Brain
 	Advise(v game.View) Advice
+	// Grade analyses decision c of the player of v, on their turn, and
+	// HandLuck what the cards dealt to the player of v are worth against an
+	// average hand (v is the view at the deal); both for the review at the
+	// end of the match.
+	Grade(v game.View, c Choice) Grade
+	HandLuck(v game.View) float64
 	ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
 	Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
 }

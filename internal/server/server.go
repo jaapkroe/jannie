@@ -72,6 +72,8 @@ type Server struct {
 	janitorO sync.Once
 
 	players atomic.Int64 // humans connected to a room seat
+
+	grading chan struct{} // analysis slots (see analyse)
 }
 
 // New returns a server ready to serve; it panics without an AI.
@@ -118,6 +120,7 @@ func New(cfg Config) *Server {
 		creates:        make(map[string][]time.Time),
 		live:           make(map[string]int),
 		joins:          make(map[string]*joinRecord),
+		grading:        make(chan struct{}, gradeSlots()),
 	}
 	if cfg.Fast {
 		s.scale = 0.05

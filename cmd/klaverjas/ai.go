@@ -40,6 +40,16 @@ func (botAI) Advise(v game.View) server.Advice {
 	return server.Advice{Card: a.Card, Suit: a.Suit, Play: a.Play, Text: a.Text}
 }
 
+func (botAI) Grade(v game.View, c server.Choice) server.Grade {
+	g := bot.GradeChoice(v, bot.Choice{Card: c.Card, Suit: c.Suit, Play: c.Play})
+	return server.Grade{
+		Stake: g.Stake, Lost: g.Lost, Gain: g.Gain, Text: g.Text, Nat: g.Nat,
+		Better: server.Choice{Card: g.Better.Card, Suit: g.Better.Suit, Play: g.Better.Play},
+	}
+}
+
+func (botAI) HandLuck(v game.View) float64 { return bot.HandLuck(v) }
+
 func (botAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
 	return bot.ExplainTrick(t, trump, names)
 }

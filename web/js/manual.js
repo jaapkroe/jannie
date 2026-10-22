@@ -128,6 +128,7 @@ export const CONTENT = {
     { h: 'Na elk potje' },
     { p: 'Na de achtste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle acht slagen. Tik op een slag om te zien wie wat speelde. Het volgende potje begint na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt.' },
     { p: 'Na het laatste potje wint het koppel met de meeste punten. De host kan met [Nog een partij] meteen opnieuw beginnen, met dezelfde spelers en spelregels.' },
+    { p: 'Onder de eindstand staat **Jouw spelanalyse**: een percentage voor je eigen keuzes, berekend door de game engine met alleen wat jij op dat moment wist. Tik erop voor hoe je kaarten waren, je sterkste zetten en waar punten bleven liggen. Alleen jij ziet je eigen analyse.' },
     { p: 'Wil je eerst iets veranderen, of is er nog iemand bij gekomen? Met [Spelers of regels wijzigen] gaat de tafel terug naar Klaarzetten, met dezelfde spelcode. De AI-spelers die bij de start de lege plaatsen opvulden, staan dan weer op, zodat vrienden kunnen aanschuiven (zet zo nodig **Spelers** hoger), en de host kan de spelregels aanpassen.' },
 
     { h: 'Oefenen' },
@@ -476,7 +477,7 @@ export const CONTENT = {
       ul: [
         'Speel tegen de AI-spelers op **Makkelijk**, dan **Normaal** en dan **Sterk**. Elke stap leert je iets nieuws.',
         'Gebruik **Oefenen**: Juf Ans geeft bij elke zet een tip en legt na elke slag uit wat er gebeurde.',
-        'Bekijk de **laatste slag** en het **scorebord** om te zien waar het potje gewonnen of verloren werd.',
+        'Bekijk de **laatste slag** en het **scorebord** om te zien waar het potje gewonnen of verloren werd, en na de partij **Jouw spelanalyse**.',
       ],
     },
     { tip: 'Geen haast: je hebt alle tijd om na te denken. Niemand aan tafel heeft een klok.' },
