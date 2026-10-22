@@ -241,12 +241,16 @@ function openMenu() {
   });
 }
 
+// Mid-game the seat stays empty until someone joins in it, or until the
+// others agree that an AI takes it (design §6); alone with bots there is
+// nobody to ask.
 export function confirmLeave() {
   const s = app.s;
   const running = s && s.phase !== 'lobby' && s.phase !== 'gameOver';
+  const others = s && s.players.some((p, seat) => p && !p.bot && !p.left && seat !== s.you);
   const m = openModal({
     id: 'leave', title: 'Spel verlaten?', cls: 'm-confirm', body: [
-      h('p', { text: running ? 'Een AI-speler neemt je plaats aan tafel over.' : 'Je verlaat de tafel.' }),
+      h('p', { text: running && others ? 'De anderen beslissen samen of een AI-speler je plaats inneemt.' : 'Je verlaat de tafel.' }),
       h('div', { class: 'btn-row' },
         h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => m.close() }, 'Blijven'),
         h('button', { class: 'btn btn-danger', type: 'button', onclick: () => { m.close(true); app.leave(); } }, 'Verlaten')),
@@ -652,8 +656,9 @@ function showSummary(s, ev) {
   const mine = s.players[s.you]?.ready;
   if (mine) { m.go.disabled = true; m.go.lastChild.textContent = 'Wachten op de rest'; }
   // Who is ready, when there is anyone to wait for; alone with bots the
-  // chip would only say "Jij" and cost a phone a row of tricks.
-  const chips = s.players.map((p, seat) => p && !p.bot ? h('span', { class: 'ready-chip ' + (p.ready ? 'on ' : '') + teamCls(s, seat) },
+  // chip would only say "Jij" and cost a phone a row of tricks. Who left
+  // is no longer at the table.
+  const chips = s.players.map((p, seat) => p && !p.bot && !p.left ? h('span', { class: 'ready-chip ' + (p.ready ? 'on ' : '') + teamCls(s, seat) },
     p.ready ? icon('check') : null, nameOf(s, seat)) : null).filter(Boolean);
   m.ready.replaceChildren(...(chips.length > 1 ? chips : []));
   m.ready.hidden = chips.length < 2;

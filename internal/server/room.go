@@ -26,7 +26,7 @@ const (
 )
 
 const (
-	awayAfter    = 20 * time.Second // a disconnected human's turn before a substitute plays
+	askAfter     = 10 * time.Second // a disconnected human's turn before the others are asked about an AI
 	hostGrace    = 30 * time.Second // a disconnected host before another human takes over
 	reclaimAfter = 3 * time.Minute  // a disconnected seat before its name alone takes it back
 	refusedGap   = 30 * time.Second // at most one "wilde aanschuiven" notice per room this often
@@ -39,19 +39,21 @@ const (
 	seatEmpty seatKind = iota
 	seatHuman
 	seatBot
+	seatLeft // its human left the match: nobody plays it until a joiner, or an AI everyone agreed to
 )
 
 // seat is one place at the table.
 type seat struct {
 	kind seatKind
 
-	// Humans.
+	// Humans; a seat its player left keeps only the name.
 	name   string
 	token  string
 	client *client   // nil while disconnected
 	leftAt time.Time // when the connection went
-	away   bool      // a substitute plays for them
-	awayAt time.Time
+	asked  bool      // gone on their turn so long that the others are asked about an AI
+	away   bool      // the others let a substitute play for them until they return
+	vote   *bool     // their answer to the question (takeover), nil: none yet; a no outlasts a drop-out a while (see disconnected)
 	ready  bool
 	chat   tokenBucket
 	review *review // the analysis of their play in this match
@@ -99,8 +101,11 @@ type room struct {
 	collected bool      // the completed current trick has been collected
 	pending   step      // a pause in progress (turn -1), ended by runPending
 	pendingAt time.Time // when the pause ends
-	turnAt    time.Time // when the current turn opened
+	turnAt    time.Time // when the current turn opened (or play resumed, or an AI took over): bots think from it
+	openedAt  time.Time // when the current turn opened: an absent player's askAfter counts from it
 	think     time.Duration
+	asking    game.Seat   // the seat the question (takeover) is about, as updates show it
+	votesOn   game.Seat   // the seat the votes answer: asking, or the question resting while nobody is connected
 	gen       uint64      // bumped by drive; stale timers compare it
 	timer     *time.Timer // what drive scheduled last
 	step      int         // bumped when a turn opens (hint and bot decision key)
@@ -126,16 +131,18 @@ func newRoom(s *Server, code string) *room {
 	var seed [16]byte
 	crand.Read(seed[:])
 	return &room{
-		srv:    s,
-		code:   code,
-		log:    s.log.With("room", code),
-		cmds:   make(chan func(), 64),
-		done:   make(chan struct{}),
-		rng:    rand.New(rand.NewPCG(binary.LittleEndian.Uint64(seed[:8]), binary.LittleEndian.Uint64(seed[8:]))),
-		opts:   defaultOptions(),
-		host:   game.NoSeat,
-		phase:  phaseLobby,
-		winner: -1,
+		srv:     s,
+		code:    code,
+		log:     s.log.With("room", code),
+		cmds:    make(chan func(), 64),
+		done:    make(chan struct{}),
+		rng:     rand.New(rand.NewPCG(binary.LittleEndian.Uint64(seed[:8]), binary.LittleEndian.Uint64(seed[8:]))),
+		opts:    defaultOptions(),
+		host:    game.NoSeat,
+		phase:   phaseLobby,
+		asking:  game.NoSeat,
+		votesOn: game.NoSeat,
+		winner:  -1,
 	}
 }
 
@@ -258,7 +265,9 @@ func (r *room) setClient(i game.Seat, c *client) {
 }
 
 // resume restarts the clock when a player returns to a room where nobody
-// was connected: bots think again and the hand summary shows in full.
+// was connected: bots think again and the hand summary shows in full. The
+// question about a player who has been gone askAfter on their turn is back
+// at once: their absence counts as before the pause.
 func (r *room) resume() {
 	now := time.Now()
 	r.turnAt = now
@@ -266,8 +275,15 @@ func (r *room) resume() {
 		r.pendingAt = now.Add(r.scaled(r.pace().summary))
 		r.nextAt = r.pendingAt
 	}
+	if w := r.waitingFor(); w != game.NoSeat {
+		if st := &r.seats[w]; st.kind == seatHuman && now.Sub(latest(r.openedAt, st.leftAt)) >= r.scaled(askAfter) {
+			st.asked = true
+		}
+	}
 }
 
+// humanCount counts the human seats; a seat its player left is none (for
+// the host choice and the room timeouts as well).
 func (r *room) humanCount() int {
 	n := 0
 	for i := range r.seats {
@@ -293,7 +309,7 @@ func (r *room) connectedHumans() int {
 func (r *room) live() bool { return r.alwaysOn || r.connectedHumans() > 0 }
 
 // botPlays reports whether a bot makes seat i's decisions: a bot seat, or
-// a human who is away (a substitute plays).
+// a human who dropped out and whom the others let a substitute play for.
 func (r *room) botPlays(i game.Seat) bool {
 	st := &r.seats[i]
 	return st.kind == seatBot || (st.kind == seatHuman && st.away && st.client == nil)
@@ -355,7 +371,7 @@ func botName(p Persona) string { return p.Name + " (AI)" }
 func (r *room) displayName(i game.Seat) string {
 	st := &r.seats[i]
 	switch st.kind {
-	case seatHuman:
+	case seatHuman, seatLeft:
 		return st.name
 	case seatBot:
 		return botName(st.persona)
@@ -410,10 +426,11 @@ func (r *room) arrangeBots() {
 	}
 }
 
-// fillSeats puts random distinct bots on every empty seat.
+// fillSeats puts random distinct bots on every empty seat and on every
+// seat a human left.
 func (r *room) fillSeats() {
 	for i := range r.seats {
-		if r.seats[i].kind == seatEmpty {
+		if k := r.seats[i].kind; k == seatEmpty || k == seatLeft {
 			r.seats[i] = r.newBot(r.randomPersona())
 			r.seats[i].filled = true
 		}
@@ -439,6 +456,7 @@ func (r *room) seatTraining() {
 func (r *room) emit(ev any) { r.emitTo(ev, nil) }
 
 func (r *room) emitTo(ev any, fresh *client) {
+	r.settleQuestion()
 	r.seq++
 	for i := range r.seats {
 		st := &r.seats[i]
@@ -522,8 +540,8 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 }
 
 // handleJoin seats c: back at its seat by token, at a seat taken back by
-// name, in a free lobby seat or in a vacated one. With blocked (too many
-// failed joins from this address) only the seat token still works.
+// name, in a free lobby seat or in one a human left. With blocked (too
+// many failed joins from this address) only the seat token still works.
 func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 	if i := r.seatOf(c); i != game.NoSeat {
 		r.welcome(c, i)
@@ -585,8 +603,20 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 		r.checkHost()
 		return
 	}
-	// A running game: only a seat a human left can be taken over.
-	i := r.firstSeat(func(st *seat) bool { return st.kind == seatBot && st.vacated })
+	// A running game: only a seat a human left can be taken over, still
+	// waiting or played by a bot meanwhile. Who left gets their own seat
+	// back (by name: their team, their cards); else the one whose turn it
+	// is goes first.
+	i := r.firstSeat(func(st *seat) bool { return st.kind == seatLeft && st.name == name })
+	if i == game.NoSeat {
+		i = r.firstSeat(func(st *seat) bool { return st.kind == seatLeft })
+		if w := r.waitingFor(); w != game.NoSeat && r.seats[w].kind == seatLeft {
+			i = w
+		}
+	}
+	if i == game.NoSeat {
+		i = r.firstSeat(func(st *seat) bool { return st.kind == seatBot && st.vacated })
+	}
 	if i == game.NoSeat && r.phase == phaseGameOver {
 		fail(errStarted, "Dit spel is net afgelopen. Vraag de host om de tafel opnieuw klaar te zetten, dan kun je aanschuiven.")
 		r.refused(name)
@@ -596,14 +626,20 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 		fail(errStarted, "Dit spel is al begonnen.")
 		return
 	}
-	old := botName(r.seats[i].persona)
+	old := r.displayName(i)
 	r.seats[i] = newHuman(name)
 	r.setClient(i, c)
 	if r.host == game.NoSeat {
 		r.host = i
 	}
 	r.welcome(c, i)
-	r.sysChat("%s neemt de plaats van %s over.", name, old)
+	if old == name {
+		// Their name again, but anyone with the code may type it (only
+		// bots carry "(AI)"): a line that claims no more than that.
+		r.sysChat("%s neemt de plaats weer in.", name)
+	} else {
+		r.sysChat("%s neemt de plaats van %s over.", name, old)
+	}
 	r.emitTo(evSeat{Type: "join", Seat: i}, c)
 	r.checkHost()
 	r.drive()
@@ -679,7 +715,7 @@ func (r *room) reconnect(c *client, i game.Seat) {
 	} else {
 		r.setClient(i, c)
 	}
-	st.away = false
+	st.away, st.asked = false, false // consent lasts until the return: a later drop-out asks again
 	r.welcome(c, i)
 	if wasAway {
 		r.sysChat("%s is terug.", st.name)
@@ -703,21 +739,36 @@ func (r *room) disconnected(c *client) {
 		return
 	}
 	r.setClient(i, nil)
-	r.seats[i].leftAt = time.Now()
+	st := &r.seats[i]
+	st.leftAt = time.Now()
+	// Only those at the table answer the question, but a no outlasts a
+	// short drop-out (a reload, a phone switching apps): it holds for
+	// askAfter, so the drop-out cannot complete a yes against it.
+	if st.vote != nil && !*st.vote && r.asking != game.NoSeat {
+		at := st.leftAt
+		r.later(r.scaled(askAfter), func() { r.dropVote(i, at) })
+	} else {
+		st.vote = nil
+	}
 	r.emit(evSeat{Type: "away", Seat: i})
 	if i == r.host {
 		r.later(r.scaled(hostGrace), r.checkHost)
 	}
-	// The others may all have been waiting for this player.
+	// The others may all have been waiting for this player: to be ready,
+	// or to answer the question.
 	if r.phase == phaseHandEnd && r.allReady() {
 		r.nextHand()
+		return
+	}
+	if r.tally() {
 		return
 	}
 	r.drive()
 }
 
-// leave handles an explicit leave: in the lobby the seat empties, in a
-// game a bot takes it over until someone joins in that place.
+// leave handles an explicit leave: in the lobby the seat empties; in a
+// match, or after it, the seat keeps the name and waits, nobody playing
+// it, until someone joins in that place or the others let an AI take it.
 func (r *room) leave(c *client, i game.Seat) {
 	c.leaveRoom(r)
 	name := r.seats[i].name
@@ -728,21 +779,22 @@ func (r *room) leave(c *client, i game.Seat) {
 			r.close("leeg")
 			return
 		}
-		r.sysChat("%s is vertrokken.", name)
 	} else {
-		p := r.randomPersona()
-		r.seats[i] = r.newBot(p)
-		r.seats[i].vacated = true
-		r.sysChat("%s is vertrokken; %s neemt het over.", name, botName(p))
+		r.seats[i] = seat{kind: seatLeft, name: name}
 	}
+	r.sysChat("%s is vertrokken.", name)
 	if i == r.host {
 		r.host = game.NoSeat
 		r.pickHost(i)
 	}
 	r.emit(evSeat{Type: "leave", Seat: i})
-	// The others may all have been waiting for this player.
+	// The others may all have been waiting for this player: to be ready,
+	// or to answer the question.
 	if r.phase == phaseHandEnd && r.allReady() {
 		r.nextHand()
+		return
+	}
+	if r.tally() {
 		return
 	}
 	r.drive()
@@ -863,6 +915,8 @@ func (r *room) handle(c *client, m *inMsg) {
 		r.humanAct(c, i, action{kind: actPlay, card: card})
 	case "ready":
 		r.cmdReady(c, i)
+	case "vote":
+		r.cmdVote(c, i, m)
 	case "chat":
 		r.cmdChat(c, i, m)
 	case "rematch":
@@ -1083,9 +1137,10 @@ func (r *room) cmdRematch(c *client, i game.Seat) {
 
 // cmdLobby takes a finished match back to the lobby, under the same code
 // and options: humans keep their seats (unless gone for longer than the
-// host grace), bots placed in the lobby stay, and seats that bots filled at
-// the start or after a human left are free again, so friends can join and
-// the host can change seats and options before the next start.
+// host grace), bots placed in the lobby stay, and the seats humans left, or
+// that bots filled at the start or took over from a human who left, are
+// free again, so friends can join and the host can change seats and
+// options before the next start.
 func (r *room) cmdLobby(c *client, i game.Seat) {
 	switch {
 	case r.phase != phaseGameOver:
@@ -1105,7 +1160,7 @@ func (r *room) cmdLobby(c *client, i game.Seat) {
 	for k := range r.seats {
 		st := &r.seats[k]
 		switch {
-		case st.kind == seatBot && (st.filled || st.vacated):
+		case st.kind == seatLeft, st.kind == seatBot && (st.filled || st.vacated):
 			*st = seat{}
 		case st.kind == seatHuman && st.client == nil && time.Since(st.leftAt) >= r.scaled(hostGrace):
 			r.sysChat("%s is er niet meer; de plaats is weer vrij.", st.name)

@@ -14,11 +14,17 @@ import { parseArgs } from 'node:util';
 const USAGE = `usage: sim.mjs [URL] [--url ws://HOST:PORT/ws] [--humans 1-4] [--trump utrechts|gedraaid]
        [--rules amsterdams|rotterdams] [--ai makkelijk|normaal|sterk] [--hands 4|8|...|24]
        [--tempo rustig|normaal|snel] [--training] [--open] [--reconnect] [--games N] [--parallel] [--verbose]
---reconnect: players now and then drop the connection and come back with their seat token.
+--reconnect: players now and then drop the connection and come back with their seat token;
+the others answer the question whether an AI may play for them meanwhile.
 With only a URL, plays the standard suite of configurations.`;
 
 const STALL_MS = 30000;
 const IN_HAND = new Set(['trump', 'bid', 'play']);
+const MOVES = new Set(['trump', 'bid', 'play']);
+// The server's answer to a vote that crossed the end of its question (the
+// player came back, the others agreed): told, not a failure, as long as the
+// question did close or change after the vote was sent.
+const LATE_VOTE = 'Die vraag staat niet (meer) open.';
 
 let args;
 try {
@@ -145,6 +151,11 @@ class Player {
     this.misses = []; // training: what the next tip must say was advised instead
     this.reconnects = 0;
     this.reconnecting = false;
+    this.resync = true; // the next update is the state after (re)joining
+    this.votes = 0;
+    this.voteTimer = null;
+    this.question = ''; // the open question as seen: seat, left and the seq it opened at
+    this.lastVote = null; // {question, ai}: the answer sent last
     this.over = false;
     this.done = new Promise((res, rej) => { this.resolve = res; this.reject = rej; });
     this.joined = new Promise(res => { this.onJoined = res; });
@@ -237,6 +248,12 @@ class Player {
         this.update(m);
         break;
       case 'error':
+        // The update that closed the question comes before the refusal.
+        if (m.code === 'ongeldig' && m.msg === LATE_VOTE && this.lastVote) {
+          this.check(this.lastVote.question !== this.question, `a vote refused while its question ${this.question} is open`);
+          this.game.lateVotes++;
+          break;
+        }
         this.fail(`server error ${m.code}: ${m.msg}`);
         break;
       case 'pong':
@@ -264,7 +281,8 @@ class Player {
 
     this.checkState(s, prev);
     if (ev?.type === 'handEnd') this.checkHandEnd(s, ev);
-    if (ev?.type === 'away' && s.players[ev.seat]?.away) this.game.subs++;
+    this.checkConsent(s, prev, ev, m.seq);
+    this.resync = false;
     // After a reconnect the game may already be over: the resync shows it.
     if (s.phase === 'gameOver' && !this.over) this.checkGameOver(s, ev?.type === 'gameOver' ? ev : { total: s.total, winner: s.winner });
     if (this.over) return;
@@ -272,10 +290,45 @@ class Player {
     if (this.game.cfg.reconnect && !this.reconnecting && s.phase !== 'lobby' && Math.random() < 0.01) this.reconnect();
   }
 
+  // checkConsent: no AI plays for an absent human without everyone's
+  // consent. A move for a human seat comes from its player or from the
+  // substitute (away); the substitute starts only with a takeover event,
+  // and that event follows a yes of everyone asked, this player included;
+  // away comes once per lost connection. A resync may show what happened
+  // while this player was gone, so it only starts the bookkeeping.
+  checkConsent(s, prev, ev, seq) {
+    if (ev && MOVES.has(ev.type)) {
+      const p = s.players[ev.seat];
+      this.check(!(p && !p.bot && (p.left || (!p.connected && !p.away))), `${ev.type} for ${p?.name}, who is gone, without everyone's consent`);
+    }
+    const q = s.takeover;
+    const was = this.question;
+    const same = q && prev?.takeover && prev.takeover.seat === q.seat && prev.takeover.left === q.left && !this.resync;
+    this.question = !q ? '' : same ? was : `${q.seat}|${q.left}|${seq}`;
+    if (this.resync || !prev || prev.phase === 'lobby') return;
+    // Seen by several players at the same seq: counted once.
+    if (q && !same) this.game.questions.add(seq);
+    s.players.forEach((p, i) => {
+      const before = prev.players[i];
+      if (p.away && !before?.away) this.check(ev?.type === 'takeover' && ev.seat === i, `an AI plays for ${p.name} without a takeover (event ${ev?.type})`);
+    });
+    if (ev?.type === 'away') {
+      const before = prev.players[ev.seat];
+      this.check(!before || before.bot || before.connected, `a second away for ${before?.name}, whose connection was gone already`);
+    }
+    if (ev?.type === 'takeover') {
+      this.game.takeovers.add(seq);
+      this.check(prev.takeover?.seat === ev.seat && was, `takeover of seat ${ev.seat} without a question about it`);
+      this.check(this.lastVote?.question === was && this.lastVote.ai, `takeover of seat ${ev.seat} although this player's answer was ${JSON.stringify(this.lastVote)}`);
+    }
+  }
+
   // reconnect drops the connection and comes back with the seat token after
-  // up to 1.5 s, sometimes long enough for a substitute to play (20 s at -fast).
+  // up to 1.5 s, often long enough for the others to be asked whether an AI
+  // may play for this player (after 10 s, 0.5 s at -fast, on their turn).
   async reconnect() {
     this.reconnecting = true;
+    this.resync = true;
     this.reconnects++;
     const old = this.ws;
     this.ws = null;
@@ -332,6 +385,23 @@ class Player {
       if (cfg.trumpMode === 'gedraaid' && s.phase === 'bid') this.check(s.turned, 'bidding without a turned suit');
       if (s.phase === 'play') this.check(s.trump && s.trumpBy >= 0 && s.playingTeam === s.trumpBy % 2, 'play without trump');
     }
+
+    // The question whether an AI may play for an absent player: only on
+    // their turn, only to those connected, and only it gets answers.
+    this.check('takeover' in s, 'state without takeover');
+    const q = s.takeover;
+    if (q) {
+      const p = s.players[q.seat];
+      this.check(inHand && s.turn === q.seat && q.seat !== s.you && p && !p.bot && !p.connected && !p.away && p.left === q.left,
+        `takeover ${JSON.stringify(q)} in phase ${s.phase}, turn ${s.turn}: ${JSON.stringify(p)}`);
+    }
+    s.players.forEach((p, i) => {
+      this.check(typeof p.left === 'boolean' && (p.vote === null || typeof p.vote === 'boolean'), `seat ${i} without left or vote`);
+      // Who just lost the connection may still hold a no, never a yes.
+      if (p.vote !== null) this.check(q && !p.bot && (p.connected || p.vote === false), `seat ${i} answers without a question`);
+      if (p.left) this.check(!p.bot && !p.connected && !p.away, `seat ${i} left, but ${JSON.stringify(p)}`);
+      if (p.left && s.turn === i) this.check(q, `the turn of seat ${i}, which its player left, but nobody is asked`);
+    });
 
     const mine = inHand && s.turn === s.you;
     if (mine && s.phase === 'play') {
@@ -416,6 +486,7 @@ class Player {
 
   // react makes this player's decision, if any, after a short random delay.
   react(s) {
+    if (s.takeover && !this.voteTimer) this.voteTimer = setTimeout(() => this.vote(), rand(300));
     if (IN_HAND.has(s.phase) && s.turn === s.you && this.seq > this.acted) {
       this.acted = this.seq;
       setTimeout(() => this.decide(s), rand(15));
@@ -424,6 +495,25 @@ class Player {
       this.readied = s.handNo;
       setTimeout(() => this.send({ t: 'ready' }), rand(30));
     }
+  }
+
+  // vote answers the open question: mostly yes, and a no is now and then
+  // changed into a yes.
+  vote() {
+    this.voteTimer = null;
+    const s = this.s;
+    if (!s?.takeover || this.reconnecting || this.over) return;
+    const mine = s.players[s.you].vote;
+    // As the app: one answer at a time, until the table shows it.
+    if (this.lastVote?.question === this.question && this.lastVote.ai !== mine) return;
+    let ai;
+    if (mine === null) ai = Math.random() < 0.7;
+    else if (mine === false && Math.random() < 0.5) ai = true;
+    else return;
+    this.votes++;
+    this.game.votes++;
+    this.lastVote = { question: this.question, ai };
+    this.send({ t: 'vote', seat: s.takeover.seat, left: s.takeover.left, ai });
   }
 
   decide(s) {
@@ -454,6 +544,7 @@ class Player {
 
   close() {
     this.over = true;
+    clearTimeout(this.voteTimer);
     try { this.ws?.close(); } catch { /* already closed */ }
   }
 }
@@ -466,7 +557,10 @@ class Game {
     this.cfg = cfg;
     this.verbose = verbose;
     this.finished = false;
-    this.subs = 0; // substitutes seen taking over (counted by every player)
+    this.questions = new Set(); // seqs at which a question opened (whoever saw it)
+    this.takeovers = new Set(); // seqs of takeover events
+    this.votes = 0;
+    this.lateVotes = 0; // votes that came after the question had closed
     this.last = Date.now();
     this.failed = new Promise((_, rej) => { this.reject = rej; });
     this.failed.catch(() => {});
@@ -497,7 +591,8 @@ class Game {
       const w = final.you % 2;
       const re = this.players.reduce((n, p) => n + p.reconnects, 0);
       return `ok   game ${this.id} (${label(cfg)}) room ${final.code}: Wij ${final.total[w]} - Zij ${final.total[1 - w]}, ` +
-        `${((Date.now() - t0) / 1000).toFixed(1)} s${cfg.reconnect ? `, ${re} reconnects, substitutes seen ${this.subs}` : ''}`;
+        `${((Date.now() - t0) / 1000).toFixed(1)} s` + (cfg.reconnect ? `, ${re} reconnects, ${this.questions.size} questions, ` +
+        `${this.votes} votes (${this.lateVotes} too late), ${this.takeovers.size} takeovers` : '');
     } finally {
       this.finished = true;
       clearInterval(watchdog);

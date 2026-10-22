@@ -71,6 +71,9 @@ func (r *room) stateFor(i game.Seat) *state {
 	if r.pending == stepNone {
 		s.Turn = int(d.Turn())
 	}
+	if q := r.asking; q != game.NoSeat {
+		s.Takeover = &takeoverState{Seat: q, Left: r.seats[q].kind == seatLeft}
+	}
 	if s.Turn == int(i) {
 		if d.Phase() == game.PhasePlay {
 			legal := d.Legal()
@@ -121,9 +124,12 @@ func (r *room) playerState(i game.Seat) *playerState {
 			Name:      st.name,
 			Connected: st.client != nil,
 			Away:      st.away,
+			Vote:      st.vote,
 			Cards:     cards,
 			Ready:     st.ready && r.phase == phaseHandEnd,
 		}
+	case seatLeft:
+		return &playerState{Name: st.name, Left: true, Cards: cards}
 	case seatBot:
 		p := st.persona
 		return &playerState{

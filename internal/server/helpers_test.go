@@ -195,6 +195,18 @@ func (a *countAI) decisions() (n int, twice []string) {
 	return n, twice
 }
 
+// seatDecisions is the number of decisions made for seat i.
+func (a *countAI) seatDecisions(i int) (n int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for k, c := range a.turns {
+		if strings.Contains(k, fmt.Sprintf(" seat %d ", i)) {
+			n += c
+		}
+	}
+	return n
+}
+
 type countBrain struct{ a *countAI }
 
 // note counts a decision for the turn of v: the hand, phase, seat, cards
@@ -280,6 +292,7 @@ type tclient struct {
 	errc chan error
 
 	s      *state // latest state
+	resync bool   // joined: the next update may show what this connection missed
 	seq    int
 	code   string
 	seat   int
@@ -382,7 +395,13 @@ func (c *tclient) track(m *msg) {
 	switch m.T {
 	case "joined":
 		c.code, c.seat, c.token = m.Code, m.Seat, m.Token
+		c.resync = true
 	case "update":
+		prev := c.s
+		if c.resync {
+			prev, c.resync = nil, false
+		}
+		checkConsent(c.t, prev, m)
 		if m.ev != nil && m.Seq <= c.seq {
 			c.t.Errorf("seq went from %d to %d", c.seq, m.Seq)
 		}

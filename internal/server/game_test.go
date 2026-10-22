@@ -86,6 +86,8 @@ func checkUpdate(t *testing.T, c *tclient, m *msg) {
 	} else if s.Legal != nil || s.Rule != "" {
 		t.Errorf("legal/rule while not my turn: %v %q", s.Legal, s.Rule)
 	}
+	// The consent rules (checkConsent) hold for every update any client
+	// reads, so they are checked in track.
 	sum := [2]int{}
 	for k, row := range s.Scores {
 		if row.Hand != k+1 {
@@ -428,60 +430,15 @@ func TestReconnectMidGame(t *testing.T) {
 	if !u.state.Players[seat].Connected || u.state.Players[seat].Name != "Anna" {
 		t.Errorf("after reconnect: %+v", u.state.Players[seat])
 	}
-	// The hand may have moved on if a substitute played; it never grows.
-	for _, c := range u.state.Hand {
-		if !slices.Contains(hand, c) {
-			t.Errorf("card %v appeared in the hand after reconnect", c)
-		}
+	// Nobody played for Anna meanwhile (design §6): she has her cards.
+	if !sameCards(u.state.Hand, hand) {
+		t.Errorf("hand %v after reconnect, %v before", u.state.Hand, hand)
 	}
 	b.waitEvent("back")
 }
 
-func TestAwaySubstitute(t *testing.T) {
-	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
-	a := dial(t, ts)
-	a.create("Anna", map[string]any{"humans": 2, "hands": 4}, false, false)
-	b := dial(t, ts)
-	b.join(a.code, "Bert", "")
-	a.send(map[string]any{"t": "start"})
-	// Wait until it is Anna's turn, then drop her connection.
-	drive(t, func() bool { return a.myTurn() }, a, b)
-	seat := a.seat
-	a.conn.CloseNow()
-	start := time.Now()
-	var awayAt time.Duration
-	substituted := false
-	drive(t, func() bool {
-		s := b.s
-		if awayAt == 0 && s.Players[seat].Away {
-			awayAt = time.Since(start)
-			if s.Players[seat].Connected {
-				t.Errorf("away player shows as connected")
-			}
-		}
-		// The substitute moves: it is no longer Anna's turn, or her hand shrank.
-		if awayAt > 0 && (s.Turn != seat || s.Phase == phaseHandEnd) {
-			substituted = true
-		}
-		return substituted
-	}, b)
-	if awayAt < 150*time.Millisecond {
-		t.Errorf("substitute after %v, want about 20 s scaled (200 ms)", awayAt)
-	}
-	if !slices.Contains(b.events, "away") {
-		t.Errorf("no away event: %v", b.events)
-	}
-	want := "Anna is even weg; een AI-speler neemt zolang de beurten over."
-	if !slices.ContainsFunc(b.chats, func(m chatMsg) bool { return m.Sys && m.Seat == -1 && m.Text == want }) {
-		t.Errorf("no system line about the substitute in %+v", b.chats)
-	}
-	// Back again: away clears.
-	a2 := dial(t, ts)
-	a2.join(a.code, "Anna", a.token)
-	if a2.s.Players[seat].Away || !a2.s.Players[seat].Connected {
-		t.Errorf("after return: %+v", a2.s.Players[seat])
-	}
-	b.waitEvent("back")
+func sameCards(a, b []game.Card) bool {
+	return len(a) == len(b) && !slices.ContainsFunc(a, func(c game.Card) bool { return !slices.Contains(b, c) })
 }
 
 func TestIllegalPlayRejected(t *testing.T) {
@@ -666,14 +623,19 @@ func TestRejoinSpamDecidesOnce(t *testing.T) {
 	rng := rand.New(rand.NewPCG(8, 8))
 	acted := map[*tclient]int{}
 	// play lets a window holding a seat make its own decisions, so the bots
-	// get turns during the spam.
+	// get turns during the spam. Asked about the seat Anna left, Dirk lets
+	// an AI take it, so a bot plays it between a leave and the next join.
 	play := func(cs ...*tclient) {
 		for _, c := range cs {
 			for m := c.poll(); m != nil; m = c.poll() {
 			}
-			if c.myTurn() && c.seq > acted[c] {
+			switch {
+			case c.myTurn() && c.seq > acted[c]:
 				acted[c] = c.seq
 				c.actRandom(rng)
+			case c.s != nil && c.s.Takeover != nil && c.seq > acted[c]:
+				acted[c] = c.seq
+				c.vote(int(c.s.Takeover.Seat), true)
 			}
 		}
 	}
@@ -681,26 +643,33 @@ func TestRejoinSpamDecidesOnce(t *testing.T) {
 		acted[c] = -1 // a play sent just before another window took over is lost
 		c.send(map[string]any{"t": "join", "code": a.code, "name": "Anna", "token": token})
 	}
-	// Two windows take Anna's seat from each other, 40 times a second.
+	// Two windows take Anna's seat from each other, 40 times a second. A
+	// move gets a moment to come in before the next window takes over, so
+	// the game goes on.
 	b := dial(t, ts)
 	for k := range 40 {
 		c := []*tclient{b, a}[k%2]
 		join(c, a.token)
 		time.Sleep(25 * time.Millisecond)
 		play(c, d)
+		time.Sleep(5 * time.Millisecond)
 	}
 	n1, _ := ai.decisions()
-	// A window leaves and joins again: the seat is vacated, then taken over.
+	// A window leaves and joins again soon after: the seat is left, an AI
+	// takes it with Dirk's consent (most of Anna's turns come while it is
+	// left), and the window takes it over again, during the AI's turn too.
 	c := dial(t, ts)
 	join(c, a.token)
 	for k := range 40 {
-		if k%2 == 0 {
+		switch k % 4 {
+		case 0:
 			c.send(map[string]any{"t": "leave"})
-		} else {
+		case 3:
 			join(c, "")
 		}
 		time.Sleep(25 * time.Millisecond)
 		play(c, d)
+		time.Sleep(5 * time.Millisecond)
 	}
 	n, twice := ai.decisions()
 	if len(twice) > 0 {
@@ -708,6 +677,9 @@ func TestRejoinSpamDecidesOnce(t *testing.T) {
 	}
 	if n1 < 2 || n-n1 < 2 {
 		t.Errorf("only %d and %d bot decisions during the spam", n1, n-n1)
+	}
+	if k := ai.seatDecisions(0); k == 0 {
+		t.Errorf("no bot decision for Anna's seat during the spam (%d in all)", n)
 	}
 }
 

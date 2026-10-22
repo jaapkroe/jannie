@@ -540,6 +540,16 @@ test('bediening says Snel spelen and Oefenen need no name', () => {
   assert.doesNotMatch(text, /naam vul je maar één keer in/);
 });
 
+test('bediening says an AI plays for someone who is gone only when everyone agrees', () => {
+  const text = renderManual('bediening').textContent;
+  assert.match(text, /Niemand speelt zomaar voor je\. Ben je weg terwijl je aan de beurt bent, dan wacht het spel op je\. Na tien seconden vraagt het de anderen of een AI-speler zolang voor je mag spelen\. Dat gebeurt alleen als iedereen akkoord is\./);
+  assert.match(text, /Kies je Spel verlaten, dan blijft je plaats vrij voor wie met de spelcode aanschuift\./);
+  assert.match(text, /Tik op AI laten spelen of Wachten\./);
+  assert.match(text, /het spel wacht tot je terug bent/);
+  // Nothing of the AI that used to take over by itself.
+  assert.doesNotMatch(text, /seconden een AI-speler voor je|neemt een AI-speler je plaats in|neemt de plaats over/);
+});
+
 test('bediening says when Juf Ans tells what she had advised', () => {
   const text = renderManual('bediening').textContent;
   assert.match(text, /Speel je een andere kaart, dan vertelt Juf Ans na de slag welke kaart zij had aangeraden en waarom\./);
