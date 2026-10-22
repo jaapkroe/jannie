@@ -7,7 +7,7 @@ var suitPreference = [NumSuits]Suit{Spades, Hearts, Clubs, Diamonds}
 
 // SortHand returns a display-sorted copy of hand: suits grouped with
 // alternating colours where possible, trump first when known, and within a
-// suit high to low by the order that applies (trump order for trump).
+// suit low to high by the order that applies (trump order for trump).
 func SortHand(hand []Card, trump Suit, trumpKnown bool) []Card {
 	order := suitDisplayOrder(hand, trump, trumpKnown)
 	var pos [NumSuits]int
@@ -22,9 +22,9 @@ func SortHand(hand []Card, trump Suit, trumpKnown bool) []Card {
 			return pos[a.Suit] < pos[b.Suit]
 		}
 		if trumpKnown && a.Suit == trump {
-			return trumpOrder[a.Rank] > trumpOrder[b.Rank]
+			return trumpOrder[a.Rank] < trumpOrder[b.Rank]
 		}
-		return plainOrder[a.Rank] > plainOrder[b.Rank]
+		return plainOrder[a.Rank] < plainOrder[b.Rank]
 	})
 	return out
 }
