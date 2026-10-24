@@ -98,7 +98,7 @@ export const CONTENT = {
     {
       ul: [
         '**Met de muis**: klik op een kaart en hij ligt op tafel.',
-        '**Op een touchscreen**: tik een kaart aan, dan schuift hij omhoog en staat boven je kaarten welke kaart klaarligt. Tik nog een keer of veeg omhoog om hem te spelen. Mag je maar één kaart spelen, dan gaat hij met één tik. Liever altijd meteen? Kies bij Instellingen voor **Eén tik**.',
+        '**Op een touchscreen**: tik een kaart aan, dan schuift hij omhoog en staat boven je kaarten welke kaart klaarligt. Tik nog een keer of veeg omhoog om hem te spelen. Tik naast je kaarten, bijvoorbeeld op tafel, om hem terug te leggen. Mag je maar één kaart spelen, dan gaat hij met één tik. Liever altijd meteen? Kies bij Instellingen voor **Eén tik**.',
         '**Met het toetsenbord**: kies een kaart met ← en → en speel hem met Enter of de spatiebalk.',
         'Kaarten die je niet mag spelen, zijn **grijs**. Tik je er toch op, dan zie je waarom niet.',
         'Boven je kaarten staat steeds wat er van je verwacht wordt, bijvoorbeeld “Bekennen: speel {D}” of “Je maat heeft de slag: vrije keuze”.',

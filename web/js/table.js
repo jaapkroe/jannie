@@ -84,6 +84,7 @@ export function init() {
 
   root.append(E.top, E.table);
   bindHand();
+  root.addEventListener('click', tapAside);
   new ResizeObserver(() => layoutHand()).observe(E.hand);
   addEventListener('resize', fitCoach);
   onKeyboard(fitCoach); // the landscape layout comes or goes without a resize
@@ -840,6 +841,17 @@ function tap(code, type) {
     prefs.lifts = (prefs.lifts || 0) + 1;
     savePrefs();
   }
+  renderHand(s);
+  renderPrompt(s);
+}
+
+// A tap beside the hand (the felt, a seat, the trick; not a button) puts a
+// lifted card down again. Clicks in the hand are its own: with the pointer
+// captured, a tap on a card may arrive as a click on the hand.
+function tapAside(e) {
+  const s = app.s;
+  if (!selected || !s || E.hand.contains(e.target) || e.target.closest?.('button, a, input, textarea, select, label')) return;
+  selected = '';
   renderHand(s);
   renderPrompt(s);
 }

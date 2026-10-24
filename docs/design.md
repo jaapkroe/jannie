@@ -1186,7 +1186,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   Playing: on fine pointers one click plays a legal card; on touch the first tap
   lifts the card and a second tap (or swipe up) plays it (setting: one tap /
   two taps); the prompt then says so ("Tik nog eens om ♠A te spelen"), and the
-  only legal card plays on the first tap. Illegal cards are dimmed; tapping one
+  only legal card plays on the first tap. A tap beside the hand (the felt, a
+  seat, the trick; not a button) puts a lifted card down again, as does
+  lifting another card. Illegal cards are dimmed; tapping one
   shows `ExplainIllegal`-style text (the client may derive it from `rule`); a
   tap during a pause (`turn` -1) says to wait. Keyboard: ←/→ select, Enter
   plays; the trump/bid panel, the takeover question and the hand summary
