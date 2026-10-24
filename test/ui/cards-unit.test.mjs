@@ -109,3 +109,14 @@ test('the boer\'s B has a straight stem with square corners, so it never reads a
   assert.match(loops[1], /H1Z$/, 'the lower loop ends back on the stem');
   for (const code of ['7H', '8H', '9H', 'TH', 'QH', 'KH', 'AH']) assert.equal(glyph(code).getAttribute('stroke-linejoin'), 'round', code);
 });
+
+test('every court has garments that cards.css colours by suit, and no other face has', () => {
+  const accents = el => (has(el, 'court-accent') ? [el] : []).concat(...el.children.map(accents));
+  for (const code of ALL) {
+    const found = accents(createCard(code));
+    // Drawn once per half: the heer's tunic, the vrouw's bodice, the boer's doublet and beret.
+    assert.equal(found.length, { K: 2, Q: 2, J: 4 }[code[0]] || 0, code);
+    // A fill of its own for the suits and decks that leave it alone.
+    for (const g of found) assert.ok(![null, 'none'].includes(g.getAttribute('fill')), code);
+  }
+});

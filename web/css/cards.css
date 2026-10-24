@@ -7,7 +7,8 @@
  * State styling only uses the individual `translate`/`scale` properties, so
  * layout code is free to position and rotate cards with `transform`; code that
  * overrides `transition` on cards should keep translate, scale and filter in it.
- * Four-colour deck: put .four-color on any ancestor.
+ * Four-colour deck: put .four-color on any ancestor. Without it, the courts
+ * of klaveren and ruiten wear green and blue (see .court-accent below).
  * Every face shows its picture and the index in both corners at any size.
  * Below 60, 40 and 30 px wide the index grows to 1.25, 1.4 and 1.6 times its
  * regular size and the picture shrinks to make room. A layout that overlaps
@@ -68,6 +69,14 @@
 
 .four-color .card[data-suit="C"] { color: var(--kj-card-green); }
 .four-color .card[data-suit="D"] { color: var(--kj-card-blue); }
+
+/* Klaveren and ruiten share their ink with schoppen and harten, so their
+   courts wear their four-colour ink on a garment (.court-accent: the heer's
+   tunic, the vrouw's bodice, the boer's doublet and beret). The four-colour
+   deck tells every suit apart by its ink, so there the garments keep the
+   fill they have on schoppen and harten. */
+.card[data-suit="C"]:not(.four-color *) .court-accent { fill: var(--kj-card-green); }
+.card[data-suit="D"]:not(.four-color *) .court-accent { fill: var(--kj-card-blue); }
 
 .card > .card-svg {
   display: block;

@@ -1066,7 +1066,11 @@ export function createCard(code, opts={}) // → HTMLElement .card; opts: {size:
                                           //   dataset.card = code; aria-label = cardName
 export function createBack(opts={})       // → HTMLElement .card.back
 // Card size scales with the CSS custom property --card-w on any ancestor (height = 1.4 × width).
-// Four-colour deck when an ancestor has class .four-color (♣ green, ♦ blue/orange).
+// Four-colour deck when an ancestor has class .four-color (♣ green, ♦ blue/orange). In the
+//   two-colour deck the courts of ♣ and ♦ wear those inks on a garment (tunic, bodice, doublet
+//   and beret), so the courts of every suit look different; the spade (needle point over low,
+//   wide lobes, broad foot) and the club (three wide-set round lobes, slim stem) stay apart
+//   as small or distant blurs.
 // Extras: parseCard(code) → {rank,suit}|null; suitIcon(suit, {colored}) → <svg.suit-icon> (1em);
 //   createBack({size, color:'blue'|'red'}). State classes: .legal .selected (lifted) .disabled
 //   .hint (pulsing glow) .winner (gold ring) .selectable (hover/press only); they use the

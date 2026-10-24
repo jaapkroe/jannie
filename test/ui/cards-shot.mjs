@@ -131,6 +131,33 @@ try {
     expect(ink(at(90, 'AC', 'four-color')) === 'rgb(19, 129, 59)', 'four-colour klaveren not green');
     expect(ink(at(90, 'AD', 'four-color')) === 'rgb(21, 87, 192)', 'four-colour ruiten not blue');
     expect(ink(at(90, 'AS', 'four-color')) === 'rgb(23, 23, 28)', 'four-colour schoppen changed');
+    // Courts of klaveren and ruiten wear their four-colour ink on a garment,
+    // in the two-colour deck only.
+    const accent = (code, cls) => getComputedStyle(at(90, code, cls).querySelector('.court-accent')).fill;
+    expect(accent('KC') === 'rgb(19, 129, 59)', 'klaveren heer has no green tunic');
+    expect(accent('JD') === 'rgb(21, 87, 192)', 'ruiten boer has no blue doublet');
+    expect(accent('QS') === 'rgb(226, 173, 47)' && accent('QH') === accent('QS'), 'schoppen or harten vrouw lost the gold bodice');
+    expect(accent('QC', 'four-color') === accent('QS') && accent('JD', 'four-color') === accent('JS'), 'four-colour courts wear the accent');
+    // Spade and club apart as small or distant blurs: the share of their ink
+    // that differs, at 10 px and at 32 px under a 3 px blur.
+    const silhouette = (suit, px, blur) => {
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = px;
+      const g = cv.getContext('2d');
+      if (blur) g.filter = `blur(${blur}px)`;
+      g.scale(px / 100, px / 100);
+      g.fill(new Path2D(suitIcon(suit).querySelector('path').getAttribute('d')));
+      return g.getImageData(0, 0, px, px).data.filter((_, i) => i % 4 === 3);
+    };
+    for (const [px, blur] of [[10, 0], [32, 3]]) {
+      const s = silhouette('S', px, blur);
+      const c = silhouette('C', px, blur);
+      let diff = 0;
+      let both = 0;
+      s.forEach((a, i) => { diff += Math.abs(a - c[i]); both += Math.max(a, c[i]); });
+      console.log(`spade and club differ by ${(diff / both).toFixed(3)} at ${px} px, blur ${blur}`);
+      expect(diff / both >= 0.25, `spade and club differ by only ${(diff / both).toFixed(2)} at ${px} px, blur ${blur}`);
+    }
     const dis = at(90, '7C');
     dis.classList.add('disabled');
     expect(getComputedStyle(dis).filter !== 'none', '.disabled has no filter');
