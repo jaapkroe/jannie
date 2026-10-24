@@ -204,10 +204,16 @@ async function mainFlow(P) {
   await waitFor(P, () => document.querySelector('.m-review.open'), { label: 'review' });
   await sleep(300);
   await snap(P, '14b-review');
-  await press(P, '.m-review .rv-moment:not(:disabled)');
-  await waitFor(P, () => document.querySelector('.m-last.open'), { label: 'review moment' });
+  await page.evaluate(() => document.querySelector('.m-review .dlg-body').scrollTo(0, 1e6));
   await sleep(300);
-  await snap(P, '14c-review-moment');
+  await snap(P, '14b-review-end');
+  await press(P, '.m-review .rv-moment:not(:disabled)');
+  await waitFor(P, () => document.querySelector('.m-replay.open .rp-moment.now'), { label: 'replay at the moment' });
+  await sleep(300);
+  await snap(P, '14c-replay-moment');
+  await press(P, '.m-replay .rp-tn:last-child');
+  await waitFor(P, () => /Uitslag/.test(document.querySelector('.m-replay .rp-stand')?.textContent), { label: 'replay at the end of the hand' });
+  await snap(P, '14d-replay-end');
 }
 
 // Gedraaid: the bidding panel.

@@ -44,12 +44,24 @@ type Choice struct {
 // Grade is the analysis of one decision for the review at the end of the
 // match (see bot.Grade): points are expected score differences.
 type Grade struct {
-	Stake  float64 // between the best and the worst option; 0 without a choice
-	Lost   float64 // given up against Better; 0 within the noise
-	Gain   float64 // a strong choice: gained over the rule-based choice
-	Better Choice  // the advised option, when Lost > 0
-	Text   string  // the hint for Better (Lost > 0) or for the choice (Gain > 0)
-	Nat    float64 // a bid to play: the chance of going nat
+	Stake   float64 // between the best and the worst option; 0 without a choice
+	Lost    float64 // given up against Better; 0 within the noise
+	Gain    float64 // a strong choice: gained over Obvious
+	Better  Choice  // the advised option, when Lost > 0
+	Obvious Choice  // the rule-based option, when Gain > 0
+	Text    string  // the hint for Better (Lost > 0) or for the choice (Gain > 0)
+	Nat     float64 // a bid to play: the chance of going nat
+	// What the choice and Better or Obvious led to on average, when Lost or
+	// Gain is set: Lost is Other's Us−Them minus Played's, Gain the reverse.
+	Played, Other Outcome
+}
+
+// Outcome is what an option leads to on average (see bot.Outcome): the
+// final scores of the player's team and of the opponents, and the chance
+// that the one or the other plays and goes nat.
+type Outcome struct {
+	Us, Them       float64
+	NatUs, NatThem float64
 }
 
 // ChatEvent is something a bot may comment on (see bot.ChatEvent).

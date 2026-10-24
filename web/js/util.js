@@ -508,6 +508,28 @@ export function missedLine(m) {
   return m.text ? `${head}. ${m.text}` : head;
 }
 
+// What the two options of a review moment brought each team, the stronger
+// against the weaker, and the chance of nat where it moved: "Jullie +37,
+// zij −23; kans dat jullie nat gaan 69% → 37%". A strong move names the
+// obvious option it beat: "Tegenover ♠8: jullie +6, zij −6".
+export function outcomeLine(m) {
+  const sign = n => (n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0');
+  const nat = (pair, who) => (pair && Math.abs(pair[0] - pair[1]) >= 5 ? `; kans dat ${who} nat gaan ${pair[0]}% → ${pair[1]}%` : '');
+  const text = `jullie ${sign(m.us)}, zij ${sign(m.them)}` + nat(m.nat, 'jullie') + nat(m.natThem, 'zij');
+  const a = m.alt;
+  const alt = !a ? '' : a.card ? cardShort(a.card) : a.suit ? `${suitSym(a.suit)} als troef` : a.play ? 'spelen' : 'passen';
+  return alt ? `Tegenover ${alt}: ${text}` : cap(text);
+}
+
+// A think time in ms: "0,8 s", "48 s", "6 min 10 s".
+export function timeText(ms) {
+  const sec = ms / 1000;
+  if (sec < 9.95) return `${sec.toFixed(1).replace('.', ',')}\u00a0s`;
+  const n = Math.round(sec);
+  if (n < 60) return `${n}\u00a0s`;
+  return `${Math.floor(n / 60)}\u00a0min` + (n % 60 ? ` ${n % 60}\u00a0s` : '');
+}
+
 // The percentages of the reviews before review r on this device, oldest
 // first (at most keep). r itself is added to the list the first time.
 export function reviewHistory(r, keep = 5) {

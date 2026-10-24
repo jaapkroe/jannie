@@ -2,6 +2,7 @@ package bot
 
 import (
 	"flag"
+	"fmt"
 	"math"
 	"math/rand/v2"
 	"slices"
@@ -68,6 +69,10 @@ func TestGradeAgreesWithAdvise(t *testing.T) {
 					t.Fatalf("strong grade %+v for %+v (hint %+v)", g, c, a)
 				case (c.Play == nil || !*c.Play) && g.Nat != 0, g.Nat < 0 || g.Nat > 1:
 					t.Fatalf("nat chance %v for %+v", g.Nat, c)
+				case (g.Gain > 0) != (g.Obvious != Choice{}):
+					t.Fatalf("strong grade %+v names the obvious option %+v", g, g.Obvious)
+				case !outcomesAdd(g):
+					t.Fatalf("grade %+v: the outcomes do not add up to its points", g)
 				}
 				if g.Lost > 0 {
 					lost++
@@ -104,13 +109,29 @@ func TestGradeAgreesWithAdvise(t *testing.T) {
 	}
 }
 
+// outcomesAdd reports whether the outcomes of a grade explain its points:
+// the score difference of the better option minus that of the worse one,
+// both nat chances within [0, 1]; and no outcomes without points.
+func outcomesAdd(g Grade) bool {
+	diff := func(o Outcome) float64 { return o.Us - o.Them }
+	ok := func(o Outcome) bool { return o.NatUs >= 0 && o.NatThem >= 0 && o.NatUs+o.NatThem <= 1 }
+	switch {
+	case g.Lost > 0:
+		return math.Abs(diff(g.Other)-diff(g.Played)-g.Lost) < 1e-6 && ok(g.Played) && ok(g.Other)
+	case g.Gain > 0:
+		return math.Abs(diff(g.Played)-diff(g.Other)-g.Gain) < 1e-6 && ok(g.Played) && ok(g.Other)
+	}
+	return g.Played == Outcome{} && g.Other == Outcome{}
+}
+
 func sameGrade(a, b Grade) bool {
 	same := func(x, y Choice) bool {
 		return (x.Card == nil) == (y.Card == nil) && (x.Card == nil || *x.Card == *y.Card) &&
 			(x.Suit == nil) == (y.Suit == nil) && (x.Suit == nil || *x.Suit == *y.Suit) &&
 			(x.Play == nil) == (y.Play == nil) && (x.Play == nil || *x.Play == *y.Play)
 	}
-	return a.Stake == b.Stake && a.Lost == b.Lost && a.Gain == b.Gain && a.Text == b.Text && a.Nat == b.Nat && same(a.Better, b.Better)
+	return a.Stake == b.Stake && a.Lost == b.Lost && a.Gain == b.Gain && a.Text == b.Text && a.Nat == b.Nat && same(a.Better, b.Better) &&
+		same(a.Obvious, b.Obvious) && a.Played == b.Played && a.Other == b.Other
 }
 
 // dealFor deals hand to seat 0 (voorhand, utrechts) and the remaining cards
@@ -167,6 +188,69 @@ func TestHandLuck(t *testing.T) {
 }
 
 var gradeGames = flag.Int("grade.games", 24, "grade levels: 16-hand games per level")
+
+var breakdownDeals = flag.Int("grade.breakdown", 0, "grade breakdown: deals to play (0 skips the test)")
+
+// TestGradeBreakdown shows where the points of large losses come from: a
+// player at normaal strength, the others playing the hint, its card
+// choices graded, and every loss of 30 points or more split into what the
+// two cards bring each team and the chance of nat. Run with
+// -grade.breakdown 60 -v.
+func TestGradeBreakdown(t *testing.T) {
+	if *breakdownDeals == 0 {
+		t.Skip("-grade.breakdown N")
+	}
+	rng := rand.New(rand.NewPCG(181, 182))
+	var lost []float64
+	var lines []string
+	for i := range *breakdownDeals {
+		d := game.NewDeal(game.Seat(rng.IntN(4)), game.Shuffle(rng), game.TrumpMode(i%2), game.Rules(i/2%2), game.Suit(rng.IntN(4)))
+		for d.Phase() != game.PhaseDone {
+			s := d.Turn()
+			v := d.View(s)
+			a := Advise(v)
+			var err error
+			switch d.Phase() {
+			case game.PhaseBid:
+				err = d.Bid(s, *a.Play)
+			case game.PhaseTrump:
+				err = d.ChooseTrump(s, *a.Suit)
+			case game.PhasePlay:
+				c := *a.Card
+				if s == 0 && len(v.Legal) > 1 {
+					tab := tableFromView(&v)
+					m := newMover(&tab, s, setOf(v.Hand), setOf(v.Legal), 0.5)
+					c = m.choose()
+					g := GradeChoice(v, Choice{Card: &c})
+					lost = append(lost, g.Lost)
+					if p, o := g.Played, g.Other; g.Lost >= 30 {
+						lines = append(lines, fmt.Sprintf("%5.1f: %s (%d) for %s (%d), trump %s, trick %d | us %+5.1f them %+5.1f | nat us %3.0f%% → %3.0f%%, them %3.0f%% → %3.0f%%",
+							g.Lost, game.CardShortNL(c), game.Points(c, v.Trump), game.CardShortNL(*g.Better.Card), game.Points(*g.Better.Card, v.Trump),
+							v.Trump.Symbol(), len(v.Tricks)+1, o.Us-p.Us, o.Them-p.Them, 100*p.NatUs, 100*o.NatUs, 100*p.NatThem, 100*o.NatThem))
+					}
+				}
+				err = d.Play(s, c)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	slices.Sort(lost)
+	n := 0
+	for _, l := range lost {
+		if l > 0 {
+			n++
+		}
+	}
+	q := func(p float64) float64 { return lost[int(p*float64(len(lost)-1))] }
+	t.Logf("%d graded cards, %d lose points; median %.1f, p90 %.1f, p99 %.1f, max %.1f", len(lost), n, q(.5), q(.9), q(.99), lost[len(lost)-1])
+	slices.Sort(lines)
+	slices.Reverse(lines)
+	for _, l := range lines {
+		t.Log(l)
+	}
+}
 
 // TestGradeLevels plays games with a bot of each level at seat 0 (normaal
 // bots elsewhere), grades its decisions as the review does and reports the

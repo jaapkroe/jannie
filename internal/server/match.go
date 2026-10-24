@@ -224,8 +224,10 @@ func (r *room) pause(s step, d time.Duration) {
 func (r *room) openTurn() {
 	r.turnAt = time.Now()
 	r.openedAt = r.turnAt
+	turn := r.deal.Turn()
+	r.openedOn = turn != game.NoSeat && r.seats[turn].client != nil
 	r.step++
-	r.think = r.thinkTime(r.deal.Turn())
+	r.think = r.thinkTime(turn)
 }
 
 func (r *room) thinkTime(i game.Seat) time.Duration {
@@ -410,6 +412,7 @@ func (r *room) humanAct(c *client, i game.Seat, a action) {
 		r.missed = miss // explained with the trick
 	}
 	v, graded := r.beforeChoice(i, a)
+	opened, on := r.openedAt, r.openedOn
 	err := r.act(i, a)
 	switch {
 	case err != nil:
@@ -421,6 +424,7 @@ func (r *room) humanAct(c *client, i game.Seat, a action) {
 		r.misses = append(r.misses, *miss) // explained with the first trick
 	}
 	if err == nil && graded {
+		r.timeChoice(i, opened, on, &v)
 		r.gradeChoice(i, v, a)
 	}
 	switch {

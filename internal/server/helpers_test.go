@@ -60,7 +60,8 @@ func (a *fakeAI) Advise(v game.View) Advice {
 }
 
 // Grade agrees with Advise: another option loses 10 of 20 points, and the
-// advised card on a lead is a strong move of 12.
+// advised card on a lead is a strong move of 12 over the last legal card.
+// The outcomes add up to those points: fakeLost and fakeGain.
 func (a *fakeAI) Grade(v game.View, c Choice) Grade {
 	a.graded.Add(1)
 	adv := a.Advise(v)
@@ -71,8 +72,11 @@ func (a *fakeAI) Grade(v game.View, c Choice) Grade {
 		c.Suit != nil && *c.Suit != *adv.Suit,
 		c.Play != nil && *c.Play != *adv.Play:
 		g.Lost, g.Better = 10, Choice{Card: adv.Card, Suit: adv.Suit, Play: adv.Play}
+		g.Played, g.Other = fakeLost[0], fakeLost[1]
 	case c.Card != nil && len(v.Current.Cards) == 0:
 		g.Gain = 12
+		g.Obvious.Card = &v.Legal[len(v.Legal)-1]
+		g.Played, g.Other = fakeGain[0], fakeGain[1]
 	}
 	if c.Play != nil && *c.Play {
 		g.Nat = 0.5
@@ -577,3 +581,10 @@ func (c *tclient) actRandom(rng *rand.Rand) {
 		c.send(map[string]any{"t": "play", "card": s.Legal[rng.IntN(len(s.Legal))].String()})
 	}
 }
+
+// The outcomes of the fake grades, the choice's and the other option's:
+// (66−98) − (60.4−102.4) = 10 for a loss, (90−72) − (84−78) = 12 for a gain.
+var (
+	fakeLost = [2]Outcome{{Us: 60.4, Them: 102.4, NatUs: 0.42}, {Us: 66, Them: 98, NatUs: 0.25, NatThem: 0.05}}
+	fakeGain = [2]Outcome{{Us: 90, Them: 72}, {Us: 84, Them: 78, NatThem: 0.1}}
+)

@@ -457,7 +457,19 @@ class Player {
       this.check(Number.isInteger(r.pct) && r.pct >= 0 && r.pct <= 100, `review percentage ${r.pct}`);
       this.check(r.leads[0] <= r.leads[1] && r.trumps[0] <= r.trumps[1] && r.risky[1] <= r.risky[0], 'review counts out of order');
       this.check(r.missed.length <= Math.min(3, r.lostN) && r.strong.length <= Math.min(3, r.strongN), 'review lists too many moments');
-      for (const m of [...r.missed, ...r.strong]) this.check(m.hand >= 1 && m.hand <= s.handNo && (m.table || m.cards), `review moment ${JSON.stringify(m)}`);
+      for (const m of [...r.missed, ...r.strong]) {
+        this.check(m.hand >= 1 && m.hand <= s.handNo && (m.table || m.cards), `review moment ${JSON.stringify(m)}`);
+        this.check(m.us - m.them === m.points && [...m.nat, ...m.natThem].every(p => p >= 0 && p <= 100), `review moment split ${JSON.stringify(m)}`);
+      }
+      for (const m of r.strong) this.check(!!m.alt, `strong moment without the obvious option ${JSON.stringify(m)}`);
+      this.check(r.replay.length === s.handNo, `replay of ${r.replay.length} hands after ${s.handNo}`);
+      r.replay.forEach((rh, h) => {
+        const dealt = new Set(rh.cards.flat());
+        const played = rh.tricks.flatMap(t => t.cards);
+        this.check(dealt.size === 32 && played.length === 32 && played.every(pc => rh.cards[pc.seat].includes(pc.card)), `replay of hand ${h + 1} does not add up`);
+      });
+      const sp = r.speed;
+      this.check(sp === null || sp.n >= 1 && sp.median <= sp.slowest.ms && sp.slowest.ms <= sp.total, `review speed ${JSON.stringify(sp)}`);
     }
 
     this.check(s.scores.length === (s.phase === 'handEnd' || s.phase === 'gameOver' ? s.handNo : s.handNo - 1),

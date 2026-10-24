@@ -18,14 +18,29 @@ type Choice struct {
 // Grade is the analysis of one decision for the game-end review, at sterk
 // strength and from what the player knew when deciding. It runs the search
 // of Advise on the same view, so it agrees with the training hint. Points
-// are expected score differences between the teams, as in the hints.
+// are expected score differences between the teams, as in the hints: the
+// player's team's score minus the opponents' at the end of the hand,
+// averaged over the sampled deals, nat and pit included.
 type Grade struct {
-	Stake  float64 // points between the best and the worst option; 0 when there was no choice
-	Lost   float64 // points the choice gave up against Better; 0 within the noise of the search
-	Gain   float64 // a strong choice: points it gained over the rule-based choice; else 0
-	Better Choice  // the advised option, when Lost > 0
-	Text   string  // the hint for Better (Lost > 0) or for the choice (Gain > 0)
-	Nat    float64 // a bid to play: the chance of going nat
+	Stake   float64 // points between the best and the worst option; 0 when there was no choice
+	Lost    float64 // points the choice gave up against Better; 0 within the noise of the search
+	Gain    float64 // a strong choice: points it gained over Obvious; else 0
+	Better  Choice  // the advised option, when Lost > 0
+	Obvious Choice  // the rule-based option, when Gain > 0
+	Text    string  // the hint for Better (Lost > 0) or for the choice (Gain > 0)
+	Nat     float64 // a bid to play: the chance of going nat
+	// What the choice and the option it is measured against (Better or
+	// Obvious) led to, when Lost or Gain is set: Lost is Other's score
+	// difference minus Played's, Gain the other way round.
+	Played, Other Outcome
+}
+
+// Outcome is what an option leads to, averaged over the sampled deals: the
+// final score of the player's team and of the opponents, and the chance
+// that the one or the other plays and goes nat.
+type Outcome struct {
+	Us, Them       float64
+	NatUs, NatThem float64
 }
 
 // strongGain is how many points a choice must gain over the rule-based one
@@ -35,7 +50,7 @@ const strongGain = 10
 // gradeSearch is the search of Advise on one goroutine: the results do not
 // depend on the number of workers (see chunks), and the server bounds the
 // cores that grading takes by the number of grades it runs at once.
-var gradeSearch = searchConfig{playWorlds: defaultSearch.playWorlds, trumpWorlds: defaultSearch.trumpWorlds, workers: 1}
+var gradeSearch = func() searchConfig { c := adviseSearch; c.workers = 1; return c }()
 
 // GradeChoice grades choice c of the player of v, whose turn it must be.
 // A choice loses points when the hint's option is better by more than the
@@ -88,11 +103,14 @@ func gradePlay(v *game.View, c game.Card, seed uint64) Grade {
 	if gap := res[a].mean() - res[i].mean(); gap >= max(teachTolerance, 2*pairSE(res, a, i)) {
 		g.Lost, g.Text = gap, text
 		g.Better.Card = &adv
+		g.Played, g.Other = res[i].outcome(), res[a].outcome()
 		return g
 	}
 	if p := resultIndex(res, pref); c == adv && c != pref && p >= 0 {
 		if gain := res[i].mean() - res[p].mean(); gain >= max(strongGain, 2*pairSE(res, i, p)) {
 			g.Gain, g.Text = gain, text
+			g.Obvious.Card = &pref
+			g.Played, g.Other = res[i].outcome(), res[p].outcome()
 		}
 	}
 	return g
@@ -114,12 +132,15 @@ func gradeTrump(v *game.View, s game.Suit, seed uint64) Grade {
 	if gap := st[best].mean() - st[s].mean(); gap >= max(teachTolerance, 2*st[best].pairSE(st[s], int(s))) {
 		g.Lost, g.Text = gap, trumpText(v, best, st[best])
 		g.Better.Suit = &best
+		g.Played, g.Other = st[s].outcome(), st[best].outcome()
 		return g
 	}
 	normal := bestTrumpNormal(setOf(v.Hand), v.Forced, v.Turned)
 	if s == best && normal != s {
 		if gain := st[s].mean() - st[normal].mean(); gain >= max(strongGain, 2*st[s].pairSE(st[normal], int(normal))) {
 			g.Gain, g.Text = gain, trumpText(v, s, st[s])
+			g.Obvious.Suit = &normal
+			g.Played, g.Other = st[s].outcome(), st[normal].outcome()
 		}
 	}
 	return g
@@ -138,12 +159,19 @@ func gradeBid(v *game.View, play bool, seed uint64) Grade {
 	}
 	noise := 2 * yes.pairSE(no, 1)
 	normal := trumpValue(setOf(v.Hand), v.Turned) >= bidThreshold(0.5)
+	chosen, other := yes, no
+	if !play {
+		chosen, other = no, yes
+	}
 	switch {
 	case play != best && gap >= max(teachTolerance, noise):
 		g.Lost, g.Text = gap, bidText(v, best, yes)
 		g.Better.Play = &best
+		g.Played, g.Other = chosen.outcome(), other.outcome()
 	case play == best && normal != play && gap >= max(strongGain, noise):
 		g.Gain, g.Text = gap, bidText(v, play, yes)
+		g.Obvious.Play = &normal
+		g.Played, g.Other = chosen.outcome(), other.outcome()
 	}
 	return g
 }

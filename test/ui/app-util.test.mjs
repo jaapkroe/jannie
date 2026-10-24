@@ -25,7 +25,7 @@ globalThis.document = { createElement: tag => new FakeNode(tag) };
 const {
   store, roemText, cap, playerName, keyboardOpen, textField, handHeadline, DEFAULT_NAME,
   posOf, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText, countWord,
-  reviewVerdict, luckText, momentWhere, strongLine, missedLine, reviewHistory,
+  reviewVerdict, luckText, momentWhere, strongLine, missedLine, outcomeLine, timeText, reviewHistory,
 } = await import('../../web/js/util.js');
 
 test('store keeps values in memory when localStorage is blocked', () => {
@@ -259,6 +259,25 @@ test('a review moment names the choice, the better one and the reason', () => {
   assert.deepEqual(strongLine({ played: { card: 'AS' }, why: 'de aas is hoog.' }), { what: '♠A', rest: ': de aas is hoog.' });
   assert.deepEqual(strongLine({ played: { suit: 'C' }, why: '', text: 'Kies dit.' }), { what: '♣ als troef', rest: '. Kies dit.' });
   assert.deepEqual(strongLine({ played: { play: true }, why: 'x.' }), { what: 'Gespeeld', rest: ': x.' });
+});
+
+test('a review moment splits its points over the teams, with the chance of nat where it moved', () => {
+  assert.equal(outcomeLine({ us: 37, them: -23, nat: [69, 37], natThem: [0, 0] }), 'Jullie +37, zij −23; kans dat jullie nat gaan 69% → 37%');
+  assert.equal(outcomeLine({ us: 22, them: -24, nat: [0, 0], natThem: [30, 51] }), 'Jullie +22, zij −24; kans dat zij nat gaan 30% → 51%');
+  // A shift under 5 points of chance is left out; zero has no sign.
+  assert.equal(outcomeLine({ us: 0, them: -12, nat: [10, 14], natThem: [2, 0] }), 'Jullie 0, zij −12');
+  assert.equal(outcomeLine({ us: 6, them: -6, nat: [0, 0], natThem: [0, 0], alt: { card: '8S' } }), 'Tegenover ♠8: jullie +6, zij −6');
+  assert.equal(outcomeLine({ us: 8, them: 3, alt: { suit: 'C' } }), 'Tegenover ♣ als troef: jullie +8, zij +3');
+  assert.equal(outcomeLine({ us: 8, them: -3, alt: { play: false } }), 'Tegenover passen: jullie +8, zij −3');
+});
+
+test('think times read as seconds, then minutes', () => {
+  assert.equal(timeText(840), '0,8\u00a0s');
+  assert.equal(timeText(9940), '9,9\u00a0s');
+  assert.equal(timeText(9960), '10\u00a0s');
+  assert.equal(timeText(48200), '48\u00a0s');
+  assert.equal(timeText(59600), '1\u00a0min');
+  assert.equal(timeText(370000), '6\u00a0min 10\u00a0s');
 });
 
 test('the review history on the device lists the earlier percentages once', () => {

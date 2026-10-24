@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"klaverjas/internal/game"
 )
@@ -115,6 +116,16 @@ func TestReviewAtGameOver(t *testing.T) {
 				}
 				checkMoments(t, c.seat, got.Missed, min(got.LostN, reviewListed), true)
 				checkMoments(t, c.seat, got.Strong, min(got.StrongN, reviewListed), false)
+				checkReplay(t, c.seat, got.Replay, 4)
+				// Every decision is timed, also a lone legal card; the
+				// other human is the comparison.
+				if sp := got.Speed; sp == nil || sp.N < got.Choices || sp.Others == nil || sp.Others.N == 0 ||
+					sp.Median > sp.Slowest.Ms || sp.Slowest.Ms > sp.Total || sp.Slowest.Hand < 1 || sp.Slowest.Hand > 4 {
+					t.Errorf("seat %d speed %+v (others %+v) for %d choices", c.seat, sp, sp.Others, got.Choices)
+				}
+			}
+			if a, b := host.s.Review.Speed, guest.s.Review.Speed; a.Others.N != b.N || b.Others.N != a.N || a.Others.Total != b.Total {
+				t.Errorf("the speeds do not mirror: %+v %+v / %+v %+v", a, a.Others, b, b.Others)
 			}
 		})
 	}
@@ -134,6 +145,18 @@ func checkMoments(t *testing.T, seat int, ms []moment, n int, missed bool) {
 		if missed != (m.Better != nil) || m.Points != map[bool]int{true: 10, false: 12}[missed] {
 			t.Errorf("seat %d: moment %+v", seat, m)
 		}
+		// The outcomes of the fake grades (fakeLost, fakeGain), weaker
+		// option first.
+		want := moment{Us: 6, Them: -4, Nat: [2]int{42, 25}, NatThem: [2]int{0, 5}}
+		if !missed {
+			want = moment{Us: 6, Them: -6, NatThem: [2]int{10, 0}}
+		}
+		if m.Us != want.Us || m.Them != want.Them || m.Nat != want.Nat || m.NatThem != want.NatThem || m.Us-m.Them != m.Points {
+			t.Errorf("seat %d: moment %+v, want us %d them %d nat %v %v", seat, m, want.Us, want.Them, want.Nat, want.NatThem)
+		}
+		if missed == (m.Alt != nil) || !missed && (m.Alt.Card == nil || *m.Alt.Card == *m.Played.Card) {
+			t.Errorf("seat %d: moment %+v with alternative %+v", seat, m, m.Alt)
+		}
 		switch {
 		case m.Played.Card != nil:
 			if m.Table == nil || len(m.Table.Cards) != 4 || !slices.Contains(m.Table.Cards, game.Played{Seat: game.Seat(seat), Card: *m.Played.Card}) {
@@ -146,6 +169,44 @@ func checkMoments(t *testing.T, seat int, ms []moment, n int, missed bool) {
 			t.Errorf("seat %d: trump or bid moment %+v without the hand", seat, m)
 		}
 	}
+}
+
+// checkReplay checks the replay of seat's review: every hand, each seat's
+// eight cards as dealt, every card played once in its eight tricks.
+func checkReplay(t *testing.T, seat int, hands []replayHand, n int) {
+	t.Helper()
+	if len(hands) != n {
+		t.Fatalf("seat %d: %d hands in the replay, want %d", seat, len(hands), n)
+	}
+	for h, rh := range hands {
+		var dealt, played []game.Card
+		for s, cards := range rh.Cards {
+			if len(cards) != 8 {
+				t.Errorf("seat %d, hand %d: seat %d was dealt %v", seat, h+1, s, cards)
+			}
+			dealt = append(dealt, cards...)
+		}
+		for _, tr := range rh.Tricks {
+			for _, p := range tr.Cards {
+				if !slices.Contains(rh.Cards[p.Seat], p.Card) {
+					t.Errorf("seat %d, hand %d: seat %d played %v, not dealt to it", seat, h+1, p.Seat, p.Card)
+				}
+				played = append(played, p.Card)
+			}
+		}
+		if len(rh.Tricks) != 8 || len(played) != 32 || distinct(dealt) != 32 {
+			t.Errorf("seat %d, hand %d: %d tricks, %d cards played, %d dealt", seat, h+1, len(rh.Tricks), len(played), len(dealt))
+		}
+	}
+}
+
+// distinct counts the different cards in cards.
+func distinct(cards []game.Card) int {
+	seen := map[game.Card]bool{}
+	for _, c := range cards {
+		seen[c] = true
+	}
+	return len(seen)
 }
 
 // TestReviewPending: grades still out at game over show as pending, and
@@ -226,7 +287,7 @@ func TestReviewJSON(t *testing.T) {
 	rv.choices, rv.stake = 1, 20
 	r.phase = phaseGameOver
 	b := string(mustJSON(r.reviewFor(0)))
-	for _, want := range []string{`"strong":[]`, `"missed":[]`, `"pct":100`, `"pending":false`} {
+	for _, want := range []string{`"strong":[]`, `"missed":[]`, `"pct":100`, `"pending":false`, `"speed":null`, `"replay":[]`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("review %s lacks %s", b, want)
 		}
@@ -234,6 +295,51 @@ func TestReviewJSON(t *testing.T) {
 	r.phase = phasePlay
 	if r.reviewFor(0) != nil {
 		t.Error("a review before game over")
+	}
+}
+
+// TestReviewSpeed: the median and total of the player's think times, the
+// slowest decision, the other people at the table; a turn that opened
+// while the player was away, or in which their connection dropped, is not
+// timed.
+func TestReviewSpeed(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	r := newRoom(s, "TEST")
+	r.seats[0] = newHuman("A")
+	r.seats[2] = newHuman("B")
+	r.phase = phaseGameOver
+	sec := func(f float64) time.Duration { return time.Duration(f * float64(time.Second)) }
+	r.reviewOf(0).thinks = []think{{sec(2), 1, 1}, {sec(9), 2, 0}, {sec(3), 2, 4}, {sec(1), 3, 8}}
+	r.reviewOf(2).thinks = []think{{sec(5), 1, 2}, {sec(7), 1, 3}, {sec(6), 2, 1}}
+	sp := r.speedOf(0)
+	if sp == nil || sp.speedSum != (speedSum{N: 4, Median: 2500, Total: 15000}) || sp.Slowest.Hand != 2 || sp.Slowest.Trick != 0 ||
+		sp.Slowest.Ms != 9000 || sp.Others == nil || *sp.Others != (speedSum{N: 3, Median: 6000, Total: 18000}) {
+		t.Errorf("speed %+v, others %+v", sp, sp.Others)
+	}
+	if sp := r.speedOf(2); sp.Others == nil || sp.Others.Total != 15000 {
+		t.Errorf("B's speed %+v, others %+v", sp, sp.Others)
+	}
+	r.reviewOf(2).thinks = nil
+	if sp := r.speedOf(0); sp.Others != nil {
+		t.Errorf("others %+v without another timed decision", sp.Others)
+	}
+	if r.speedOf(2) != nil {
+		t.Error("a speed without a timed decision")
+	}
+	v := &game.View{HandNo: 5, Phase: game.PhasePlay, Tricks: make([]game.Trick, 2)}
+	opened := time.Now().Add(-sec(4))
+	r.timeChoice(2, opened, true, v)
+	if th := r.reviewOf(2).thinks; len(th) != 1 || th[0].hand != 5 || th[0].trick != 3 || th[0].d < sec(4) {
+		t.Errorf("thinks %+v", th)
+	}
+	r.timeChoice(2, opened, false, v)
+	if th := r.reviewOf(2).thinks; len(th) != 1 {
+		t.Errorf("a turn that opened while the player was away was timed: %+v", th)
+	}
+	r.seats[2].leftAt = opened.Add(sec(1))
+	r.timeChoice(2, opened, true, v)
+	if th := r.reviewOf(2).thinks; len(th) != 1 {
+		t.Errorf("a turn in which the connection dropped was timed: %+v", th)
 	}
 }
 

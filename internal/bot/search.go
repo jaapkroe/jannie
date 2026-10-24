@@ -16,10 +16,24 @@ type searchConfig struct {
 	trumpWorlds int     // sampled deals per trump or bid decision
 	workers     int     // goroutines; 0 means GOMAXPROCS (capped at chunks)
 	defend      float64 // three players: what defending is worth (see defendValue); 0 for the default
+	points      bool    // value options by the scores alone, without the appetite for pit (hints and grades)
 }
 
 // defaultSearch keeps a decision well under ~150 ms on a 16-core machine.
 var defaultSearch = searchConfig{playWorlds: 400, trumpWorlds: 320}
+
+// adviseSearch is the search behind the hints and the review: the same
+// size, valuing each option by the points it brings the players alone.
+var adviseSearch = searchConfig{playWorlds: defaultSearch.playWorlds, trumpWorlds: defaultSearch.trumpWorlds, points: true}
+
+// appetite is the aggression behind the appetite for pit in the value of
+// an option: none when the search counts points alone.
+func (cfg searchConfig) appetite(aggr float64) float64 {
+	if cfg.points {
+		return 0
+	}
+	return aggr
+}
 
 // chunks is the fixed number of independent work units per decision; each
 // has its own random stream, so results do not depend on the worker count.
@@ -54,15 +68,47 @@ func (s *sim) run(aggr *[4]float64) {
 	}
 }
 
-// value is the outcome for team: its score minus the opponents' score,
-// including nat and pit, plus the persona's appetite for pit.
-func (s *sim) value(team int, aggr float64) int {
-	r := s.d.Result()
+// value is result r for team: its score minus the opponents' score,
+// including nat and pit, plus the appetite for pit of a persona at
+// aggression aggr.
+func value(r *game.HandResult, team int, aggr float64) int {
 	v := r.Score[team] - r.Score[1-team]
 	if r.Pit && r.PitTeam == team {
 		v += int(pitAppetite * aggr)
 	}
 	return v
+}
+
+// outcome sums what an option led to over the sampled deals (see Outcome).
+type outcome struct {
+	us, them       int64 // the scores of the team searched for and of the opponents
+	natUs, natThem int   // deals where that team, or the opponents, played and went nat
+}
+
+func (o *outcome) add(r *game.HandResult, team int) {
+	o.us += int64(r.Score[team])
+	o.them += int64(r.Score[1-team])
+	if r.Nat && r.PlayingTeam == team {
+		o.natUs++
+	} else if r.Nat {
+		o.natThem++
+	}
+}
+
+func (o *outcome) merge(p outcome) {
+	o.us += p.us
+	o.them += p.them
+	o.natUs += p.natUs
+	o.natThem += p.natThem
+}
+
+// mean is the outcome per deal over n deals.
+func (o outcome) mean(n int) Outcome {
+	if n == 0 {
+		return Outcome{}
+	}
+	f := float64(n)
+	return Outcome{Us: float64(o.us) / f, Them: float64(o.them) / f, NatUs: float64(o.natUs) / f, NatThem: float64(o.natThem) / f}
 }
 
 // runChunks runs f for every chunk on the configured number of goroutines.
@@ -124,11 +170,14 @@ type playResult struct {
 	card  game.Card
 	total int64 // summed value over the worlds
 	n     int   // worlds
+	out   outcome
 	// diffSq[j] sums, over the worlds, the squared difference between this
 	// card's value and that of candidate j (in v.Legal order): every
 	// candidate is played out in the same worlds, see pairSE.
 	diffSq [8]int64
 }
+
+func (r playResult) outcome() Outcome { return r.out.mean(r.n) }
 
 func (r playResult) mean() float64 {
 	if r.n == 0 {
@@ -176,7 +225,9 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 	ag[v.Seat] = aggr
 	var sums [chunks][8]int64
 	var sq [chunks][8][8]int64 // sq[ch][i][j], i < j: summed squared differences
+	var outs [chunks][8]outcome
 	var counts [chunks]int
+	appetite := cfg.appetite(aggr)
 	cfg.runChunks(func(ch int) {
 		n := perChunk(cfg.playWorlds, ch)
 		if n == 0 {
@@ -200,8 +251,10 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 				s := sim{d: *base, t: *tab}
 				s.play(c)
 				s.run(&ag)
-				vals[i] = int64(s.value(team, aggr))
+				r := s.d.Result()
+				vals[i] = int64(value(&r, team, appetite))
 				sums[ch][i] += vals[i]
+				outs[ch][i].add(&r, team)
 				for j := range i {
 					d := vals[j] - vals[i]
 					sq[ch][j][i] += d * d
@@ -214,6 +267,7 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 		for i := range res {
 			res[i].total += sums[ch][i]
 			res[i].n += counts[ch]
+			res[i].out.merge(outs[ch][i])
 			for j := range i {
 				res[i].diffSq[j] += sq[ch][j][i]
 				res[j].diffSq[i] += sq[ch][j][i]
@@ -246,6 +300,7 @@ type optionStats struct {
 	total int64
 	n     int
 	made  int // worlds where our team played and did not go nat
+	out   outcome
 	// diffSq[j] sums, over the worlds, the squared difference between this
 	// option's value and that of option j (a suit, or 0 spelen and 1
 	// passen), which is played out in the same worlds: see pairSE.
@@ -258,6 +313,8 @@ func (o optionStats) mean() float64 {
 	}
 	return float64(o.total) / float64(o.n)
 }
+
+func (o optionStats) outcome() Outcome { return o.out.mean(o.n) }
 
 func (o optionStats) madeRate() float64 {
 	if o.n == 0 {
@@ -324,15 +381,15 @@ func startDeal(v *game.View, w *[4]cardSet) game.Deal {
 	return *d
 }
 
-// playOut finishes deal d (in phase play) and returns the value for team.
-func playOut(d *game.Deal, team int, aggr float64, seat game.Seat) (int, bool) {
+// playOut finishes deal d (in phase play), seat playing at aggression
+// aggr, and returns the result.
+func playOut(d *game.Deal, aggr float64, seat game.Seat) game.HandResult {
 	trump, _ := d.Trump()
 	s := sim{d: *d, t: newTable(d.Voorhand(), trump, d.TrumpBy(), d.Rules())}
 	ag := [4]float64{0.5, 0.5, 0.5, 0.5}
 	ag[seat] = aggr
 	s.run(&ag)
-	r := s.d.Result()
-	return s.value(team, aggr), !r.Nat
+	return s.d.Result()
 }
 
 // searchTrump evaluates each allowed trump suit for v.Seat (utrechts, or
@@ -340,6 +397,7 @@ func playOut(d *game.Deal, team int, aggr float64, seat game.Seat) (int, bool) {
 func searchTrump(v *game.View, cfg searchConfig, seed uint64, aggr float64) [game.NumSuits]optionStats {
 	var stats [chunks][game.NumSuits]optionStats
 	team := v.Seat.Team()
+	appetite := cfg.appetite(aggr)
 	cfg.runChunks(func(ch int) {
 		n := perChunk(cfg.trumpWorlds, ch)
 		if n == 0 {
@@ -361,14 +419,15 @@ func searchTrump(v *game.View, cfg searchConfig, seed uint64, aggr float64) [gam
 				if err := d.ChooseTrump(v.Seat, s); err != nil {
 					panic("bot: trump: " + err.Error())
 				}
-				val, made := playOut(&d, team, aggr, v.Seat)
-				vals[s] = int64(val)
+				r := playOut(&d, aggr, v.Seat)
+				vals[s] = int64(value(&r, team, appetite))
 				st := &stats[ch][s]
-				st.total += int64(val)
+				st.total += vals[s]
 				st.n++
-				if made {
+				if !r.Nat {
 					st.made++
 				}
+				st.out.add(&r, team)
 			}
 			addPairs(stats[ch][:], vals[:], skip)
 		}
@@ -379,6 +438,7 @@ func searchTrump(v *game.View, cfg searchConfig, seed uint64, aggr float64) [gam
 			out[s].total += stats[ch][s].total
 			out[s].n += stats[ch][s].n
 			out[s].made += stats[ch][s].made
+			out[s].out.merge(stats[ch][s].out)
 			for j := range out[s].diffSq {
 				out[s].diffSq[j] += stats[ch][s].diffSq[j]
 			}
@@ -410,6 +470,7 @@ func bestSuit(st [game.NumSuits]optionStats, forced bool, turned game.Suit) game
 func searchBid(v *game.View, cfg searchConfig, seed uint64, aggr float64) (play, pass optionStats) {
 	var stats [chunks][2]optionStats
 	team := v.Seat.Team()
+	appetite := cfg.appetite(aggr)
 	cfg.runChunks(func(ch int) {
 		n := perChunk(cfg.trumpWorlds, ch)
 		if n == 0 {
@@ -432,14 +493,15 @@ func searchBid(v *game.View, cfg searchConfig, seed uint64, aggr float64) (play,
 					s := d.Turn()
 					_ = d.ChooseTrump(s, bestTrumpNormal(w[s], true, v.Turned))
 				}
-				val, made := playOut(&d, team, aggr, v.Seat)
-				vals[opt] = int64(val)
+				r := playOut(&d, aggr, v.Seat)
+				vals[opt] = int64(value(&r, team, appetite))
 				st := &stats[ch][opt]
-				st.total += int64(val)
+				st.total += vals[opt]
 				st.n++
-				if made && d.PlayingTeam() == team {
+				if !r.Nat && r.PlayingTeam == team {
 					st.made++
 				}
+				st.out.add(&r, team)
 			}
 			addPairs(stats[ch][:], vals[:], -1)
 		}
@@ -448,10 +510,12 @@ func searchBid(v *game.View, cfg searchConfig, seed uint64, aggr float64) (play,
 		play.total += stats[ch][0].total
 		play.n += stats[ch][0].n
 		play.made += stats[ch][0].made
+		play.out.merge(stats[ch][0].out)
 		play.diffSq[1] += stats[ch][0].diffSq[1]
 		pass.total += stats[ch][1].total
 		pass.n += stats[ch][1].n
 		pass.made += stats[ch][1].made
+		pass.out.merge(stats[ch][1].out)
 		pass.diffSq[0] += stats[ch][1].diffSq[0]
 	}
 	return play, pass

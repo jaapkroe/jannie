@@ -22,8 +22,9 @@ type Advice struct {
 // Advise returns advice at sterk strength for the player of v, whose turn
 // it must be (otherwise, and should the search fail, it returns no advice).
 // A play hint may prefer, within a small teaching tolerance, a card whose
-// reason it can name (see teachPlay). The same view always gets the same
-// advice.
+// reason it can name (see teachPlay). Options are valued by the points
+// they bring alone, without a bot's appetite for pit (adviseSearch). The
+// same view always gets the same advice.
 func Advise(v game.View) (a Advice) {
 	if v.Turn.Valid() && v.Turn != v.Seat {
 		return Advice{}
@@ -37,11 +38,11 @@ func Advise(v game.View) (a Advice) {
 	seed := viewSeed(&v)
 	switch v.Phase {
 	case game.PhaseTrump:
-		st := searchTrump(&v, defaultSearch, seed, 0.5)
+		st := searchTrump(&v, adviseSearch, seed, 0.5)
 		s := bestSuit(st, v.Forced, v.Turned)
 		return Advice{Suit: &s, Text: trumpText(&v, s, st[s])}
 	case game.PhaseBid:
-		play, pass := searchBid(&v, defaultSearch, seed, 0.5)
+		play, pass := searchBid(&v, adviseSearch, seed, 0.5)
 		p := play.mean() > pass.mean()
 		return Advice{Play: &p, Text: bidText(&v, p, play)}
 	case game.PhasePlay:
@@ -55,7 +56,7 @@ func Advise(v game.View) (a Advice) {
 		if len(legal) == 1 {
 			return Advice{Card: &c, Text: playText(&v, &tab, c)}
 		}
-		c, text := teachPlay(&v, &tab, defaultSearch, seed)
+		c, text := teachPlay(&v, &tab, adviseSearch, seed)
 		return Advice{Card: &c, Text: text}
 	}
 	return Advice{}

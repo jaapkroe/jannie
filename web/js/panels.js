@@ -7,7 +7,7 @@ import {
   app, h, $$, icon, prefs, savePrefs, store, toast, dur, posOf, seatCount, mySide, isWij, teamCls, teamName,
   scorerOrder, scorerName, myScorer, nameOf, suitSym, suitName, suitText, isRed, roemTotal, roemText, variantText, countUp, avatar,
   playerName, suitify, cap, handHeadline,
-  reviewVerdict, luckText, pointsText, momentWhere, strongLine, missedLine, reviewHistory,
+  reviewVerdict, luckText, pointsText, momentWhere, strongLine, missedLine, outcomeLine, timeText, reviewHistory,
 } from './util.js';
 
 const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
@@ -907,11 +907,12 @@ function reviewLine(btn, r) {
     return;
   }
   reviewHistory(r);
-  btn.replaceChildren(h('span', {}, 'Jouw spelanalyse: ', h('b', { text: `${r.pct}%` }), ` (${reviewVerdict(r.pct)})`), icon('forward'));
+  btn.replaceChildren(h('span', {}, 'Jouw spel volgens Juf Ans: ', h('b', { text: `${r.pct}%` }), ` (${reviewVerdict(r.pct)})`), icon('forward'));
 }
 
 // The review (design §9 Spelanalyse): numbers and facts about the
-// player's own play, for them alone.
+// player's own play, for them alone, as Juf Ans (the engine of the hints)
+// sees it.
 function openReview() {
   const s = app.s;
   const r = s?.review;
@@ -924,14 +925,20 @@ function openReview() {
     h('h3', {}, title, total > list.length ? h('small', { text: ` · de ${list.length > 1 ? list.length + ' ' : ''}grootste van ${total}` }) : null),
     h('ul', { class: 'rv-list' }, list.map(m => h('li', {},
       h('button', {
-        class: 'rv-moment', type: 'button', disabled: !m.table && !m.cards?.length,
-        title: m.table ? 'Tik om de slag te zien' : 'Tik om je kaarten te zien', onclick: () => openMoment(s, m),
-      }, h('span', { class: 'rv-where', text: momentWhere(m) }), line(m), icon('forward')))))) : null);
+        class: 'rv-moment', type: 'button', disabled: !r.replay?.[m.hand - 1],
+        title: 'Tik om dit potje terug te kijken', onclick: () => openReplay(s, r, m),
+      }, h('span', { class: 'rv-where', text: momentWhere(m) }), line(m),
+      h('span', { class: 'rv-sum' }, suitify(outcomeLine(m))), icon('forward')))))) : null);
+  const sp = r.speed;
   openModal({
     id: 'review', title: 'Jouw spelanalyse', cls: 'm-review', body: [
       h('div', { class: 'rv-head' },
+        h('small', { class: 'rv-who', text: 'Volgens Juf Ans' }),
         h('div', { class: 'rv-pct' }, h('b', { text: `${r.pct}%` }), h('span', { text: `(${reviewVerdict(r.pct)})` }), infoBtn('Spelanalyse', [
-          'Bij elke keuze rekent de game engine uit wat elke kaart, troefkleur of elk bod gemiddeld oplevert, met alleen wat jij op dat moment wist. Punten zijn het verschil tussen Wij en Zij.',
+          'Juf Ans is de game engine van dit spel: dezelfde die de AI-spelers laat spelen en bij Oefenen de tips geeft. Dit is haar berekening, met alleen wat jij op dat moment wist.',
+          'Bij elke keuze speelt ze het potje honderden keren uit, voor elke kaart, troefkleur of elk bod dat je had, telkens met een andere verdeling van de kaarten die je niet kon zien. Wat een keuze gemiddeld oplevert, is haar waarde.',
+          'Punten zijn het verschil tussen de score van jullie koppel en die van de tegenstanders aan het eind van het potje. Een punt dat naar de tegenstanders gaat in plaats van naar jullie, telt dus twee keer. Gaat een potje nat, dan krijgen de tegenstanders alle punten: een keuze die de kans op nat groter maakt, kost gemiddeld veel, ook als de kaart zelf weinig punten waard is.',
+          'Het blijft een schatting: Juf Ans speelt de rest van het potje met eenvoudige regels uit.',
           'Het percentage zegt hoeveel van de punten die met je keuzes te winnen waren, je ook haalde. Je kaarten tellen niet mee: ook met slechte kaarten kun je 100% halen.',
           'Laten liggen: wat een betere keuze gemiddeld meer had opgeleverd. Verschillen van minder dan 5 punten tellen niet mee.',
           'Sterke zet: de beste keuze, terwijl de voor de hand liggende keuze minstens 10 punten minder opleverde.',
@@ -950,25 +957,142 @@ function openReview() {
           'Roem die jouw kaart toevoegde aan de kaarten die al op tafel lagen, terwijl je een kaart had die minder roem gaf, in slagen die de tegenstanders haalden.',
         ])))),
       r.risky[0] ? h('p', { class: 'rv-risky', text: `Gespeeld met meer dan 40% kans op nat: ${r.risky[0]} keer, ${r.risky[1]} keer nat` }) : null,
+      sp ? h('section', { class: 'rv-sec' }, h('h3', {}, 'Snelheid'),
+        h('table', { class: 'rv-table' }, h('tbody', {},
+          row('Bedenktijd per zet', timeText(sp.median), infoBtn('Bedenktijd', [
+            'De tijd van het moment dat je aan de beurt was tot je kaart, troefkeuze of bod. Per zet staat de middelste van je tijden: de helft van je zetten ging sneller, de helft langzamer. Zo telt één lange pauze niet zwaar mee.',
+            'Een beurt waarin je verbinding even weg was, telt niet mee. De AI-spelers tellen niet mee bij de anderen.',
+          ])),
+          row('Langste bedenktijd', `${timeText(sp.slowest.ms)} (${momentWhere(sp.slowest).toLowerCase()})`),
+          row('De tafel wachtte op jou', timeText(sp.total)),
+          sp.others ? row('Anderen per zet', timeText(sp.others.median)) : null,
+          sp.others ? row('Jij wachtte op de anderen', timeText(sp.others.total)) : null))) : null,
       moments('Sterke zetten', r.strong, r.strongN, m => {
         const l = strongLine(m);
         return h('span', { class: 'rv-text' }, h('b', {}, suitify(l.what)), suitify(l.rest));
       }),
       moments('Laten liggen', r.missed, r.lostN, m => h('span', { class: 'rv-text' }, suitify(missedLine(m)))),
+      r.replay?.length ? h('button', { class: 'btn btn-ghost btn-block rv-replay', type: 'button', onclick: () => openReplay(s, r) },
+        icon('history'), 'Potjes terugkijken') : null,
       prev.length ? h('p', { class: 'rv-prev' }, 'Vorige partijen ', h('b', { text: prev.map(p => `${p}%`).join(' · ') })) : null,
       h('p', { class: 'legend', text: 'Disclaimer: Niet mee eens? Deze analyse is gebaseerd op de game engine en kan fouten bevatten.' }),
     ],
   });
 }
 
-// What lay on the table at a moment of the review: the trick a card went
-// into, or the player's hand at a trump choice or bid.
-function openMoment(s, m) {
+// ---------- replay ----------
+
+// The replay of the review (design §9): a finished hand card by card with
+// every hand open, from a moment of the review (just before the player's
+// card, or at the deal for a trump choice or bid) or from the deal. A step
+// is the number of cards played: at 4 × n trick n lies complete.
+function openReplay(s, r, moment = null) {
+  const hands = r.replay || [];
+  if (!hands.length) return;
   sound.play('click');
-  const body = m.table ? trickCross(s, m.table) : [
-    h('p', { class: 'rv-hand-cap', text: m.played?.suit ? 'Jouw kaarten bij de troefkeuze' : 'Jouw kaarten bij het bieden' }),
-    h('div', { class: 'rv-hand' }, (m.cards || []).map(c => mini(c)))];
-  openModal({ id: 'trick', title: momentWhere(m), cls: 'm-last', body }).owner = 'review';
+  const seats = [0, 1, 2, 3].map(k => (s.you + k) % 4);
+  const before = m => {
+    const t = m.trick ? hands[m.hand - 1]?.tricks[m.trick - 1] : null;
+    return t ? 4 * (m.trick - 1) + Math.max(0, t.cards.findIndex(pc => pc.seat === s.you)) : 0;
+  };
+  let hand = moment ? moment.hand - 1 : 0;
+  let step = moment ? before(moment) : 0;
+  const m = openModal({ id: 'replay', title: 'Terugkijken', cls: 'm-replay', body: [] });
+  // The steps stay in view below the scrolling body.
+  const bar = h('div', { class: 'rp-bar' });
+  m.dlg.append(bar);
+  const go = (hd, st) => {
+    hand = Math.max(0, Math.min(hands.length - 1, hd));
+    step = Math.max(0, Math.min(32, st));
+    const key = document.activeElement?.dataset?.key;
+    render();
+    if (key) m.dlg.querySelector(`[data-key="${key}"]:not(:disabled)`)?.focus({ preventScroll: true });
+  };
+  m.dlg.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      go(hand, step + (e.key === 'ArrowLeft' ? -1 : 1));
+    }
+  });
+
+  function render() {
+    const rh = hands[hand];
+    const row = s.scores?.find(x => x.hand === hand + 1);
+    const played = rh.tricks.flatMap(t => t.cards);
+    const gone = new Set(played.slice(0, step).map(pc => pc.card));
+    const ti = Math.ceil(step / 4) - 1; // the trick on the table; -1 before the first card
+    const trick = rh.tricks[ti];
+    const shown = trick ? trick.cards.slice(0, step - 4 * ti) : [];
+    const complete = shown.length === 4;
+    const next = step < 32 ? played[step].seat : -1;
+    const mo = moment?.hand === hand + 1 ? moment : null;
+    const now = mo && step === before(mo);
+    // The player's choice and the option it is measured against, marked in
+    // their hand at the moment itself: the stronger of the two in gold.
+    const playedCls = mo?.better ? 'rp-played' : 'rp-better';
+    const marks = new Map();
+    if (now && mo.played?.card) marks.set(mo.played.card, playedCls);
+    if (now && (mo.better || mo.alt)?.card) marks.set((mo.better || mo.alt).card, mo.better ? 'rp-better' : 'rp-alt');
+
+    const stand = [0, 0];
+    rh.tricks.slice(0, complete ? ti + 1 : ti).forEach(t => { stand[t.winner % 2] += t.points + roemTotal(t.roem); });
+    const wij = s.you % 2;
+
+    const cross = h('div', { class: 'cross rp-cross' }, seats.map(seat => {
+      const pc = shown.find(x => x.seat === seat);
+      const win = complete && trick.winner === seat;
+      return h('div', { class: `cross-slot cs-${posOf(s, seat)} ${teamCls(s, seat)}` + (win ? ' win' : '') + (seat === next && !complete ? ' turn' : '') },
+        pc ? mini(pc.card, win ? 'winner' : '') : h('div', { class: 'rp-slot' }),
+        playerName(nameOf(s, seat), { cls: 'cs-name', title: true }));
+    }));
+    const what = complete
+      ? h('p', { class: 'last-sum rp-what ' + teamCls(s, trick.winner) },
+        h('b', { text: `${nameOf(s, trick.winner)} neemt de slag` }),
+        h('span', { text: ` · ${trick.points} punten` }),
+        roemTotal(trick.roem) ? h('span', { class: 'gold', text: ` · roem: ${roemText(trick.roem)}` }) : null)
+      : h('p', { class: 'last-sum rp-what' }, next === s.you ? 'Jij bent aan de beurt' : `${nameOf(s, next)} is aan de beurt`);
+
+    const hand4 = seat => h('div', { class: 'rp-hand ' + teamCls(s, seat) + (seat === next && !complete ? ' turn' : '') },
+      playerName(nameOf(s, seat), { cls: 'rp-name', title: true }),
+      h('div', { class: 'rp-cards' }, rh.cards[seat].filter(c => !gone.has(c)).map(c => mini(c, marks.get(c) || ''))));
+    const alt = mo && (mo.better || mo.alt);
+    m.body.replaceChildren(
+      h('div', { class: 'rp-head' },
+        h('button', { class: 'icon-btn', type: 'button', dataset: { key: 'hand-prev' }, 'aria-label': 'Vorig potje', title: 'Vorig potje', disabled: hand === 0, onclick: () => go(hand - 1, 0) }, icon('back')),
+        h('div', { class: 'rp-title' }, h('b', { text: `Potje ${hand + 1} van ${hands.length}` }),
+          row ? h('small', {}, suitify(`${suitSym(row.trump)} troef · ${nameOf(s, row.trumpBy)} speelt`)) : null),
+        h('button', { class: 'icon-btn', type: 'button', dataset: { key: 'hand-next' }, 'aria-label': 'Volgend potje', title: 'Volgend potje', disabled: hand === hands.length - 1, onclick: () => go(hand + 1, 0) }, icon('forward'))),
+      mo ? h('div', { class: 'rp-moment' + (now ? ' now' : '') },
+        h('span', { class: 'rv-where', text: momentWhere(mo) }),
+        h('span', { class: 'rv-text' }, suitify(mo.better ? missedLine(mo) : Object.values(strongLine(mo)).join(''))),
+        h('span', { class: 'rv-sum' }, suitify(outcomeLine(mo))),
+        now ? null : h('button', { class: 'btn btn-ghost btn-sm', type: 'button', dataset: { key: 'moment' }, onclick: () => go(hand, before(mo)) }, 'Naar dit moment')) : null,
+      h('div', { class: 'rp-table' },
+        cross,
+        what,
+        h('p', { class: 'rp-stand' }, step === 32 && row
+          ? `Uitslag: Wij ${row.score[wij]} – Zij ${row.score[1 - wij]}` + (row.nat ? ` · ${row.playingTeam === wij ? 'Wij' : 'Zij'} nat` : row.pit ? ' · pit' : '')
+          : `Stand in dit potje: Wij ${stand[wij]} – Zij ${stand[1 - wij]}`)),
+      h('div', { class: 'rp-hands' },
+        hand4(s.you),
+        now && marks.size ? h('p', { class: 'rp-legend' },
+          h('span', {}, h('span', { class: 'rp-key ' + playedCls }), suitify(`${cardShort(mo.played.card)} gespeeld`)),
+          alt?.card ? h('span', {}, h('span', { class: 'rp-key ' + (mo.better ? 'rp-better' : 'rp-alt') }),
+            suitify(`${cardShort(alt.card)} ${mo.better ? 'beter volgens Juf Ans' : 'voor de hand liggend'}`)) : null) : null,
+        seats.slice(1).map(hand4)),
+      h('p', { class: 'legend', text: 'Alle kaarten liggen open. Bij je keuze wist je alleen je eigen kaarten en wat er gespeeld was.' }),
+    );
+    bar.replaceChildren(
+      h('div', { class: 'rp-steps' },
+        h('button', { class: 'btn btn-ghost', type: 'button', dataset: { key: 'prev' }, 'aria-label': 'Een kaart terug', title: 'Een kaart terug (←)', disabled: step === 0, onclick: () => go(hand, step - 1) }, icon('back')),
+        h('span', { class: 'rp-pos', text: step === 0 ? 'Voor de eerste kaart' : `Slag ${ti + 1} · ${shown.length} van 4 kaarten` }),
+        h('button', { class: 'btn btn-ghost', type: 'button', dataset: { key: 'next' }, 'aria-label': 'Een kaart verder', title: 'Een kaart verder (→)', disabled: step === 32, onclick: () => go(hand, step + 1) }, icon('forward'))),
+      h('div', { class: 'rp-tricks', role: 'group', 'aria-label': 'Slagen' }, rh.tricks.map((t, k) => h('button', {
+        class: 'rp-tn ' + teamCls(s, t.winner) + (k === ti ? ' on' : ''), type: 'button', dataset: { key: `t${k}` },
+        'aria-label': `Slag ${k + 1}`, title: `Slag ${k + 1}: ${nameOf(s, t.winner)} nam de slag`, onclick: () => go(hand, 4 * (k + 1)),
+      }, String(k + 1)))));
+  }
+  render();
 }
 
 // The server refused something: a rematch in flight can be tried again.
