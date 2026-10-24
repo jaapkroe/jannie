@@ -1,7 +1,7 @@
 // Home screen (name, quick play, new game, join, training), the join-link
 // invite, and the lobby where seats and options are arranged.
 import { sound } from './sound.js';
-import { app, h, clear, icon, store, toast, POS, posOf, seatCount, isWij, teamCls, avatar, playerName, variantText, countWord, cap, copyText, DEFAULT_NAME } from './util.js';
+import { app, h, clear, icon, store, toast, POS, posOf, seatCount, isWij, teamCls, avatar, playerName, variantText, countWord, cap, copyText, DEFAULT_NAME, versionText } from './util.js';
 import * as panels from './panels.js';
 
 const E = {};
@@ -150,7 +150,8 @@ export function init() {
     h('label', { class: 'name-lbl', for: 'name', text: 'Je naam' }), E.name, E.invite, E.main);
   root.querySelector('.home-inner').append(E.card,
     h('footer', { class: 'home-foot' },
-      h('span', { text: 'Klaverjassen zoals in het café.' })),
+      h('span', { text: 'Klaverjassen zoals in het café.' }),
+      h('small', { class: 'home-ver', text: `Versie ${versionText(document.querySelector('meta[name="version"]')?.content)}` })),
   );
   E.lobby = document.getElementById('lobby');
   buildLobby();

@@ -1143,7 +1143,11 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   number of players hide: *Troef* with three, *Regels* with two), *Meedoen* (4-letter code field;
   joins as soon as 4 letters are typed), *Oefenen* (training), *Handleiding*.
   Snel spelen and Oefenen (bots only) never ask for a name: without one the
-  player is "Speler", which is not stored as their name. *Nieuw spel* and
+  player is "Speler", which is not stored as their name. Under the footer,
+  small: "Versie a05a087", the commit the web image was built from (the
+  Containerfile fills in index.html's `<meta name="version">`; `versionText`
+  shortens it, "dev" when run from source; `pod-check` compares it with
+  `/api/health`). *Nieuw spel* and
   *Meedoen*, where others see the name, ask for it first, gently: the name
   field takes the focus with a soft glow and a toast "Hoe heet je?" says why.
   Opening a join link `/ABCD` goes straight to joining (asks only for a name if
