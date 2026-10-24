@@ -94,7 +94,7 @@ func BenchmarkPlayout(b *testing.B) {
 		b.Fatal(err)
 	}
 	for b.Loop() {
-		playOut(d, 0, 0.5, 0)
+		playOut(d, 0.5, 0)
 	}
 }
 

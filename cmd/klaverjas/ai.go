@@ -44,7 +44,10 @@ func (botAI) Grade(v game.View, c server.Choice) server.Grade {
 	g := bot.GradeChoice(v, bot.Choice{Card: c.Card, Suit: c.Suit, Play: c.Play})
 	return server.Grade{
 		Stake: g.Stake, Lost: g.Lost, Gain: g.Gain, Text: g.Text, Nat: g.Nat,
-		Better: server.Choice{Card: g.Better.Card, Suit: g.Better.Suit, Play: g.Better.Play},
+		Better:  server.Choice{Card: g.Better.Card, Suit: g.Better.Suit, Play: g.Better.Play},
+		Obvious: server.Choice{Card: g.Obvious.Card, Suit: g.Obvious.Suit, Play: g.Obvious.Play},
+		Played:  server.Outcome(g.Played),
+		Other:   server.Outcome(g.Other),
 	}
 }
 

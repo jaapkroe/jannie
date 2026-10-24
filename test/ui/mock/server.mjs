@@ -287,23 +287,37 @@ function stateFor(room, seat) {
 }
 
 // The review at game over (design §9 Spelanalyse), with its moments taken
-// from the tricks of the last hand.
+// from the tricks of the last hand, and every hand for the replay.
 function mockReview(room, seat) {
   const tricks = room.prevHand?.tricks || [];
   const moment = (k, m) => {
     const t = tricks[k];
     const pc = t?.cards.find(c => c.seat === seat);
-    return pc ? { hand: room.handNo, trick: k + 1, played: { card: pc.card }, text: '', table: t, ...m } : null;
+    return pc ? { hand: room.handNo, trick: k + 1, played: { card: pc.card }, text: '', table: t, nat: [0, 0], natThem: [0, 0], ...m } : null;
   };
-  const strong = [moment(1, { points: 21, why: 'de slag is zeker voor jullie, dus zo zijn de 11 punten binnen.' })].filter(Boolean);
+  // The better card: another of the player's cards in that trick's suit,
+  // else any other card they still held.
+  const other = k => {
+    const mine = tricks.slice(k).flatMap(t => t.cards.filter(c => c.seat === seat).map(c => c.card));
+    return mine.find((c, i) => i > 0 && c[1] === mine[0][1]) || mine[1] || mine[0];
+  };
+  const strong = [moment(1, { points: 21, us: 11, them: -10, alt: { card: other(1) }, why: 'de slag is zeker voor jullie, dus zo zijn de 11 punten binnen.' })].filter(Boolean);
   const missed = [
-    { hand: 1, trick: 0, played: { suit: 'H' }, better: { suit: 'C' }, points: 14, text: '', cards: ['JC', '9C', 'AC', '7C', 'AH', '8H', 'TS', '7D'],
+    { hand: 1, trick: 0, played: { suit: 'H' }, better: { suit: 'C' }, points: 14, us: 9, them: -5, nat: [31, 18], natThem: [0, 0], text: '',
+      cards: ['JC', '9C', 'AC', '7C', 'AH', '8H', 'TS', '7D'],
       why: 'je hebt de boer, de nel en de aas, in totaal vier klaveren. Je haalt het zo naar schatting in 8 van de 10 potjes.' },
-    moment(3, { better: { card: 'AS' }, points: 18, why: 'je maat heeft de slag nog niet en de aas is hoog.' }),
+    moment(3, { better: { card: other(3) }, points: 18, us: 7, them: -11, why: 'je maat heeft de slag nog niet en de aas is hoog.' }),
   ].filter(Boolean);
+  const replay = (room.handTricks || []).map((ts, h) => {
+    const cards = [[], [], [], []];
+    for (const t of ts) for (const pc of t.cards) cards[pc.seat].push(pc.card);
+    return { cards: cards.map(c => sortHand(c, room.scores[h]?.trump)), tricks: ts };
+  });
   return {
     id: room.reviewId, pending: false, pct: 87, hands: room.opts.hands, choices: 31, luck: -6, lost: 41, lostN: 3,
     strongN: 2, leads: [9, 11], trumps: [3, 4], roem: [40, 2], risky: room.opts.trumpMode === 'gedraaid' ? [2, 1] : [0, 0], strong, missed,
+    speed: { n: 31, median: 2400, total: 98000, slowest: { hand: 2, trick: 5, ms: 14200 }, others: { n: 62, median: 3100, total: 211000 } },
+    replay,
   };
 }
 
@@ -349,6 +363,7 @@ function startGame(room) {
   for (let s = 0; s < 4; s++) if (!room.players[s] || room.players[s].left) room.players[s] = botPlayer(room);
   for (const p of room.players) if (!p.bot) { p.away = false; p.asked = false; }
   room.scores = [];
+  room.handTricks = [];
   room.total = [0, 0];
   room.handNo = 0;
   room.winner = -1;
@@ -667,6 +682,7 @@ function endHand(room, lastWinner) {
   room.scores.push({ hand: room.handNo, dealer: room.dealer, trump: d.trump, trumpBy: d.trumpBy, playingTeam: P, points: [...d.points], roem, score, nat, pit });
   room.total = [room.total[0] + score[0], room.total[1] + score[1]];
   room.prevHand = { tricks: d.tricks, result };
+  room.handTricks.push(d.tricks);
   room.phase = 'handEnd';
   room.nextAt = Date.now() + PACE[room.opts.tempo].summary; // unscaled: the summary must stay readable
   broadcast(room, { type: 'collect', winner: lastWinner });

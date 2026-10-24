@@ -434,7 +434,8 @@ func New(p Persona, lvl Level, seed uint64) Player
 // roem, banks points in a sure trick, keeps the trumps, the highest card of
 // a side suit or the guard of an honour); without one it says by how much
 // the search rates it higher ("volgens de berekening levert ♠A gemiddeld 9
-// punten meer op dan ♠8").
+// punten meer op dan ♠8"). The search values every option by the points it
+// brings alone: the bots' appetite for pit (Aggression) plays no part.
 type Advice struct {
     Card *game.Card; Suit *game.Suit; Play *bool
     Text string     // e.g. "Speel ♥A: je maat heeft de slag nog niet en de aas is hoog."
@@ -446,18 +447,28 @@ func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
 
 // The review at the end of a match (§9 Spelanalyse). GradeChoice runs the
 // search of Advise on the same view (same seed), so it agrees with the hint.
-// Points are expected score differences between the teams, as in the hints.
+// Points are expected score differences between the teams, as in the hints:
+// the player's team's score minus the opponents' at the end of the hand
+// (nat and pit included), averaged over the sampled deals (400 for a card,
+// 320 for a trump choice or bid), each played out by the normaal policy.
 type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool } // exactly one set
 type Grade struct {
-    Stake  float64 // best minus worst option; 0 without a choice (one legal card)
-    Lost   float64 // the hint's option minus the choice when that is at least
-                   // max(5, 2 paired SE), the hint's tolerance; else 0
-    Gain   float64 // a strong move: the choice is the hint's option, the normaal
-                   // choice differs and is worse by at least max(10, 2 paired SE); else 0
-    Better Choice  // the hint's option, when Lost > 0
-    Text   string  // the hint for Better (Lost > 0) or for the choice (Gain > 0)
-    Nat    float64 // a bid to play: the estimated chance of going nat
+    Stake   float64 // best minus worst option; 0 without a choice (one legal card)
+    Lost    float64 // the hint's option minus the choice when that is at least
+                    // max(5, 2 paired SE), the hint's tolerance; else 0
+    Gain    float64 // a strong move: the choice is the hint's option, the normaal
+                    // choice differs and is worse by at least max(10, 2 paired SE); else 0
+    Better  Choice  // the hint's option, when Lost > 0
+    Obvious Choice  // the normaal option, when Gain > 0
+    Text    string  // the hint for Better (Lost > 0) or for the choice (Gain > 0)
+    Nat     float64 // a bid to play: the estimated chance of going nat
+    Played, Other Outcome // the choice and Better or Obvious, when Lost or Gain is set:
+                    // Lost = Other.Us−Other.Them − (Played.Us−Played.Them), Gain the reverse
 }
+// What an option leads to, averaged over the sampled deals: the final score
+// of the player's team and of the opponents, and the chance that the one or
+// the other plays and goes nat.
+type Outcome struct{ Us, Them, NatUs, NatThem float64 }
 func GradeChoice(v game.View, c Choice) Grade
 // What the cards dealt to v.Seat are worth to its team against an average
 // hand in the same seat: the mean score difference when the hand is played
@@ -733,7 +744,11 @@ reply attempt.
   rooms, each on one core; one whose match is over, or whose room is gone,
   is skipped when its turn comes. The roem a human's card adds to the
   cards on the table, beyond the least that one of their legal cards would
-  add, counts as given away when the opponents take the trick. A match starts
+  add, counts as given away when the opponents take the trick. Every
+  decision of a connected human (also a lone legal card) is timed, from the
+  turn opening (after the pause before it) to the decision, if they were
+  connected all along: a turn that opened while they were away, or in which
+  their connection dropped, is not. A match starts
   every review afresh; a seat that changes hands starts a new one. At game
   over each human's state carries their own review and nobody else's
   (`review`, §7); while grades are still out it is `{"pending": true, …}`,
@@ -927,7 +942,7 @@ persona on a seat its player left). `away` comes once per lost connection.
 player without a graded decision, or one on its way):
 `{"id":"9f2c…","pending":false,"pct":87,"hands":16,"choices":118,"luck":-6,
 "lost":41,"lostN":3,"strongN":2,"leads":[9,11],"trumps":[4,5],"roem":[40,2],
-"risky":[2,1],"strong":[moment…],"missed":[moment…]}`: `id` names the match
+"risky":[2,1],"strong":[moment…],"missed":[moment…],"speed":{…},"replay":[hand…]}`: `id` names the match
 (for the history on the device), `pct` is 100 × (1 − Σ lost / Σ stake),
 rounded, `luck` the mean HandLuck per hand, `lost` and `lostN` the points
 and decisions with `Lost > 0`, `strongN` those with `Gain > 0`, `leads` and
@@ -936,14 +951,30 @@ bids, `roem` [points, times] given away, `risky` [bids to play with more than
 40% chance of nat, of which nat]. `strong` and `missed` list at most three
 moments each, those with the most points, in the order played:
 `{"hand":5,"trick":3,"played":{"card":"TS"},"better":{"card":"AS"},"points":18,
+"us":11,"them":-7,"nat":[31,18],"natThem":[0,0],
 "why":"je maat heeft de slag nog niet …","text":"Speel ♠A: je maat …","table":Trick}`
 — `trick` 0 and `cards` (the player's hand, display-sorted) instead of
 `table` for a trump choice or bid; `played` and `better` hold one of `card`,
-`suit` or `play`; `better` only in `missed`; `why` is the hint's reason
+`suit` or `play`; `better` only in `missed`, and `alt` (the normaal option it
+beat, same form) only in `strong`; `us` and `them` are what the stronger of
+the two options (`better`, or the strong move) brought the player's team and
+the opponents more than the weaker one (`us` rounded, `them` = `us` −
+`points`), `nat` and `natThem` the chance in percent that the player's team,
+or the opponents, played and went nat, with the weaker option and with the
+stronger one (the grade's Outcomes); `why` is the hint's reason
 without its opening ("Speel ♠A: ", "Kies ♣ als troef: ", "Passen: "), or ""
 when the hint opens otherwise (then `text` says it all). While `pending` is
 true only `id` and `pending` mean anything. `hands` is 0 for a player who
 took a seat over during a hand and saw no deal: no *Jouw kaarten* then.
+`speed` (null when none of the player's decisions was timed, §6), times in
+ms: `{"n":118,"median":2400,"total":372000,"slowest":{"hand":4,"trick":2,"ms":48000},
+"others":{"n":230,"median":2100,"total":612000}}` — the player's decisions,
+the median and summed think time, the slowest one (`trick` 0: a trump choice
+or bid), and the same sums over the other humans of the match (null without
+one). `replay` lists every finished hand of the match:
+`{"cards":[[8 cards]×4],"tricks":[8 Tricks]}`, the cards dealt to each seat
+(display-sorted under that hand's trump; at a table of four every card is
+played) and its tricks; the hand's result is the score sheet's row.
 
 `HandResult` JSON: `{"players":4,"playingTeam":0,"trumpBy":2,"trump":"H","dealer":1,
 "points":[104,58],"roem":[20,0],"score":[124,58],"nat":false,"pit":false,"pitTeam":-1,
@@ -1300,22 +1331,37 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   0) and waits for *Volgend potje*. In short landscape the bubble sits in the
   top-left corner and never covers the left seat (who plays after you): a
   long text shows the lines that fit and *Lees verder* (then *Minder*).
-- **Spelanalyse** (issue #6, four players only): under the final score, a
-  line for the player alone: *Jouw spelanalyse: 87% (goed gespeeld) ›* (*… wordt berekend…*,
-  disabled, while grades are out; hidden without a review). The verdict is
+- **Spelanalyse** (issues #6 and #18, four players only): under the final
+  score, a line for the player alone: *Jouw spel volgens Juf Ans: 87% (goed
+  gespeeld) ›* (*Jouw spelanalyse wordt berekend…*, disabled, while grades
+  are out; hidden without a review). Juf Ans stands for the engine of the
+  hints, so the numbers read as hers, not as a fact. The verdict is
   *sterk gespeeld* from 95%, *goed gespeeld* from 82%, else *kan beter*
   (`reviewVerdict`; the bounds fit the bots' averages in `TestGradeLevels`:
   sterk ≈ 99, normaal ≈ 87, makkelijk ≈ 76). It opens *Jouw spelanalyse*:
-  the percentage with ⓘ (how it is computed), potjes and keuzes, then
+  *Volgens Juf Ans* over the percentage with ⓘ (who Juf Ans is, how she
+  plays every option out over deals of the unseen cards, what a point is:
+  the difference between the two teams' scores, so a point that goes to
+  the opponents counts twice and a higher chance of nat costs much, that it
+  stays an estimate, and how the percentage, *Laten liggen* and *Sterke
+  zet* follow), potjes and keuzes, then
   *Jouw kaarten* (*Boven gemiddeld (+8)*, *Gemiddeld (+1)* within ±4,
   *Onder gemiddeld (−6)*: points per potje, ⓘ), *Sterke zetten*, *Laten
   liggen* (points in zetten), *Uitkomen* (*9 van 11 keer de beste kaart*),
   *Troefkeuze* (*4 van 5 keer de beste keuze*), *Roem weggegeven* (ⓘ), and
   in gedraaid when it happened *Gespeeld met meer dan 40% kans op nat: 2
-  keer, 1 keer nat*. Below, the listed moments: *Potje 3, slag 2 · ♠A: …*
+  keer, 1 keer nat*. Then *Snelheid* (`speed`): *Bedenktijd per zet* (the
+  median, ⓘ), *Langste bedenktijd 48 s (potje 4, slag 2)*, *De tafel
+  wachtte op jou 6 min 10 s*, and with other people at the table *Anderen
+  per zet* and *Jij wachtte op de anderen* (`timeText`: "0,8 s", "48 s",
+  "6 min 10 s"). Below, the listed moments: *Potje 3, slag 2 · ♠A: …*
   and *Potje 5, slag 3 · ♠10 gespeeld, ♠A 18 punten beter: …* (*♥ als
-  troef, ♣ 14 punten beter: …*, *Gepast, spelen 12 punten beter: …*); a tap
-  shows the trick at the seats, or the hand of a trump choice or bid. Then
+  troef, ♣ 14 punten beter: …*, *Gepast, spelen 12 punten beter: …*), each
+  with a line that splits the points (`outcomeLine`): *Jullie +11, zij −7;
+  kans dat jullie nat gaan 31% → 18%* (a chance that moves by less than 5
+  is left out), for a strong move *Tegenover ♠8: jullie +6, zij −6*. A tap
+  opens the replay at that moment; *Potjes terugkijken* opens it at the
+  first hand. Then
   *Vorige partijen 79% · 83%* (the percentages of up to five earlier matches
   on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
   Niet mee eens? Deze analyse is gebaseerd op de game engine en kan fouten
@@ -1324,6 +1370,22 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   the line: on a short phone it takes the place of the emoji (portrait up to
   760 px high) and of *Laatste potje* (up to 680 px); in short landscape the
   sub-line goes and the title and score shrink.
+- **Terugkijken** (the replay, `replay`): a finished hand card by card with
+  all four hands open. On top *Potje 4 van 16* with ‹ › for the other hands
+  and "♥ troef · Kees speelt"; from a moment, the moment and its split
+  (*Naar dit moment* once stepped away). The trick lies at the seats with
+  every name, whose turn it is marked, then "Kees is aan de beurt" or, with
+  the trick complete, "Kees neemt de slag · 21 punten · roem: …", and *Stand
+  in dit potje: Wij 34 – Zij 12* (card points and roem of the tricks taken),
+  after the last card *Uitslag: Wij 0 – Zij 182 · Wij nat*. Below, the
+  hands left, the player's first: at the moment the card played and the
+  better (or obvious) one are marked in it, with a key. A bar under the
+  scrolling body keeps ‹ *Slag 4 · 2 van 4 kaarten* › (also ←/→) and the
+  eight tricks (each in its taker's colour; a tap shows it complete) in
+  view. A moment opens just before the player's card (a lead: with the
+  previous trick still on the table), a trump choice or bid before the
+  first card. In short landscape the table sits beside the moment and the
+  hands, and the bar is one line.
 - **Help**: the manual (SECTIONS) in a modal, plus `title` tooltips and small ⓘ
   explanations on UI elements.
 - **Responsive**: phones portrait (360×640 up, and an iPhone SE in Safari:

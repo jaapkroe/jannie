@@ -104,6 +104,7 @@ type room struct {
 	pendingAt time.Time // when the pause ends
 	turnAt    time.Time // when the current turn opened (or play resumed, or an AI took over): bots think from it
 	openedAt  time.Time // when the current turn opened: an absent player's askAfter counts from it
+	openedOn  bool      // the player whose turn opened was connected then (review timing)
 	think     time.Duration
 	asking    game.Seat   // the seat the question (takeover) is about, as updates show it
 	votesOn   game.Seat   // the seat the votes answer: asking, or the question resting while nobody is connected

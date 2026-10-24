@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"slices"
 	"sync/atomic"
+	"time"
 
 	"klaverjas/internal/game"
 )
@@ -62,16 +63,33 @@ type review struct {
 
 	risky          []int // hands with a bid to play at more than riskyNat chance of nat
 	missed, strong []moment
+
+	thinks []think // how long each decision took (see timeChoice)
+}
+
+// think is how long a human took over one decision, from the turn opening.
+type think struct {
+	d           time.Duration
+	hand, trick int // trick 0: a trump choice or bid
 }
 
 // moment is a decision named in the review: points left against the
-// better option, or a strong move.
+// better option, or a strong move against the obvious one. Of the two
+// options, Us and Them say what the stronger one (better, or the strong
+// move) brought each team more than the weaker one on average, and Nat
+// and NatThem the chance in percent that each team played and went nat
+// with the weaker one and with the stronger one.
 type moment struct {
-	Hand   int         `json:"hand"`
-	Trick  int         `json:"trick"` // 1–8; 0 for a trump choice or bid
-	Played choiceJSON  `json:"played"`
-	Better *choiceJSON `json:"better,omitempty"`
-	Points int         `json:"points"`
+	Hand    int         `json:"hand"`
+	Trick   int         `json:"trick"` // 1–8; 0 for a trump choice or bid
+	Played  choiceJSON  `json:"played"`
+	Better  *choiceJSON `json:"better,omitempty"`
+	Alt     *choiceJSON `json:"alt,omitempty"` // a strong move: the obvious option it beat
+	Points  int         `json:"points"`        // Us − Them
+	Us      int         `json:"us"`
+	Them    int         `json:"them"`
+	Nat     [2]int      `json:"nat"`
+	NatThem [2]int      `json:"natThem"`
 	Why    string      `json:"why"`             // the reason of the hint, or "" when it cannot be cut out
 	Text   string      `json:"text"`            // the whole hint
 	Cards  []game.Card `json:"cards,omitempty"` // a trump choice or bid: the player's hand
@@ -101,6 +119,33 @@ type reviewState struct {
 	Risky   [2]int   `json:"risky"`  // bids, of which nat
 	Strong  []moment `json:"strong"`
 	Missed  []moment `json:"missed"`
+
+	Speed  *speedState  `json:"speed"`  // null when no decision was timed
+	Replay []replayHand `json:"replay"` // the finished hands of the match
+}
+
+// speedState is how fast the player decided (design §7): times in ms.
+type speedState struct {
+	speedSum
+	Slowest struct {
+		Hand  int `json:"hand"`
+		Trick int `json:"trick"`
+		Ms    int `json:"ms"`
+	} `json:"slowest"`
+	Others *speedSum `json:"others"` // the other people at the table; null without any
+}
+
+type speedSum struct {
+	N      int `json:"n"`      // decisions timed
+	Median int `json:"median"` // ms
+	Total  int `json:"total"`  // ms: the time the table waited for these decisions
+}
+
+// replayHand is a finished hand as the replay shows it: the cards dealt to
+// each seat, sorted as in a hand under its trump, and the tricks.
+type replayHand struct {
+	Cards  [4][]game.Card `json:"cards"`
+	Tricks []game.Trick   `json:"tricks"`
 }
 
 // reviewOf returns the review of human seat i, started when needed (a
@@ -217,6 +262,21 @@ func (r *room) gradeChoice(i game.Seat, v game.View, a action) {
 	}()
 }
 
+// timeChoice books how long seat i took over the decision it made in view
+// v, the turn having opened at opened; only when they were connected all
+// along: then (on) and since.
+func (r *room) timeChoice(i game.Seat, opened time.Time, on bool, v *game.View) {
+	if !on || r.seats[i].leftAt.After(opened) {
+		return
+	}
+	t := think{d: time.Since(opened), hand: v.HandNo}
+	if v.Phase == game.PhasePlay {
+		t.trick = len(v.Tricks) + 1
+	}
+	rv := r.reviewOf(i)
+	rv.thinks = append(rv.thinks, t)
+}
+
 // staleIn reports whether rv's analyses are no longer needed in room r:
 // a new match started, or the room was closed.
 func (rv *review) staleIn(r *room) func() bool {
@@ -280,17 +340,30 @@ func (rv *review) add(v *game.View, c Choice, g Grade) {
 		}
 	}
 	h := hint{Card: c.Card, Suit: c.Suit, Play: c.Play, Text: g.Text}
+	var weak, strong Outcome
 	switch {
 	case g.Lost > 0:
 		better := choiceJSON(g.Better)
 		m.Better = &better
 		h = hint{Card: better.Card, Suit: better.Suit, Play: better.Play, Text: g.Text}
 		m.Points = int(math.Round(g.Lost))
+		weak, strong = g.Played, g.Other
 	case g.Gain > 0:
+		if g.Obvious != (Choice{}) {
+			alt := choiceJSON(g.Obvious)
+			m.Alt = &alt
+		}
 		m.Points = int(math.Round(g.Gain))
+		weak, strong = g.Other, g.Played
 	default:
 		return
 	}
+	// Rounded apart, the two teams' shares still add up to the points.
+	m.Us = int(math.Round(strong.Us - weak.Us))
+	m.Them = m.Us - m.Points
+	pct := func(p float64) int { return int(math.Round(100 * p)) }
+	m.Nat = [2]int{pct(weak.NatUs), pct(strong.NatUs)}
+	m.NatThem = [2]int{pct(weak.NatThem), pct(strong.NatThem)}
 	if _, why, ok := splitHint(&h); ok {
 		m.Why = why
 	}
@@ -334,6 +407,64 @@ func (r *room) reviewFor(i game.Seat) *reviewState {
 		}
 	}
 	out.Strong, out.Missed = r.listed(rv.strong), r.listed(rv.missed)
+	out.Speed = r.speedOf(i)
+	out.Replay = r.replay()
+	return out
+}
+
+// speedOf is how fast the player at seat i decided in this match, and the
+// other people at the table; nil when none of the player's decisions was
+// timed.
+func (r *room) speedOf(i game.Seat) *speedState {
+	own := r.seats[i].review.thinks
+	if len(own) == 0 {
+		return nil
+	}
+	sum := func(ts []think) speedSum {
+		ds := make([]time.Duration, len(ts))
+		var total time.Duration
+		for k, t := range ts {
+			ds[k] = t.d
+			total += t.d
+		}
+		slices.Sort(ds)
+		med := ds[len(ds)/2]
+		if len(ds)%2 == 0 {
+			med = (ds[len(ds)/2-1] + med) / 2
+		}
+		return speedSum{N: len(ts), Median: int(med.Milliseconds()), Total: int(total.Milliseconds())}
+	}
+	sp := &speedState{speedSum: sum(own)}
+	slow := slices.MaxFunc(own, func(a, b think) int { return cmp.Compare(a.d, b.d) })
+	sp.Slowest.Hand, sp.Slowest.Trick, sp.Slowest.Ms = slow.hand, slow.trick, int(slow.d.Milliseconds())
+	var others []think
+	for k := range r.seats {
+		if rv := r.seats[k].review; game.Seat(k) != i && rv != nil {
+			others = append(others, rv.thinks...)
+		}
+	}
+	if len(others) > 0 {
+		o := sum(others)
+		sp.Others = &o
+	}
+	return sp
+}
+
+// replay is every finished hand of the match for the replay of the review:
+// a table of four, where every card dealt is played.
+func (r *room) replay() []replayHand {
+	out := make([]replayHand, len(r.handTricks))
+	for h, tricks := range r.handTricks {
+		out[h].Tricks = tricks
+		for _, t := range tricks {
+			for _, p := range t.Cards {
+				out[h].Cards[p.Seat] = append(out[h].Cards[p.Seat], p.Card)
+			}
+		}
+		for s := range out[h].Cards {
+			out[h].Cards[s] = game.SortHand(out[h].Cards[s], r.scores[h].Trump, true)
+		}
+	}
 	return out
 }
 

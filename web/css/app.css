@@ -4189,6 +4189,14 @@ body.busy::after {
   text-align: center;
 }
 
+.rv-head .rv-who {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
 .rv-pct {
   display: flex;
   align-items: baseline;
@@ -4318,9 +4326,16 @@ body.busy::after {
   color: var(--ink);
 }
 
+.rv-sum {
+  grid-column: 1;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
 .rv-moment .icon {
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 1 / span 3;
   width: 18px;
   height: 18px;
   color: var(--ink-3);
@@ -4340,16 +4355,232 @@ body.busy::after {
   font-variant-numeric: tabular-nums;
 }
 
-.rv-hand-cap {
-  margin: 0 0 10px;
+.rv-replay {
+  margin-top: 14px;
+}
+
+/* the replay of the review */
+
+.m-replay > .dialog {
+  width: min(100%, 540px);
+}
+
+.rp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rp-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+.rp-title b {
+  display: block;
+  font-size: 16px;
+}
+
+.rp-title small {
   color: var(--ink-2);
 }
 
-.rv-hand {
+.rp-moment {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 7px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+
+.rp-moment.now {
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.rp-moment .btn {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+.rp-cross {
+  --card-w: 38px;
+  max-width: 280px;
+  height: 190px;
+  margin-top: 6px;
+}
+
+.rp-what {
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+.rp-slot {
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.4);
+  border-radius: calc(var(--card-w) * 0.075);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.14);
+}
+
+.cross-slot.turn .cs-name {
+  background: rgba(58, 36, 5, 0.85);
+  box-shadow: inset 0 0 0 1.5px var(--gold);
+  color: var(--gold-hi);
+}
+
+.rp-stand {
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-bar {
+  flex: none;
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.rp-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.rp-pos {
+  min-width: 150px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-tricks {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+
+.rp-tn {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 -3px 0 var(--team);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.rp-tn.on {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--ink);
+}
+
+.rp-hands {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.rp-hand {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 3px 0 0 var(--team);
+}
+
+.rp-hand.turn {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.rp-name {
+  width: 72px;
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.rp-cards {
+  --card-w: 34px;
+  display: flex;
+  min-height: calc(var(--card-w) * 1.4);
+}
+
+.rp-cards > .card + .card {
+  margin-left: -10px;
+}
+
+.rp-cards > .card.rp-played,
+.rp-key.rp-played {
+  box-shadow: 0 0 0 2px var(--zij-hi);
+}
+
+.rp-cards > .card.rp-better,
+.rp-key.rp-better {
+  box-shadow: 0 0 0 2px var(--gold-hi);
+}
+
+.rp-cards > .card.rp-alt,
+.rp-key.rp-alt {
+  box-shadow: 0 0 0 2px var(--ink-3);
+}
+
+.rp-cards > .card:is(.rp-played, .rp-better, .rp-alt) {
+  z-index: 1;
+  translate: 0 -4px;
+}
+
+.rp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: -2px 0 2px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.rp-key {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+@media (min-width: 600px) and (min-height: 700px) {
+  .rp-cross {
+    --card-w: 46px;
+    height: 222px;
+  }
+
+  .rp-name {
+    width: 92px;
+  }
+
+  .rp-cards {
+    --card-w: 40px;
+  }
+
+  .rp-cards > .card + .card {
+    margin-left: -6px;
+  }
 }
 
 /* The review line takes the room of the decoration on a short phone: the
@@ -4617,6 +4848,40 @@ body.chat-open .chat-scrim {
 
   :where(html:not(.kb)) .m-summary > .dialog {
     width: min(100%, 860px);
+  }
+
+  /* The replay: the table beside the moment and the hands, the steps on
+     one line. */
+  :where(html:not(.kb)) .m-replay > .dialog {
+    width: min(100%, 860px);
+  }
+
+  :where(html:not(.kb)) .m-replay .dlg-body {
+    display: grid;
+    grid-template-columns: 270px minmax(0, 1fr);
+    grid-template-areas: "table head" "table moment" "table hands" "legend legend";
+    grid-template-rows: auto auto 1fr auto;
+    column-gap: 16px;
+    align-items: start;
+  }
+
+  :where(html:not(.kb)) .m-replay .rp-head { grid-area: head; }
+  :where(html:not(.kb)) .m-replay .rp-moment { grid-area: moment; }
+  :where(html:not(.kb)) .m-replay .rp-table { grid-area: table; }
+  :where(html:not(.kb)) .m-replay .rp-hands { grid-area: hands; }
+  :where(html:not(.kb)) .m-replay .dlg-body > .legend { grid-area: legend; }
+
+  :where(html:not(.kb)) .m-replay .rp-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    column-gap: 16px;
+    padding: 4px 12px 6px;
+  }
+
+  :where(html:not(.kb)) .m-replay .rp-tricks {
+    margin: 0;
   }
 
   :where(html:not(.kb)) .m-summary .dlg-body {
