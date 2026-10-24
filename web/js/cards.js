@@ -98,16 +98,18 @@ function node(tag, attrs, parent) {
 const r3 = (n) => Math.round(n * 1000) / 1000;
 
 // Suit symbols drawn in a 100×100 box; every subpath winds clockwise so the
-// club's lobes merge under the nonzero fill rule.
+// club's lobes merge under the nonzero fill rule. Spade and club keep apart
+// as small or distant blurs: the spade a needle point over low, wide lobes
+// on a broad foot, the club three round lobes set wide, with deep notches,
+// on a slim stem.
 const SUIT_PATHS = {
   H: 'M50 92C44 84 31 73 20 61 9 49 4 40 4 29 4 15 15 5 28 5c9 0 17 5 22 14C55 10 63 5 72 5c13 0 24 10 24 24 0 11-5 20-16 32C69 73 56 84 50 92Z',
   D: 'M50 2C59 19 71 34 88 50 71 66 59 81 50 98 41 81 29 66 12 50 29 34 41 19 50 2Z',
-  S: 'M50 4C56 16 70 28 82 38 92 46 97 54 97 63c0 13-10 22-22 22-9 0-16-4-20-11 1 10 5 17 13 23H32c8-6 12-13 13-23-4 7-11 11-20 11C13 85 3 76 3 63c0-9 5-17 15-25C30 28 44 16 50 4Z',
-  C: 'M28 26a22 22 0 1 1 44 0a22 22 0 1 1-44 0Z' +
-    'M3 59a22 22 0 1 1 44 0a22 22 0 1 1-44 0Z' +
-    'M53 59a22 22 0 1 1 44 0a22 22 0 1 1-44 0Z' +
-    'M50 34L72 62H28Z' +
-    'M54 58C54 76 60 88 71 97H29C40 88 46 76 46 58Z',
+  S: 'M50 1C52 16 60 28 74 38C89 48 98 57 98 69c0 11-9 19-20 19-8 0-14-4-18-9 1 8 5 14 12 19H28c7-5 11-11 12-19-4 5-10 9-18 9C11 88 2 80 2 69c0-12 9-21 24-31C40 28 48 16 50 1Z',
+  C: 'M28 24a22 22 0 1 1 44 0a22 22 0 1 1-44 0Z' +
+    'M1 57a22 22 0 1 1 44 0a22 22 0 1 1-44 0Z' +
+    'M55 57a22 22 0 1 1 44 0a22 22 0 1 1-44 0Z' +
+    'M50 30L70 58C60 60 54 62 53.5 70C53.5 80 58 90 67 98H33C42 90 46.5 80 46.5 70 46 62 40 60 30 58Z',
 };
 
 // Rank glyphs as stroked centre lines in a box 100 units high (stroke 15),
@@ -251,7 +253,7 @@ function drawAce(parent, suit) {
 // Court cards: a framed, double-headed portrait; the top half is drawn once
 // and mirrored for the bottom half.
 const FRAME = { x: 54, y: 12, w: 92, h: 256 };
-const BADGE = { K: [67, 25], Q: [67, 25], J: [134, 74] };
+const BADGE = { K: [68, 26], Q: [68, 26], J: [132, 74] };
 
 function drawCourt(parent, rank, suit) {
   const g = node('g', { class: 'card-court' }, parent);
@@ -263,7 +265,7 @@ function drawCourt(parent, rank, suit) {
   else if (rank === 'Q') drawVrouw(top);
   else drawBoer(top);
   const [bx, by] = BADGE[rank];
-  suitAt(top, suit, bx, by, 17);
+  suitAt(top, suit, bx, by, 20);
 
   const bottom = top.cloneNode(true);
   bottom.setAttribute('transform', `rotate(180 ${W / 2} ${MID})`);
@@ -295,6 +297,10 @@ function dot(parent, cx, cy, r, fill, extra) {
   return node('circle', Object.assign({ cx, cy, r, fill }, extra), parent);
 }
 
+// A garment that cards.css may colour by suit (.court-accent); its own fill
+// is the colour it keeps otherwise.
+const ACCENT = { class: 'court-accent' };
+
 // Broad-shouldered torso shared by all three figures; it meets its mirror
 // image at the centre line as one continuous garment.
 const TORSO = 'M57 140V127C57 113 64 105 76 102L90 97H110L124 102C136 105 143 113 143 127V140Z';
@@ -313,8 +319,9 @@ function neck(parent) {
 
 function drawHeer(g) {
   const hair = '#ebe6dc';
-  // robe, gold placket, ermine cape and chain
+  // robe, tunic, gold placket, ermine cape and chain
   p(g, TORSO, 'currentColor', LINE, 1.2);
+  p(g, 'M80 108L76 140H124L120 108Z', 'currentColor', LINE, 1.1, ACCENT);
   p(g, 'M93.5 112H106.5V140H93.5Z', GOLD, GOLD_DARK, 0.9);
   for (const y of [118, 126, 134]) p(g, `M100 ${y - 3}L103 ${y}L100 ${y + 3}L97 ${y}Z`, RUBY);
   p(g, 'M57 124C58 110 67 102 80 99L91 96L100 108L109 96L120 99C133 102 142 110 143 124C131 117 116 117 100 125C84 117 69 117 57 124Z', PAPER, LINE, 1.1);
@@ -353,7 +360,7 @@ function drawVrouw(g) {
   p(g, 'M81 56C77 78 76 100 69 118C83 115 90 107 92 99H108C110 107 117 115 131 118C124 100 123 78 119 56C117 39 83 39 81 56Z', hair, LINE, 1.1);
   // gown with laced bodice and a gold neckline
   p(g, 'M57 140V127C57 113 64 105 76 102L86 99C90 106 95 109 100 109S110 106 114 99L124 102C136 105 143 113 143 127V140Z', 'currentColor', LINE, 1.2);
-  p(g, 'M90 107C93.5 108.6 96.8 109.4 100 109.4S106.5 108.6 110 107L104 140H96Z', GOLD, GOLD_DARK, 1);
+  p(g, 'M86 105C91.5 108 95.8 109.4 100 109.4S108.5 108 114 105L108 140H92Z', GOLD, GOLD_DARK, 1, ACCENT);
   p(g, 'M96.6 114L103.4 120M103.4 114L96.6 120M97.4 123L102.6 129M102.6 123L97.4 129M98 132L102 137M102 132L98 137', null, 'currentColor', 1.1);
   p(g, 'M73 104C69 114 67 127 68 140M127 104C131 114 133 127 132 140', null, GOLD, 1.4);
   p(g, 'M93 76V96C90 97 88 98 86 99C90 106 95 109 100 109S110 106 114 99C112 98 110 97 107 96V76Z', SKIN, LINE, 1.1);
@@ -392,7 +399,7 @@ function drawBoer(g) {
   // tunic with slashed sleeves, doublet, buttons and collar
   p(g, TORSO, 'currentColor', LINE, 1.2);
   p(g, 'M65 106L69.5 124M73.5 103L77 121M126.5 103L123 121M135 106L130.5 124', null, GOLD, 1.8);
-  p(g, 'M89 98L100 110L111 98L114.5 140H85.5Z', PAPER, LINE, 1);
+  p(g, 'M89 98L100 110L111 98L114.5 140H85.5Z', PAPER, LINE, 1, ACCENT);
   p(g, 'M91.5 106V140M95.6 110V140M104.4 110V140M108.5 106V140', null, 'currentColor', 1.1, { 'stroke-opacity': 0.55 });
   for (const y of [117, 126, 135]) dot(g, 100, y, 2.2, GOLD, { stroke: GOLD_DARK, 'stroke-width': 0.6 });
   neck(g);
@@ -404,7 +411,7 @@ function drawBoer(g) {
   // beret with a plume
   p(g, 'M110 44C113 33 121 23.5 133 18.5C132 28 124.5 38 115 48Z', GOLD, GOLD_DARK, 0.9);
   p(g, 'M112.4 45.5C116 35.5 123 26.5 132 20M118.6 37.4L124 36.2M122.4 31.4L127.6 30.6M115.8 42.6L120.6 41.8', null, GOLD_DARK, 0.7);
-  p(g, 'M80 55C77 41 89 33 103 34C117 35 125 42 122 52C116 55 108.5 54 100 54S86 56 80 55Z', 'currentColor', LINE, 1.2);
+  p(g, 'M80 55C77 41 89 33 103 34C117 35 125 42 122 52C116 55 108.5 54 100 54S86 56 80 55Z', 'currentColor', LINE, 1.2, ACCENT);
   p(g, 'M81.5 52C92 49 110 49 121.3 51L120.8 55C110 53.5 92 53.6 82 56.4Z', GOLD, GOLD_DARK, 0.8);
   // spear
   p(g, 'M66 140V52', null, '#6e4524', 3.4);
