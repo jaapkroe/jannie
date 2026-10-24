@@ -761,6 +761,13 @@ body[data-screen="game"] #game {
   color: var(--ink-3);
 }
 
+.home-ver {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  opacity: 0.75;
+}
+
 body.busy::after {
   content: "";
   position: fixed;

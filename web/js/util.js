@@ -294,6 +294,14 @@ export function vibrate(ms) {
   try { navigator.vibrate?.(ms); } catch { /* not supported */ }
 }
 
+// The version the home page shows: the commit the web image was built from
+// (index.html's meta version, filled in by the Containerfile), shortened as
+// git does, with -dirty kept; "dev" when it was not filled in.
+export function versionText(v) {
+  const m = /^([0-9a-f]{7})[0-9a-f]*(-dirty)?$/.exec(v || '');
+  return m ? m[1] + (m[2] || '') : 'dev';
+}
+
 // ---------- game helpers ----------
 
 export const POS = ['bottom', 'left', 'top', 'right'];

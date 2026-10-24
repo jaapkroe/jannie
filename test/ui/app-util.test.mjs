@@ -26,6 +26,7 @@ const {
   store, roemText, cap, playerName, keyboardOpen, textField, handHeadline, DEFAULT_NAME,
   posOf, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText, countWord,
   reviewVerdict, luckText, momentWhere, strongLine, missedLine, outcomeLine, timeText, reviewHistory,
+  versionText,
 } = await import('../../web/js/util.js');
 
 test('store keeps values in memory when localStorage is blocked', () => {
@@ -294,4 +295,13 @@ test('the review history on the device lists the earlier percentages once', () =
   store.set('reviews', '{"broken":');
   assert.deepEqual(reviewHistory({ id: 'z', pct: 1 }), []);
   store.del('reviews');
+});
+
+test('versionText: the commit shortened, -dirty kept, "dev" when not filled in', () => {
+  assert.equal(versionText('a05a087d1f9ff827b5d8c4f9de0bc387d2c23957'), 'a05a087');
+  assert.equal(versionText('a05a087d1f9ff827b5d8c4f9de0bc387d2c23957-dirty'), 'a05a087-dirty');
+  assert.equal(versionText('@VERSION@'), 'dev');
+  assert.equal(versionText('dev'), 'dev');
+  assert.equal(versionText(''), 'dev');
+  assert.equal(versionText(undefined), 'dev');
 });

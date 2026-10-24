@@ -975,7 +975,7 @@ function openReview() {
       r.replay?.length ? h('button', { class: 'btn btn-ghost btn-block rv-replay', type: 'button', onclick: () => openReplay(s, r) },
         icon('history'), 'Potjes terugkijken') : null,
       prev.length ? h('p', { class: 'rv-prev' }, 'Vorige partijen ', h('b', { text: prev.map(p => `${p}%`).join(' · ') })) : null,
-      h('p', { class: 'legend', text: 'Disclaimer: Niet mee eens? Deze analyse is gebaseerd op de game engine en kan fouten bevatten.' }),
+      h('p', { class: 'legend', text: 'Disclaimer: Dit is slechts de mening van Juf Ans.' }),
     ],
   });
 }
@@ -1148,7 +1148,7 @@ let chatOpen = false;
 let unread = 0;
 let log = [];          // messages shown, to re-render once seats are known
 const C = {};
-const QUICK = ['👍', '😂', '😱', 'Mooi!', 'Nat!', 'Goed gespeeld!'];
+const QUICK = ['👍', '😂', '😱', '😭', 'Mooi!', 'Nat!', 'Goed gespeeld!'];
 const wideMQ = matchMedia('(min-width: 1200px)');
 
 export function initChat() {

@@ -33,13 +33,16 @@ CMD ["-addr", "127.0.0.1:8081"]
 
 # The nginx configuration with the public host name filled in, checked here so
 # a broken one never reaches the web image; and index.html with it, for the
-# link preview's og:image, which must be an absolute URL.
+# link preview's og:image, which must be an absolute URL, and with the commit,
+# the version the home page shows.
 FROM docker.io/nginxinc/nginx-unprivileged:1.31-alpine AS web-conf
 ARG SITE=klaverjas.kroes.dev
+ARG GIT_SHA=dev
 COPY deploy/nginx.conf /tmp/nginx.conf.in
 COPY web/index.html /tmp/index.html.in
 RUN sed "s|@SITE@|${SITE}|g" /tmp/nginx.conf.in > /tmp/nginx.conf && nginx -t -q -c /tmp/nginx.conf && \
-    sed "s|@SITE@|${SITE}|g" /tmp/index.html.in > /tmp/index.html && ! grep -q @SITE@ /tmp/index.html
+    sed -e "s|@SITE@|${SITE}|g" -e "s|@VERSION@|${GIT_SHA}|g" /tmp/index.html.in > /tmp/index.html && \
+    ! grep -q -e @SITE@ -e @VERSION@ /tmp/index.html
 
 FROM docker.io/nginxinc/nginx-unprivileged:1.31-alpine AS web
 ARG GIT_SHA=dev

@@ -219,6 +219,7 @@ func TestClassifyReply(t *testing.T) {
 		"NAT!":                    "nat",
 		"pech":                    "pech",
 		"jammer joh":              "pech",
+		"😭":                       "pech",
 		"sorry maat":              "sorry",
 		"bedankt":                 "thanks",
 		"doei":                    "bye",

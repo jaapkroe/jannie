@@ -116,7 +116,7 @@ var replyKinds = []struct {
 	{"thanks", []string{"bedankt", "dankje", "dankjewel", "thanks", "thx", "merci"}, []string{"dank je", "dank u"}},
 	{"help", []string{"help", "hoe", "uitleg", "regels", "waarom"}, []string{"snap het niet", "wat moet ik", "hoe werkt"}},
 	{"nat", []string{"nat"}, nil},
-	{"pech", []string{"pech", "jammer", "balen", "helaas", "verdorie", "shit", "damn"}, nil},
+	{"pech", []string{"pech", "jammer", "balen", "helaas", "verdorie", "shit", "damn"}, []string{"😭", "😢"}},
 	{"laugh", []string{"haha", "hahaha", "hihi", "lol", "hehe", "xd"}, []string{"😂", "🤣", "😆", ":d"}},
 	{"hello", []string{"hoi", "hallo", "hey", "hee", "hé", "goedenavond", "goedemiddag", "goedemorgen", "avond", "yo", "moi", "hai", "dag", "hoihoi"}, []string{"👋"}},
 	{"bye", []string{"doei", "doeg", "welterusten", "ciao", "bye"}, []string{"tot ziens", "tot later", "slaap lekker", "ik ga"}},
