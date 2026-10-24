@@ -150,7 +150,7 @@ export function init() {
     h('label', { class: 'name-lbl', for: 'name', text: 'Je naam' }), E.name, E.invite, E.main);
   root.querySelector('.home-inner').append(E.card,
     h('footer', { class: 'home-foot' },
-      h('span', { text: 'Klaverjassen zoals in het café: Utrechts of gedraaid, Amsterdams of Rotterdams.' })),
+      h('span', { text: 'Klaverjassen zoals in het café.' })),
   );
   E.lobby = document.getElementById('lobby');
   buildLobby();

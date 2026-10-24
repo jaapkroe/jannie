@@ -118,7 +118,7 @@ export const CONTENT = {
         ['Troef', 'De troefkleur van dit potje. Tik erop om te zien wie hem koos, hoe het potje ervoor staat en welke variant jullie spelen.'],
         ['Laatste slag', 'Bekijk de vorige slag nog eens: wie wat speelde, wie hem won en hoeveel punten en roem erin zaten.', 'history'],
         ['Scorebord', 'Alle potjes op een rij: troef, wie er speelde, punten en roem per koppel, **nat** en **pit** duidelijk gemarkeerd, en de stand. Tik op het laatste potje om de slagen terug te zien, en op een slag om te zien wie wat speelde.', 'score'],
-        ['Chat', 'Kletsen met de tafel. Met de snelle reacties (👍 😂 😱 Mooi! Nat! Goed gespeeld!) ben je in één tik klaar. Schrijft een andere speler iets, dan staat er een bolletje met het aantal nieuwe berichten op de knop. De AI-spelers praten ook terug.', 'chat'],
+        ['Chat', 'Kletsen met de tafel. Met de snelle reacties (👍 😂 😱 😭 Mooi! Nat! Goed gespeeld!) ben je in één tik klaar. Schrijft een andere speler iets, dan staat er een bolletje met het aantal nieuwe berichten op de knop. De AI-spelers praten ook terug.', 'chat'],
         ['Handleiding', 'Deze uitleg, ook midden in een potje.', 'help'],
         ['Instellingen', 'Geluidseffecten en volume, vierkleurenspel (klaveren groen, ruiten blauw), **Eén tik** of **Twee tikken** om een kaart te spelen, minder animaties en je naam.', 'settings'],
         ['Geluid', 'Zet het geluid in één tik aan of uit.', 'soundOn'],

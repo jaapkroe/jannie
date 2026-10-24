@@ -1318,8 +1318,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   with three players, 8 × 2 with two), in short landscape they sit beside
   the score; the ready chips show only with another person at the table
   (who left no longer counts).
-- **Chat**: drawer (side panel on wide screens), quick reactions (👍 😂 😱 "Mooi!"
-  "Nat!" "Goed gespeeld"), bot lines, system lines, unread badge (counts what
+- **Chat**: drawer (side panel on wide screens), quick reactions (👍 😂 😱 😭
+  "Mooi!" "Nat!" "Goed gespeeld"), bot lines, system lines, unread badge (counts what
   people write; system lines and bot chatter, shown as speech bubbles, do not).
   Speech bubbles stay behind the cards of the trick and never overlap each
   other: a chat line in the way of another bubble waits for room (dropped
@@ -1366,8 +1366,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   first hand. Then
   *Vorige partijen 79% · 83%* (the percentages of up to five earlier matches
   on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
-  Niet mee eens? Deze analyse is gebaseerd op de game engine en kan fouten
-  bevatten.* Apart from the verdict, the wording is plain and factual:
+  Dit is slechts de mening van Juf Ans.* Apart from the verdict, the wording is plain and factual:
   numbers, cards and the hint's reasons, no praise or consolation. The game-over buttons stay in view with
   the line: on a short phone it takes the place of the emoji (portrait up to
   760 px high) and of *Laatste potje* (up to 680 px); in short landscape the
