@@ -641,22 +641,49 @@ CHECKS.hometiles = async browser => {
   }
 };
 
-// Touch: a lifted card says how to play it; a forced card plays on one tap.
-// The chat badge stays dark for bot and system lines.
+// Touch: a lifted card says how to play it, and a tap beside the hand puts
+// it down again, also one lifted while others play; a forced card plays on
+// one tap. The chat badge stays dark for bot and system lines.
 CHECKS.taps = async browser => {
   const P = await page(browser, VP.phone, 'taps');
+  // Taps an empty spot of the felt; returns what is lifted then.
+  const tapAside = async () => {
+    const pt = await P.page.evaluate(() => {
+      const t = document.querySelector('.table').getBoundingClientRect();
+      const hand = document.querySelector('.hand');
+      for (let fy = 0.35; fy < 0.7; fy += 0.05) {
+        for (let fx = 0.1; fx < 0.9; fx += 0.1) {
+          const x = t.left + t.width * fx;
+          const y = t.top + t.height * fy;
+          const el = document.elementFromPoint(x, y);
+          if (el && !hand.contains(el) && !el.closest('button, a, .card, .panel, .bubble')) return { x, y };
+        }
+      }
+      return null;
+    });
+    if (!pt) throw new Error('no empty spot on the felt');
+    await P.page.touchscreen.tap(pt.x, pt.y);
+    await sleep(250);
+    return P.page.evaluate(() => ({
+      lifted: [...document.querySelectorAll('.hand .card.selected')].map(e => e.dataset.card).join(),
+      rule: document.querySelector('.rule').textContent,
+    }));
+  };
   await run(P, async () => {
     await home(P);
     await quick(P);
     let lifted = false;
     let forced = false;
+    const aside = { mine: false, theirs: false };
     const t0 = Date.now();
-    while ((!lifted || !forced) && Date.now() - t0 < 120000) {
+    while ((!lifted || !forced || !aside.mine || !aside.theirs) && Date.now() - t0 < 120000) {
       const st = await P.page.evaluate(() => ({
         trump: !!document.querySelector('.panel-trump .suit-btn:not(:disabled)'),
         play: !!document.querySelector('.hand.my-turn .card.legal'),
         summary: !!document.querySelector('.m-summary.open .btn-go:not(:disabled)'),
         legal: document.querySelectorAll('.hand.my-turn .card.legal').length,
+        theirs: document.querySelectorAll('.hand .card').length > 1 && !document.querySelector('.hand.my-turn')
+          && document.querySelectorAll('.trick .card').length > 0 && document.querySelectorAll('.trick .card').length < 4,
       }));
       if (st.trump) await press(P, '.panel-trump .suit-btn:not(:disabled)');
       else if (st.summary) await press(P, '.m-summary .btn-go', { timeout: 1000 }).catch(() => {});
@@ -673,13 +700,31 @@ CHECKS.taps = async browser => {
           if (after.gone) throw new Error(`one tap played ${code} with ${st.legal} legal cards`);
           if (!after.rule.startsWith('Tik nog eens om ')) throw new Error(`no cue after lifting ${code}: "${after.rule}"`);
           lifted = true;
+          if (!aside.mine) {
+            const r = await tapAside();
+            if (r.lifted || r.rule.startsWith('Tik nog eens om ')) throw new Error(`a tap beside the hand left ${r.lifted || code} lifted: "${r.rule}"`);
+            aside.mine = true;
+            await pressEl(P, el);
+            await sleep(350);
+          }
           const again = await P.page.$(`.hand .card.selected[data-card="${code}"]`);
           await pressEl(P, again);
+        }
+      } else if (st.theirs && !aside.theirs) {
+        // Someone else's turn: a tap lifts a card, a tap beside puts it down.
+        const el = await P.page.$('.hand .card');
+        const code = await el.evaluate(e => e.dataset.card);
+        await pressEl(P, el);
+        await sleep(250);
+        if (await P.page.$(`.hand .card.selected[data-card="${code}"]`)) {
+          const r = await tapAside();
+          if (r.lifted) throw new Error(`a tap beside the hand left ${r.lifted} lifted while others play`);
+          aside.theirs = true;
         }
       }
       await sleep(120);
     }
-    if (!lifted || !forced) throw new Error(`saw lifted ${lifted}, forced ${forced}`);
+    if (!lifted || !forced || !aside.mine || !aside.theirs) throw new Error(`saw lifted ${lifted}, forced ${forced}, put down ${JSON.stringify(aside)}`);
     const badge = await P.page.$eval('.topbar .chat-badge', e => (e.hidden ? '' : e.textContent));
     if (badge) throw new Error(`chat badge "${badge}" without anyone writing`);
   });
