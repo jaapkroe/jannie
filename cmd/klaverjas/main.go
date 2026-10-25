@@ -37,6 +37,7 @@ func main() {
 	static := flag.String("static", "", "also serve the frontend from this directory (development)")
 	fast := flag.Bool("fast", false, "scale all game delays by 0.05 (tests)")
 	health := flag.Bool("healthcheck", false, "check /api/health on -addr and exit 0 (healthy) or 1")
+	games := flag.String("games", "", "keep the game log (design §6) in this directory; empty keeps none")
 	var allowed origins
 	flag.Var(&allowed, "origin", "allowed websocket Origin host pattern besides the request host (repeatable)")
 	flag.Parse()
@@ -47,19 +48,20 @@ func main() {
 
 	log := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(log)
-	if err := run(log, *addr, *static, *fast, allowed); err != nil {
+	if err := run(log, *addr, *static, *games, *fast, allowed); err != nil {
 		log.Error("server failed", "err", err.Error())
 		os.Exit(1)
 	}
 }
 
-func run(log *slog.Logger, addr, static string, fast bool, allowed []string) error {
+func run(log *slog.Logger, addr, static, games string, fast bool, allowed []string) error {
 	game := server.New(server.Config{
 		AI:             botAI{},
 		Fast:           fast,
 		AllowedOrigins: allowed,
 		Version:        version,
 		Logger:         log,
+		GameLog:        games,
 	})
 	api := game.Handler()
 	mux := http.NewServeMux()

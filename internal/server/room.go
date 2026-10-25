@@ -127,6 +127,20 @@ type room struct {
 	// The review of the humans' play (review.go).
 	matchID    string
 	handTricks [][]game.Trick // the tricks of every finished hand of the match
+
+	// The deals and the game log (matchlog.go).
+	seed     uint64     // of this match: every deal comes from it
+	deals    *rand.Rand // the stream the deals come from (dealRNG)
+	dealt    dealtCards // the cards of the hand in play as dealt
+	acts     string     // the decisions of the hand in play (actToken), space-separated
+	handActs []string   // acts of every finished hand of the match
+}
+
+// dealtCards is a hand as dealt: the seats' cards and the talon (three
+// players).
+type dealtCards struct {
+	hands [4][]game.Card
+	talon []game.Card
 }
 
 func newRoom(s *Server, code string) *room {
@@ -627,6 +641,7 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 	old := r.displayName(i)
 	r.seats[i] = newHuman(name)
 	r.setClient(i, c)
+	r.logSeat(i)
 	if r.host == game.NoSeat {
 		r.host = i
 	}
@@ -698,6 +713,7 @@ func (r *room) reclaim(c *client, i game.Seat) {
 	st.away = false // this line instead of "… is terug."
 	r.sysChat("%s speelt verder op een ander apparaat.", st.name)
 	r.reconnect(c, i)
+	r.logSeat(i) // another address and device
 }
 
 // reconnect returns c to its seat (join with the seat token).
@@ -864,6 +880,7 @@ func (r *room) close(reason string) {
 			r.setClient(game.Seat(i), nil)
 		}
 	}
+	r.logClose(reason)
 	r.srv.removeRoom(r)
 	r.stop()
 	r.log.Info("room removed", "reason", reason, "hands", r.handNo)
@@ -947,6 +964,10 @@ func (r *room) handle(c *client, m *inMsg) {
 		r.cmdLobby(c, i)
 	case "leave":
 		r.leave(c, i)
+	case "mark":
+		r.cmdMark(c, i, m)
+	case "feedback":
+		r.cmdFeedback(c, i, m)
 	default:
 		c.sendError(errInvalid, "Dat bericht ken ik niet.")
 	}

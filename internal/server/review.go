@@ -6,8 +6,11 @@ import (
 	"math"
 	"runtime"
 	"slices"
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"klaverjas/internal/game"
 )
@@ -65,6 +68,10 @@ type review struct {
 	missed, strong []moment
 
 	thinks []think // how long each decision took (see timeChoice)
+	logged bool    // the complete review is in the game log
+
+	marks     map[[2]int]choiceJSON // the player's own choices by hand and trick (cmdMark)
+	feedbackN int                   // feedback lines given (cmdFeedback)
 }
 
 // think is how long a human took over one decision, from the turn opening.
@@ -122,6 +129,16 @@ type reviewState struct {
 
 	Speed  *speedState  `json:"speed"`  // null when no decision was timed
 	Replay []replayHand `json:"replay"` // the finished hands of the match
+	Seed   uint64       `json:"seed"`   // of the match (design §3)
+	Marks  []markJSON   `json:"marks"`  // the player's own choices, given while looking back
+}
+
+// markJSON is the player's own choice for the decision in hand Hand,
+// trick Trick (0: the trump choice or bid): one of card, suit or play.
+type markJSON struct {
+	Hand  int `json:"hand"`
+	Trick int `json:"trick"`
+	choiceJSON
 }
 
 // speedState is how fast the player decided (design §7): times in ms.
@@ -142,10 +159,12 @@ type speedSum struct {
 }
 
 // replayHand is a finished hand as the replay shows it: the cards dealt to
-// each seat, sorted as in a hand under its trump, and the tricks.
+// each seat, sorted as in a hand under its trump, the tricks, and per trick
+// the cards the player could play in it (for a mark of their own).
 type replayHand struct {
 	Cards  [4][]game.Card `json:"cards"`
 	Tricks []game.Trick   `json:"tricks"`
+	Legal  [][]game.Card  `json:"legal"`
 }
 
 // reviewOf returns the review of human seat i, started when needed (a
@@ -306,11 +325,15 @@ func (r *room) reviewTrick(t game.Trick) {
 	}
 }
 
-// reviewDone sends a finished review to its player once the last grade is
-// in after the match ended.
+// reviewDone sends a finished review to its player, and to the game log,
+// once the last grade is in after the match ended.
 func (r *room) reviewDone(i game.Seat, rv *review) {
 	st := &r.seats[i]
-	if rv.pending == 0 && r.phase == phaseGameOver && st.review == rv && st.client != nil {
+	if rv.pending != 0 || r.phase != phaseGameOver || st.review != rv {
+		return
+	}
+	r.logReview(i, rv)
+	if st.client != nil {
 		r.resync(st.client, i)
 	}
 }
@@ -408,7 +431,13 @@ func (r *room) reviewFor(i game.Seat) *reviewState {
 	}
 	out.Strong, out.Missed = r.listed(rv.strong), r.listed(rv.missed)
 	out.Speed = r.speedOf(i)
-	out.Replay = r.replay()
+	out.Replay = r.replay(i)
+	out.Seed = r.seed
+	out.Marks = make([]markJSON, 0, len(rv.marks))
+	for k, m := range rv.marks {
+		out.Marks = append(out.Marks, markJSON{Hand: k[0], Trick: k[1], choiceJSON: m})
+	}
+	slices.SortFunc(out.Marks, func(a, b markJSON) int { return cmp.Or(cmp.Compare(a.Hand, b.Hand), cmp.Compare(a.Trick, b.Trick)) })
 	return out
 }
 
@@ -450,9 +479,9 @@ func (r *room) speedOf(i game.Seat) *speedState {
 	return sp
 }
 
-// replay is every finished hand of the match for the replay of the review:
-// a table of four, where every card dealt is played.
-func (r *room) replay() []replayHand {
+// replay is every finished hand of the match for the replay of the review
+// of seat i: a table of four, where every card dealt is played.
+func (r *room) replay(i game.Seat) []replayHand {
 	out := make([]replayHand, len(r.handTricks))
 	for h, tricks := range r.handTricks {
 		out[h].Tricks = tricks
@@ -464,8 +493,171 @@ func (r *room) replay() []replayHand {
 		for s := range out[h].Cards {
 			out[h].Cards[s] = game.SortHand(out[h].Cards[s], r.scores[h].Trump, true)
 		}
+		out[h].Legal = make([][]game.Card, len(tricks))
+		for t := range tricks {
+			if hand, cur, ok := r.handAt(i, h+1, t+1); ok {
+				out[h].Legal[t] = game.LegalMoves(hand, cur, i, r.scores[h].Trump, r.opts.Rules)
+			}
+		}
 	}
 	return out
+}
+
+// handAt is what seat i held before its card in trick t (1–8) of finished
+// hand h (1-based), and the trick so far; false when i played no card in it.
+// At a table of four every card dealt is played, so the hand is the cards i
+// played from trick t on.
+func (r *room) handAt(i game.Seat, h, t int) ([]game.Card, game.Trick, bool) {
+	if h < 1 || h > len(r.handTricks) || t < 1 || t > len(r.handTricks[h-1]) {
+		return nil, game.Trick{}, false
+	}
+	tricks := r.handTricks[h-1]
+	var hand []game.Card
+	for _, tr := range tricks[t-1:] {
+		for _, p := range tr.Cards {
+			if p.Seat == i {
+				hand = append(hand, p.Card)
+			}
+		}
+	}
+	cur := tricks[t-1]
+	at := slices.IndexFunc(cur.Cards, func(p game.Played) bool { return p.Seat == i })
+	if at < 0 {
+		return nil, game.Trick{}, false
+	}
+	return hand, game.Trick{Leader: cur.Leader, Cards: slices.Clone(cur.Cards[:at])}, true
+}
+
+// Limits on what a player adds to their review.
+const (
+	maxOwnMarks    = 200
+	maxFeedback    = 20   // feedback lines per player and match
+	maxFeedbackLen = 2000 // characters
+)
+
+// cmdMark sets or clears the player's own choice for one of their
+// decisions (design §7 mark): a legal card for a card they played, a suit
+// for a trump choice they made, spelen or passen for a bid they gave. The
+// mark goes to the game log, and the review shows it.
+func (r *room) cmdMark(c *client, i game.Seat, m *inMsg) {
+	rv := r.seats[i].review
+	if r.phase != phaseGameOver || rv == nil || m.Hand == nil || m.Trick == nil {
+		c.sendError(errInvalid, "Je eigen keuze geef je in de spelanalyse, na het spel.")
+		return
+	}
+	h, t := *m.Hand, *m.Trick
+	if h < 1 || h > len(r.handTricks) {
+		c.sendError(errInvalid, "Dat potje bestaat niet.")
+		return
+	}
+	var mark, played choiceJSON
+	switch {
+	case t >= 1:
+		hand, cur, ok := r.handAt(i, h, t)
+		if !ok {
+			c.sendError(errInvalid, "In die slag speelde je geen kaart.")
+			return
+		}
+		pc := r.handTricks[h-1][t-1].Cards[len(cur.Cards)].Card
+		played.Card = &pc
+		if m.Card != "" {
+			card, err := game.ParseCard(m.Card)
+			if err != nil || !slices.Contains(game.LegalMoves(hand, cur, i, r.scores[h-1].Trump, r.opts.Rules), card) {
+				c.sendError(errInvalid, "Die kaart mocht je daar niet spelen.")
+				return
+			}
+			mark.Card = &card
+		}
+	case t == 0 && m.Suit != "" || t == 0 && m.Play == nil && r.scores[h-1].TrumpBy == i:
+		if r.scores[h-1].TrumpBy != i {
+			c.sendError(errInvalid, "In dat potje koos je geen troef.")
+			return
+		}
+		trump := r.scores[h-1].Trump
+		played.Suit = &trump
+		if m.Suit != "" {
+			s, err := game.ParseSuit(m.Suit)
+			if err != nil {
+				c.sendError(errInvalid, "Kies een kleur: klaveren, ruiten, harten of schoppen.")
+				return
+			}
+			mark.Suit = &s
+		}
+	case t == 0:
+		// The bid's token in acts, "<seat>b1" or "<seat>b0" (actToken);
+		// the padding makes the found index that of the token in acts.
+		at := strings.Index(" "+r.handActs[h-1]+" ", " "+strconv.Itoa(int(i))+"b")
+		if at < 0 {
+			c.sendError(errInvalid, "In dat potje bood je niet.")
+			return
+		}
+		p := r.handActs[h-1][at+2] == '1'
+		played.Play = &p
+		mark.Play = m.Play
+	default:
+		c.sendError(errInvalid, "Die slag bestaat niet.")
+		return
+	}
+	key := [2]int{h, t}
+	if mark == (choiceJSON{}) {
+		delete(rv.marks, key)
+	} else {
+		if _, ok := rv.marks[key]; !ok && len(rv.marks) >= maxOwnMarks {
+			c.sendError(errLimit, "Je hebt al genoeg zetten van een eigen keuze voorzien.")
+			return
+		}
+		if rv.marks == nil {
+			rv.marks = make(map[[2]int]choiceJSON)
+		}
+		rv.marks[key] = mark
+	}
+	r.srv.games.write(logMark{T: "mark", Match: r.matchID, At: time.Now().UTC(), Seat: int(i), Name: r.displayName(i),
+		Hand: h, Trick: t, Mark: mark, Played: &played})
+	r.resync(c, i)
+}
+
+// cmdFeedback keeps a player's free text about the game, or about one
+// situation of it (hand, trick), in the game log (design §7 feedback).
+func (r *room) cmdFeedback(c *client, i game.Seat, m *inMsg) {
+	rv := r.seats[i].review
+	if r.phase != phaseGameOver || rv == nil {
+		c.sendError(errInvalid, "Een opmerking geef je bij de spelanalyse, na het spel.")
+		return
+	}
+	text := cleanFeedback(m.Text)
+	if text == "" {
+		c.sendError(errInvalid, "Schrijf eerst wat je kwijt wilt.")
+		return
+	}
+	if rv.feedbackN >= maxFeedback {
+		c.sendError(errLimit, "Je hebt al genoeg opmerkingen gegeven bij dit spel.")
+		return
+	}
+	rv.feedbackN++
+	rec := logFeedback{T: "feedback", Match: r.matchID, At: time.Now().UTC(), Seat: int(i), Name: r.displayName(i),
+		IP: c.ip, Device: c.device, Text: text}
+	if m.Hand != nil && m.Trick != nil && *m.Hand >= 1 && *m.Hand <= len(r.handTricks) && *m.Trick >= 0 && *m.Trick <= 8 {
+		rec.Hand, rec.Trick = *m.Hand, *m.Trick
+	}
+	r.srv.games.write(rec)
+	c.send(mustJSON(savedMsg{T: "saved", What: "feedback"}))
+}
+
+// cleanFeedback cleans feedback line by line (cleanText), keeping the
+// lines, at most maxFeedbackLen characters in all.
+func cleanFeedback(s string) string {
+	var lines []string
+	left := maxFeedbackLen
+	for _, l := range strings.Split(s, "\n") {
+		if left <= 0 {
+			break
+		}
+		if l = cleanText(l, left); l != "" {
+			lines = append(lines, l)
+			left -= utf8.RuneCountInString(l) + 1
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 // listed picks the moments with the most points, in the order they were

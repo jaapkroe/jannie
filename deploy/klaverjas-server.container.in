@@ -1,7 +1,9 @@
 # Rendered by `make install` into ~/.config/containers/systemd/klaverjas-server.container.
 # The game server: one static binary in an empty image, listening on
 # 127.0.0.1:8081 inside the pod, reached only through klaverjas-web. Games live
-# in memory: a restart ends every game in progress.
+# in memory: a restart ends every game in progress. The game log (design §6)
+# goes to the named volume klaverjas-games, owned by the server's user (:U).
+#   game log: podman volume inspect klaverjas-games --format '{{.Mountpoint}}'
 #   restart: systemctl --user restart klaverjas-server     logs: journalctl --user -u klaverjas-server
 [Unit]
 Description=Klaverjas game server, https://@SITE@/
@@ -16,6 +18,8 @@ NoNewPrivileges=true
 DropCapability=ALL
 # Exec form: the image has no shell. Asks the server's own /api/health.
 HealthCmd=["/klaverjas","-healthcheck"]
+Volume=klaverjas-games:/data:U
+Exec=-addr 127.0.0.1:8081 -games /data
 HealthInterval=60s
 HealthRetries=3
 # Three failed checks kill the container, and Restart= below brings it back.

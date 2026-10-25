@@ -69,6 +69,7 @@ export const CONTENT = {
         ['AI-sterkte', '**Makkelijk**, **Normaal** (standaard) of **Sterk**: hoe goed de AI-spelers spelen.'],
         ['Tempo', '**Rustig**, **Normaal** (standaard) of **Snel**: hoe vlot de AI-spelers spelen en hoe lang een slag blijft liggen.'],
         ['Seinen', 'Met z’n vieren: welke seinen aan tafel gelden. Tik een afspraak aan of uit: **Aas vraagt 10**, **Kleintje boer** en **Hoog/laag** staan standaard aan, **Boer over boer** uit. De AI-spelers en de tips houden zich eraan, zie Seinen.'],
+        ['Seed', 'Leeg laten (standaard) geeft elke partij nieuwe kaarten. Met een getal krijg je bij dezelfde spelregels dezelfde kaarten, ook bij [Nog een partij]: zo speel je een partij nog eens. De seed van een partij staat in de spelanalyse.'],
       ],
     },
 
@@ -133,6 +134,8 @@ export const CONTENT = {
     { p: 'Na de laatste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle slagen. Tik op een slag om te zien wie wat speelde. Het volgende potje begint na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt.' },
     { p: 'Na het laatste potje wint het koppel met de meeste punten, of met z’n drieën of tweeën de speler met de meeste punten. De host kan met [Nog een partij] meteen opnieuw beginnen, met dezelfde spelers en spelregels.' },
     { p: 'Onder de eindstand staat **Jouw spel volgens Juf Ans**: een percentage voor je eigen keuzes. Juf Ans is de game engine die ook de AI-spelers en de tips aanstuurt; ze rekent met alleen wat jij op dat moment wist. Tik erop voor hoe je kaarten waren, je bedenktijd, je sterkste zetten en waar punten bleven liggen. Tik op zo’n zet om het potje kaart voor kaart terug te kijken, met alle kaarten open. Alleen jij ziet je eigen analyse. De analyse is er alleen bij een spel met z’n vieren.' },
+    { p: 'Bij het terugkijken kun je bij elke zet van jou de kaart aantikken die jij **bij nader inzien** het beste vindt, dezelfde of een andere, en bij je troefkeuze de kleur. Onder de spelanalyse, en bij elke situatie, kun je een **opmerking** achterlaten. Bovenaan de analyse staat de **seed** van de partij: vul die bij Nieuw spel in om dezelfde kaarten nog eens te spelen.' },
+    { p: 'De server bewaart van elke partij de kaarten, de zetten, de spelanalyse, je eigen keuzes en opmerkingen, en de naam, het IP-adres en het apparaat van de spelers. Dat gebruiken we om spellen terug te kijken en het spel te verbeteren.' },
     { p: 'Wil je eerst iets veranderen, of is er nog iemand bij gekomen? Met [Spelers of regels wijzigen] gaat de tafel terug naar Klaarzetten, met dezelfde spelcode. De AI-spelers die bij de start de lege plaatsen opvulden, staan dan weer op, zodat vrienden kunnen aanschuiven (zet zo nodig **Spelers** hoger), en de host kan de spelregels aanpassen.' },
 
     { h: 'Oefenen' },
