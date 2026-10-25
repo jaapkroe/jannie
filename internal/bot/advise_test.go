@@ -156,7 +156,7 @@ func TestTeachPick(t *testing.T) {
 // TestPartnerAce: a lead into the partner's (probable) ace says so.
 func TestPartnerAce(t *testing.T) {
 	// Seat 0 defends (seat 1 made trump), holds ♦9 ♦8 and leads ♦9.
-	tab := newTable(0, game.Clubs, 1, game.Amsterdams)
+	tab := newTable(0, game.Clubs, 1, game.Amsterdams, game.DefaultSignals)
 	hand := setOf(game.MustParseCards("9D 8D 7H 8H 9H 7S 8S 9S"))
 	tab.excl[1] |= bit(card("AD"))
 	tab.excl[3] |= bit(card("AD"))
@@ -196,7 +196,7 @@ func TestConcreteReason(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			tab := newTable(0, game.Hearts, 0, game.Amsterdams)
+			tab := newTable(0, game.Hearts, 0, game.Amsterdams, game.DefaultSignals)
 			tab.played = setOf(game.MustParseCards(c.played))
 			hand := setOf(game.MustParseCards(c.hand))
 			e := explainer{mover: newMover(&tab, 0, hand, hand, 0.5)}

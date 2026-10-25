@@ -213,7 +213,8 @@ func HandLuck(v game.View) (luck float64) {
 
 // playFromDeal plays deal d with hands w from its bids or trump choice to
 // the end with the rule-based policy and returns the score difference for
-// team.
+// team. It plays at a table with the default agreements on signals, as the
+// baseline of HandLuck does: what a hand is worth does not depend on them.
 func playFromDeal(d *game.Deal, w *[4]cardSet, team int) int {
 	for d.Phase() == game.PhaseBid {
 		s := d.Turn()
@@ -224,7 +225,7 @@ func playFromDeal(d *game.Deal, w *[4]cardSet, team int) int {
 		_ = d.ChooseTrump(s, bestTrumpNormal(w[s], d.Forced(), d.Turned()))
 	}
 	trump, _ := d.Trump()
-	s := sim{d: *d, t: newTable(d.Voorhand(), trump, d.TrumpBy(), d.Rules())}
+	s := sim{d: *d, t: newTable(d.Voorhand(), trump, d.TrumpBy(), d.Rules(), game.DefaultSignals)}
 	ag := [4]float64{0.5, 0.5, 0.5, 0.5}
 	s.run(&ag)
 	r := s.d.Result()

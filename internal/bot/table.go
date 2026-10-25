@@ -9,8 +9,9 @@ import "klaverjas/internal/game"
 type table struct {
 	trump   game.Suit
 	rules   game.Rules
-	playing int       // playing team
-	trumpBy game.Seat // who made trump
+	sig     game.Signals // the table's agreements on signals
+	playing int          // playing team
+	trumpBy game.Seat    // who made trump
 
 	played   cardSet    // every card played, including the current trick
 	playedBy [4]cardSet // cards played per seat
@@ -29,8 +30,8 @@ type table struct {
 	won     [2]int // tricks won per team
 	hasLed  [4]bool
 	// boerSig per team: the seat that signalled holding the trump boer by
-	// leading a small side card (kleintje boer, see signalsBoer), NoSeat if
-	// none.
+	// leading a small side card or a side boer (kleintje boer, boer over
+	// boer; see signalsBoer), NoSeat if none.
 	boerSig [2]game.Seat
 	// said per seat: the side cards the seat said it holds (aceSignal,
 	// lowSignal), and sigBy the cards with which it said so. A card in
@@ -39,10 +40,11 @@ type table struct {
 }
 
 // newTable starts the public state of a hand once trump is known.
-func newTable(voorhand game.Seat, trump game.Suit, trumpBy game.Seat, rules game.Rules) table {
+func newTable(voorhand game.Seat, trump game.Suit, trumpBy game.Seat, rules game.Rules, sig game.Signals) table {
 	return table{
 		trump:   trump,
 		rules:   rules,
+		sig:     sig,
 		playing: trumpBy.Team(),
 		trumpBy: trumpBy,
 		leader:  voorhand,
@@ -54,7 +56,7 @@ func newTable(voorhand game.Seat, trump game.Suit, trumpBy game.Seat, rules game
 
 // tableFromView replays the history in v. v must be in phase play or done.
 func tableFromView(v *game.View) table {
-	t := newTable(v.Voorhand, v.Trump, v.TrumpBy, v.Rules)
+	t := newTable(v.Voorhand, v.Trump, v.TrumpBy, v.Rules, game.SignalsOf(v))
 	for _, tr := range v.Tricks {
 		for _, p := range tr.Cards {
 			t.apply(p.Seat, p.Card)
@@ -83,14 +85,17 @@ func (t *table) trumpsAbove(h int8) cardSet {
 }
 
 // signalsBoer reports whether seat, leading c to a new trick, says "ik heb
-// de troefboer" (kleintje boer, design §8): a player of the playing team
-// (the maker or its partner) on its first lead, with a 7, 8 or 9 of a side
-// suit while the boer is still out. In gedraaid the maker's first lead need
+// de troefboer" (design §8): a player of the playing team (the maker or its
+// partner) on its first lead, while the boer is still out, with a 7, 8 or 9
+// of a side suit (kleintje boer) or with a side boer (boer over boer), as
+// far as the table agreed on them. In gedraaid the maker's first lead need
 // not be the first trick. Bots avoid leading such a card without the boer
 // (see mover.fakeSignal), so they can read it as a promise.
 func (t *table) signalsBoer(seat game.Seat, c game.Card) bool {
-	return t.n == 0 && !t.hasLed[seat] && seat.Team() == t.playing &&
-		c.Suit != t.trump && c.Rank <= game.Nine && !t.played.has(jackOf(t.trump))
+	if t.n != 0 || t.hasLed[seat] || seat.Team() != t.playing || c.Suit == t.trump || t.played.has(jackOf(t.trump)) {
+		return false
+	}
+	return t.sig.KleintjeBoer && c.Rank <= game.Nine || t.sig.BoerOverBoer && c.Rank == game.Jack
 }
 
 // Signals tell the partner which suit to lead, so they count only while
@@ -103,20 +108,29 @@ const (
 )
 
 // aceSignal reports whether leading c says "ik heb de 10 ook" (aas
-// voorspelen, design §8): c is the ace of a side suit whose 10 is still
-// out, led in time for the partner to come back to the suit. It returns
-// that 10, which makes the suit safe for the partner.
+// voorspelen, design §8), when the table agreed on it: c is the ace of a
+// side suit whose 10 is still out, led in time for the partner to come
+// back to the suit. It returns that 10, which makes the suit safe for the
+// partner.
 func (t *table) aceSignal(c game.Card) (game.Card, bool) {
 	ten := tenOf(c.Suit)
-	return ten, t.n == 0 && c.Rank == game.Ace && c.Suit != t.trump && !t.played.has(ten) && t.trickNo < aceSignalTricks
+	return ten, t.sig.Aas && t.n == 0 && c.Rank == game.Ace && c.Suit != t.trump && !t.played.has(ten) && t.trickNo < aceSignalTricks
+}
+
+// partnersTrick reports whether the partner of the seat to play holds the
+// current trick: only then does a discard signal (hoog/laag bijspelen);
+// into a trick the opponents hold it is just a card thrown away.
+func (t *table) partnersTrick() bool {
+	return t.n > 0 && t.win == t.next().Partner()
 }
 
 // lowSignal reports whether playing c into the current trick says "speel
-// deze kleur, daar heb ik de hoogste van" (laag bijspelen, design §8): c
-// is a 7, 8 or 9 of a side suit that was not led, so a discard, and a card
-// of that suit is still out besides c. It returns the highest such card.
+// deze kleur, daar heb ik de hoogste van" (laag bijspelen, design §8), when
+// the table agreed on hoog/laag: c is a 7, 8 or 9 of a side suit that was
+// not led, so a discard, on the partner's trick, and a card of that suit is
+// still out besides c. It returns the highest such card.
 func (t *table) lowSignal(c game.Card) (game.Card, bool) {
-	if t.n == 0 || c.Suit == t.trump || c.Suit == t.led() || c.Rank > game.Nine || t.trickNo >= lowSignalTricks {
+	if !t.sig.HoogLaag || !t.partnersTrick() || c.Suit == t.trump || c.Suit == t.led() || c.Rank > game.Nine || t.trickNo >= lowSignalTricks {
 		return game.Card{}, false
 	}
 	return (suitSet(c.Suit) &^ t.played &^ bit(c)).top(c.Suit, t.trump)

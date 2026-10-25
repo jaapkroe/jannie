@@ -146,22 +146,22 @@ func TestNormaalScenarios(t *testing.T) {
 			want:  "QS",
 		},
 		{
-			name: "laag bijspelen: discard low where you hold the highest card", voorhand: 0, trump: game.Hearts,
-			spec:  [4]string{"7D", "7C 8C QC AS 7S 8S 9S KS", "8D", "AD JS 9C QD 8H 7H"},
-			plays: "7D",
+			name: "laag bijspelen on partner's trick: discard low where you hold the highest card", voorhand: 2, trump: game.Hearts,
+			spec:  [4]string{"8D", "7C 8C 9C AS 7S 8S 9S 7H", "7D", "AD JS TC QD 8H KH"},
+			plays: "7D AD 8D",
 			want:  "7S",
 		},
 		{
-			name: "play to partner's laag bijspelen", voorhand: 0, trump: game.Hearts,
-			spec:  [4]string{"7D", "7C 8C QC AS 7S 8S 9S KS", "8D", "AD JS 9C QD 8H 7H"},
-			plays: "7D 7S 8D AD",
+			name: "play to partner's laag bijspelen", voorhand: 2, trump: game.Hearts,
+			spec:  [4]string{"8D", "7C 8C 9C AS 7S 8S 9S 7H", "7D", "AD JS TC QD 8H KH"},
+			plays: "7D AD 8D 7S",
 			want:  "JS",
 		},
 		{
-			name: "no highest card anywhere: discard a boer, not a false laag bijspelen", voorhand: 2, trump: game.Hearts,
+			name: "an opponents' trick: throw the cheapest card, a 7 says nothing there", voorhand: 2, trump: game.Hearts,
 			spec:  [4]string{"AD", "7C 8C QC KS 7S 8S 9S JS", "7D", "8D"},
 			plays: "7D 8D AD",
-			want:  "JS",
+			want:  "7C",
 		},
 	}
 	for _, c := range cases {
@@ -216,7 +216,8 @@ func TestPlayTexts(t *testing.T) {
 		voorhand game.Seat
 		spec     [4]string
 		trump    game.Suit
-		rules    game.Rules // default amsterdams
+		rules    game.Rules    // default amsterdams
+		sig      *game.Signals // default game.DefaultSignals
 		plays    string
 		card     string
 		want     string
@@ -255,12 +256,12 @@ func TestPlayTexts(t *testing.T) {
 			want:  "Je maat heeft de slag: spek hem met je ♠10, dat is 10 punten extra.",
 		},
 		{
-			name: "discard a worthless card", voorhand: 3, trump: game.Spades,
+			name: "discard a worthless card into an opponents' trick: no signal", voorhand: 3, trump: game.Spades,
 			spec: [4]string{"7D 9D TD JD 7S 8H 9H TH", "8D QD KD 7H AH 9C JC QC",
 				"AC TC 7C 8C KH QH JH KC", "AD JS 9S AS TS KS QS 8S"},
 			plays: "AD 7D 8D",
 			card:  "7C",
-			want:  "Gooi je ♣7 af: die is niets waard en je kunt niet bekennen. Met dit kleine kaartje zeg je ook tegen je maat: “speel klaveren, daar heb ik de hoogste van” (hoog/laag bijspelen).",
+			want:  "Gooi je ♣7 af: die is niets waard en je kunt niet bekennen.",
 		},
 		{
 			name: "roem for us", trump: game.Clubs,
@@ -469,25 +470,33 @@ func TestPlayTexts(t *testing.T) {
 			want:  "Gooi ♠V af: je kunt niet bekennen; houd ♣7 bij je ♣10, anders staat die kaal.",
 		},
 		{
-			name: "laag bijspelen: a small discard below your highest card", voorhand: 0, trump: game.Hearts,
+			name: "laag bijspelen on partner's trick: a small discard below your highest card", voorhand: 3, trump: game.Hearts,
 			spec:  [4]string{"7D", "7C 8C QC AS 7S 8S 9S KS", "8D", "AD JS 9C QD 8H 7H"},
-			plays: "7D",
+			plays: "AD 7D",
 			card:  "7S",
-			want:  "Gooi je ♠7 af: die is niets waard en je kunt niet bekennen. Met dit kleine kaartje zeg je ook tegen je maat: “speel schoppen, daar heb ik de hoogste van” (hoog/laag bijspelen).",
+			want:  "Je maat heeft de slag: gooi ♠7 bij, die is niets waard. Je goede kaarten bewaar je voor later. Met dit kleine kaartje zeg je ook tegen je maat: “speel schoppen, daar heb ik de hoogste van” (hoog/laag bijspelen).",
 		},
 		{
-			name: "a small discard without the highest card", voorhand: 0, trump: game.Hearts,
+			name: "a small discard without the highest card on partner's trick", voorhand: 3, trump: game.Hearts,
 			spec:  [4]string{"7D", "7C 8C QC AS 7S 8S 9S KS", "8D", "AD JS 9C QD 8H 7H"},
-			plays: "7D",
+			plays: "AD 7D",
 			card:  "7C",
-			want:  "Gooi je ♣7 af: die is niets waard en je kunt niet bekennen. Let op: je maat kan dit lezen als “speel klaveren, daar heb ik de hoogste van” (hoog/laag bijspelen), maar die heb je niet.",
+			want:  "Je maat heeft de slag: gooi ♣7 bij, die is niets waard. Je goede kaarten bewaar je voor later. Let op: je maat kan dit lezen als “speel klaveren, daar heb ik de hoogste van” (hoog/laag bijspelen), maar die heb je niet.",
 		},
 		{
-			name: "discard a boer: every small card would be a false laag bijspelen", voorhand: 2, trump: game.Hearts,
-			spec:  [4]string{"AD", "7C 8C QC KS 7S 8S 9S JS", "7D", "8D"},
-			plays: "7D 8D AD",
+			name: "laag bijspelen not agreed at this table", voorhand: 3, trump: game.Hearts,
+			spec:  [4]string{"7D", "7C 8C QC AS 7S 8S 9S KS", "8D", "AD JS 9C QD 8H 7H"},
+			sig:   &game.Signals{Aas: true, KleintjeBoer: true},
+			plays: "AD 7D",
+			card:  "7S",
+			want:  "Je maat heeft de slag: gooi ♠7 bij, die is niets waard. Je goede kaarten bewaar je voor later.",
+		},
+		{
+			name: "partner's trick: give the boer rather than a false laag bijspelen", voorhand: 2, trump: game.Hearts,
+			spec:  [4]string{"8D", "7C 8C QC KS 7S 8S 9S JS", "7D", "AD"},
+			plays: "7D AD 8D",
 			card:  "JS",
-			want:  "Gooi ♠B af: je kunt niet bekennen. Met ♣7 of ♠7 zou je je maat vragen om die kleur te spelen (hoog/laag bijspelen), maar daar heb je de hoogste niet.",
+			want:  "Je maat heeft de slag: geef ♠B mee, dat is 2 punten erbij.",
 		},
 		{
 			name: "come back after partner's aas voorspelen", voorhand: 0, trump: game.Hearts,
@@ -497,19 +506,27 @@ func TestPlayTexts(t *testing.T) {
 			want:  "Speel ♠V: je maat kwam uit met ♠A en zei daarmee “ik heb ♠10 ook” (aas voorspelen), dus zo kom je veilig in schoppen terug.",
 		},
 		{
-			name: "play to partner's laag bijspelen", voorhand: 0, trump: game.Hearts,
+			name: "play to partner's laag bijspelen", voorhand: 3, trump: game.Hearts,
 			spec:  [4]string{"7D", "7C 8C QC AS 7S 8S 9S KS", "8D", "AD JS 9C QD 8H 7H"},
-			plays: "7D 7S 8D AD",
+			plays: "AD 7D 7S 8D",
 			card:  "JS",
 			want:  "Speel ♠B: je maat gooide ♠7 bij en zei daarmee “speel schoppen, daar heb ik de hoogste van” (hoog/laag bijspelen), dus zo speel je schoppen naar je maat toe.",
 		},
 		{
-			name: "discard high: hoog/laag bijspelen", trump: game.Hearts,
+			name: "discard high on partner's trick: hoog/laag bijspelen", trump: game.Hearts,
+			spec: [4]string{"AD 8D 9D TD JD QD KD 8S", "7D 9H AH TH KH QH 9S AS",
+				"7H 8H JS 7S 7C 8C 9C QC"},
+			plays: "AD 7D",
+			card:  "JS",
+			want:  "Je maat heeft de slag: geef ♠B mee, dat is 2 punten erbij. Met deze hoge bijkaart zeg je ook dat je weinig schoppen hebt (hoog/laag bijspelen).",
+		},
+		{
+			name: "a high discard into an opponents' trick says nothing", trump: game.Hearts,
 			spec: [4]string{"7D 8D 9D TD JD QD KD AD", "JH 9H AH TH KH QH 8S 9S",
 				"7H 8H JS 7S 7C 8C 9C QC"},
 			plays: "7D JH",
 			card:  "JS",
-			want:  "Gooi ♠B af: je kunt niet bekennen, en met een hoge bijkaart zeg je dat je weinig schoppen hebt (hoog/laag bijspelen).",
+			want:  "Gooi ♠B af: je kunt niet bekennen, en dit levert hier naar verwachting het meeste op.",
 		},
 		{
 			name: "follow high: the low card would leave it bare", trump: game.Clubs,
@@ -539,10 +556,17 @@ func TestPlayTexts(t *testing.T) {
 			want: "Speel ♥H: speel je ♥8, dan staat je ♥H straks kaal terwijl ♥A en ♥10 nog niet gevallen zijn.",
 		},
 		{
-			name: "boer over boer", trump: game.Hearts,
+			name: "boer over boer, at a table that agreed on it", trump: game.Hearts,
+			spec: [4]string{"JD 7D JH 9H AS KS AC KC", "", "", ""},
+			sig:  &game.Signals{Aas: true, KleintjeBoer: true, HoogLaag: true, BoerOverBoer: true},
+			card: "JD",
+			want: "Speel ♦B: met een boer van een bijkleur laat je je maat weten dat jij de troefboer hebt (boer over boer). Neemt je maat de slag, dan speelt die troef terug.",
+		},
+		{
+			name: "a side boer lead says nothing by default", trump: game.Hearts,
 			spec: [4]string{"JD 7D JH 9H AS KS AC KC", "", "", ""},
 			card: "JD",
-			want: "Speel ♦B: met een boer van een bijkleur zeg je dat jij de troefboer hebt (boer over boer).",
+			want: "Speel ♦B: dat levert hier naar verwachting het meeste op.",
 		},
 		{
 			name: "lead the last card of a side suit", trump: game.Hearts,
@@ -598,14 +622,16 @@ func TestPlayTexts(t *testing.T) {
 		{
 			name: "a side boer without the trump boer", trump: game.Hearts,
 			spec: [4]string{"JD QD 9H 8H AS KS AC KC", "", "", ""},
+			sig:  &game.Signals{Aas: true, KleintjeBoer: true, HoogLaag: true, BoerOverBoer: true},
 			card: "JD",
-			want: "Kom uit met ♦B, je laagste ruiten: zo kost het weinig, en je hogere kaarten bewaar je voor later. Dit is geen boer over boer: je hebt de troefboer niet.",
+			want: "Kom uit met ♦B: dat levert hier naar verwachting het meeste op. Let op: je maat kan een boer van een bijkleur lezen als boer over boer (“ik heb de troefboer”).",
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			d := build(t, c.voorhand, c.spec, c.trump, c.rules, c.plays)
 			v := turnView(d)
+			v.Signals = c.sig
 			tab := tableFromView(&v)
 			if got := playText(&v, &tab, card(c.card)); got != c.want {
 				t.Errorf("got  %q\nwant %q", got, c.want)

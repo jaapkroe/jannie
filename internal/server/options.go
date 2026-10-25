@@ -20,6 +20,7 @@ type Options struct {
 	AI        string         `json:"ai"`
 	Tempo     string         `json:"tempo"`
 	Open      bool           `json:"open"`
+	Signals   game.Signals   `json:"signals"` // the table's agreements on signals (design §8)
 }
 
 func defaultOptions() Options {
@@ -30,6 +31,7 @@ func defaultOptions() Options {
 		Rules:     game.Amsterdams,
 		AI:        "normaal",
 		Tempo:     "normaal",
+		Signals:   game.DefaultSignals,
 	}
 }
 
@@ -47,6 +49,7 @@ type optsPatch struct {
 	AI        *string
 	Tempo     *string
 	Open      *bool
+	Signals   *game.Signals
 }
 
 // parseOpts reads a partial options object. With lenient, invalid values
@@ -122,6 +125,14 @@ func parseOpts(raw json.RawMessage, lenient bool) (optsPatch, error) {
 			} else {
 				p.Open = &b
 			}
+		case "signals":
+			// Agreements left out keep their default.
+			sig := game.DefaultSignals
+			if json.Unmarshal(val, &sig) != nil {
+				err = fail("Ongeldige afspraken over seinen.")
+			} else {
+				p.Signals = &sig
+			}
 		}
 		if err != nil {
 			return optsPatch{}, err
@@ -149,6 +160,9 @@ func (p optsPatch) apply(o *Options) {
 	}
 	if p.Open != nil {
 		o.Open = *p.Open
+	}
+	if p.Signals != nil {
+		o.Signals = *p.Signals
 	}
 }
 

@@ -221,6 +221,7 @@ Set by the host in the lobby; JSON keys on the wire:
 | `ai` | `makkelijk`, `normaal`, `sterk` | `normaal` | Strength of every bot in the room |
 | `tempo` | `rustig`, `normaal`, `snel` | `normaal` | Pacing of bots and pauses (§6) |
 | `open` | bool | false | Training only: show all hands face up |
+| `signals` | `{"aas","kleintjeBoer","hoogLaag","boerOverBoer"}`, bools | all true but `boerOverBoer` | The table's agreements on signals (§8), for four players; keys left out keep their default |
 
 The UI label for the variant is "Utrechts/Amsterdams" etc.: `trumpMode` +
 `rules`; with three players "Met z'n drieën, Amsterdams" (no trump mode: they
@@ -902,7 +903,8 @@ persona on a seat its player left). `away` comes once per lost connection.
 {
   "code": "KQXB", "phase": "lobby|auction|discard|trump|bid|play|handEnd|gameOver",
   "opts": { "players":4, "hands":16, "trumpMode":"utrechts", "rules":"amsterdams",
-            "ai":"normaal", "tempo":"normaal", "open":false },
+            "ai":"normaal", "tempo":"normaal", "open":false,
+            "signals":{"aas":true,"kleintjeBoer":true,"hoogLaag":true,"boerOverBoer":false} },
   "training": false, "you": 0, "host": 0,
   "roster": [ {"id":"dirk","name":"Opa Dirk","emoji":"👴","color":"#8a5a2b","bio":"…"} ],  // lobby only: bot picker
   "players": [ // opts.players entries; null = empty seat
@@ -1020,31 +1022,42 @@ Every key above is always present, except `roster` (lobby only) and `legal` and
 The manual's section is titled *Seinen*; its text and the glossary also give
 the other name, *voorkaarten*.
 
-- **Aas voorspelen**: leading the ace of a side suit says "ik heb ook de
+Which signals hold is agreed per table (option `signals`, §3): aas vraagt
+10, kleintje boer and hoog/laag are on by default, boer over boer is off.
+The server puts the table's agreements in every view (`game.View.Signals`;
+a view without them means the defaults), and the bots, the hints, the
+search's playouts and the Spelanalyse give, read and explain only the
+signals agreed. Tegenkleur is described in the manual but never agreed.
+
+- **Aas voorspelen** (*aas vraagt 10*, `aas`): leading the ace of a side suit says "ik heb ook de
   10 van deze kleur". After the ace that 10 is the highest card of the suit,
   so the partner can safely lead the suit back later (*veilig terugkomen*).
   An ace led without the 10 breaks the promise. Bots read it while the 10 is
   out, in the first five tricks, and come back in the suit with a low card.
   Normaal holds back an ace whose 10 it lacks; sterk never leads such an ace
   while it has an honest card to lead.
-- **Kleintje boer**: leading a small card (7, 8, 9) of a side suit signals "ik heb de
+- **Kleintje boer** (`kleintjeBoer`): leading a small card (7, 8, 9) of a side suit signals "ik heb de
   troefboer"; partner wins and returns trump. It is given by the trump maker
   on its first lead (in utrechts the opening lead of the hand; bots as maker
   give it only then, with the boer and at most one other trump, no nel), or by
   the maker's partner on its first lead, while the boer is still out. Bots of
   the playing team do not lead such a card without the boer when they have
   another sensible lead, so they read it as a promise.
-- **Boer over boer**: leading a side-suit boer while holding the trump boer.
-  Bots do not read it; hints name it, and say when a side-boer lead of the
-  playing team is none.
-- **Hoog/laag bijspelen**: discarding a small card (7, 8 or 9: cards without
-  points) says "speel deze kleur, daar heb ik de hoogste van"; discarding a
-  10 or picture card says the opposite, "ik heb weinig in deze kleur". Bots
-  give and read the low one in the first six tricks (the discarder holds the
-  highest card of that suit still out; sterk fakes it only for ≥ 20 points),
-  not the high one; a hint names the
-  high one for a discard that tells the truth (at most one other card of the
-  suit left, not its ace).
+- **Boer over boer** (`boerOverBoer`, off by default): leading a side-suit
+  boer while holding the trump boer, on the same first lead as kleintje
+  boer. When agreed, bots read it like kleintje boer, avoid it without the
+  boer, and hints name it (and warn when a side-boer lead could be read as
+  one). Not agreed, a side boer says nothing.
+- **Hoog/laag bijspelen** (`hoogLaag`): on the **partner's trick** (the
+  partner holds it when the card is played), discarding a small card (7, 8
+  or 9: cards without points) says "speel deze kleur, daar heb ik de
+  hoogste van"; discarding a 10 or picture card says the opposite, "ik heb
+  weinig in deze kleur". Bots give and read the low one in the first six
+  tricks (the discarder holds the highest card of that suit still out;
+  sterk fakes it only for ≥ 20 points), not the high one; a hint names the
+  high one for a discard that tells the truth (at most one other card of
+  the suit left, not its ace). A discard into a trick the opponents hold
+  says nothing: there the cheapest card goes.
 - **Tegenkleur seinen**: discarding a suit to ask for the suit of the other colour of
   the same shade (harten ↔ ruiten, klaveren ↔ schoppen).
 - **Spekken (ook wel smeren)**: give points (10, aas) to a trick your partner
@@ -1140,7 +1153,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   from the defaults: "Twee AI-spelers · 8 potjes"; "AI-spelers" never breaks
   at its hyphen), *Nieuw spel*
   (options sheet with defaults → *Maak spel*; rows that do not apply to the
-  number of players hide: *Troef* with three, *Regels* with two), *Meedoen* (4-letter code field;
+  number of players hide: *Troef* with three, *Regels* with two, *Seinen*
+  (four toggles, two per line: *Aas vraagt 10*, *Kleintje boer*, *Hoog/laag*,
+  *Boer over boer*) with three or two), *Meedoen* (4-letter code field;
   joins as soon as 4 letters are typed), *Oefenen* (training), *Handleiding*.
   Snel spelen and Oefenen (bots only) never ask for a name: without one the
   player is "Speler", which is not stored as their name. Under the footer,

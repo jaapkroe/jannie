@@ -92,12 +92,21 @@ func TestReviewAtGameOver(t *testing.T) {
 			ai := newGradeAI(false)
 			_, ts := newTestServerWith(t, ai)
 			host := dial(t, ts)
-			host.create("Host", map[string]any{"hands": 4, "trumpMode": mode}, false, false)
+			host.create("Host", map[string]any{"hands": 4, "trumpMode": mode, "signals": map[string]any{"boerOverBoer": true}}, false, false)
 			guest := dial(t, ts)
 			guest.join(host.code, "Gast", "")
 			host.waitState("both seated", func(s *state) bool { return s.Players[guest.seat] != nil && !s.Players[guest.seat].Bot })
 			host.send(map[string]any{"t": "start"})
 			playGame(t, rand.New(rand.NewPCG(11, 12)), 4, host, guest)
+			// The analysis sees the table's agreements on signals.
+			ai.mu.Lock()
+			for _, rec := range ai.grades[game.Seat(host.seat)] {
+				if want := (game.Signals{Aas: true, KleintjeBoer: true, HoogLaag: true, BoerOverBoer: true}); rec.v.Signals == nil || *rec.v.Signals != want {
+					t.Errorf("graded with signals %+v, want %+v", rec.v.Signals, want)
+					break
+				}
+			}
+			ai.mu.Unlock()
 			for _, c := range []*tclient{host, guest} {
 				s := c.waitState("the review", func(s *state) bool { return s.Review != nil && !s.Review.Pending })
 				got, want := *s.Review, ai.wantReview(game.Seat(c.seat))

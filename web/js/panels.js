@@ -551,6 +551,23 @@ export function segmented(choices, value, fn, name = '') {
   return wrap;
 }
 
+// Toggle buttons for agreements that combine: values is an object of
+// booleans by key; fn hears the whole object after every change.
+export function toggles(choices, values, fn, name = '') {
+  const now = { ...values };
+  const wrap = h('div', { class: 'seg seg-multi', role: 'group', 'aria-label': name });
+  wrap.append(...choices.map(([k, label]) => h('button', {
+    type: 'button', class: 'seg-btn', 'aria-pressed': String(!!now[k]),
+    onclick: e => {
+      now[k] = !now[k];
+      e.currentTarget.setAttribute('aria-pressed', String(now[k]));
+      sound.play('click');
+      fn({ ...now });
+    },
+  }, label)));
+  return wrap;
+}
+
 export function applyPrefs() {
   document.body.classList.toggle('four-color', !!prefs.fourColor);
   document.body.classList.toggle('reduced', !!prefs.reduced);

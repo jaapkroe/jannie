@@ -145,10 +145,10 @@ func (m *mover) lead() game.Card {
 			c, _ := trumps.bottom(trump, trump)
 			return c
 		}
-		// Kleintje boer: tell partner we hold the boer. The maker does so
-		// only when it opens the hand with little else in trump; otherwise
-		// it pulls trump itself.
-		if trumps.has(jackOf(trump)) && !t.hasLed[m.seat] && !t.boerSig[team].Valid() && m.oppsMayTrump() &&
+		// Kleintje boer, when the table agreed on it: tell partner we hold
+		// the boer. The maker does so only when it opens the hand with
+		// little else in trump; otherwise it pulls trump itself.
+		if t.sig.KleintjeBoer && trumps.has(jackOf(trump)) && !t.hasLed[m.seat] && !t.boerSig[team].Valid() && m.oppsMayTrump() &&
 			(t.trumpBy != m.seat || (t.trickNo == 0 && m.thinTrumps())) {
 			if c, ok := m.smallSignalCard(); ok {
 				return c
