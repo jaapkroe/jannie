@@ -194,7 +194,7 @@ const PLAYING = new Set(['trump', 'bid', 'play']);
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const rooms = new Map();
 const SIGNALS = { aas: true, kleintjeBoer: true, hoogLaag: true, boerOverBoer: false };
-const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', open: false, signals: SIGNALS };
+const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', open: false, signals: SIGNALS, seed: 0 };
 
 function newCode() {
   for (;;) {
@@ -250,6 +250,7 @@ function pickOpts(o = {}) {
   if (['makkelijk', 'normaal', 'sterk'].includes(o.ai)) out.ai = o.ai;
   if (['rustig', 'normaal', 'snel'].includes(o.tempo)) out.tempo = o.tempo;
   if (typeof o.open === 'boolean') out.open = o.open;
+  if (o.seed === null || Number.isInteger(o.seed) && o.seed >= 0 && o.seed <= 999999999) out.seed = o.seed || 0;
   // The bots here know no signals; the agreements are only kept.
   if (o.signals && typeof o.signals === 'object') {
     out.signals = Object.fromEntries(Object.entries(SIGNALS).map(([k, d]) => [k, typeof o.signals[k] === 'boolean' ? o.signals[k] : d]));
@@ -316,13 +317,21 @@ function mockReview(room, seat) {
   const replay = (room.handTricks || []).map((ts, h) => {
     const cards = [[], [], [], []];
     for (const t of ts) for (const pc of t.cards) cards[pc.seat].push(pc.card);
-    return { cards: cards.map(c => sortHand(c, room.scores[h]?.trump)), tricks: ts };
+    // The cards the player could play in each trick: what they played from
+    // that trick on, against the trick so far.
+    const legal = ts.map((t, k) => {
+      const at = t.cards.findIndex(pc => pc.seat === seat);
+      if (at < 0) return null;
+      const hand = ts.slice(k).flatMap(x => x.cards.filter(pc => pc.seat === seat).map(pc => pc.card));
+      return legalMoves(hand, { leader: t.leader, cards: t.cards.slice(0, at) }, seat, room.scores[h]?.trump, room.opts.rules);
+    });
+    return { cards: cards.map(c => sortHand(c, room.scores[h]?.trump)), tricks: ts, legal };
   });
   return {
     id: room.reviewId, pending: false, pct: 87, hands: room.opts.hands, choices: 31, luck: -6, lost: 41, lostN: 3,
     strongN: 2, leads: [9, 11], trumps: [3, 4], roem: [40, 2], risky: room.opts.trumpMode === 'gedraaid' ? [2, 1] : [0, 0], strong, missed,
     speed: { n: 31, median: 2400, total: 98000, slowest: { hand: 2, trick: 5, ms: 14200 }, others: { n: 62, median: 3100, total: 211000 } },
-    replay,
+    replay, seed: room.seed, marks: room.marks?.[seat] || [],
   };
 }
 
@@ -369,6 +378,9 @@ function startGame(room) {
   for (const p of room.players) if (!p.bot) { p.away = false; p.asked = false; }
   room.scores = [];
   room.handTricks = [];
+  // The mock deals at random whatever the seed; it only shows it.
+  room.seed = room.opts.seed || 1 + Math.floor(Math.random() * 999999999);
+  room.marks = {};
   room.total = [0, 0];
   room.handNo = 0;
   room.winner = -1;
@@ -876,6 +888,21 @@ function onMessage(ws, m) {
       if (bot >= 0 && rand() < 0.7) later(room, 700, () => botSay(room, bot, 'reply', true));
       return;
     }
+    case 'mark': {
+      // Kept without checks: the mock trusts the client (the server checks).
+      if (room.phase !== 'gameOver') return err('ongeldig', 'Je eigen keuze geef je in de spelanalyse, na het spel.');
+      room.marks ??= {};
+      const list = (room.marks[seat] ||= []).filter(x => x.hand !== m.hand || x.trick !== m.trick);
+      const choice = m.card ? { card: m.card } : m.suit ? { suit: m.suit } : typeof m.play === 'boolean' ? { play: m.play } : null;
+      room.marks[seat] = choice ? [...list, { hand: m.hand, trick: m.trick, ...choice }] : list;
+      broadcast(room, null);
+      return;
+    }
+    case 'feedback':
+      if (room.phase !== 'gameOver') return err('ongeldig', 'Een opmerking geef je bij de spelanalyse, na het spel.');
+      if (!String(m.text || '').trim()) return err('ongeldig', 'Schrijf eerst wat je kwijt wilt.');
+      send(ws, { t: 'saved', what: 'feedback' });
+      return;
     case 'rematch':
       if (!host) return err('geen-host', 'Alleen de host kan een nieuw spel starten.');
       if (room.phase !== 'gameOver') return;

@@ -89,6 +89,10 @@ else
     done
     expect "klaverjas-$c: BindsTo the pod" 1 "$(has 'BindsTo=klaverjas-pod.service' "$f")"
   done
+  # The game log: a volume of its own, owned by the server's user, and the flag.
+  f=$tmp/klaverjas-server
+  expect "klaverjas-server: the game log volume" 1 "$(has ' -v klaverjas-games:/data:U ' "$f")"
+  expect "klaverjas-server: -games /data" 1 "$(has ' -games /data' "$f")"
 fi
 
 # ---- make deploy and the image tags -------------------------------------------

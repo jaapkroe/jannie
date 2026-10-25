@@ -31,6 +31,7 @@ type Config struct {
 	AllowedOrigins []string // websocket Origin patterns besides same-host
 	Version        string   // reported by /api/health
 	Logger         *slog.Logger
+	GameLog        string // directory of the game log (design §6); "" keeps none
 }
 
 // Server holds all rooms and connections.
@@ -38,6 +39,7 @@ type Server struct {
 	cfg      Config
 	log      *slog.Logger
 	personas []Persona
+	games    *gameLog // nil: no game log
 
 	// Tunables; tests may change them before use.
 	scale          float64       // multiplier on every game delay
@@ -96,6 +98,7 @@ func New(cfg Config) *Server {
 		cfg:            cfg,
 		log:            log,
 		personas:       cfg.AI.Personas(),
+		games:          newGameLog(cfg.GameLog, log),
 		scale:          1,
 		idleTimeout:    30 * time.Minute,
 		abandonTimeout: 5 * time.Minute,
@@ -208,7 +211,7 @@ func (s *Server) serveWS(w http.ResponseWriter, r *http.Request) {
 		s.log.Info("websocket refused", "err", err.Error())
 		return
 	}
-	c := newClient(s, conn, ip)
+	c := newClient(s, conn, ip, deviceOf(r.Header.Get("User-Agent")))
 	s.mu.Lock()
 	if s.closing {
 		s.mu.Unlock()
@@ -530,5 +533,7 @@ func (s *Server) Shutdown(ctx context.Context) {
 	case <-ctx.Done():
 	}
 	s.cancel()
+	// A match cut short here has no end or close record in the game log.
+	s.games.close()
 	s.log.Info("server stopped", "rooms", len(rooms), "connections", len(clients))
 }

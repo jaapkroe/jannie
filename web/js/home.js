@@ -33,6 +33,10 @@ const OPTS = [
       'Kleintje boer: komt de spelende partij voor het eerst uit met een 7, 8 of 9 van een bijkleur, dan heeft die de troefboer.',
       'Hoog/laag: kun je niet bekennen op een slag van je maat, dan zegt een klein kaartje “speel deze kleur, daar heb ik de hoogste van” en een 10 of plaatje “ik heb weinig in deze kleur”. Op een slag van de tegenpartij zegt je bijkaart niets.',
       'Boer over boer: komt de spelende partij voor het eerst uit met een boer van een bijkleur, dan heeft die de troefboer.'] },
+  { key: 'seed', label: 'Seed', input: true, choices: [],
+    info: ['Leeg: elke partij krijgt nieuwe kaarten.',
+      'Met een getal (1 tot 999999999) krijg je bij dezelfde spelregels dezelfde kaarten, ook bij Nog een partij. Zo speel je een partij nog eens, of dezelfde kaarten als iemand anders.',
+      'De seed van een partij staat in de spelanalyse.'] },
 ];
 
 const LABELS = Object.fromEntries(OPTS.map(o => [o.key, Object.fromEntries(o.choices)]));
@@ -50,7 +54,8 @@ function optionsForm(opts, onChange, keys = OPTS.map(o => o.key)) {
   const form = h('div', { class: 'opts' }, OPTS.filter(o => keys.includes(o.key)).map(o =>
     h('div', { class: 'opt-row', dataset: { key: o.key } },
       h('div', { class: 'opt-lbl' }, h('span', { text: o.label }), panels.infoBtn(o.label, o.info)),
-      o.multi
+      o.input ? seedField(opts[o.key], v => onChange(o.key, v))
+      : o.multi
         ? panels.toggles(o.choices, signalsOf(opts[o.key]), v => onChange(o.key, v), o.label)
         : panels.segmented(o.choices, opts[o.key] ?? DEFAULTS[o.key], v => {
           onChange(o.key, v);
@@ -58,6 +63,20 @@ function optionsForm(opts, onChange, keys = OPTS.map(o => o.key)) {
         }, o.label))));
   showRows(form, opts.players ?? DEFAULTS.players);
   return form;
+}
+
+// The seed: digits only, at most nine; empty (null) is a new seed per match.
+function seedField(value, fn) {
+  const el = h('input', {
+    type: 'text', inputMode: 'numeric', class: 'field seed-field', maxLength: 9, placeholder: 'Willekeurig',
+    value: value ? String(value) : '', autocomplete: 'off', enterKeyHint: 'done', 'aria-label': 'Seed',
+  });
+  el.addEventListener('change', () => {
+    const n = Number(el.value.replace(/\D/g, '').slice(0, 9)) || 0;
+    el.value = n ? String(n) : '';
+    fn(n || null);
+  });
+  return el;
 }
 
 function showRows(form, players) {
@@ -70,6 +89,7 @@ function showRows(form, players) {
 function optsSummary(o) {
   const out = [`${o.hands} potjes`, variantText(o), `AI ${LABELS.ai[o.ai]?.toLowerCase() || o.ai}`, `tempo ${LABELS.tempo[o.tempo]?.toLowerCase() || o.tempo}`];
   if (o.players === 4) out.push(signalsText(o.signals));
+  if (o.seed) out.push(`seed ${o.seed}`);
   return out;
 }
 
@@ -268,7 +288,8 @@ function openNewGame() {
   delete opts.open;
   const m = panels.openModal({
     id: 'new', title: 'Nieuw spel', cls: 'm-sheet m-new', body: [
-      optionsForm(opts, (k, v) => { opts[k] = v; store.setJSON('opts', opts); showQuickSub(); }),
+      // A seed holds for this game only: a remembered one would deal the same cards forever.
+      optionsForm(opts, (k, v) => { opts[k] = v; store.setJSON('opts', { ...opts, seed: undefined }); showQuickSub(); }),
       h('p', { class: 'sheet-note', text: 'Je krijgt een code en een link om te delen. Lege plaatsen worden aangevuld met AI-spelers.' }),
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-create', onclick: () => {
         if (!currentName()) { m.close(); return; }
@@ -292,7 +313,7 @@ function openTraining() {
       h('label', { class: 'set-row' },
         h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
         h('span', { class: 'switch' }, open, h('i'))),
-      optionsForm(opts, (k, v) => { opts[k] = v; }, ['trumpMode', 'rules', 'signals', 'tempo']),
+      optionsForm(opts, (k, v) => { opts[k] = v; }, ['trumpMode', 'rules', 'signals', 'tempo', 'seed']),
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-train-go', onclick: () => {
         m.close(true);
         app.create({ opts, training: true, start: true, name: soloName() });

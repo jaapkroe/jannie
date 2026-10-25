@@ -187,6 +187,7 @@ function onMessage(m) {
     case 'tip': if (inRoom) enqueue(m); break;
     case 'refused': if (inRoom) onRefused(m.name); break;
     case 'error': onError(m); break;
+    case 'saved': panels.onSaved(m); break;
     default: break;
   }
 }
