@@ -768,8 +768,11 @@ reply attempt.
   `klaverjas-games`, §10): one JSON line per event, appended to
   `games-YYYY-MM.jsonl` (UTC month) by one writer goroutine behind a queue
   of 4096 lines (a full queue drops a line and says so in the server log;
-  so does a directory that cannot be written). Kept until removed by hand;
-  the P2P apps have no server and keep none. Records, each with `t`, the
+  so does a directory that cannot be written). Used for statistics and to
+  improve the game, and kept for at most 12 months: the writer removes the
+  month files older than the current month and the eleven before it, at its
+  start and every hour (`gameLogMonths`). The P2P apps have no server and
+  keep none. Records, each with `t`, the
   `match` id and `at` (UTC):
   `match` (`room`, `seed`, `training`, `opts`, `players`: `{seat, name, ip,
   device}` for people, the browser's User-Agent cut at 300 bytes, or `{seat,
@@ -1418,9 +1421,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
   Dit is slechts de mening van Juf Ans.*, and last *Opmerkingen*: a text
   field (*Wat viel je op? Wat klopt er volgens jou niet?*) with *Versturen*
-  (`feedback`; *Bewaard.* on `saved`) and the line *Je opmerking wordt
-  bewaard met je naam, net als de partij zelf, zodat we het spel kunnen
-  verbeteren.* Apart from the verdict, the wording is plain and factual:
+  (`feedback`; *Bewaard.* on `saved`) and the line *Je opmerking wordt met
+  je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor
+  statistieken en om het spel te verbeteren.* Apart from the verdict, the wording is plain and factual:
   numbers, cards and the hint's reasons, no praise or consolation. The game-over buttons stay in view with
   the line: on a short phone it takes the place of the emoji (portrait up to
   760 px high) and of *Laatste potje* (up to 680 px); in short landscape the
@@ -1492,7 +1495,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   mounts the named volume `klaverjas-games` at `/data`, owned by the server's
   user (`:U`), and runs `-addr 127.0.0.1:8081 -games /data`: the game log of
   §6, which `make uninstall` keeps; `deploy/README-deploy.md` says how to read
-  and prune it).
+  it).
 - `Makefile` like `/storage/CLIC/ISMS/Makefile`: `help test test-all e2e dev
   dev-stop image install deploy check status logs uninstall quadlet`, settings
   `SITE ?= klaverjas.kroes.dev`, `ADDR ?= 127.0.0.1:8093`. The revision

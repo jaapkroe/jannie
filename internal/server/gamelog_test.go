@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,8 +24,7 @@ import (
 func TestGameLog(t *testing.T) {
 	dir := t.TempDir()
 	srv, ts := newTestServerWith(t, newGradeAI(false), func(s *Server) {
-		s.games = newGameLog(dir, s.log)
-		s.games.now = func() time.Time { return time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC) }
+		s.games = startGameLog(dir, s.log, func() time.Time { return time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC) })
 	})
 	host := dial(t, ts)
 	host.create("Host", map[string]any{"hands": 4, "seed": 4242}, false, false)
@@ -288,5 +288,42 @@ func TestMarkBid(t *testing.T) {
 	remarshal(t, recs[0], &m)
 	if m.Seat != 3 || m.Played == nil || m.Played.Play == nil || !*m.Played.Play || m.Mark.Play == nil || *m.Mark.Play {
 		t.Errorf("mark record %+v (played %+v)", m, m.Played)
+	}
+}
+
+// TestGameLogRetention: the writer keeps the current month and the eleven
+// before it, at its start and as time goes on; other files stay.
+func TestGameLogRetention(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"games-2025-09.jsonl", "games-2025-10.jsonl", "games-2025-11.jsonl", "games-2026-10.jsonl", "games-x.jsonl", "notes.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("{}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	files := func() []string {
+		es, _ := os.ReadDir(dir)
+		var out []string
+		for _, e := range es {
+			out = append(out, e.Name())
+		}
+		return out
+	}
+	var mu sync.Mutex
+	at := time.Date(2026, 10, 31, 23, 0, 0, 0, time.UTC)
+	clock := func() time.Time { mu.Lock(); defer mu.Unlock(); return at }
+	g := startGameLog(dir, slog.New(slog.NewTextHandler(io.Discard, nil)), clock)
+	g.write(map[string]string{"t": "test"}) // after the prune at the start
+	g.close()
+	if got, want := files(), []string{"games-2025-11.jsonl", "games-2026-10.jsonl", "games-x.jsonl", "notes.txt"}; !slices.Equal(got, want) {
+		t.Errorf("on 31 Oct 2026: %v, want %v", got, want)
+	}
+	// A month later the oldest month goes; the prune is the same one the
+	// writer runs every pruneEvery.
+	mu.Lock()
+	at = time.Date(2026, 11, 1, 0, 30, 0, 0, time.UTC)
+	mu.Unlock()
+	g.prune()
+	if got, want := files(), []string{"games-2026-10.jsonl", "games-x.jsonl", "notes.txt"}; !slices.Equal(got, want) {
+		t.Errorf("on 1 Nov 2026: %v, want %v", got, want)
 	}
 }

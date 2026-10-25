@@ -17,9 +17,10 @@ import (
 // JSON line per event in a file per month, games-2026-10.jsonl, in dir. It
 // holds what was dealt and played, the reviews, the players' own choices
 // and feedback, and who played (name, address, device), so games can be
-// looked at again and the engine tuned on them. Lines go through a bounded
-// queue to one writer goroutine: a slow disk never holds up a room, and a
-// full queue drops lines (and says so in the server log) rather than block.
+// looked at again, shown as statistics and the engine tuned on them. Lines
+// go through a bounded queue to one writer goroutine: a slow disk never
+// holds up a room, and a full queue drops lines (and says so in the server
+// log) rather than block. The writer keeps gameLogMonths of files (prune).
 type gameLog struct {
 	dir  string
 	log  *slog.Logger
@@ -33,13 +34,26 @@ type gameLog struct {
 
 const gameLogQueue = 4096
 
+// gameLogMonths is how many month files the game log keeps: the current
+// month and the eleven before it, so no record is kept longer than twelve
+// months. The writer prunes at its start and every pruneEvery.
+const (
+	gameLogMonths = 12
+	pruneEvery    = time.Hour
+)
+
 // newGameLog starts the writer for dir, or returns nil (no game log) when
 // dir is empty. A nil *gameLog accepts and ignores every write.
 func newGameLog(dir string, log *slog.Logger) *gameLog {
+	return startGameLog(dir, log, time.Now)
+}
+
+// startGameLog is newGameLog on clock now (tests).
+func startGameLog(dir string, log *slog.Logger, now func() time.Time) *gameLog {
 	if dir == "" {
 		return nil
 	}
-	g := &gameLog{dir: dir, log: log, ch: make(chan []byte, gameLogQueue), done: make(chan struct{}), now: time.Now}
+	g := &gameLog{dir: dir, log: log, ch: make(chan []byte, gameLogQueue), done: make(chan struct{}), now: now}
 	go g.run()
 	return g
 }
@@ -84,10 +98,29 @@ func (g *gameLog) close() {
 
 func (g *gameLog) run() {
 	defer close(g.done)
+	g.prune()
+	tick := time.NewTicker(pruneEvery)
+	defer tick.Stop()
 	var f *os.File
+	defer func() {
+		if f != nil {
+			f.Close()
+		}
+	}()
 	month := ""
 	failing := false
-	for line := range g.ch {
+	for {
+		var line []byte
+		select {
+		case <-tick.C:
+			g.prune()
+			continue
+		case l, ok := <-g.ch:
+			if !ok {
+				return
+			}
+			line = l
+		}
 		if m := g.now().UTC().Format("2006-01"); m != month || f == nil {
 			if f != nil {
 				f.Close()
@@ -112,8 +145,30 @@ func (g *gameLog) run() {
 			failing = true
 		}
 	}
-	if f != nil {
-		f.Close()
+}
+
+// prune removes the month files older than the last gameLogMonths months
+// (the current one included); other files in dir stay.
+func (g *gameLog) prune() {
+	now := g.now().UTC()
+	oldest := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, 1-gameLogMonths, 0).Format("2006-01")
+	entries, err := os.ReadDir(g.dir)
+	if err != nil {
+		return // not there yet: nothing to prune
+	}
+	for _, e := range entries {
+		m, ok := strings.CutPrefix(e.Name(), "games-")
+		if m, ok = strings.CutSuffix(m, ".jsonl"); !ok || e.IsDir() {
+			continue
+		}
+		if _, err := time.Parse("2006-01", m); err != nil || m >= oldest {
+			continue
+		}
+		if err := os.Remove(filepath.Join(g.dir, e.Name())); err != nil {
+			g.log.Error("game log: cannot remove an old month", "file", e.Name(), "err", err.Error())
+			continue
+		}
+		g.log.Info("game log: removed an old month", "file", e.Name())
 	}
 }
 

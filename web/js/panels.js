@@ -999,7 +999,7 @@ function openReview() {
       h('p', { class: 'legend', text: 'Disclaimer: Dit is slechts de mening van Juf Ans.' }),
       h('section', { class: 'rv-sec' }, h('h3', {}, 'Opmerkingen'),
         feedbackForm(() => ({}), 'Opmerking over dit spel of de analyse'),
-        h('p', { class: 'legend', text: 'Je opmerking wordt bewaard met je naam, net als de partij zelf, zodat we het spel kunnen verbeteren.' })),
+        h('p', { class: 'legend', text: 'Je opmerking wordt met je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor statistieken en om het spel te verbeteren.' })),
     ],
   });
 }

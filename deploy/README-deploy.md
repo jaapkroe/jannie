@@ -176,7 +176,7 @@ The server appends a compact record of every game to the volume `klaverjas-games
 - the results and the Spelanalyse;
 - the players' own choices (*bij nader inzien*) and their feedback.
 
-It is meant for looking at games again and for tuning the engine. Nothing deletes it: it grows by a few kB per game.
+It is used for statistics and to improve the game (looking at games again, tuning the engine). It grows by a few kB per game and is kept for **at most 12 months**: the server removes the month files older than the current month and the eleven before it, when it starts and every hour, and says so in its log (`game log: removed an old month`).
 
 ```sh
 dir=$(podman volume inspect klaverjas-games --format '{{.Mountpoint}}')
@@ -185,7 +185,7 @@ tail -n 3 "$dir/games-$(date -u +%Y-%m).jsonl" | jq .
 grep '"t":"feedback"' "$dir"/games-*.jsonl | jq -r '.name + ": " + .text'
 ```
 
-The files are written by the server's user, mapped to a subordinate UID. They are readable by `jaap` (mode 644); to remove or change them, use `podman unshare rm …`. The log holds personal data (names, IP addresses), so keep it out of backups that leave the house. Delete old months when they are no longer needed:
+The files are written by the server's user, mapped to a subordinate UID. They are readable by `jaap` (mode 644); to remove or change them, use `podman unshare rm …`. The log holds personal data (names, IP addresses), so keep it out of backups that leave the house, and out of any backup kept longer than 12 months. To delete a month earlier than that:
 
 ```sh
 podman unshare rm "$dir/games-2026-10.jsonl"
