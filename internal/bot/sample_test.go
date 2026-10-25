@@ -233,14 +233,26 @@ func TestSignalReading(t *testing.T) {
 		}
 	}
 	// Trump hearts, made by seat 1; seat 0 leads.
-	tab := newTable(0, game.Hearts, 1, game.Amsterdams)
+	tab := newTable(0, game.Hearts, 1, game.Amsterdams, game.DefaultSignals)
 	play(&tab, "AS 7S 8S 9S") // seat 0: aas voorspelen, ♠10 is out
 	if tab.said[0] != bit(card("TS")) || tab.sigBy[0] != bit(card("AS")) {
 		t.Errorf("ace lead: said %v by %v", tab.said[0].appendCards(nil), tab.sigBy[0].appendCards(nil))
 	}
-	play(&tab, "7D 7C 8D KC") // seat 0 leads ♦7; seat 1 discards ♣7, seat 3 ♣H
-	if tab.said[1] != bit(card("AC")) || tab.sigBy[1] != bit(card("7C")) || tab.said[3] != 0 {
-		t.Errorf("discards: seat 1 said %v, seat 3 said %v", tab.said[1].appendCards(nil), tab.said[3].appendCards(nil))
+	// Seat 0 leads ♦7, seat 1 takes it with ♦8; seat 2 discards ♣9 into
+	// the opponents' trick (no signal), seat 3 ♣7 on its partner's (laag).
+	play(&tab, "7D 8D 9C 7C")
+	if tab.said[2] != 0 || tab.said[3] != bit(card("AC")) || tab.sigBy[3] != bit(card("7C")) {
+		t.Errorf("discards: seat 2 said %v, seat 3 said %v", tab.said[2].appendCards(nil), tab.said[3].appendCards(nil))
+	}
+	noHoogLaag := newTable(0, game.Hearts, 1, game.Amsterdams, game.Signals{Aas: true, KleintjeBoer: true})
+	play(&noHoogLaag, "7D 8D 9C 7C")
+	if noHoogLaag.said[3] != 0 {
+		t.Errorf("a table without hoog/laag reads ♣7 as %v", noHoogLaag.said[3].appendCards(nil))
+	}
+	noAas := newTable(0, game.Hearts, 1, game.Amsterdams, game.Signals{KleintjeBoer: true, HoogLaag: true})
+	play(&noAas, "AS 7S 8S 9S")
+	if noAas.said[0] != 0 {
+		t.Errorf("a table without aas vraagt 10 reads ♠A as %v", noAas.said[0].appendCards(nil))
 	}
 	for _, c := range []struct {
 		name  string
@@ -254,12 +266,13 @@ func TestSignalReading(t *testing.T) {
 		{"ace in the sixth trick", "7C 8C 9C TC 7D 8D 9D TD JC QC KC AC JD QD KD AD 7S 8S 9S JS", "AS", false, false},
 		{"ace in the fifth trick", "7C 8C 9C TC 7D 8D 9D TD JC QC KC AC JD QD KD AD", "AS", true, false},
 		{"follow suit low", "7S", "8S", false, false},
-		{"small discard", "7S", "8D", false, true},
+		{"small discard into an opponents' trick", "7S", "8D", false, false},
+		{"small discard on partner's trick", "7S AS 8S", "8D", false, true},
 		{"small trump", "7S", "8H", false, false},
 		{"high discard", "7S", "KD", false, false},
 		{"small discard in the seventh trick", "7C 8C 9C TC 7D 8D 9D TD JC QC KC AC JD QD KD AD 7H 8H 9H TH JH QH KH AH 7S", "8S", false, false},
 	} {
-		tab := newTable(0, game.Hearts, 1, game.Amsterdams)
+		tab := newTable(0, game.Hearts, 1, game.Amsterdams, game.DefaultSignals)
 		played := game.MustParseCards(c.cards)
 		for _, p := range played {
 			tab.apply(tab.next(), p)
@@ -269,6 +282,29 @@ func TestSignalReading(t *testing.T) {
 		_, low := tab.lowSignal(x)
 		if ace != c.ace || low != c.low {
 			t.Errorf("%s: aas voorspelen %v, laag bijspelen %v; want %v, %v", c.name, ace, low, c.ace, c.low)
+		}
+	}
+}
+
+// TestBoerSignals: the leads that say "ik heb de troefboer", as far as the
+// table agreed on them: a small side card (kleintje boer) and a side boer
+// (boer over boer, off by default).
+func TestBoerSignals(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		sig  game.Signals
+		card string
+		want bool
+	}{
+		{"kleintje boer", game.DefaultSignals, "7S", true},
+		{"kleintje boer not agreed", game.Signals{Aas: true, HoogLaag: true}, "7S", false},
+		{"a side boer by default", game.DefaultSignals, "JS", false},
+		{"boer over boer agreed", game.Signals{KleintjeBoer: true, BoerOverBoer: true}, "JS", true},
+		{"boer over boer without kleintje boer", game.Signals{BoerOverBoer: true}, "7S", false},
+	} {
+		tab := newTable(0, game.Hearts, 0, game.Amsterdams, c.sig) // seat 0 made trump and leads
+		if got := tab.signalsBoer(0, card(c.card)); got != c.want {
+			t.Errorf("%s: %v says ik heb de troefboer: %v, want %v", c.name, c.card, got, c.want)
 		}
 	}
 }
@@ -300,10 +336,11 @@ func TestSignalEvidence(t *testing.T) {
 			t.Errorf("seat %d: the leader of ♠A holds ♠10 in %.2f of samples, want most", obs, f)
 		}
 	}
-	// Seat 1 discards ♠7 on ♦7 and holds ♠A; seat 3 watches.
+	// Seat 1 discards ♠7 on its partner's ♦A and holds ♠A; the partner,
+	// seat 3, reads it.
 	spec := [4]string{"7D", "7C 8C QC AS 7S 8S 9S KS", "8D", "AD JS 9C QD 8H 7H"}
-	with := share(build(t, 0, spec, game.Hearts, game.Amsterdams, "7D 7S"), 3, 1, card("AS"))
-	without := share(build(t, 0, spec, game.Hearts, game.Amsterdams, "7D QC"), 3, 1, card("AS"))
+	with := share(build(t, 3, spec, game.Hearts, game.Amsterdams, "AD 7D 7S"), 3, 1, card("AS"))
+	without := share(build(t, 3, spec, game.Hearts, game.Amsterdams, "AD 7D QC"), 3, 1, card("AS"))
 	t.Logf("the discarder holds ♠A in %.2f of samples after ♠7, %.2f after ♣V", with, without)
 	if with < without+0.1 {
 		t.Errorf("laag bijspelen is not read: ♠A with the discarder in %.2f of samples, %.2f without the signal", with, without)

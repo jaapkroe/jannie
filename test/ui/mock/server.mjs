@@ -193,7 +193,8 @@ const ASK_AFTER = 10000; // ms, scaled: a dropped-out person's turn before the t
 const PLAYING = new Set(['trump', 'bid', 'play']);
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const rooms = new Map();
-const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', open: false };
+const SIGNALS = { aas: true, kleintjeBoer: true, hoogLaag: true, boerOverBoer: false };
+const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', open: false, signals: SIGNALS };
 
 function newCode() {
   for (;;) {
@@ -249,6 +250,10 @@ function pickOpts(o = {}) {
   if (['makkelijk', 'normaal', 'sterk'].includes(o.ai)) out.ai = o.ai;
   if (['rustig', 'normaal', 'snel'].includes(o.tempo)) out.tempo = o.tempo;
   if (typeof o.open === 'boolean') out.open = o.open;
+  // The bots here know no signals; the agreements are only kept.
+  if (o.signals && typeof o.signals === 'object') {
+    out.signals = Object.fromEntries(Object.entries(SIGNALS).map(([k, d]) => [k, typeof o.signals[k] === 'boolean' ? o.signals[k] : d]));
+  }
   return out;
 }
 

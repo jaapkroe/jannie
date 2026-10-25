@@ -237,7 +237,8 @@ type View struct {
 	Tricks             []Trick // completed tricks of this hand, in order
 	Legal              []Card  // when it is Seat's turn in phase play
 	HandNo, HandsTotal int
-	MatchScore         []int // per scorer (see Scorers)
+	MatchScore         []int    // per scorer (see Scorers)
+	Signals            *Signals // the table's agreements on signals; nil: DefaultSignals
 }
 
 // trickRec is the compact, copyable form of a trick inside Deal.

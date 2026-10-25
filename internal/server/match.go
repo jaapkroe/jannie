@@ -335,6 +335,8 @@ func (r *room) viewFor(i game.Seat) game.View {
 	v.HandNo = r.handNo
 	v.HandsTotal = r.opts.Hands
 	v.MatchScore = slices.Clone(r.total)
+	sig := r.opts.Signals
+	v.Signals = &sig
 	return v
 }
 

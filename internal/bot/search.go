@@ -381,11 +381,11 @@ func startDeal(v *game.View, w *[4]cardSet) game.Deal {
 	return *d
 }
 
-// playOut finishes deal d (in phase play), seat playing at aggression
-// aggr, and returns the result.
-func playOut(d *game.Deal, aggr float64, seat game.Seat) game.HandResult {
+// playOut finishes deal d (in phase play) at a table with agreements sig,
+// seat playing at aggression aggr, and returns the result.
+func playOut(d *game.Deal, sig game.Signals, aggr float64, seat game.Seat) game.HandResult {
 	trump, _ := d.Trump()
-	s := sim{d: *d, t: newTable(d.Voorhand(), trump, d.TrumpBy(), d.Rules())}
+	s := sim{d: *d, t: newTable(d.Voorhand(), trump, d.TrumpBy(), d.Rules(), sig)}
 	ag := [4]float64{0.5, 0.5, 0.5, 0.5}
 	ag[seat] = aggr
 	s.run(&ag)
@@ -397,6 +397,7 @@ func playOut(d *game.Deal, aggr float64, seat game.Seat) game.HandResult {
 func searchTrump(v *game.View, cfg searchConfig, seed uint64, aggr float64) [game.NumSuits]optionStats {
 	var stats [chunks][game.NumSuits]optionStats
 	team := v.Seat.Team()
+	sig := game.SignalsOf(v)
 	appetite := cfg.appetite(aggr)
 	cfg.runChunks(func(ch int) {
 		n := perChunk(cfg.trumpWorlds, ch)
@@ -419,7 +420,7 @@ func searchTrump(v *game.View, cfg searchConfig, seed uint64, aggr float64) [gam
 				if err := d.ChooseTrump(v.Seat, s); err != nil {
 					panic("bot: trump: " + err.Error())
 				}
-				r := playOut(&d, aggr, v.Seat)
+				r := playOut(&d, sig, aggr, v.Seat)
 				vals[s] = int64(value(&r, team, appetite))
 				st := &stats[ch][s]
 				st.total += vals[s]
@@ -470,6 +471,7 @@ func bestSuit(st [game.NumSuits]optionStats, forced bool, turned game.Suit) game
 func searchBid(v *game.View, cfg searchConfig, seed uint64, aggr float64) (play, pass optionStats) {
 	var stats [chunks][2]optionStats
 	team := v.Seat.Team()
+	sig := game.SignalsOf(v)
 	appetite := cfg.appetite(aggr)
 	cfg.runChunks(func(ch int) {
 		n := perChunk(cfg.trumpWorlds, ch)
@@ -493,7 +495,7 @@ func searchBid(v *game.View, cfg searchConfig, seed uint64, aggr float64) (play,
 					s := d.Turn()
 					_ = d.ChooseTrump(s, bestTrumpNormal(w[s], true, v.Turned))
 				}
-				r := playOut(&d, aggr, v.Seat)
+				r := playOut(&d, sig, aggr, v.Seat)
 				vals[opt] = int64(value(&r, team, appetite))
 				st := &stats[ch][opt]
 				st.total += vals[opt]

@@ -1200,10 +1200,16 @@ body.busy::after {
   color: var(--ink);
 }
 
-.seg-btn[aria-checked="true"] {
+.seg-btn:is([aria-checked="true"], [aria-pressed="true"]) {
   background: linear-gradient(180deg, #ffdb7a, #f2b632);
   color: var(--gold-ink);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Agreements that combine (Seinen): two per line. */
+.seg-multi {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
 }
 
 .sheet-note {

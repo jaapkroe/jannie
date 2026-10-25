@@ -485,9 +485,9 @@ func leadText(m *explainer, c game.Card) string {
 	cs := game.CardShortNL(c)
 	if c.Suit != trump {
 		text := sideLeadText(m, c)
-		// The manual teaches boer over boer: say whether this is one.
+		// At a table that agreed on boer over boer: say whether this is one.
 		switch {
-		case !m.sideBoerLead(c) || strings.Contains(text, "boer over boer"):
+		case !t.sig.BoerOverBoer || !m.sideBoerLead(c) || strings.Contains(text, "boer over boer"):
 		case m.hand.has(jackOf(trump)):
 			text += " Zo zeg je ook dat jij de troefboer hebt (boer over boer)."
 		default:
@@ -563,11 +563,15 @@ func sideLeadText(m *explainer, c game.Card) string {
 		return "Speel " + cs + ": niemand heeft nog " + suitName + ", dus " + m.ruffClause(c.Suit)
 	}
 	if t.signalsBoer(m.seat, c) {
+		card, name := "een kleintje", "kleintje boer"
+		if c.Rank == game.Jack {
+			card, name = "een boer van een bijkleur", "boer over boer"
+		}
 		if m.hand.has(jackOf(trump)) {
-			return "Speel " + cs + ": met een kleintje laat je je maat weten dat jij de troefboer hebt (kleintje boer). Neemt je maat de slag, dan speelt die troef terug."
+			return "Speel " + cs + ": met " + card + " laat je je maat weten dat jij de troefboer hebt (" + name + "). Neemt je maat de slag, dan speelt die troef terug."
 		}
 		return "Kom uit met " + cs + ": " + m.noReason(c, "dat levert hier naar verwachting het meeste op", "") +
-			". Let op: je maat kan een kleintje lezen als kleintje boer (“ik heb de troefboer”)."
+			". Let op: je maat kan " + card + " lezen als " + name + " (“ik heb de troefboer”)."
 	}
 	if hi, ok := m.partnerHigh(c.Suit); ok && !m.oppMayRuff(c.Suit) {
 		return "Speel " + cs + ": " + m.partnerSaid(hi) + "."
@@ -596,7 +600,7 @@ func sideLeadText(m *explainer, c game.Card) string {
 		}
 		return "Speel " + cs + ": " + game.CardShortNL(aceOf(c.Suit)) + " " + where + ", dus zo speel je " + suitName + " naar je maat toe."
 	}
-	if m.sideBoerLead(c) && m.hand.has(jackOf(trump)) {
+	if m.t.sig.BoerOverBoer && m.sideBoerLead(c) && m.hand.has(jackOf(trump)) {
 		return "Speel " + cs + ": met een boer van een bijkleur zeg je dat jij de troefboer hebt (boer over boer)."
 	}
 	if hi, ok := m.bareHonour(c); ok {
@@ -640,6 +644,16 @@ func (m *mover) partnerSaid(hi game.Card) string {
 	low, _ := by.bottom(s, m.t.trump)
 	return "je maat gooide " + game.CardShortNL(low) + " bij en zei daarmee “speel " + name +
 		", daar heb ik de hoogste van” (hoog/laag bijspelen), dus zo speel je " + name + " naar je maat toe"
+}
+
+// highSignalText is the sentence about what discarding c, a 10 or plaatje
+// on the partner's trick, tells the partner (hoog bijspelen), starting
+// with a space, or "" when it tells nothing true.
+func (m *mover) highSignalText(c game.Card) string {
+	if !m.highDiscard(c) {
+		return ""
+	}
+	return " Met deze hoge bijkaart zeg je ook dat je weinig " + game.SuitNameNL(c.Suit) + " hebt (hoog/laag bijspelen)."
 }
 
 // lowSignalText is the sentence about what discarding c tells the partner
@@ -794,12 +808,16 @@ func (m *mover) guardText(c game.Card) string {
 	return "houd " + joinNL(keep) + ", anders staan die kaal"
 }
 
-// highDiscard reports whether discarding c says truthfully what the
-// manual's hoog/laag bijspelen reads in it (design §8): c is a 10 or
-// plaatje of a side suit that was not led, and at most one other card of
-// that suit stays, not its ace: "ik heb weinig in deze kleur".
+// highDiscard reports whether discarding c says truthfully what
+// hoog/laag bijspelen reads in it (design §8), at a table that agreed on
+// it: c is a 10 or plaatje of a side suit that was not led, on the
+// partner's trick, and at most one other card of that suit stays, not its
+// ace: "ik heb weinig in deze kleur".
 func (m *mover) highDiscard(c game.Card) bool {
 	t := m.t
+	if !t.sig.HoogLaag || !t.partnersTrick() {
+		return false
+	}
 	switch c.Rank {
 	case game.Ten, game.Jack, game.Queen, game.King:
 	default:
@@ -905,9 +923,9 @@ func followText(m *explainer, c game.Card) string {
 			}
 			return head + ": " + m.noReason(c, cs+" levert hier naar verwachting het meeste op", "") + "."
 		case pts >= 10:
-			return head + ": spek hem met je " + cs + ", dat is " + strconv.Itoa(pts) + " punten extra."
+			return head + ": spek hem met je " + cs + ", dat is " + strconv.Itoa(pts) + " punten extra." + m.highSignalText(c)
 		case pts > 0:
-			return head + ": geef " + cs + " mee, dat is " + count(pts, "punt", "punten") + " erbij."
+			return head + ": geef " + cs + " mee, dat is " + count(pts, "punt", "punten") + " erbij." + m.highSignalText(c)
 		case c.Suit != led && c.Suit != trump && rules == game.Amsterdams && m.hand.inSuit(trump) != 0:
 			return head + ": je hoeft niet te troeven, dus gooi " + cs + " bij en bewaar je troeven." + m.lowSignalText(c)
 		}

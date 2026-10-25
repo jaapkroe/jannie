@@ -128,7 +128,17 @@ func TestOptsChangesPlayers(t *testing.T) {
 	if e := h.waitError(errInvalid); e.errMsg() != "Er zitten al 3 mensen aan tafel." {
 		t.Errorf("msg %q", e.errMsg())
 	}
-	for _, bad := range []map[string]any{{"hands": 5}, {"ai": "goddelijk"}, {"tempo": 3}, {"rules": "haags"}, {"players": 1}, {"players": 5}} {
+	// Agreements on signals: the defaults, then an object of which the
+	// agreements left out keep their default.
+	if s.Opts.Signals != game.DefaultSignals {
+		t.Errorf("signals %+v, want the defaults", s.Opts.Signals)
+	}
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"signals": map[string]any{"boerOverBoer": true, "hoogLaag": false}}})
+	s = h.waitState("signals", func(s *state) bool { return s.Opts.Signals.BoerOverBoer })
+	if want := (game.Signals{Aas: true, KleintjeBoer: true, BoerOverBoer: true}); s.Opts.Signals != want {
+		t.Errorf("signals %+v, want %+v", s.Opts.Signals, want)
+	}
+	for _, bad := range []map[string]any{{"hands": 5}, {"ai": "goddelijk"}, {"tempo": 3}, {"rules": "haags"}, {"players": 1}, {"players": 5}, {"signals": "ja"}, {"signals": map[string]any{"aas": 1}}} {
 		h.send(map[string]any{"t": "opts", "opts": bad})
 		h.waitError(errInvalid)
 	}

@@ -6,7 +6,8 @@ import * as panels from './panels.js';
 
 const E = {};
 const CODE_RE = /^[A-HJ-NP-Z]{4}$/;
-const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal' };
+const SIGNALS = { aas: true, kleintjeBoer: true, hoogLaag: true, boerOverBoer: false };
+const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', signals: SIGNALS };
 
 // Option rows shared by the new-game sheet and the lobby.
 const OPTS = [
@@ -25,9 +26,19 @@ const OPTS = [
     info: ['Makkelijk: speelt los en maakt fouten.', 'Normaal: speelt degelijk volgens de vuistregels.', 'Sterk: telt kaarten, rekent kansen door en kent de seinen.'] },
   { key: 'tempo', label: 'Tempo', choices: [['rustig', 'Rustig'], ['normaal', 'Normaal'], ['snel', 'Snel']],
     info: 'Hoe snel de AI-spelers spelen en hoe lang de pauzes tussen de slagen duren.' },
+  { key: 'signals', label: 'Seinen', players: [4], multi: true,
+    choices: [['aas', 'Aas vraagt 10'], ['kleintjeBoer', 'Kleintje boer'], ['hoogLaag', 'Hoog/laag'], ['boerOverBoer', 'Boer over boer']],
+    info: ['De afspraken aan deze tafel: welke kaarten je maat iets vertellen. De AI-spelers en de tips houden zich eraan.',
+      'Aas vraagt 10: kom je uit met een aas van een bijkleur, dan heb je de 10 van die kleur ook.',
+      'Kleintje boer: komt de spelende partij voor het eerst uit met een 7, 8 of 9 van een bijkleur, dan heeft die de troefboer.',
+      'Hoog/laag: kun je niet bekennen op een slag van je maat, dan zegt een klein kaartje “speel deze kleur, daar heb ik de hoogste van” en een 10 of plaatje “ik heb weinig in deze kleur”. Op een slag van de tegenpartij zegt je bijkaart niets.',
+      'Boer over boer: komt de spelende partij voor het eerst uit met een boer van een bijkleur, dan heeft die de troefboer.'] },
 ];
 
 const LABELS = Object.fromEntries(OPTS.map(o => [o.key, Object.fromEntries(o.choices)]));
+// The agreements on signals as a whole object, defaults for what is missing.
+const signalsOf = v => Object.fromEntries(Object.entries(SIGNALS).map(([k, d]) => [k, typeof v?.[k] === 'boolean' ? v[k] : d]));
+const sameSignals = (a, b) => Object.keys(SIGNALS).every(k => signalsOf(a)[k] === signalsOf(b)[k]);
 // The lobby's start button ignores taps this long after it first shows: a
 // double tap on "Maak spel" lands on it and would start without friends.
 const START_GUARD_MS = 800;
@@ -39,10 +50,12 @@ function optionsForm(opts, onChange, keys = OPTS.map(o => o.key)) {
   const form = h('div', { class: 'opts' }, OPTS.filter(o => keys.includes(o.key)).map(o =>
     h('div', { class: 'opt-row', dataset: { key: o.key } },
       h('div', { class: 'opt-lbl' }, h('span', { text: o.label }), panels.infoBtn(o.label, o.info)),
-      panels.segmented(o.choices, opts[o.key] ?? DEFAULTS[o.key], v => {
-        onChange(o.key, v);
-        if (o.key === 'players') showRows(form, v);
-      }, o.label))));
+      o.multi
+        ? panels.toggles(o.choices, signalsOf(opts[o.key]), v => onChange(o.key, v), o.label)
+        : panels.segmented(o.choices, opts[o.key] ?? DEFAULTS[o.key], v => {
+          onChange(o.key, v);
+          if (o.key === 'players') showRows(form, v);
+        }, o.label))));
   showRows(form, opts.players ?? DEFAULTS.players);
   return form;
 }
@@ -55,7 +68,15 @@ function showRows(form, players) {
 }
 
 function optsSummary(o) {
-  return [`${o.hands} potjes`, variantText(o), `AI ${LABELS.ai[o.ai]?.toLowerCase() || o.ai}`, `tempo ${LABELS.tempo[o.tempo]?.toLowerCase() || o.tempo}`];
+  const out = [`${o.hands} potjes`, variantText(o), `AI ${LABELS.ai[o.ai]?.toLowerCase() || o.ai}`, `tempo ${LABELS.tempo[o.tempo]?.toLowerCase() || o.tempo}`];
+  if (o.players === 4) out.push(signalsText(o.signals));
+  return out;
+}
+
+// "seinen: aas vraagt 10, kleintje boer, hoog/laag", or "geen seinen".
+function signalsText(sig) {
+  const on = OPTS.find(x => x.key === 'signals').choices.filter(([k]) => signalsOf(sig)[k]).map(([, label]) => label.toLowerCase());
+  return on.length ? `seinen: ${on.join(', ')}` : 'geen seinen';
 }
 
 // Snel spelen uses the options last chosen for a new game (kj.opts), the
@@ -66,6 +87,7 @@ function quickOpts() {
   for (const key of ['players', 'hands', 'trumpMode', 'rules', 'ai', 'tempo']) {
     if (stored?.[key] != null && LABELS[key][stored[key]] !== undefined) o[key] = stored[key];
   }
+  if (stored?.signals && typeof stored.signals === 'object') o.signals = signalsOf(stored.signals);
   return o;
 }
 
@@ -79,6 +101,7 @@ function quickSub() {
   if (o.rules !== DEFAULTS.rules && o.players !== 2) parts.push(LABELS.rules[o.rules]);
   if (o.ai !== DEFAULTS.ai) parts.push(`AI ${LABELS.ai[o.ai].toLowerCase()}`);
   if (o.tempo !== DEFAULTS.tempo) parts.push(`tempo ${LABELS.tempo[o.tempo].toLowerCase()}`);
+  if (o.players === 4 && !sameSignals(o.signals, SIGNALS)) parts.push('eigen seinen');
   const who = `${countWord(bots)} ${bots === 1 ? 'AI-speler' : 'AI-spelers'}`;
   return parts.length ? `${cap(who)} · ${parts.join(' · ')}` : `Meteen aan tafel met ${who}`;
 }
@@ -269,7 +292,7 @@ function openTraining() {
       h('label', { class: 'set-row' },
         h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
         h('span', { class: 'switch' }, open, h('i'))),
-      optionsForm(opts, (k, v) => { opts[k] = v; }, ['trumpMode', 'rules', 'tempo']),
+      optionsForm(opts, (k, v) => { opts[k] = v; }, ['trumpMode', 'rules', 'signals', 'tempo']),
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-train-go', onclick: () => {
         m.close(true);
         app.create({ opts, training: true, start: true, name: soloName() });
@@ -371,8 +394,8 @@ export function renderLobby(s, fresh = false) {
     if (host) {
       // The next new game starts from what the room has: a change the
       // server refused (more people than seats) is not remembered.
-      const { players, hands, trumpMode, rules, ai, tempo } = s.opts;
-      store.setJSON('opts', { ...store.json('opts', {}), players, hands, trumpMode, rules, ai, tempo });
+      const { players, hands, trumpMode, rules, ai, tempo, signals } = s.opts;
+      store.setJSON('opts', { ...store.json('opts', {}), players, hands, trumpMode, rules, ai, tempo, signals });
       E.lbOpts.replaceChildren(h('div', { class: 'lb-lbl', text: 'Spelregels' }),
         optionsForm(s.opts, (k, v) => app.send({ t: 'opts', opts: { [k]: v } })));
     } else {
