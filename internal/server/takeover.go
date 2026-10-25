@@ -171,6 +171,7 @@ func (r *room) takeOver(i game.Seat) {
 		r.sysChat("Iedereen is akkoord: een AI-speler speelt zolang voor %s.", name)
 	}
 	r.log.Info("AI took over a seat", "seat", int(i), "left", left)
+	r.logSeat(i)
 	// The AI thinks from now on, at its own pace.
 	r.turnAt, r.think = time.Now(), r.thinkTime(i)
 	r.emit(evSeat{Type: "takeover", Seat: i})

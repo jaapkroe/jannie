@@ -679,10 +679,13 @@ export function sync(s, ev) {
     byId('summary')?.close(true);
     if (byId('trick')?.owner === 'summary') byId('trick').close(true);
   }
-  if (s.phase === 'gameOver') showGameOver(s, ev);
-  else {
+  if (s.phase === 'gameOver') {
+    showGameOver(s, ev);
+    byId('replay')?.refresh?.(s);
+  } else {
     byId('over')?.close(true);
     byId('review')?.close(true);
+    byId('replay')?.close(true);
     if (byId('trick')?.owner === 'review') byId('trick').close(true);
   }
   if (s.phase === 'lobby') { byId('score')?.close(true); byId('last')?.close(true); }
@@ -960,7 +963,8 @@ function openReview() {
           'Laten liggen: wat een betere keuze gemiddeld meer had opgeleverd. Verschillen van minder dan 5 punten tellen niet mee.',
           'Sterke zet: de beste keuze, terwijl de voor de hand liggende keuze minstens 10 punten minder opleverde.',
         ])),
-        h('small', { text: (r.hands ? `${r.hands} ${r.hands === 1 ? 'potje' : 'potjes'} · ` : '') + `${r.choices} ${r.choices === 1 ? 'keuze' : 'keuzes'}` })),
+        h('small', { text: (r.hands ? `${r.hands} ${r.hands === 1 ? 'potje' : 'potjes'} · ` : '') + `${r.choices} ${r.choices === 1 ? 'keuze' : 'keuzes'}` +
+          (r.seed ? ` · seed ${r.seed}` : '') })),
       h('table', { class: 'rv-table' }, h('tbody', {},
         // A player who took a seat over during a hand has no dealt hand measured.
         r.hands ? row('Jouw kaarten', luckText(r.luck), infoBtn('Jouw kaarten', [
@@ -993,6 +997,9 @@ function openReview() {
         icon('history'), 'Potjes terugkijken') : null,
       prev.length ? h('p', { class: 'rv-prev' }, 'Vorige partijen ', h('b', { text: prev.map(p => `${p}%`).join(' · ') })) : null,
       h('p', { class: 'legend', text: 'Disclaimer: Dit is slechts de mening van Juf Ans.' }),
+      h('section', { class: 'rv-sec' }, h('h3', {}, 'Opmerkingen'),
+        feedbackForm(() => ({}), 'Opmerking over dit spel of de analyse'),
+        h('p', { class: 'legend', text: 'Je opmerking wordt met je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor statistieken en om het spel te verbeteren.' })),
     ],
   });
 }
@@ -1014,7 +1021,19 @@ function openReplay(s, r, moment = null) {
   };
   let hand = moment ? moment.hand - 1 : 0;
   let step = moment ? before(moment) : 0;
+  // The player's own choices, as the server last sent them (cmdMark).
+  let own = r.marks || [];
+  const ownAt = (hd, tr) => own.find(x => x.hand === hd && x.trick === tr);
+  const mark = (tr, choice) => { sound.play('click'); app.send({ t: 'mark', hand: hand + 1, trick: tr, ...choice }); };
+  // One form for the whole replay, so typed text survives the steps; it is
+  // about the situation shown when it is sent.
+  const feedback = feedbackForm(() => ({ hand: hand + 1, trick: step === 0 ? 0 : Math.ceil(step / 4) }), 'Opmerking over deze situatie');
   const m = openModal({ id: 'replay', title: 'Terugkijken', cls: 'm-replay', body: [] });
+  m.refresh = st => {
+    if (!st.review?.replay) return;
+    own = st.review.marks || [];
+    render();
+  };
   // The steps stay in view below the scrolling body.
   const bar = h('div', { class: 'rp-bar' });
   m.dlg.append(bar);
@@ -1069,9 +1088,40 @@ function openReplay(s, r, moment = null) {
         roemTotal(trick.roem) ? h('span', { class: 'gold', text: ` · roem: ${roemText(trick.roem)}` }) : null)
       : h('p', { class: 'last-sum rp-what' }, next === s.you ? 'Jij bent aan de beurt' : `${nameOf(s, next)} is aan de beurt`);
 
+    // At a card of the player's: the cards they could play can be marked as
+    // their own choice, looking back (tap again to clear).
+    const myTurn = next === s.you;
+    const tk = Math.floor(step / 4); // the trick the next card goes into
+    const legal = new Set(myTurn ? rh.legal?.[tk] || [] : []);
+    const mine = myTurn ? ownAt(hand + 1, tk + 1)?.card : null;
+    const card = (seat, c) => {
+      const el = mini(c, marks.get(c) || '');
+      if (c === mine) el.classList.add('rp-mine');
+      if (seat !== s.you || !legal.has(c)) return el;
+      el.classList.add('rp-pick');
+      el.tabIndex = 0;
+      el.setAttribute('role', 'button');
+      el.setAttribute('aria-pressed', String(c === mine));
+      el.setAttribute('aria-label', `${cardShort(c)} als jouw keuze`);
+      const pick = () => mark(tk + 1, c === mine ? {} : { card: c });
+      el.addEventListener('click', pick);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+      return el;
+    };
     const hand4 = seat => h('div', { class: 'rp-hand ' + teamCls(s, seat) + (seat === next && !complete ? ' turn' : '') },
       playerName(nameOf(s, seat), { cls: 'rp-name', title: true }),
-      h('div', { class: 'rp-cards' }, rh.cards[seat].filter(c => !gone.has(c)).map(c => mini(c, marks.get(c) || ''))));
+      h('div', { class: 'rp-cards' }, rh.cards[seat].filter(c => !gone.has(c)).map(c => card(seat, c))));
+    const ownLine = myTurn && legal.size > 1 ? h('p', { class: 'rp-own' },
+      mine ? [h('span', { class: 'rp-key rp-mine' }), h('span', {}, suitify(`${cardShort(mine)} is jouw keuze bij nader inzien. Tik er nog eens op om hem weg te halen.`))]
+        : 'Bij nader inzien: tik op de kaart die jij hier het beste vindt.') : null;
+    // A trump choice of the player's at the deal: four suits to choose from.
+    const ownTrump = step === 0 && row?.trumpBy === s.you ? ownAt(hand + 1, 0)?.suit : undefined;
+    const trumpLine = step === 0 && row?.trumpBy === s.you ? h('div', { class: 'rp-own rp-own-suits' },
+      h('span', { text: 'Jouw troefkeuze bij nader inzien:' }),
+      ['C', 'D', 'H', 'S'].map(su => h('button', {
+        class: 'btn btn-ghost btn-sm rp-suit' + (isRed(su) ? ' red' : ''), type: 'button', 'aria-pressed': String(su === ownTrump),
+        'aria-label': suitName(su), title: suitName(su), onclick: () => mark(0, su === ownTrump ? {} : { suit: su }),
+      }, suitSym(su)))) : null;
     const alt = mo && (mo.better || mo.alt);
     m.body.replaceChildren(
       h('div', { class: 'rp-head' },
@@ -1096,8 +1146,11 @@ function openReplay(s, r, moment = null) {
           h('span', {}, h('span', { class: 'rp-key ' + playedCls }), suitify(`${cardShort(mo.played.card)} gespeeld`)),
           alt?.card ? h('span', {}, h('span', { class: 'rp-key ' + (mo.better ? 'rp-better' : 'rp-alt') }),
             suitify(`${cardShort(alt.card)} ${mo.better ? 'beter volgens Juf Ans' : 'voor de hand liggend'}`)) : null) : null,
+        ownLine,
+        trumpLine,
         seats.slice(1).map(hand4)),
       h('p', { class: 'legend', text: 'Alle kaarten liggen open. Bij je keuze wist je alleen je eigen kaarten en wat er gespeeld was.' }),
+      h('details', { class: 'rp-fb' }, h('summary', { text: 'Opmerking over deze situatie' }), feedback),
     );
     bar.replaceChildren(
       h('div', { class: 'rp-steps' },
@@ -1112,9 +1165,41 @@ function openReplay(s, r, moment = null) {
   render();
 }
 
-// The server refused something: a rematch in flight can be tried again.
+// A free-text form that sends feedback (design §7) with what extra()
+// returns (hand and trick, or nothing for the game as a whole).
+let feedbackWait = null; // the form waiting for its "saved"
+function feedbackForm(extra, label) {
+  const text = h('textarea', { class: 'field fb-text', maxLength: 2000, rows: 3, placeholder: 'Wat viel je op? Wat klopt er volgens jou niet?', 'aria-label': label });
+  const status = h('span', { class: 'fb-status', role: 'status' });
+  const send = h('button', {
+    class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => {
+      if (!text.value.trim()) { text.focus(); return; }
+      sound.play('click');
+      send.disabled = true;
+      status.textContent = '';
+      feedbackWait = {
+        saved: () => { text.value = ''; status.textContent = 'Bewaard.'; send.disabled = false; },
+        failed: () => { send.disabled = false; },
+      };
+      app.send({ t: 'feedback', text: text.value, ...extra() });
+    },
+  }, 'Versturen');
+  text.addEventListener('input', () => { status.textContent = ''; });
+  return h('div', { class: 'fb' }, text, h('div', { class: 'fb-row' }, send, status));
+}
+
+// The server kept what was sent (feedback).
+export function onSaved() {
+  feedbackWait?.saved();
+  feedbackWait = null;
+}
+
+// The server refused something: a rematch in flight can be tried again,
+// and so can feedback.
 export function onError() {
   byId('over')?.reset?.();
+  feedbackWait?.failed();
+  feedbackWait = null;
 }
 
 // Confetti burst for a few seconds: small paper strips thrown up from the

@@ -25,6 +25,14 @@ type inMsg struct {
 	Text     string          `json:"text"`
 	AI       *bool           `json:"ai"`
 	Left     *bool           `json:"left"` // vote, optional: the question it answers is about a seat its player left
+	Hand     *int            `json:"hand"`  // mark, feedback: the hand (1-based)
+	Trick    *int            `json:"trick"` // mark, feedback: the trick (1–8; 0: the trump choice or bid)
+}
+
+// savedMsg confirms that something the player sent was kept (feedback).
+type savedMsg struct {
+	T    string `json:"t"`
+	What string `json:"what"`
 }
 
 // Error codes on the wire.

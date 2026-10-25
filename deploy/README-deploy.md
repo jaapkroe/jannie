@@ -15,7 +15,7 @@ internet ──443──> NPM ──http──> 127.0.0.1:8093 ┌ pod klaverjas
 | `klaverjas-web` | `localhost/klaverjas-web:current`, nginx-unprivileged | Serves `web/`, proxies `/ws` and `/api/`, sets the security headers |
 | `klaverjas-server` | `localhost/klaverjas-server:current`, `FROM scratch` | The game server, on `127.0.0.1:8081` inside the pod only |
 
-Both images are built here from the checkout; nothing is pulled at start (`Pull=never`). There is no volume, no secret and no database: games live in the server's memory, so **every restart ends every game in progress**.
+Both images are built here from the checkout; nothing is pulled at start (`Pull=never`). There is no secret and no database: games live in the server's memory, so **every restart ends every game in progress**. The one volume, `klaverjas-games`, holds the game log (see below).
 
 The settings are at the top of the `Makefile`:
 
@@ -167,3 +167,29 @@ The proxy host is public with no access list, because players join from wherever
 | The page stays on its loading dots, or loads without styles | NPM refused part of the load with `429`, its rate limit: many players behind one address loaded at the same moment. A reload a few seconds later works. If it happens to one player alone, the name's own rate tier is not installed in NPM (step 4 of First time); the name's limit is in shrek-infra (`docs/services/klaverjas.md`) |
 | `make deploy` stops with "changes that are not committed" | `git status` lists something: commit it, or deploy anyway with `ALLOW_DIRTY=1` |
 | Unit fails with `image not known` | `make deploy` has not built the images yet (`Pull=never`) |
+
+## The game log
+
+The server appends a compact record of every game to the volume `klaverjas-games`, mounted at `/data` (design §6 *Game log*): one JSON line per event in `games-YYYY-MM.jsonl` per month (UTC). It holds:
+- who played: name, IP address and browser (User-Agent);
+- the cards dealt and every move;
+- the results and the Spelanalyse;
+- the players' own choices (*bij nader inzien*) and their feedback.
+
+It is used for statistics and to improve the game (looking at games again, tuning the engine). It grows by a few kB per game and is kept for **at most 12 months**: the server removes the month files older than the current month and the eleven before it, when it starts and every hour, and says so in its log (`game log: removed an old month`).
+
+```sh
+dir=$(podman volume inspect klaverjas-games --format '{{.Mountpoint}}')
+ls -l "$dir"
+tail -n 3 "$dir/games-$(date -u +%Y-%m).jsonl" | jq .
+grep '"t":"feedback"' "$dir"/games-*.jsonl | jq -r '.name + ": " + .text'
+```
+
+The files are written by the server's user, mapped to a subordinate UID. They are readable by `jaap` (mode 644); to remove or change them, use `podman unshare rm …`. The log holds personal data (names, IP addresses), so keep it out of backups that leave the house, and out of any backup kept longer than 12 months. To delete a month earlier than that:
+
+```sh
+podman unshare rm "$dir/games-2026-10.jsonl"
+```
+
+`make uninstall` keeps the volume; `podman volume rm klaverjas-games` (with the pod stopped) removes it with every log.
+

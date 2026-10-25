@@ -222,6 +222,7 @@ Set by the host in the lobby; JSON keys on the wire:
 | `tempo` | `rustig`, `normaal`, `snel` | `normaal` | Pacing of bots and pauses (§6) |
 | `open` | bool | false | Training only: show all hands face up |
 | `signals` | `{"aas","kleintjeBoer","hoogLaag","boerOverBoer"}`, bools | all true but `boerOverBoer` | The table's agreements on signals (§8), for four players; keys left out keep their default |
+| `seed` | 1..999999999, or 0 / null | 0 | Every match deals from a seed: with this one the same cards (first dealer, hands, talon, turned suit) for the same options and number of players, also on `rematch`; 0 draws a new seed per match. The Spelanalyse shows the seed of the match. The client never remembers it in `kj.opts` |
 
 The UI label for the variant is "Utrechts/Amsterdams" etc.: `trumpMode` +
 `rules`; with three players "Met z'n drieën, Amsterdams" (no trump mode: they
@@ -763,6 +764,31 @@ reply attempt.
   device, host changes, rematch, back to the lobby (and a gone player's seat
   freed).
 
+- **Game log** (flag `-games DIR`; the pod keeps it in the volume
+  `klaverjas-games`, §10): one JSON line per event, appended to
+  `games-YYYY-MM.jsonl` (UTC month) by one writer goroutine behind a queue
+  of 4096 lines (a full queue drops a line and says so in the server log;
+  so does a directory that cannot be written). Used for statistics and to
+  improve the game, and kept for at most 12 months: the writer removes the
+  month files older than the current month and the eleven before it, at its
+  start and every hour (`gameLogMonths`). The P2P apps have no server and
+  keep none. Records, each with `t`, the
+  `match` id and `at` (UTC):
+  `match` (`room`, `seed`, `training`, `opts`, `players`: `{seat, name, ip,
+  device}` for people, the browser's User-Agent cut at 300 bytes, or `{seat,
+  name, bot, level}`), `seat` (a seat that changed hands mid-match: `hand`,
+  `player`), `hand` (`hand`, `dealer`, `turned`, `cards` per seat as one
+  string "7SAS9H…", `talon` with three players, `acts`, `result`: the
+  HandResult), `end` (`total`, `winner`), `close` (a room removed before game
+  over: `hand`, `reason`; a match cut short by a server restart has neither
+  `end` nor `close`), `review` (`seat`, `name`, `review`: the review state of
+  §7 without `replay`, once every grade is in), `mark` (`seat`, `name`, `hand`,
+  `trick`, `mark` and `played`: card, suit or play; a mark without one
+  clears it) and `feedback` (`seat`, `name`, `ip`, `device`, `hand` and `trick`
+  when about a situation, `text`). `acts` lists the hand's decisions in order,
+  space-separated: the seat, then a card ("2AS"), or `b1`/`b0` (spelen,
+  passen), `tH` (trump), `a90` (auction bid; `a0` pass), `dJS7H` (laid away).
+
 ### Pacing (ms, scaled by tempo; `-fast` multiplies everything by 0.05)
 
 | | rustig | normaal | snel |
@@ -839,6 +865,8 @@ client rotates so `you` is at the bottom.
 | `rematch` | | Host, phase `gameOver`: new match, same seats and options |
 | `lobby` | | Host, phase `gameOver`, not training: back to the lobby, same code and options (§6) |
 | `leave` | | Leave the room |
+| `mark` | `hand`, `trick` (1–8, or 0 for the trump choice or bid), and `card`, `suit` or `play` (none: clear) | Phase `gameOver`, with a review: the player's own choice for one of their decisions, looking back. A card must have been legal for them there, a suit needs their trump choice in that hand, `play` their bid. At most 200; each one goes to the game log (§6), and an `update` without event shows it in `review.marks` |
+| `feedback` | `text` (at most 2000 characters, cleaned per line), `hand` and `trick` (optional: about that situation) | Phase `gameOver`, with a review: free text for the game log (§6); answered with `saved`. At most 20 per player and match |
 | `ping` | | Keepalive (server answers `pong`) |
 
 ### Server → client
@@ -851,6 +879,7 @@ client rotates so `you` is at the bottom.
 | `chatlog` | `msgs`: last 50, sent after `joined` |
 | `tip` | `text` (training: explanation after a trick, Dutch; when you played another card than the hint, it ends with the advised card and why: "Juf Ans had ♣9 aangeraden: …"; the first trick's tip of a hand also says so of a trump choice or bid against the hint, before any card: "Juf Ans had ♥ als troef aangeraden: …", "Juf Ans had aangeraden om te passen: …") |
 | `refused` | `name`: to the host only, someone could not join because the table is full (§6); no state change, so no `update` |
+| `saved` | `what`: `"feedback"`: kept in the game log |
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
 
@@ -974,9 +1003,13 @@ ms: `{"n":118,"median":2400,"total":372000,"slowest":{"hand":4,"trick":2,"ms":48
 the median and summed think time, the slowest one (`trick` 0: a trump choice
 or bid), and the same sums over the other humans of the match (null without
 one). `replay` lists every finished hand of the match:
-`{"cards":[[8 cards]×4],"tricks":[8 Tricks]}`, the cards dealt to each seat
-(display-sorted under that hand's trump; at a table of four every card is
-played) and its tricks; the hand's result is the score sheet's row.
+`{"cards":[[8 cards]×4],"tricks":[8 Tricks],"legal":[[cards]×8]}`, the cards
+dealt to each seat (display-sorted under that hand's trump; at a table of
+four every card is played), its tricks, and per trick the cards the player
+could play there (for `mark`); the hand's result is the score sheet's row.
+`seed` is the match's seed (§3); `marks` the player's own choices,
+`[{"hand":5,"trick":3,"card":"AS"},{"hand":2,"trick":0,"suit":"C"}]`, in
+hand and trick order.
 
 `HandResult` JSON: `{"players":4,"playingTeam":0,"trumpBy":2,"trump":"H","dealer":1,
 "points":[104,58],"roem":[20,0],"score":[124,58],"nat":false,"pit":false,"pitTeam":-1,
@@ -1382,10 +1415,15 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   kans dat jullie nat gaan 31% → 18%* (a chance that moves by less than 5
   is left out), for a strong move *Tegenover ♠8: jullie +6, zij −6*. A tap
   opens the replay at that moment; *Potjes terugkijken* opens it at the
-  first hand. Then
+  first hand. The header line under the percentage ends with the seed:
+  *16 potjes · 118 keuzes · seed 482913*. Then
   *Vorige partijen 79% · 83%* (the percentages of up to five earlier matches
   on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
-  Dit is slechts de mening van Juf Ans.* Apart from the verdict, the wording is plain and factual:
+  Dit is slechts de mening van Juf Ans.*, and last *Opmerkingen*: a text
+  field (*Wat viel je op? Wat klopt er volgens jou niet?*) with *Versturen*
+  (`feedback`; *Bewaard.* on `saved`) and the line *Je opmerking wordt met
+  je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor
+  statistieken en om het spel te verbeteren.* Apart from the verdict, the wording is plain and factual:
   numbers, cards and the hint's reasons, no praise or consolation. The game-over buttons stay in view with
   the line: on a short phone it takes the place of the emoji (portrait up to
   760 px high) and of *Laatste potje* (up to 680 px); in short landscape the
@@ -1405,7 +1443,15 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   view. A moment opens just before the player's card (a lead: with the
   previous trick still on the table), a trump choice or bid before the
   first card. In short landscape the table sits beside the moment and the
-  hands, and the bar is one line.
+  hands, and the bar is one line. At a card of the player's (the next card
+  is theirs), the cards they could play (`replay.legal`) are tappable: a tap
+  sends `mark` and the card gets a blue ring, lifted, with the line *♠A is
+  jouw keuze bij nader inzien. Tik er nog eens op om hem weg te halen.*
+  (without a mark: *Bij nader inzien: tik op de kaart die jij hier het beste
+  vindt.*); at the deal of a hand where they chose trump, four suit buttons
+  (*Jouw troefkeuze bij nader inzien:*) do the same. The replay follows the
+  `update` that brings the mark. Last, a fold-out *Opmerking over deze
+  situatie* with the feedback form, sent with the hand and the trick shown.
 - **Help**: the manual (SECTIONS) in a modal, plus `title` tooltips and small ⓘ
   explanations on UI elements.
 - **Responsive**: phones portrait (360×640 up, and an iPhone SE in Safari:
@@ -1445,7 +1491,11 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   address; `ExitPolicy=continue`, so both containers dying at once does not
   stop the pod for good), `klaverjas-web.container`,
   `klaverjas-server.container` (`Pod=klaverjas.pod`, `Pull=never`, `ReadOnly`,
-  `NoNewPrivileges`, `DropCapability=ALL`, health checks).
+  `NoNewPrivileges`, `DropCapability=ALL`, health checks; the server's unit
+  mounts the named volume `klaverjas-games` at `/data`, owned by the server's
+  user (`:U`), and runs `-addr 127.0.0.1:8081 -games /data`: the game log of
+  §6, which `make uninstall` keeps; `deploy/README-deploy.md` says how to read
+  it).
 - `Makefile` like `/storage/CLIC/ISMS/Makefile`: `help test test-all e2e dev
   dev-stop image install deploy check status logs uninstall quadlet`, settings
   `SITE ?= klaverjas.kroes.dev`, `ADDR ?= 127.0.0.1:8093`. The revision

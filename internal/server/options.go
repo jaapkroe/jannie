@@ -21,6 +21,7 @@ type Options struct {
 	Tempo     string         `json:"tempo"`
 	Open      bool           `json:"open"`
 	Signals   game.Signals   `json:"signals"` // the table's agreements on signals (design §8)
+	Seed      int            `json:"seed"`    // 1..maxSeed: every match deals the same cards; 0: a new seed per match
 }
 
 func defaultOptions() Options {
@@ -50,6 +51,7 @@ type optsPatch struct {
 	Tempo     *string
 	Open      *bool
 	Signals   *game.Signals
+	Seed      *int
 }
 
 // parseOpts reads a partial options object. With lenient, invalid values
@@ -125,6 +127,17 @@ func parseOpts(raw json.RawMessage, lenient bool) (optsPatch, error) {
 			} else {
 				p.Open = &b
 			}
+		case "seed":
+			var n *int
+			if json.Unmarshal(val, &n) != nil || n != nil && (*n < 0 || *n > maxSeed) {
+				err = fail("Een seed is een getal van 1 tot 999999999, of leeg.")
+			} else {
+				seed := 0
+				if n != nil {
+					seed = *n
+				}
+				p.Seed = &seed
+			}
 		case "signals":
 			// Agreements left out keep their default.
 			sig := game.DefaultSignals
@@ -163,6 +176,9 @@ func (p optsPatch) apply(o *Options) {
 	}
 	if p.Signals != nil {
 		o.Signals = *p.Signals
+	}
+	if p.Seed != nil {
+		o.Seed = *p.Seed
 	}
 }
 

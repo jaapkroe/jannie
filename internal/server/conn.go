@@ -22,8 +22,9 @@ const (
 // dispatches messages; the writer goroutine owns all writes and pings.
 type client struct {
 	srv  *Server
-	conn *websocket.Conn
-	ip   string
+	conn   *websocket.Conn
+	ip     string
+	device string // the browser's User-Agent, cut short (game log)
 
 	out      chan []byte   // bounded send queue
 	quit     chan struct{} // closed when the connection is closing
@@ -41,11 +42,12 @@ type client struct {
 	joinBucket tokenBucket // reader only: joins
 }
 
-func newClient(s *Server, conn *websocket.Conn, ip string) *client {
+func newClient(s *Server, conn *websocket.Conn, ip, device string) *client {
 	return &client{
 		srv:        s,
 		conn:       conn,
 		ip:         ip,
+		device:     device,
 		out:        make(chan []byte, sendQueueLen),
 		quit:       make(chan struct{}),
 		code:       websocket.StatusNormalClosure,

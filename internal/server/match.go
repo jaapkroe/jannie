@@ -183,23 +183,39 @@ func (r *room) startMatch() {
 	r.winner = -1
 	r.overAt = time.Time{}
 	r.startReviews()
+	r.seed = uint64(r.opts.Seed)
+	if r.seed == 0 {
+		r.seed = newSeed()
+	}
+	r.deals = dealRNG(r.seed)
+	r.handActs = nil
+	r.logMatch()
 	r.log.Info("match started", "players", r.players(), "humans", r.humanCount(), "hands", r.opts.Hands,
 		"trumpMode", r.opts.TrumpMode.String(), "rules", r.opts.Rules.String(), "ai", r.opts.AI, "training", r.training)
 	r.startHand()
 	r.greet()
 }
 
-// startHand shuffles and deals the next hand; the first dealer is random.
+// startHand shuffles and deals the next hand from the match's seed; the
+// first dealer is drawn from it too.
 func (r *room) startHand() {
 	n := r.players()
-	dealer := game.Seat(r.rng.IntN(n))
+	var dealer game.Seat
 	if r.deal != nil {
 		dealer = r.deal.Voorhand()
+	} else {
+		dealer = game.Seat(r.deals.IntN(n))
 	}
 	r.handNo++
 	r.missed, r.misses = nil, nil
-	hands, talon := game.ShuffleFor(n, r.rng)
-	r.deal = game.NewDealFor(n, dealer, hands, talon, r.opts.TrumpMode, r.opts.Rules, game.Suit(r.rng.IntN(game.NumSuits)))
+	hands, talon := game.ShuffleFor(n, r.deals)
+	turned := game.Suit(r.deals.IntN(game.NumSuits))
+	r.dealt = dealtCards{talon: slices.Clone(talon)}
+	for i := range hands {
+		r.dealt.hands[i] = slices.Clone(hands[i])
+	}
+	r.acts = ""
+	r.deal = game.NewDealFor(n, dealer, hands, talon, r.opts.TrumpMode, r.opts.Rules, turned)
 	r.phase = string(r.deal.Phase())
 	r.collected = false
 	r.lastTrick = nil
@@ -527,6 +543,10 @@ func (r *room) act(i game.Seat, a action) error {
 	default:
 		return errors.New("onbekende actie")
 	}
+	if r.acts != "" {
+		r.acts += " "
+	}
+	r.acts += actToken(i, a)
 	r.drive()
 	return nil
 }
@@ -751,6 +771,8 @@ func (r *room) endHand() {
 	}
 	r.prev = &prevHand{Tricks: d.Tricks(), Result: res}
 	r.handTricks = append(r.handTricks, d.Tricks())
+	r.handActs = append(r.handActs, r.acts)
+	r.logHand(res)
 	r.phase = phaseHandEnd
 	for i := range r.seats {
 		r.seats[i].ready = false
@@ -779,6 +801,12 @@ func (r *room) nextHand() {
 	r.winner = topScorer(r.total)
 	r.emit(evGameOver{Type: "gameOver", Total: slices.Clone(r.total), Winner: r.winner})
 	r.chatGameOver()
+	r.logEnd()
+	for i := range r.seats {
+		if rv := r.seats[i].review; rv != nil {
+			r.logReview(game.Seat(i), rv)
+		}
+	}
 	r.log.Info("match over", "hands", r.handNo, "total", r.total)
 	r.drive()
 }

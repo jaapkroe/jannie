@@ -470,6 +470,12 @@ class Player {
       });
       const sp = r.speed;
       this.check(sp === null || sp.n >= 1 && sp.median <= sp.slowest.ms && sp.slowest.ms <= sp.total, `review speed ${JSON.stringify(sp)}`);
+      this.check(Number.isInteger(r.seed) && r.seed >= 1 && r.seed <= 999999999 && Array.isArray(r.marks), `review seed ${r.seed}, marks ${JSON.stringify(r.marks)}`);
+      // Per trick the cards this player could play there: the card played among them.
+      r.replay.forEach((rh, h) => rh.tricks.forEach((t, k) => {
+        const mine = t.cards.find(pc => pc.seat === s.you);
+        this.check(!mine || rh.legal[k]?.includes(mine.card), `replay of hand ${h + 1}, trick ${k + 1}: ${mine?.card} not among the legal ${rh.legal[k]}`);
+      }));
     }
 
     this.check(s.scores.length === (s.phase === 'handEnd' || s.phase === 'gameOver' ? s.handNo : s.handNo - 1),
