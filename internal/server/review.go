@@ -387,7 +387,7 @@ func (rv *review) add(v *game.View, c Choice, g Grade) {
 	pct := func(p float64) int { return int(math.Round(100 * p)) }
 	m.Nat = [2]int{pct(weak.NatUs), pct(strong.NatUs)}
 	m.NatThem = [2]int{pct(weak.NatThem), pct(strong.NatThem)}
-	if _, why, ok := splitHint(&h); ok {
+	if why, ok := hintWhy(&h); ok {
 		m.Why = why
 	}
 	m.Text = g.Text

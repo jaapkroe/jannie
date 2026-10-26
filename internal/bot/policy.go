@@ -123,8 +123,40 @@ func (m *mover) safe(w game.Card, led game.Suit) bool {
 
 // choose returns the rule-based card for the mover.
 func (m *mover) choose() game.Card {
+	c, _ := m.decide()
+	return c
+}
+
+// rule is the rule of the policy that chose a card. A hint for that card
+// gives the rule's reason (see why.go).
+type rule uint8
+
+const (
+	ruleOnly         rule = iota // the only legal card
+	ruleAskedTrump               // partner led kleintje boer: play trump back
+	ruleKleintjeBoer             // tell partner we hold the trump boer
+	rulePullTrump                // pull trump with the highest trump out
+	rulePullLow                  // pull trump with a low trump
+	ruleDefendTrump              // defenders take trumps out with the highest trump
+	ruleCash                     // cash a side boss (the 10 before its ace)
+	ruleLead                     // the cheapest sensible lead (leadCost)
+	ruleTrumpNotFake             // trump rather than a false kleintje boer
+	ruleOnlyTrumps               // only trumps left
+	ruleSmear                    // partner's sure trick: give points
+	ruleThrow                    // partner's sure trick, nothing to give: throw the least needed card
+	ruleSecure                   // partner's trick is not sure: take it over safely
+	ruleThrowUnsure              // partner's trick is not sure: give no points
+	ruleLastWin                  // last to play: take the trick
+	ruleSafeWin                  // take the trick, nobody after can beat it
+	ruleCheapRuff                // a cheap trick: the lowest trump that wins
+	ruleForcedWin                // every legal card wins, or a trump must be played
+	ruleDuck                     // the trick is lost: the card that costs least
+)
+
+// decide returns the rule-based card for the mover and the rule that chose it.
+func (m *mover) decide() (game.Card, rule) {
 	if m.legal.count() == 1 {
-		return game.CardFromIndex(trailing(m.legal))
+		return game.CardFromIndex(trailing(m.legal)), ruleOnly
 	}
 	if m.t.n == 0 {
 		return m.lead()
@@ -133,7 +165,7 @@ func (m *mover) choose() game.Card {
 }
 
 // lead picks the card to lead a trick.
-func (m *mover) lead() game.Card {
+func (m *mover) lead() (game.Card, rule) {
 	t := m.t
 	trump := t.trump
 	trumps := m.hand.inSuit(trump)
@@ -143,7 +175,7 @@ func (m *mover) lead() game.Card {
 		// Partner asked for trump with a small card (kleintje boer).
 		if t.boerSig[team] == m.partner() && m.unk.has(jackOf(trump)) {
 			c, _ := trumps.bottom(trump, trump)
-			return c
+			return c, ruleAskedTrump
 		}
 		// Kleintje boer, when the table agreed on it: tell partner we hold
 		// the boer. The maker does so only when it opens the hand with
@@ -151,18 +183,18 @@ func (m *mover) lead() game.Card {
 		if t.sig.KleintjeBoer && trumps.has(jackOf(trump)) && !t.hasLed[m.seat] && !t.boerSig[team].Valid() && m.oppsMayTrump() &&
 			(t.trumpBy != m.seat || (t.trickNo == 0 && m.thinTrumps())) {
 			if c, ok := m.smallSignalCard(); ok {
-				return c
+				return c, ruleKleintjeBoer
 			}
 		}
 		// Pull trumps while the opponents may still have them.
 		if m.oppsMayTrump() {
 			top, _ := trumps.top(trump, trump)
 			if m.isBoss(top) {
-				return top
+				return top, rulePullTrump
 			}
 			if trumps.count() >= 3 || (t.trumpBy == m.seat && trumps.count() >= 2 && !trumps.has(nineOf(trump))) {
 				c, _ := trumps.bottom(trump, trump)
-				return c
+				return c, rulePullLow
 			}
 		}
 	}
@@ -170,7 +202,7 @@ func (m *mover) lead() game.Card {
 	// Defenders with the top trump take the makers' trumps out.
 	if !m.ourTeamPlays() && trumps != 0 && m.oppsMayTrump() {
 		if top, _ := trumps.top(trump, trump); m.isBoss(top) {
-			return top
+			return top, ruleDefendTrump
 		}
 	}
 	// Cash a side boss that will not be trumped. With the ace and the 10
@@ -194,7 +226,7 @@ func (m *mover) lead() game.Card {
 		}
 	}
 	if bestPts >= 0 {
-		return best
+		return best, ruleCash
 	}
 
 	// Otherwise the cheapest sensible lead, possibly a ruff for partner.
@@ -219,18 +251,18 @@ func (m *mover) lead() game.Card {
 	}
 	if bestCost < 1<<30 && m.fakeSignal(best) && trumps != 0 && m.oppsMayTrump() {
 		c, _ := trumps.bottom(trump, trump)
-		return c
+		return c, ruleTrumpNotFake
 	}
 	if bestCost < 1<<30 {
-		return best
+		return best, ruleLead
 	}
 	// Only trumps left.
 	top, _ := trumps.top(trump, trump)
 	if m.isBoss(top) {
-		return top
+		return top, ruleOnlyTrumps
 	}
 	c, _ := trumps.bottom(trump, trump)
-	return c
+	return c, ruleOnlyTrumps
 }
 
 // thinTrumps reports whether the maker holds the boer with little else in
@@ -354,13 +386,16 @@ func (m *mover) leadCost(c game.Card) int {
 }
 
 // follow picks a card when the trick has already been led.
-func (m *mover) follow() game.Card {
+func (m *mover) follow() (game.Card, rule) {
 	t := m.t
 	trump, led := t.trump, t.led()
 	last := t.n == 3
 	if t.win == m.partner() {
 		if last || m.safe(t.best, led) {
-			return m.smear()
+			if c, ok := m.smear(); ok {
+				return c, ruleSmear
+			}
+			return m.discard(false), ruleThrow
 		}
 		// Secure the trick with a safe winner when that is worth it. A boss
 		// trump wins its trick anyway; on a trump lead it also takes trumps.
@@ -369,16 +404,16 @@ func (m *mover) follow() game.Card {
 			cheap := c.Suit != trump || game.TrumpOrder(c.Rank) <= 3 || t.points >= 20 ||
 				(led == trump && m.isBoss(c))
 			if worth && cheap {
-				return c
+				return c, ruleSecure
 			}
 		}
-		return m.discard(false)
+		return m.discard(false), ruleThrowUnsure
 	}
 	if last {
 		if c, ok := m.bestWinner(false, true); ok {
-			return c
+			return c, ruleLastWin
 		}
-		return m.discard(true)
+		return m.discard(true), ruleDuck
 	}
 	if c, ok := m.bestWinner(true, false); ok {
 		// A trump is "safe" only when nobody behind can overtrump it, which
@@ -387,19 +422,19 @@ func (m *mover) follow() game.Card {
 		// nel for the tricks that matter.
 		if c.Suit == trump && led != trump && t.points < 15 {
 			if low, ok := m.bestWinner(false, false); ok {
-				return low
+				return low, ruleCheapRuff
 			}
 		}
-		return c
+		return c, ruleSafeWin
 	}
 	// No safe winner: play an unsafe one only when nothing else is allowed
 	// or when it costs little (a trump that must be played anyway).
 	if c, ok := m.bestWinner(false, false); ok {
 		if m.allLegalBeat() || (c.Suit == trump && led != trump) {
-			return c
+			return c, ruleForcedWin
 		}
 	}
-	return m.discard(true)
+	return m.discard(true), ruleDuck
 }
 
 // pitHunt reports whether the mover goes all out for pit.
@@ -451,9 +486,9 @@ func (m *mover) bestWinner(needSafe, bank bool) (game.Card, bool) {
 	return best, found
 }
 
-// smear gives the most points (and roem) to a trick the partner wins
-// (spekken).
-func (m *mover) smear() game.Card {
+// smear returns the card that gives the most points (and roem) to a trick
+// the partner wins (spekken); not ok when that card brings nothing.
+func (m *mover) smear() (game.Card, bool) {
 	trump := m.t.trump
 	var best game.Card
 	bestScore, found := 0, false
@@ -477,10 +512,7 @@ func (m *mover) smear() game.Card {
 			best, bestScore, found = c, score, true
 		}
 	}
-	if game.Points(best, trump)+m.roemGain(best) == 0 {
-		return m.discard(false)
-	}
-	return best
+	return best, game.Points(best, trump)+m.roemGain(best) > 0
 }
 
 // guardPenalty discourages giving up the last guard of a 10 whose ace is out.
@@ -608,3 +640,20 @@ func bidThreshold(aggr float64) int {
 }
 
 func trailing(s cardSet) int { return bits.TrailingZeros32(uint32(s)) }
+
+// oppsMayHold returns the cards of set that an opponent may hold.
+func (m *mover) oppsMayHold(set cardSet) cardSet {
+	o := m.opps()
+	return m.mayHold(o[0], set) | m.mayHold(o[1], set)
+}
+
+// allLegalBeat reports whether every legal card beats the trick's winning card.
+func (m *mover) allLegalBeat() bool {
+	t := m.t
+	for l := m.legal; l != 0; l &= l - 1 {
+		if !game.Beats(game.CardFromIndex(trailing(l)), t.best, t.led(), t.trump) {
+			return false
+		}
+	}
+	return true
+}

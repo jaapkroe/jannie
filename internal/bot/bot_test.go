@@ -2,6 +2,7 @@ package bot
 
 import (
 	"math/rand/v2"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -169,11 +170,12 @@ func TestForcedTrumpNeverTurned(t *testing.T) {
 }
 
 // Phrases of play hints that claim the trick for the mover's team, or
-// that the mover cannot win it, and of hints that name no reason.
+// that the mover cannot win it.
 var (
-	sureClaims = []string{"zo pak je de slag", "niemand na je kan hier nog overheen", "de slag is zeker", "slag al zeker", "slag zeker voor jullie"}
-	loseClaims = []string{"Je kunt de slag niet winnen", "je kunt de slag niet winnen"}
-	noReasons  = []string{"naar verwachting het meeste op", "naar verwachting meer", "volgens de berekening"}
+	sureClaims = []string{"is de slag van jou", "niemand na je kan er nog overheen", "niemand na je kan nog overtroeven", "je maat heeft de slag zeker"}
+	loseClaims = []string{"je kunt de slag niet winnen"}
+	// fmtVerb is a formatting verb left in a text ("%d"), not a percentage.
+	fmtVerb = regexp.MustCompile(`%[a-zA-Z]`)
 )
 
 func containsAny(s string, subs []string) bool {
@@ -182,14 +184,15 @@ func containsAny(s string, subs []string) bool {
 
 // TestAdviseAlwaysValid asks for advice at every decision of some deals,
 // with every seat following it. Play hints must be true to what happens in
-// the trick, and few may lack a reason (training hints teach, design §4.2).
+// the trick, and a hint from the search says where its card gains (design
+// §4.2).
 func TestAdviseAlwaysValid(t *testing.T) {
 	deals := 16
 	if testing.Short() {
 		deals = 3
 	}
 	rng := rand.New(rand.NewPCG(7, 8))
-	choices, generic := 0, 0
+	choices, searched := 0, 0
 	for i := range deals {
 		d := game.NewDeal(game.Seat(rng.IntN(4)), game.Shuffle(rng), game.TrumpMode(i%2), game.Rules(i/2%2), game.Suit(rng.IntN(4)))
 		type claim struct {
@@ -202,7 +205,7 @@ func TestAdviseAlwaysValid(t *testing.T) {
 			s := d.Turn()
 			v := d.View(s)
 			a := Advise(v)
-			if a.Text == "" || strings.Contains(a.Text, "%") {
+			if a.Text == "" || fmtVerb.MatchString(a.Text) {
 				t.Fatalf("advice without text: %+v", a)
 			}
 			checkTerms(t, a.Text)
@@ -233,8 +236,11 @@ func TestAdviseAlwaysValid(t *testing.T) {
 				}
 				if len(v.Legal) > 1 {
 					choices++
-					if containsAny(a.Text, noReasons) {
-						generic++
+					if strings.Contains(a.Text, "volgens de berekening") {
+						searched++
+						if !strings.Contains(a.Text, ", vooral ") {
+							t.Errorf("%q does not say where it gains", a.Text)
+						}
 					}
 				}
 				switch {
@@ -260,10 +266,7 @@ func TestAdviseAlwaysValid(t *testing.T) {
 			}
 		}
 	}
-	t.Logf("%d of %d play hints with a choice name no reason", generic, choices)
-	if choices >= 200 && float64(generic) > 0.04*float64(choices) {
-		t.Errorf("%d of %d play hints name no reason, want at most 4%%", generic, choices)
-	}
+	t.Logf("%d of %d play hints with a choice follow the search rather than the rule", searched, choices)
 	// Not your turn: no advice.
 	d := game.NewDeal(0, game.Shuffle(rng), game.Utrechts, game.Amsterdams, 0)
 	if a := Advise(d.View(3)); a.Card != nil || a.Suit != nil || a.Play != nil || a.Text != "" {

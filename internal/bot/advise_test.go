@@ -2,7 +2,6 @@ package bot
 
 import (
 	"math"
-	"strings"
 	"testing"
 
 	"klaverjas/internal/game"
@@ -104,8 +103,21 @@ func fakeResults(v *game.View, means map[string]float64, se float64) []playResul
 	return res
 }
 
-// TestTeachPick: a hint whose card has no reason moves, within the
-// teaching tolerance, to a card with one; never to a false kleintje boer.
+// withParts sets the parts of the value of card c in res, per world.
+func withParts(res []playResult, c string, parts map[int]float64) {
+	for i := range res {
+		if res[i].card == card(c) {
+			for k, x := range parts {
+				res[i].parts[k] = int64(math.Round(x * float64(res[i].n)))
+			}
+		}
+	}
+}
+
+// TestTeachPick: the hint is the rule-based card with the reason of its
+// rule, unless the search rates another card higher by teachTolerance and
+// two standard errors: then that card, with where it gains. Never a false
+// kleintje boer.
 func TestTeachPick(t *testing.T) {
 	// Partner led ♠V and an opponent trumped: ♠A or ♠8 into a lost trick.
 	d := build(t, 1, [4]string{"", "QS", "TC AH KH QH JH TH 9H 8H", "8S AS 7D 8D 9D TD JD QD"}, game.Clubs, game.Amsterdams, "QS TC")
@@ -113,43 +125,79 @@ func TestTeachPick(t *testing.T) {
 	v.Legal = legalCards(v)
 	tab := tableFromView(&v)
 	m := newMover(&tab, v.Seat, setOf(v.Hand), setOf(v.Legal), 0.5)
-	pref := m.choose()
+	pref, r := m.decide()
+	duck := "Speel ♠8: je kunt de slag niet winnen, dus geef zo weinig mogelijk weg. ♠8 is niets waard."
 	cases := []struct {
 		name     string
 		gap, se  float64
 		want     string
 		wantText string
 	}{
-		{"noise: the low card", 3, 0.5, "8S", "Je kunt de slag niet winnen: speel je laagste schoppen (♠8) en bewaar je punten."},
-		{"within two standard errors", 9, 6, "8S", "Je kunt de slag niet winnen: speel je laagste schoppen (♠8) en bewaar je punten."},
-		{"a clear gain stays, with its size", 9, 1, "AS",
-			"Speel ♠A: je kunt de slag niet winnen, maar volgens de berekening levert ♠A gemiddeld 9 punten meer op dan ♠8."},
+		{"noise: the rule's card", 3, 0.5, "8S", duck},
+		{"within two standard errors", 9, 6, "8S", duck},
+		{"a clear gain: the search's card, and where it gains", 9, 1, "AS",
+			"Speel ♠A: volgens de berekening levert dat gemiddeld 9 punten meer op dan ♠8, vooral in de punten van de latere slagen."},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			res := fakeResults(&v, map[string]float64{"AS": 20 + c.gap, "8S": 20}, c.se)
-			got, text := teachPick(&v, &tab, &m, res, pref)
+			withParts(res, "AS", map[int]float64{partPointsLater: c.gap})
+			got, text := teachPick(&m, res, pref, r)
 			if got != card(c.want) || text != c.wantText {
 				t.Errorf("got %v %q\nwant %v %q", got, text, c.want, c.wantText)
 			}
 		})
 	}
 
-	// The maker's first lead without the trump boer: ♣7 and ♠8 would read
-	// as kleintje boer. ♠H has no reason, but the hint must not move to ♣7.
+	// The maker's first lead without the trump boer: ♣7 would read as
+	// kleintje boer. The search rates it best, but the hint does not lie.
 	d = build(t, 0, [4]string{"7C KS QS 8S 9D 8D AH TH", "", "", ""}, game.Diamonds, game.Amsterdams, "")
 	v = turnView(d)
 	v.Legal = legalCards(v)
 	tab = tableFromView(&v)
 	m = newMover(&tab, v.Seat, setOf(v.Hand), setOf(v.Legal), 0.5)
-	pref = m.choose()
-	if pref != card("TH") || !m.fakeSignal(card("7C")) || cheapest(v.Legal, v.Trump) != card("7C") {
-		t.Fatalf("setup: pref %v, ♣7 fake %v, cheapest %v", pref, m.fakeSignal(card("7C")), cheapest(v.Legal, v.Trump))
+	pref, r = m.decide()
+	if pref != card("TH") || !m.fakeSignal(card("7C")) {
+		t.Fatalf("setup: pref %v, ♣7 fake %v", pref, m.fakeSignal(card("7C")))
 	}
-	res := fakeResults(&v, map[string]float64{"KS": 30, "7C": 28, "TH": 22}, 0.5)
-	got, text := teachPick(&v, &tab, &m, res, pref)
-	if got != card("KS") || text != "Speel ♠H: volgens de berekening levert ♠H gemiddeld 2 punten meer op dan ♣7." {
-		t.Errorf("got %v %q, want ♠H with the search's estimate", got, text)
+	res := fakeResults(&v, map[string]float64{"7C": 36, "KS": 30, "TH": 22}, 0.5)
+	withParts(res, "KS", map[int]float64{partPointsNow: 8})
+	got, text := teachPick(&m, res, pref, r)
+	if want := "Speel ♠H: volgens de berekening levert dat gemiddeld 8 punten meer op dan ♥10, vooral in de punten van deze slag."; got != card("KS") || text != want {
+		t.Errorf("got %v %q\nwant ♠H %q", got, text, want)
+	}
+}
+
+// TestSearchWhy: a card the search prefers gets how much more it brings
+// than the rule-based card, and the part of the value where mainly; two
+// parts when the largest is under 60% of the gap.
+func TestSearchWhy(t *testing.T) {
+	d := build(t, 0, [4]string{"AS TS 8S 7D 9D 7C 8C 9C", "", "", ""}, game.Hearts, game.Amsterdams, "")
+	v := turnView(d)
+	v.Legal = legalCards(v)
+	tab := tableFromView(&v)
+	m := newMover(&tab, v.Seat, setOf(v.Hand), setOf(v.Legal), 0.5)
+	head := "volgens de berekening levert dat gemiddeld 10 punten meer op dan ♠10, vooral "
+	for _, c := range []struct {
+		name       string
+		parts      map[int]float64
+		natA, natT int // percent nat with ♠A and with ♠10
+		want       string
+	}{
+		{"roem in this trick", map[int]float64{partRoemNow: 12, partPointsNow: -2}, 0, 0, "in de roem van deze slag."},
+		{"two parts", map[int]float64{partPointsLater: 5, partRoemLater: 5}, 0, 0,
+			"in de punten van de latere slagen en in de roem van de latere slagen."},
+		{"nat", map[int]float64{partNatPit: 10}, 10, 30, "doordat jullie minder vaak nat gaan (10% tegen 30%)."},
+		{"pit", map[int]float64{partNatPit: 10}, 0, 0, "door de kans op pit."},
+	} {
+		res := fakeResults(&v, map[string]float64{"AS": 40, "TS": 30}, 1)
+		withParts(res, "AS", c.parts)
+		i, j := resultIndex(res, card("AS")), resultIndex(res, card("TS"))
+		res[i].out.natUs = c.natA * res[i].n / 100
+		res[j].out.natUs = c.natT * res[j].n / 100
+		if got := m.searchWhy(res, i, j); got != head+c.want {
+			t.Errorf("%s: got %q\nwant %q", c.name, got, head+c.want)
+		}
 	}
 }
 
@@ -176,78 +224,12 @@ func TestEquivalentPick(t *testing.T) {
 		{"a clear gain", 38, 1, "AS"},
 	} {
 		res := fakeResults(&v, map[string]float64{"AS": c.ace, "TS": 30}, c.se)
-		if got, _ := teachPick(&v, &tab, &m, res, pref); got != card(c.want) {
+		if got, _ := teachPick(&m, res, pref, ruleCash); got != card(c.want) {
 			t.Errorf("%s: hint %v, want %v", c.name, got, c.want)
 		}
 		if got := res[sterkPick(&m, res, pref)].card; got != card(c.want) {
 			t.Errorf("%s: sterk %v, want %v", c.name, got, c.want)
 		}
-	}
-}
-
-// TestPartnerAce: a lead into the partner's (probable) ace says so.
-func TestPartnerAce(t *testing.T) {
-	// Seat 0 defends (seat 1 made trump), holds ♦9 ♦8 and leads ♦9.
-	tab := newTable(0, game.Clubs, 1, game.Amsterdams, game.DefaultSignals)
-	hand := setOf(game.MustParseCards("9D 8D 7H 8H 9H 7S 8S 9S"))
-	tab.excl[1] |= bit(card("AD"))
-	tab.excl[3] |= bit(card("AD"))
-	e := explainer{mover: newMover(&tab, 0, hand, hand, 0.5)}
-	want := "Speel ♦9: ♦A zit bij je maat, dus zo speel je ruiten naar je maat toe."
-	if got := leadText(&e, card("9D")); got != want {
-		t.Errorf("got  %q\nwant %q", got, want)
-	}
-	// Seat 3 only signalled that it lacks the ace (as by a small lead in
-	// diamonds, see signalHints).
-	tab.excl[3] = 0
-	e = explainer{mover: newMover(&tab, 0, hand, hand, 0.5), lacks: &[4]cardSet{3: bit(card("AD"))}}
-	want = "Speel ♦9: ♦A zit waarschijnlijk bij je maat, dus zo speel je ruiten naar je maat toe."
-	if got := leadText(&e, card("9D")); got != want {
-		t.Errorf("got  %q\nwant %q", got, want)
-	}
-	// Without that signal nothing is known.
-	e = explainer{mover: newMover(&tab, 0, hand, hand, 0.5), lacks: &[4]cardSet{}}
-	if got := leadText(&e, card("9D")); strings.Contains(got, "maat") {
-		t.Errorf("no evidence, yet %q", got)
-	}
-}
-
-// TestConcreteReason: a card that no rule explains gets a fact that speaks
-// for it against the cheapest other card, when one holds.
-func TestConcreteReason(t *testing.T) {
-	cases := []struct {
-		name, hand, played, c, y, want string
-	}{
-		{"the last trick", "7S 9H", "JH", "7S", "9H",
-			"zo houd je ♥9 over voor de laatste slag, die je daarmee zeker pakt (10 punten extra)"},
-		{"the highest card of a side suit", "7D 9S", "AS TS KS QS JS", "7D", "9S",
-			"zo houd je de hoogste schoppen (♠9) achter de hand"},
-		{"the guard of a ten", "QS 7D TD", "", "QS", "7D",
-			"zo houd je ♦7 bij je ♦10, anders staat die kaal"},
-		{"nothing", "QS 7D 8C", "", "QS", "7D", ""},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			tab := newTable(0, game.Hearts, 0, game.Amsterdams, game.DefaultSignals)
-			tab.played = setOf(game.MustParseCards(c.played))
-			hand := setOf(game.MustParseCards(c.hand))
-			e := explainer{mover: newMover(&tab, 0, hand, hand, 0.5)}
-			if y, _ := e.cheapestOther(card(c.c)); y != card(c.y) {
-				t.Fatalf("cheapest other card %v, want %v", y, c.y)
-			}
-			if got := e.concreteReason(card(c.c), card(c.y)); got != c.want {
-				t.Errorf("got  %q\nwant %q", got, c.want)
-			}
-			// Without the search: the fact, linked with "en" after a
-			// contrast, or else the plain clause.
-			want := "plain"
-			if c.want != "" {
-				want = "en " + c.want
-			}
-			if got := e.noReason(card(c.c), "plain", "maar "); got != want || !e.generic {
-				t.Errorf("noReason %q (generic %v), want %q", got, e.generic, want)
-			}
-		})
 	}
 }
 
@@ -263,57 +245,6 @@ func TestAddedRoemNames(t *testing.T) {
 	for _, c := range cases {
 		if got := addedRoemNames(game.MustParseCards(c.before), card(c.c), game.Spades); got != c.want {
 			t.Errorf("%s + %s: got %q, want %q", c.before, c.c, got, c.want)
-		}
-	}
-}
-
-// TestRoemText: a hint names roem when it is why its card beats the card
-// that would be best without roem: in this trick with the cards that could
-// make it, else over the hand, with nat when that differs.
-func TestRoemText(t *testing.T) {
-	d := build(t, 0, [4]string{"QS KS 8S 7C 8C 9C 7D 8D", "", "", ""}, game.Hearts, game.Amsterdams, "")
-	v := turnView(d)
-	v.Legal = legalCards(v)
-	tab := tableFromView(&v)
-	type sums struct {
-		mean, noRoem float64
-		trick, hand  [2]float64 // us, them
-		nat          int
-	}
-	results := func(qs, s8 sums) []playResult {
-		res := fakeResults(&v, map[string]float64{"QS": qs.mean, "8S": s8.mean}, 1)
-		for i := range res {
-			x := map[string]sums{"QS": qs, "8S": s8}[res[i].card.String()]
-			n := float64(res[i].n)
-			res[i].roem = roemSums{noRoem: int64(x.noRoem * n),
-				trick: [2]int64{int64(x.trick[0] * n), int64(x.trick[1] * n)}, hand: [2]int64{int64(x.hand[0] * n), int64(x.hand[1] * n)}}
-			res[i].out.natUs = x.nat * res[i].n / 100
-		}
-		return res
-	}
-	for _, c := range []struct {
-		name    string
-		qs, s8  sums
-		want    string
-		without bool
-	}{
-		{"this trick", sums{30, 25, [2]float64{}, [2]float64{}, 0}, sums{22, 32, [2]float64{0, 10}, [2]float64{0, 10}, 0},
-			" ♠7, ♠9, ♠10 en ♠B zijn nog in het spel, dus in deze slag kan roem vallen. Volgens de berekening: met ♠V gemiddeld geen roem, met ♠8 10 roem voor de tegenstanders.", false},
-		{"the hand, and nat", sums{30, 25, [2]float64{}, [2]float64{13, 0}, 10}, sums{22, 32, [2]float64{}, [2]float64{}, 30},
-			" Zonder roem zou ♠8 beter zijn. De roem in dit potje volgens de berekening, per saldo: met ♠V gemiddeld 13 voor jullie, met ♠8 niets. Met ♠8 gaan jullie vaker nat: 30% tegen 10%.", false},
-		{"both for us", sums{30, 25, [2]float64{}, [2]float64{13, 0}, 0}, sums{22, 32, [2]float64{}, [2]float64{4, 0}, 0},
-			" Zonder roem zou ♠8 beter zijn. De roem in dit potje volgens de berekening, per saldo: met ♠V gemiddeld 13 voor jullie, met ♠8 4 voor jullie.", false},
-		{"for both sides", sums{30, 25, [2]float64{}, [2]float64{13, 3}, 0}, sums{22, 32, [2]float64{}, [2]float64{2, 2}, 0},
-			" Zonder roem zou ♠8 beter zijn. De roem in dit potje volgens de berekening, per saldo: met ♠V gemiddeld 10 voor jullie, met ♠8 niets.", false},
-		{"nat only", sums{30, 25, [2]float64{}, [2]float64{5, 0}, 10}, sums{22, 32, [2]float64{}, [2]float64{4, 0}, 30},
-			" Zonder roem zou ♠8 beter zijn. Met ♠8 gaan jullie vaker nat: 30% tegen 10%.", false},
-		{"nothing to name", sums{30, 25, [2]float64{}, [2]float64{5, 0}, 10}, sums{22, 32, [2]float64{}, [2]float64{4, 0}, 12}, "", true},
-		{"roem swings too little", sums{30, 30, [2]float64{}, [2]float64{2, 0}, 0}, sums{29, 31, [2]float64{}, [2]float64{}, 0}, "", true},
-		{"best without roem too", sums{30, 35, [2]float64{}, [2]float64{13, 0}, 0}, sums{22, 32, [2]float64{}, [2]float64{}, 0}, "", true},
-	} {
-		text, _ := explainPlay(&v, &tab, card("QS"), results(c.qs, c.s8))
-		if c.without && strings.Contains(text, "roem") || !c.without && !strings.HasSuffix(text, c.want) {
-			t.Errorf("%s: got %q\nwant it to end with %q", c.name, text, c.want)
 		}
 	}
 }

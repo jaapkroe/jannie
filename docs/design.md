@@ -426,25 +426,26 @@ type Player interface {
 func New(p Persona, lvl Level, seed uint64) Player
 
 // Advice for the training hints, Dutch text. Trump and bid advice is the
-// sterk choice. A play hint is the sterk card, unless the hint can name no
-// reason for it beyond the search's estimate: then it is the rule-based or
-// the cheapest card, if that card has a reason of its own and the search
-// cannot tell the two apart (gap under max(5 points, 2 paired SE)), never a
-// card that falsely signals kleintje boer. A hint that still has no reason
-// names a fact that speaks for the card against the cheapest other one,
-// true whatever the other hands hold (it keeps the last trick, gives no
-// roem, banks points in a sure trick, keeps the trumps, the highest card of
-// a side suit or the guard of an honour); without one it says by how much
-// the search rates it higher ("volgens de berekening levert ♠A gemiddeld 9
-// punten meer op dan ♠8"). When roem is why the card beats the one the
-// search rates best without roem (roem swings at least 3 points, and two
-// paired SE, its way), a hint that names no roem yet says so: in this
-// trick with the cards still out that could make it ("♠9 en ♠B zijn nog in
-// het spel, dus in deze slag kan roem vallen. Volgens de berekening: met
-// ♠10 gemiddeld 18 roem voor jullie, met ♠A 7."), else over the hand, per
-// saldo, and nat when that differs by 10 percentage points. The search
-// values every option by the points it brings alone: the bots' appetite
-// for pit (Aggression) plays no part.
+// sterk choice. A play hint gives the reason of what chose its card, so
+// the two cannot drift apart (why.go):
+//   - The normaal policy returns with each card the rule that chose it
+//     (decide: rule). The hint is that card with the rule's reason, and
+//     what the rule's own costs weighed: the cheaper or richer card it
+//     kept in hand and why ("Met ♠H zou je de tegenstanders 50 roem
+//     geven", "♠A is de hoogste schoppen en kan zelf nog een slag halen").
+//   - Unless the sterk card is better by at least max(5 points, 2 paired
+//     SE): then the hint is that card, with how much more it brings than
+//     the rule's card and in which part of the value mainly. The search
+//     keeps per card, from the same playouts, the points and the roem in
+//     the card's own trick and in the later tricks (ours minus theirs) and
+//     what nat and pit add; they sum to the value ("Speel ♠V: volgens de
+//     berekening levert dat gemiddeld 9 punten meer op dan ♠8, vooral in
+//     de roem van deze slag").
+//   - What the card signals at the table (§8) is added: true, or a
+//     warning when the partner would read something untrue.
+// Every play hint opens with "Speel ♠V: ". The search values every option
+// by the points it brings alone: the bots' appetite for pit (Aggression)
+// plays no part.
 type Advice struct {
     Card *game.Card; Suit *game.Suit; Play *bool
     Text string     // e.g. "Speel ♥A: je maat heeft de slag nog niet en de aas is hoog."
@@ -1007,8 +1008,7 @@ the opponents more than the weaker one (`us` rounded, `them` = `us` −
 `points`), `nat` and `natThem` the chance in percent that the player's team,
 or the opponents, played and went nat, with the weaker option and with the
 stronger one (the grade's Outcomes); `why` is the hint's reason
-without its opening ("Speel ♠A: ", "Kies ♣ als troef: ", "Passen: "), or ""
-when the hint opens otherwise (then `text` says it all). While `pending` is
+without its opening ("Speel ♠A: ", "Kies ♣ als troef: ", "Passen: "). While `pending` is
 true only `id` and `pending` mean anything. `hands` is 0 for a player who
 took a seat over during a hand and saw no deal: no *Jouw kaarten* then.
 `speed` (null when none of the player's decisions was timed, §6), times in
