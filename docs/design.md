@@ -529,8 +529,10 @@ Strength levels:
   or in the suit of the partner's signalled highest card (when nobody is
   known to ruff it), else the opponents'. So it leads ♦H from ♦H ♦V
   rather than ♠8 with ♠7 ♠9 ♠10 out. In duplicate self-play against the
-  lead without roem this gains normaal 3.3 points per hand; sterk, whose
-  playouts lead the same way, is in the PR of #37.
+  lead without roem this gains normaal 3.3 points per hand. Sterk already
+  weighs roem at its own lead through the search's score; that its
+  playouts now lead the same way changes it by −0.2 ± 0.65 points per
+  hand (24,000 deals), nothing measurable.
 - **sterk**: card tracking with inference (voids from not following suit,
   trump obligations), determinised Monte Carlo: sample hidden hands consistent
   with everything known, evaluate each legal move by playouts with the normaal
