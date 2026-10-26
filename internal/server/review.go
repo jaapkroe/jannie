@@ -97,10 +97,10 @@ type moment struct {
 	Them    int         `json:"them"`
 	Nat     [2]int      `json:"nat"`
 	NatThem [2]int      `json:"natThem"`
-	Why    string      `json:"why"`             // the reason of the hint, or "" when it cannot be cut out
-	Text   string      `json:"text"`            // the whole hint
-	Cards  []game.Card `json:"cards,omitempty"` // a trump choice or bid: the player's hand
-	Table  *game.Trick `json:"table,omitempty"` // a card: the trick it went into
+	Why     string      `json:"why"`             // the reason of the hint, or "" when it cannot be cut out
+	Text    string      `json:"text"`            // the whole hint
+	Cards   []game.Card `json:"cards,omitempty"` // a trump choice or bid: the player's hand
+	Table   *game.Trick `json:"table,omitempty"` // a card: the trick it went into
 }
 
 type choiceJSON struct {

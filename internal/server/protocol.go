@@ -24,7 +24,7 @@ type inMsg struct {
 	Card     string          `json:"card"`
 	Text     string          `json:"text"`
 	AI       *bool           `json:"ai"`
-	Left     *bool           `json:"left"` // vote, optional: the question it answers is about a seat its player left
+	Left     *bool           `json:"left"`  // vote, optional: the question it answers is about a seat its player left
 	Hand     *int            `json:"hand"`  // mark, feedback: the hand (1-based)
 	Trick    *int            `json:"trick"` // mark, feedback: the trick (1–8; 0: the trump choice or bid)
 }
