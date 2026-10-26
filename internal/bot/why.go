@@ -85,7 +85,7 @@ func (m *mover) cashWhy(c game.Card) string {
 	if ace := aceOf(c.Suit); c.Rank == game.Ten && m.hand.has(ace) {
 		as := game.CardShortNL(ace)
 		text := "je hebt " + as + " zelf, dus de 10 wint net zo goed."
-		if m.roemChance(c) && !m.roemChance(ace) {
+		if n, _ := m.openRuns(c); n > 0 && m.noRuns(ace) {
 			text += " Met de 10 kan er nog roem in de slag komen, met de aas niet."
 		}
 		return text + " Daarna is je " + as + " de hoogste " + suit + "."
@@ -101,6 +101,14 @@ func (m *mover) cashWhy(c game.Card) string {
 func (m *mover) leadWhy(c game.Card) string {
 	s := c.Suit
 	suit := game.SuitNameNL(s)
+	if plain, _ := m.cheapestLead(false); plain != c {
+		// The roem term decided: the lead without it gives the opponents
+		// roem, or c brings roem for us.
+		if m.leadRoem(plain) < 0 {
+			return "met " + game.CardShortNL(plain) + " kunnen de tegenstanders in deze slag roem maken: " + m.runCards(plain) + "."
+		}
+		return "daarmee kan er in deze slag roem bij komen voor jullie: " + m.runCards(c) + "."
+	}
 	if hi, ok := m.partnerHigh(s); ok && !m.oppMayRuff(s) {
 		return m.partnerSaid(hi) + "."
 	}
@@ -117,6 +125,20 @@ func (m *mover) leadWhy(c game.Card) string {
 		return "een lage kaart kost weinig, en je hoge kaarten bewaar je voor later."
 	}
 	return "dit is je goedkoopste uitkomst: je hogere kaarten bewaar je voor later."
+}
+
+// runCards says which cards still out could make roem with c in its
+// trick: "♠9, ♠10 en ♠B zijn nog in het spel".
+func (m *mover) runCards(c game.Card) string {
+	_, cards := m.openRuns(c)
+	var names []string
+	for _, x := range cards.appendCards(nil) {
+		names = append(names, game.CardShortNL(x))
+	}
+	if len(names) == 1 {
+		return names[0] + " is nog in het spel"
+	}
+	return joinNL(names) + " zijn nog in het spel"
 }
 
 // partnerHas opens the reason for a card on the partner's trick that the
@@ -358,17 +380,10 @@ func (m *mover) partWhere(k int, b, r playResult) string {
 // percent is a share as a whole percentage: "25%".
 func percent(f float64) string { return strconv.Itoa(int(math.Round(100*f))) + "%" }
 
-// roemChance reports whether c, led now, can still make roem in its
-// trick: for some run of three in its suit through c, the other two cards
-// are both still out.
-func (m *mover) roemChance(c game.Card) bool {
-	for lo := max(int(c.Rank)-2, 0); lo <= int(c.Rank) && lo+2 < game.NumRanks; lo++ {
-		run := cardSet(0b111) << (uint(c.Suit)*8 + uint(lo))
-		if m.unk&run == run&^bit(c) {
-			return true
-		}
-	}
-	return false
+// noRuns reports whether c has no open run (see openRuns).
+func (m *mover) noRuns(c game.Card) bool {
+	n, _ := m.openRuns(c)
+	return n == 0
 }
 
 // partnerSaid says how the partner told that it holds hi, the highest card

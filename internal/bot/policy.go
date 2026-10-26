@@ -229,32 +229,17 @@ func (m *mover) lead() (game.Card, rule) {
 		return best, ruleCash
 	}
 
-	// Otherwise the cheapest sensible lead, possibly a ruff for partner.
-	// A small card may promise a boer we lack (kleintje boer): then a
-	// higher card of the suit is a candidate too, and trump replaces a
-	// small card that is still the cheapest.
-	bestCost := 1 << 30
-	for s := game.Suit(0); s < game.NumSuits; s++ {
-		if s == trump || m.hand.inSuit(s) == 0 {
-			continue
+	// Otherwise the cheapest sensible lead (leadCost), possibly a ruff for
+	// partner. Every side card is a candidate: a higher card beats the
+	// lowest when that would promise a boer we lack (kleintje boer) or give
+	// the opponents roem. Trump replaces a small card that is still the
+	// cheapest and promises the boer.
+	if c, ok := m.cheapestLead(true); ok {
+		if m.fakeSignal(c) && trumps != 0 && m.oppsMayTrump() {
+			c, _ = trumps.bottom(trump, trump)
+			return c, ruleTrumpNotFake
 		}
-		c, _ := m.hand.bottom(s, trump)
-		if cost := m.leadCost(c); cost < bestCost {
-			best, bestCost = c, cost
-		}
-		if hi := m.hand.inSuit(s) &^ smallCards(s); m.fakeSignal(c) && hi != 0 {
-			c, _ = hi.bottom(s, trump)
-			if cost := m.leadCost(c); cost < bestCost {
-				best, bestCost = c, cost
-			}
-		}
-	}
-	if bestCost < 1<<30 && m.fakeSignal(best) && trumps != 0 && m.oppsMayTrump() {
-		c, _ := trumps.bottom(trump, trump)
-		return c, ruleTrumpNotFake
-	}
-	if bestCost < 1<<30 {
-		return best, ruleLead
+		return c, ruleLead
 	}
 	// Only trumps left.
 	top, _ := trumps.top(trump, trump)
@@ -350,7 +335,80 @@ func (m *mover) oppMayRuff(s game.Suit) bool {
 	return false
 }
 
-// leadCost scores leading side card c (lower is better).
+// cheapestLead returns the side card with the lowest leadCost, with its
+// roem term (leadRoem) or without; not ok when only trumps are left.
+func (m *mover) cheapestLead(roem bool) (best game.Card, ok bool) {
+	bestCost := 0
+	for s := m.hand &^ suitSet(m.t.trump); s != 0; s &= s - 1 {
+		c := game.CardFromIndex(trailing(s))
+		cost := m.leadCost(c)
+		if roem {
+			cost -= 3 * m.leadRoem(c)
+		}
+		if !ok || cost < bestCost {
+			best, bestCost, ok = c, cost, true
+		}
+	}
+	return best, ok
+}
+
+// Roem at the lead: what one open run of three through the led card is
+// worth, in points, to the team that takes the trick (see leadRoem).
+// Measured in duplicate self-play against the lead without roem: normaal
+// gains about 1.9 points per hand at 2, 3.3 at 8, and no more above 8.
+const (
+	leadRoemOurs   = 8
+	leadRoemTheirs = 8
+)
+
+// leadRoem estimates the roem that leading c brings into its trick for the
+// mover's team, in points; negative when it goes to the opponents. Each
+// open run through c (openRuns) may fall in the trick, and goes to the
+// team that probably takes it: the mover's when c is the highest card of
+// its suit or the partner signalled the highest card, and nobody is known
+// to ruff the suit; else the opponents'.
+func (m *mover) leadRoem(c game.Card) int {
+	runs, _ := m.openRuns(c)
+	if runs == 0 {
+		return 0
+	}
+	s := c.Suit
+	if _, ok := m.partnerHigh(s); (ok || m.isBoss(c)) && !m.oppMayRuff(s) {
+		return runs * leadRoemOurs
+	}
+	return -runs * leadRoemTheirs
+}
+
+// openRuns counts the runs of three in c's suit through c whose two other
+// cards are still out with two different players, and returns those cards.
+func (m *mover) openRuns(c game.Card) (n int, cards cardSet) {
+	for lo := max(int(c.Rank)-2, 0); lo <= int(c.Rank) && lo+2 < game.NumRanks; lo++ {
+		pair := cardSet(0b111) << (uint(c.Suit)*8 + uint(lo)) &^ bit(c)
+		if pair&^m.unk == 0 && m.apart(pair) {
+			n++
+			cards |= pair
+		}
+	}
+	return n, cards
+}
+
+// apart reports whether the two cards of pair may be with two different
+// players (other than the mover, whose own cards are known).
+func (m *mover) apart(pair cardSet) bool {
+	x := pair & -pair
+	y := pair &^ x
+	for p := range m.poss {
+		for q := range m.poss {
+			if p != q && m.poss[p]&x != 0 && m.poss[q]&y != 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// leadCost scores leading side card c (lower is better), without roem
+// (see cheapestLead).
 func (m *mover) leadCost(c game.Card) int {
 	trump := m.t.trump
 	s := c.Suit
