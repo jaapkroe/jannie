@@ -5653,7 +5653,7 @@ body.chat-open .chat-scrim {
 }
 
 .hand.tableau.my-turn .card.disabled {
-  filter: brightness(0.55) saturate(0.6);
+  filter: brightness(0.72) saturate(0.8);
 }
 
 .hand.tableau .card.selected {
