@@ -501,7 +501,7 @@ function paint(el) {
   const cur = el.querySelector(':scope > .call-video');
   if (cur && cur !== v) cur.remove();
   if (v && cur !== v) {
-    el.append(v);
+    el.prepend(v); // under the marks on the ring (dealer, trump, call)
     play(v);
   }
   el.classList.toggle('cam', !!v);
