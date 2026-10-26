@@ -266,3 +266,54 @@ func TestAddedRoemNames(t *testing.T) {
 		}
 	}
 }
+
+// TestRoemText: a hint names roem when it is why its card beats the card
+// that would be best without roem: in this trick with the cards that could
+// make it, else over the hand, with nat when that differs.
+func TestRoemText(t *testing.T) {
+	d := build(t, 0, [4]string{"QS KS 8S 7C 8C 9C 7D 8D", "", "", ""}, game.Hearts, game.Amsterdams, "")
+	v := turnView(d)
+	v.Legal = legalCards(v)
+	tab := tableFromView(&v)
+	type sums struct {
+		mean, noRoem float64
+		trick, hand  [2]float64 // us, them
+		nat          int
+	}
+	results := func(qs, s8 sums) []playResult {
+		res := fakeResults(&v, map[string]float64{"QS": qs.mean, "8S": s8.mean}, 1)
+		for i := range res {
+			x := map[string]sums{"QS": qs, "8S": s8}[res[i].card.String()]
+			n := float64(res[i].n)
+			res[i].roem = roemSums{noRoem: int64(x.noRoem * n),
+				trick: [2]int64{int64(x.trick[0] * n), int64(x.trick[1] * n)}, hand: [2]int64{int64(x.hand[0] * n), int64(x.hand[1] * n)}}
+			res[i].out.natUs = x.nat * res[i].n / 100
+		}
+		return res
+	}
+	for _, c := range []struct {
+		name    string
+		qs, s8  sums
+		want    string
+		without bool
+	}{
+		{"this trick", sums{30, 25, [2]float64{}, [2]float64{}, 0}, sums{22, 32, [2]float64{0, 10}, [2]float64{0, 10}, 0},
+			" ♠7, ♠9, ♠10 en ♠B zijn nog in het spel, dus in deze slag kan roem vallen. Volgens de berekening: met ♠V gemiddeld geen roem, met ♠8 10 roem voor de tegenstanders.", false},
+		{"the hand, and nat", sums{30, 25, [2]float64{}, [2]float64{13, 0}, 10}, sums{22, 32, [2]float64{}, [2]float64{}, 30},
+			" Zonder roem zou ♠8 beter zijn. De roem in dit potje volgens de berekening, per saldo: met ♠V gemiddeld 13 voor jullie, met ♠8 niets. Met ♠8 gaan jullie vaker nat: 30% tegen 10%.", false},
+		{"both for us", sums{30, 25, [2]float64{}, [2]float64{13, 0}, 0}, sums{22, 32, [2]float64{}, [2]float64{4, 0}, 0},
+			" Zonder roem zou ♠8 beter zijn. De roem in dit potje volgens de berekening, per saldo: met ♠V gemiddeld 13 voor jullie, met ♠8 4 voor jullie.", false},
+		{"for both sides", sums{30, 25, [2]float64{}, [2]float64{13, 3}, 0}, sums{22, 32, [2]float64{}, [2]float64{2, 2}, 0},
+			" Zonder roem zou ♠8 beter zijn. De roem in dit potje volgens de berekening, per saldo: met ♠V gemiddeld 10 voor jullie, met ♠8 niets.", false},
+		{"nat only", sums{30, 25, [2]float64{}, [2]float64{5, 0}, 10}, sums{22, 32, [2]float64{}, [2]float64{4, 0}, 30},
+			" Zonder roem zou ♠8 beter zijn. Met ♠8 gaan jullie vaker nat: 30% tegen 10%.", false},
+		{"nothing to name", sums{30, 25, [2]float64{}, [2]float64{5, 0}, 10}, sums{22, 32, [2]float64{}, [2]float64{4, 0}, 12}, "", true},
+		{"roem swings too little", sums{30, 30, [2]float64{}, [2]float64{2, 0}, 0}, sums{29, 31, [2]float64{}, [2]float64{}, 0}, "", true},
+		{"best without roem too", sums{30, 35, [2]float64{}, [2]float64{13, 0}, 0}, sums{22, 32, [2]float64{}, [2]float64{}, 0}, "", true},
+	} {
+		text, _ := explainPlay(&v, &tab, card("QS"), results(c.qs, c.s8))
+		if c.without && strings.Contains(text, "roem") || !c.without && !strings.HasSuffix(text, c.want) {
+			t.Errorf("%s: got %q\nwant it to end with %q", c.name, text, c.want)
+		}
+	}
+}

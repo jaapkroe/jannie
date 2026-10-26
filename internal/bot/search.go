@@ -58,14 +58,26 @@ func (s *sim) play(c game.Card) {
 
 // run plays the hand to the end with the rule-based policy for every seat.
 func (s *sim) run(aggr *[4]float64) {
-	var buf [8]game.Card
 	for s.d.Phase() == game.PhasePlay {
-		seat := s.d.Turn()
-		legal := setOf(s.d.AppendLegal(buf[:0]))
-		hand := setOf(s.d.AppendHand(buf[:0], seat))
-		m := newMover(&s.t, seat, hand, legal, aggr[seat])
-		s.play(m.choose())
+		s.step(aggr)
 	}
+}
+
+// finishTrick plays the current trick to its end, as run would.
+func (s *sim) finishTrick(aggr *[4]float64) {
+	for s.t.n != 0 && s.d.Phase() == game.PhasePlay {
+		s.step(aggr)
+	}
+}
+
+// step plays one card with the rule-based policy.
+func (s *sim) step(aggr *[4]float64) {
+	var buf [8]game.Card
+	seat := s.d.Turn()
+	legal := setOf(s.d.AppendLegal(buf[:0]))
+	hand := setOf(s.d.AppendHand(buf[:0], seat))
+	m := newMover(&s.t, seat, hand, legal, aggr[seat])
+	s.play(m.choose())
 }
 
 // value is result r for team: its score minus the opponents' score,
@@ -77,6 +89,20 @@ func value(r *game.HandResult, team int, aggr float64) int {
 		v += int(pitAppetite * aggr)
 	}
 	return v
+}
+
+// valueNoRoem is value without roem and without appetite: the score as if
+// nobody had made roem (pit still counts), which can turn nat around.
+func valueNoRoem(r *game.HandResult, team int) int {
+	if r.Players != 4 {
+		return value(r, team, 0)
+	}
+	var pit [2]int
+	if r.Pit {
+		pit[r.PitTeam] = game.PitBonus
+	}
+	s, _ := game.ScoreHand(r.PlayingTeam, r.Points, pit)
+	return s[team] - s[1-team]
 }
 
 // outcome sums what an option led to over the sampled deals (see Outcome).
@@ -175,6 +201,37 @@ type playResult struct {
 	// card's value and that of candidate j (in v.Legal order): every
 	// candidate is played out in the same worlds, see pairSE.
 	diffSq [8]int64
+	roem   roemSums // with cfg.points only: what roem did
+}
+
+// roemSums sums over the worlds what roem did after a card: the value
+// without roem (valueNoRoem), and the roem made from the card on by us
+// and by the opponents, in the whole hand and in the card's own trick.
+type roemSums struct {
+	noRoem      int64
+	hand, trick [2]int64 // us, them
+}
+
+func (r *roemSums) merge(o roemSums) {
+	r.noRoem += o.noRoem
+	for i := range 2 {
+		r.hand[i] += o.hand[i]
+		r.trick[i] += o.trick[i]
+	}
+}
+
+// addRoem adds to r (us, them) the roem made between before and after.
+func addRoem(r *[2]int64, before, after [2]int, team int) {
+	r[0] += int64(after[team] - before[team])
+	r[1] += int64(after[1-team] - before[1-team])
+}
+
+// perWorld is sum x per world of r.
+func (r playResult) perWorld(x int64) float64 {
+	if r.n == 0 {
+		return 0
+	}
+	return float64(x) / float64(r.n)
 }
 
 func (r playResult) outcome() Outcome { return r.out.mean(r.n) }
@@ -227,6 +284,7 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 	var sq [chunks][8][8]int64 // sq[ch][i][j], i < j: summed squared differences
 	var outs [chunks][8]outcome
 	var counts [chunks]int
+	var roem [chunks][8]roemSums
 	appetite := cfg.appetite(aggr)
 	cfg.runChunks(func(ch int) {
 		n := perChunk(cfg.playWorlds, ch)
@@ -249,12 +307,23 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 			}
 			for i, c := range legal {
 				s := sim{d: *base, t: *tab}
+				before := s.d.HandRoem()
 				s.play(c)
+				if cfg.points {
+					s.finishTrick(&ag)
+					after := s.d.HandRoem()
+					addRoem(&roem[ch][i].trick, before, after, team)
+				}
 				s.run(&ag)
 				r := s.d.Result()
 				vals[i] = int64(value(&r, team, appetite))
 				sums[ch][i] += vals[i]
 				outs[ch][i].add(&r, team)
+				if cfg.points {
+					after := s.d.HandRoem()
+					addRoem(&roem[ch][i].hand, before, after, team)
+					roem[ch][i].noRoem += int64(valueNoRoem(&r, team))
+				}
 				for j := range i {
 					d := vals[j] - vals[i]
 					sq[ch][j][i] += d * d
@@ -268,6 +337,7 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 			res[i].total += sums[ch][i]
 			res[i].n += counts[ch]
 			res[i].out.merge(outs[ch][i])
+			res[i].roem.merge(roem[ch][i])
 			for j := range i {
 				res[i].diffSq[j] += sq[ch][j][i]
 				res[j].diffSq[i] += sq[ch][j][i]

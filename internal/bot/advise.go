@@ -303,7 +303,166 @@ func explainPlay(v *game.View, tab *table, c game.Card, res []playResult) (text 
 	} else {
 		text = followText(&m, c)
 	}
+	if !strings.Contains(text, "roem") {
+		if r := m.roemText(c); r != "" {
+			text += r
+			m.generic = false
+		}
+	}
 	return text, m.generic
+}
+
+// roemReason is how many points roem must swing between a hint's card
+// and the card the search rates best without roem before the hint names
+// it as the reason (see roemText).
+const roemReason = 3
+
+// roemText is the text, starting with a space, that names roem when it is
+// why c beats y, the card the search rates best without roem: c is at
+// least as good as y with roem, and roem swings at least roemReason
+// points (and two standard errors) towards c. When most of that swing
+// falls in this trick it names the cards still out that could make roem
+// in it ("♠9 en ♠B zijn nog in het spel, dus in deze slag kan roem
+// vallen. Volgens de berekening: met ♠10 gemiddeld 18 roem voor jullie,
+// met ♠A 7."), else the balance of roem over the hand when it differs by
+// roemReason, and nat when that differs; "" without a search, such a card
+// y or anything to name.
+func (m *explainer) roemText(c game.Card) string {
+	i := resultIndex(m.res, c)
+	if i < 0 {
+		return ""
+	}
+	j := -1
+	for k, r := range m.res {
+		if k != i && r.n > 0 && (j < 0 || r.roem.noRoem > m.res[j].roem.noRoem) {
+			j = k
+		}
+	}
+	if j < 0 || m.res[j].roem.noRoem <= m.res[i].roem.noRoem {
+		return ""
+	}
+	rc, ry := m.res[i], m.res[j]
+	y := ry.card
+	gap := rc.mean() - ry.mean()
+	swing := gap + ry.perWorld(ry.roem.noRoem) - rc.perWorld(rc.roem.noRoem)
+	if gap < 0 || swing < max(roemReason, 2*pairSE(m.res, i, j)) {
+		return ""
+	}
+	cs, ys := game.CardShortNL(c), game.CardShortNL(y)
+	tc, ty := rc.roemPerWorld(rc.roem.trick), ry.roemPerWorld(ry.roem.trick)
+	if float64(tc[0]-tc[1]-ty[0]+ty[1]) >= swing/2 {
+		head := " In deze slag kan roem vallen."
+		if out := m.roemCards(c) | m.roemCards(y); out != 0 {
+			names := namesLowToHigh(out)
+			verb := " zijn"
+			if len(names) == 1 {
+				verb = " is"
+			}
+			head = " " + joinNL(names) + verb + " nog in het spel, dus in deze slag kan roem vallen."
+		}
+		return head + " Volgens de berekening: met " + cs + " gemiddeld " + roemPair(tc, ty, ys) + "."
+	}
+	nat := ""
+	oc, oy := rc.outcome(), ry.outcome()
+	switch {
+	case m.ourTeamPlays() && oy.NatUs-oc.NatUs >= 0.1:
+		nat = " Met " + ys + " gaan jullie vaker nat: " + percent(oy.NatUs) + " tegen " + percent(oc.NatUs) + "."
+	case !m.ourTeamPlays() && oc.NatThem-oy.NatThem >= 0.1:
+		nat = " Met " + cs + " gaan de tegenstanders vaker nat: " + percent(oc.NatThem) + " tegen " + percent(oy.NatThem) + "."
+	}
+	hc, hy := rc.roemPerWorld(rc.roem.hand), ry.roemPerWorld(ry.roem.hand)
+	nc, ny := hc[0]-hc[1], hy[0]-hy[1]
+	switch {
+	case nc-ny >= roemReason:
+		return " Zonder roem zou " + ys + " beter zijn. De roem in dit potje volgens de berekening, per saldo: met " + cs + " gemiddeld " +
+			netRoem(nc) + ", met " + ys + " " + netRoem(ny) + "." + nat
+	case nat != "":
+		return " Zonder roem zou " + ys + " beter zijn." + nat
+	}
+	return ""
+}
+
+// netRoem says roem n, ours minus the opponents': "13 voor jullie".
+func netRoem(n int) string {
+	switch {
+	case n > 0:
+		return strconv.Itoa(n) + " voor jullie"
+	case n < 0:
+		return strconv.Itoa(-n) + " voor de tegenstanders"
+	}
+	return "niets"
+}
+
+// roemPerWorld is roem sums r (us, them) per world, rounded.
+func (r playResult) roemPerWorld(x [2]int64) [2]int {
+	return [2]int{int(math.Round(r.perWorld(x[0]))), int(math.Round(r.perWorld(x[1])))}
+}
+
+// roemPair says the roem (us, them) after two cards: "13 roem voor
+// jullie, met ♣A 2", "geen roem, met ♠8 10 roem voor de tegenstanders".
+func roemPair(a, b [2]int, bName string) string {
+	second := roemAmount(b)
+	switch {
+	case a[1] == 0 && b[1] == 0 && a[0] > 0 && b[0] > 0:
+		second = strconv.Itoa(b[0])
+	case a[0] == 0 && b[0] == 0 && a[1] > 0 && b[1] > 0:
+		second = strconv.Itoa(b[1])
+	}
+	return roemAmount(a) + ", met " + bName + " " + second
+}
+
+// roemAmount says roem x (us, them): "13 roem voor jullie en 3 voor de
+// tegenstanders".
+func roemAmount(x [2]int) string {
+	switch {
+	case x[0] == 0 && x[1] == 0:
+		return "geen roem"
+	case x[1] == 0:
+		return strconv.Itoa(x[0]) + " roem voor jullie"
+	case x[0] == 0:
+		return strconv.Itoa(x[1]) + " roem voor de tegenstanders"
+	}
+	return strconv.Itoa(x[0]) + " roem voor jullie en " + strconv.Itoa(x[1]) + " voor de tegenstanders"
+}
+
+// percent is a share as a whole percentage: "25%".
+func percent(f float64) string { return strconv.Itoa(int(math.Round(100*f))) + "%" }
+
+// roemCards returns the cards still out with which the players after the
+// mover could make roem in this trick once the mover has played z: the
+// missing cards of a run of three in one suit that already holds a card
+// on the table or z, when the players after the mover can add them all,
+// and the other half of stuk.
+func (m *mover) roemCards(z game.Card) cardSet {
+	t := m.t
+	table := bit(z)
+	for _, c := range t.trick[:t.n] {
+		table |= bit(c)
+	}
+	_, after := m.afterMe()
+	var out cardSet
+	for s := game.Suit(0); s < game.NumSuits; s++ {
+		for lo := 0; lo+2 < game.NumRanks; lo++ {
+			run := cardSet(0b111) << (uint(s)*8 + uint(lo))
+			if need := run &^ table; need != run && need&^m.unk == 0 && need.count() <= after {
+				out |= need
+			}
+		}
+	}
+	stuk := bit(game.Card{Rank: game.King, Suit: t.trump}) | bit(game.Card{Rank: game.Queen, Suit: t.trump})
+	if need := stuk &^ table; need.count() == 1 && need&m.unk != 0 && after > 0 {
+		out |= need
+	}
+	return out
+}
+
+// namesLowToHigh names the cards of s suit by suit, from 7 to aas.
+func namesLowToHigh(s cardSet) []string {
+	var names []string
+	for _, c := range s.appendCards(nil) {
+		names = append(names, game.CardShortNL(c))
+	}
+	return names
 }
 
 // playText explains why c is a good card in v, for a learner.
