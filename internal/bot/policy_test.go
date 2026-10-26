@@ -53,6 +53,7 @@ func TestNormaalScenarios(t *testing.T) {
 		voorhand game.Seat
 		spec     [4]string
 		trump    game.Suit
+		sig      *game.Signals // default game.DefaultSignals
 		plays    string
 		want     string
 	}{
@@ -120,9 +121,15 @@ func TestNormaalScenarios(t *testing.T) {
 			want:  "7H",
 		},
 		{
+			// ♦V would give the opponents a run (♦10 ♦B out): trump.
 			name: "maker without the boer does not lead a small card", voorhand: 0, trump: game.Hearts,
 			spec: [4]string{"9H 8H 7C 8C KS QS KD QD", "", "", ""},
-			want: "QD",
+			want: "8H",
+		},
+		{
+			name: "lead around roem: ♠8 and ♦9 would give the opponents runs", voorhand: 0, trump: game.Hearts,
+			spec: [4]string{"8S QS KS 7H 9D KD QD JC", "", "", ""}, sig: &game.Signals{Aas: true, HoogLaag: true},
+			want: "KD",
 		},
 		{
 			name: "only small side cards: lead trump, not a false kleintje boer", voorhand: 0, trump: game.Hearts,
@@ -175,6 +182,7 @@ func TestNormaalScenarios(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			d := build(t, c.voorhand, c.spec, c.trump, game.Amsterdams, c.plays)
 			v := turnView(d)
+			v.Signals = c.sig
 			got := normalChoice(&v, 0.5)
 			if got != card(c.want) {
 				t.Errorf("normaal played %v, want %v (hand %v, legal %v)", got, c.want, v.Hand, v.Legal)
@@ -260,10 +268,11 @@ func TestRuleTexts(t *testing.T) {
 			text:  "Speel ♥7: je maat vroeg met een kleintje om troef (kleintje boer), dus speel troef naar je maat toe.",
 		},
 		{
-			name: "no small lead without the boer", voorhand: 0, trump: game.Hearts,
-			spec: [4]string{"9H 8H 7C 8C KS QS KD QD", "", "", ""},
-			want: "QD",
-			text: "Speel ♦V: met ♣7 zou je kleintje boer seinen (“ik heb de troefboer”), maar die heb je niet.",
+			name: "lead around roem", voorhand: 0, trump: game.Hearts,
+			spec: [4]string{"8S QS KS 7H 9D KD QD JC", "", "", ""},
+			sig:  &game.Signals{Aas: true, HoogLaag: true},
+			want: "KD",
+			text: "Speel ♦H: met ♠8 kunnen de tegenstanders in deze slag roem maken: ♠7, ♠9 en ♠10 zijn nog in het spel.",
 		},
 		{
 			name: "with the ace and the 10, lead the 10 first", voorhand: 0, trump: game.Hearts,
@@ -469,11 +478,11 @@ func TestRuleTexts(t *testing.T) {
 			text:  "Speel ♦8: je maat heeft geen ruiten meer en kan troeven.",
 		},
 		{
-			name: "lead the last card of a suit", voorhand: 0, trump: game.Hearts,
-			spec: [4]string{"7H 8S 9C QC KC 9D QD KD", "", "", ""},
-			sig:  &game.Signals{Aas: true, HoogLaag: true},
-			want: "8S",
-			text: "Speel ♠8: dit is je laatste schoppen. Dan ben je die kleur kwijt en kun je later troeven.",
+			name: "lead the last card of a suit", voorhand: 1, trump: game.Hearts,
+			spec:  [4]string{"AS 7S 7H 9C QC KC QD KD", "9S", "8S", "JS"},
+			plays: "9S 8S JS AS",
+			want:  "7S",
+			text:  "Speel ♠7: dit is je laatste schoppen. Dan ben je die kleur kwijt en kun je later troeven.",
 		},
 		{
 			name: "no trump, only small cards: a false kleintje boer", voorhand: 0, trump: game.Hearts,
@@ -689,9 +698,16 @@ func TestKleintjeBoerHonest(t *testing.T) {
 		}
 	}
 	t.Logf("%d signals read in %d deals, %d genuine, %d by the maker", read, deals, genuine, byMaker)
-	if read == 0 || byMaker == 0 || float64(genuine) < 0.95*float64(read) {
+	if read == 0 || byMaker == 0 || !notClearlyBelow(genuine, read, 0.95) {
 		t.Errorf("kleintje boer: %d read, %d genuine, %d by the maker; want honest signals from makers and partners", read, genuine, byMaker)
 	}
+}
+
+// notClearlyBelow reports whether k of n is not clearly below rate p: at
+// most two standard errors under it. Self-play gives a few dozen signals
+// of a kind, too few for a fixed threshold.
+func notClearlyBelow(k, n int, p float64) bool {
+	return float64(k) >= float64(n)*p-2*math.Sqrt(float64(n)*p*(1-p))
 }
 
 // TestSignalsHonest: in self-play the aces and small discards that the
@@ -703,9 +719,6 @@ func TestSignalsHonest(t *testing.T) {
 	deals := 600
 	if testing.Short() {
 		deals = 150
-	}
-	honest := func(k, n int, p float64) bool {
-		return float64(k) >= float64(n)*p-2*math.Sqrt(float64(n)*p*(1-p))
 	}
 	cfg := searchConfig{playWorlds: 64, trumpWorlds: 32, workers: 1}
 	var allAces, allLows int
@@ -767,7 +780,7 @@ func TestSignalsHonest(t *testing.T) {
 			}
 		}
 		t.Logf("%s: %d of %d ace discards with the 10, %d of %d small discards with the highest card", lvl, aceTrue, aces, lowTrue, lows)
-		if !honest(aceTrue, aces, 0.9) || !honest(lowTrue, lows, 0.7) {
+		if !notClearlyBelow(aceTrue, aces, 0.9) || !notClearlyBelow(lowTrue, lows, 0.7) {
 			t.Errorf("%s: aas vraagt 10 %d/%d true, laag bijspelen %d/%d true; want honest signals", lvl, aceTrue, aces, lowTrue, lows)
 		}
 		allAces += aces

@@ -433,7 +433,10 @@ func New(p Persona, lvl Level, seed uint64) Player
 //     (decide: rule). The hint is that card with the rule's reason, and
 //     what the rule's own costs weighed: the cheaper or richer card it
 //     kept in hand and why ("Met ♠H zou je de tegenstanders 50 roem
-//     geven", "♠A is de hoogste schoppen en kan zelf nog een slag halen").
+//     geven", "♠A is de hoogste schoppen en kan zelf nog een slag halen"),
+//     and for a lead the roem that decided it ("met ♠8 kunnen de
+//     tegenstanders in deze slag roem maken: ♠7, ♠9 en ♠10 zijn nog in het
+//     spel").
 //   - Unless the sterk card is better by at least max(5 points, 2 paired
 //     SE): then the hint is that card, with how much more it brings than
 //     the rule's card and in which part of the value mainly. The search
@@ -520,7 +523,17 @@ Strength levels:
   to the partner's trick (aas vraagt 10, §8) but avoids an ace without it,
   avoids a low discard that would falsely claim the highest card of its
   suit (laag bijspelen), and leads into a suit whose highest card the
-  partner signalled.
+  partner signalled. Leading, it weighs roem: every side card is a
+  candidate, and each run of three through it whose two other cards are
+  still out with two other players counts 8 points for the team that
+  probably takes the trick: the mover's with the highest card of the suit
+  or in the suit of the partner's signalled highest card (when nobody is
+  known to ruff it), else the opponents'. So it leads ♦H from ♦H ♦V
+  rather than ♠8 with ♠7 ♠9 ♠10 out. In duplicate self-play against the
+  lead without roem this gains normaal 3.3 points per hand. Sterk already
+  weighs roem at its own lead through the search's score; that its
+  playouts now lead the same way changes it by −0.2 ± 0.65 points per
+  hand (24,000 deals), nothing measurable.
 - **sterk**: card tracking with inference (voids from not following suit,
   trump obligations), determinised Monte Carlo: sample hidden hands consistent
   with everything known, evaluate each legal move by playouts with the normaal
