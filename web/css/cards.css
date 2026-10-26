@@ -179,7 +179,7 @@
 }
 
 .card.disabled {
-  filter: saturate(0.3) brightness(0.68);
+  filter: saturate(0.6) brightness(0.85);
   cursor: not-allowed;
 }
 
