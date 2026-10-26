@@ -814,7 +814,7 @@ function natWhy(s, r, w) {
   ]), sub);
 }
 
-function countdownRing() {
+export function countdownRing() {
   const NS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(NS, 'svg');
   svg.setAttribute('viewBox', '0 0 36 36');

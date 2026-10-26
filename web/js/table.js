@@ -75,7 +75,9 @@ export function init() {
     E.coachIcon = h('span', { class: 'coach-ico', 'aria-hidden': 'true', text: '💡' }),
     h('div', { class: 'coach-body' },
       E.coachTxt = h('div', { class: 'coach-txt' }, E.coachLbl = h('b', { class: 'coach-lbl' }), E.coachText = h('span')),
-      E.coachMore = h('button', { class: 'coach-more', type: 'button', hidden: true, 'aria-expanded': 'false', onclick: toggleCoach })),
+      E.coachMore = h('button', { class: 'coach-more', type: 'button', hidden: true, 'aria-expanded': 'false', onclick: toggleCoach }),
+      E.coachGo = h('button', { class: 'coach-go', type: 'button', hidden: true, onclick: closeCoach },
+        (E.coachRing = panels.countdownRing()).el, h('span', { text: 'Verder' }))),
     h('button', { class: 'coach-x', type: 'button', 'aria-label': 'Sluiten', onclick: closeCoach }, icon('close')));
   E.rule = h('div', { class: 'rule', 'aria-live': 'polite' });
   E.prompt = h('div', { class: 'prompt' }, seats.bottom.root, E.rule, ...panels.toolButtons(['last']), E.coach);
@@ -640,6 +642,10 @@ function renderPrompt(s) {
   // Trump and bid hints are in the panel; only short landscape screens,
   // where the coach sits in a free corner, keep the bubble (see app.css).
   E.coach.classList.toggle('on-stage', !!hint && s.phase !== 'play');
+  // The last trick of a hand waits for its explanation to be read.
+  const reading = !hint && !!tip && readingTip(s);
+  E.coachGo.hidden = !reading;
+  if (reading) E.coachRing.set(s.nextAt);
   if (show) {
     E.coach.classList.toggle('is-tip', !hint);
     E.coachIcon.textContent = hint ? '💡' : '👩‍🏫';
@@ -656,13 +662,14 @@ function renderPrompt(s) {
 // On a short landscape screen the coach sits in the top-left corner, above
 // the left seat: the player after you, whose turn ring must stay in view.
 // A text too long for that room shows the lines that fit and "Lees verder";
-// opened on purpose, it may cover the seat until "Minder" or ✕.
+// opened on purpose, it may cover the seat until "Minder" or ✕. The
+// explanation of a hand's last trick shows in full: nobody plays after it.
 function fitCoach() {
   E.coach.style.removeProperty('--coach-lines');
   if (!shortLandscape()) E.coach.classList.remove('open'); // turned upright
   const open = E.coach.classList.contains('open');
   let clamped = false;
-  if (shortLandscape() && !E.coach.hidden && !open) {
+  if (shortLandscape() && !E.coach.hidden && !open && E.coachGo.hidden) {
     E.coach.classList.remove('clamped');
     E.coachMore.hidden = true; // measured without it: it goes over the last line
     const over = coachBottom() - (seats.left.ring.getBoundingClientRect().top - COACH_GAP);
@@ -701,8 +708,15 @@ function liftedText(code) {
 function closeCoach() {
   const s = app.s;
   if (s?.hint?.text && !E.coach.classList.contains('is-tip')) dismissed = JSON.stringify(s.hint);
+  else if (tip && s && readingTip(s)) app.send({ t: 'tipRead' }); // read: on to the summary
   tip = '';
   if (s) renderPrompt(s);
+}
+
+// Training: the last trick of a hand stays on the table until its
+// explanation is read (Verder, ✕) or nextAt has come.
+function readingTip(s) {
+  return !!(s.training && s.phase === 'play' && s.nextAt);
 }
 
 function renderHand(s, o = {}) {
@@ -919,6 +933,11 @@ function onKey(e) {
   if (!s || document.body.dataset.screen !== 'game' || panels.isOpen()) return;
   if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
   if ((e.key === 'Enter' || e.key === ' ') && e.target.closest?.('button')) return;
+  if ((e.key === 'Enter' || e.key === ' ') && tip && readingTip(s)) {
+    e.preventDefault();
+    closeCoach();
+    return;
+  }
   if (!handOrder.length || !PLAYING.has(s.phase)) return;
   if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
     e.preventDefault();

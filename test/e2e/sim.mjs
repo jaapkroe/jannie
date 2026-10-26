@@ -254,6 +254,9 @@ class Player {
       case 'tip':
         this.check(typeof m.text === 'string' && m.text.length > 0, 'empty tip');
         this.tips++;
+        // The last trick of a hand waits for its tip: read it now, or let
+        // the time run out.
+        if (this.s?.phase === 'play' && this.s.nextAt && Math.random() < 0.5) setTimeout(() => this.send({ t: 'tipRead' }), rand(30));
         // A trump, bid or card against the hint is told with the (first)
         // trick, and only then. A reconnect may lose a tip or a decision.
         if (!this.game.cfg.reconnect) {
@@ -360,7 +363,7 @@ class Player {
       return;
     }
     // What was sent while offline is lost: decide and press ready again
-    // after the resync (training summaries wait for ready).
+    // after the resync (summaries alone at the table wait for ready).
     this.acted = -1;
     this.readied = 0;
     this.send({ t: 'join', code: this.code, name: this.name, token: this.token });
@@ -524,10 +527,11 @@ class Player {
     for (const t of s.prevHand.tricks) pts[side(t.winner)] += t.points;
     if (n === 3) for (const c of r.discards) pts[0] += cardPoints(c, r.trump);
     this.check(pts[0] === r.points[0] && pts[1] === r.points[1], `trick points ${pts} vs result ${r.points}`);
-    // The summary counts down to the next hand, except in training: there it
-    // waits for ready.
-    if (this.game.cfg.training) this.check(s.nextAt === 0, `training handEnd with nextAt ${s.nextAt}`);
-    else this.check(s.nextAt > 0, 'handEnd without nextAt');
+    // The summary counts down to the next hand, except alone at the table
+    // (training, or one person with bots): there it waits for ready.
+    const people = s.players.filter(p => p && !p.bot && !p.left).length;
+    if (people === 1) this.check(s.nextAt === 0, `handEnd alone with nextAt ${s.nextAt}`);
+    else this.check(s.nextAt > 0, `handEnd of ${people} people without nextAt`);
   }
 
   checkGameOver(s, ev) {

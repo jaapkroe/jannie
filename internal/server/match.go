@@ -276,9 +276,10 @@ func (r *room) drive() {
 	}
 	live := r.live()
 	if r.pending != stepNone {
-		// The hand summary waits for the players (in training only for
-		// ready); the other pauses are part of the animation and always end.
-		if r.pending == stepNextHand && (!live || r.training) {
+		// The hand summary waits for the players (alone at the table only
+		// for ready, see timeSummary); the other pauses are part of the
+		// animation and always end.
+		if r.pending == stepNextHand && (!live || r.pendingAt.IsZero()) {
 			return
 		}
 		r.after(time.Until(r.pendingAt), r.runPending)
@@ -330,6 +331,7 @@ func (r *room) runPending() {
 		r.emit(nil)
 	case stepCollect:
 		r.collected = true
+		r.nextAt = time.Time{}
 		w := r.deal.Current().Winner
 		if r.deal.Phase() == game.PhaseDone {
 			r.emit(evCollect{Type: "collect", Winner: w})
@@ -530,7 +532,14 @@ func (r *room) act(i game.Seat, a action) error {
 		r.collected = false
 		r.lastTrick = &t
 		r.trickNo++
+		tips := r.trickTips(t)
 		r.pause(stepCollect, p.trick)
+		if read := readTime(tips); d.Phase() == game.PhaseDone && read > 0 {
+			// Training: the summary would cover the last tip at once, so
+			// the last trick stays until it is read (or tipRead).
+			r.pause(stepCollect, max(p.trick, read))
+			r.nextAt = r.pendingAt
+		}
 		r.emit(evPlay{Type: "play", Seat: i, Card: a.card})
 		roem := t.Roem
 		if roem == nil {
@@ -538,7 +547,7 @@ func (r *room) act(i game.Seat, a action) error {
 		}
 		r.emit(evTrick{Type: "trick", Winner: t.Winner, Points: t.Points, Roem: roem, Last: d.Phase() == game.PhaseDone})
 		r.reviewTrick(t)
-		r.sendTips(t)
+		r.sendTips(tips)
 		r.chatTrick(t)
 	default:
 		return errors.New("onbekende actie")
@@ -575,14 +584,14 @@ func (r *room) missedHintFor(i game.Seat, a action) *missedHint {
 	return &missedHint{seat: i, hint: *h}
 }
 
-// sendTips explains a finished trick to the player in training, and what
-// the hint was when they played another card. The first trick of a hand
-// also says so of a trump choice or bid that went against the hint.
-func (r *room) sendTips(t game.Trick) {
+// trickTips explains a finished trick to the player in training, per seat,
+// and what the hint was when they played another card. The first trick of
+// a hand also says so of a trump choice or bid that went against the hint.
+func (r *room) trickTips(t game.Trick) (tips [4]string) {
 	missed, choices := r.missed, r.misses
 	r.missed, r.misses = nil, nil
 	if !r.training {
-		return
+		return tips
 	}
 	trump, _ := r.deal.Trump()
 	for i := range r.seats {
@@ -604,10 +613,31 @@ func (r *room) sendTips(t game.Trick) {
 		if missed != nil && missed.seat == game.Seat(i) {
 			parts = append(parts, r.missedText(game.Seat(i), missed))
 		}
-		if text := strings.TrimSpace(strings.Join(parts, " ")); text != "" {
+		tips[i] = strings.TrimSpace(strings.Join(parts, " "))
+	}
+	return tips
+}
+
+// sendTips sends the tips of trickTips.
+func (r *room) sendTips(tips [4]string) {
+	for i, text := range tips {
+		if st := &r.seats[i]; text != "" && st.client != nil {
 			st.client.send(mustJSON(tipMsg{T: "tip", Text: text}))
 		}
 	}
+}
+
+// readTime is how long the longest of the tips takes to read: a moment to
+// look up and 250 ms a word, at most tipReadMax. 0 without a tip.
+func readTime(tips [4]string) time.Duration {
+	words := 0
+	for _, text := range tips {
+		words = max(words, len(strings.Fields(text)))
+	}
+	if words == 0 {
+		return 0
+	}
+	return min(2*time.Second+time.Duration(words)*250*time.Millisecond, tipReadMax)
 }
 
 // missedText says what the hint advised, with its reason: "Juf Ans had ♣9
@@ -777,15 +807,24 @@ func (r *room) endHand() {
 	for i := range r.seats {
 		r.seats[i].ready = false
 	}
-	r.pause(stepNextHand, r.pace().summary)
-	r.nextAt = r.pendingAt
-	if r.training {
-		// The learner looks back at the hand at leisure and goes on with ready.
-		r.pendingAt, r.nextAt = time.Time{}, time.Time{}
-	}
+	r.pending = stepNextHand
+	r.timeSummary(time.Now())
 	r.emit(evHandEnd{Type: "handEnd", Result: res})
 	r.chatHandEnd(res)
 	r.drive()
+}
+
+// timeSummary sets when the hand summary moves on by itself: the summary
+// time after from. Alone at the table (training, or one person with bots)
+// it does not: the player looks back at the hand at leisure and goes on
+// with ready.
+func (r *room) timeSummary(from time.Time) {
+	r.pendingAt, r.nextAt = time.Time{}, time.Time{}
+	if r.training || r.humanCount() == 1 {
+		return
+	}
+	r.pendingAt = from.Add(r.scaled(r.pace().summary))
+	r.nextAt = r.pendingAt
 }
 
 // nextHand deals the next hand, or ends the match after the last one.

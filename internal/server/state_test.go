@@ -166,8 +166,15 @@ func checkPhaseValues(t *testing.T, key string, m *msg) {
 			wantKeys(t, key+" pile", piles[0][0], []string{"n", "card"})
 		}
 	case phaseHandEnd:
-		if s.NextAt <= time.Now().Add(-time.Minute).UnixMilli() || s.PrevHand == nil || s.Turn != -1 {
-			t.Errorf("handEnd: nextAt %d prevHand %v turn %d", s.NextAt, s.PrevHand != nil, s.Turn)
+		// Alone at the table the summary waits for ready.
+		people := 0
+		for _, p := range s.Players {
+			if p != nil && !p.Bot && !p.Left {
+				people++
+			}
+		}
+		if (people == 1) != (s.NextAt == 0) || s.NextAt != 0 && s.NextAt <= time.Now().Add(-time.Minute).UnixMilli() || s.PrevHand == nil || s.Turn != -1 {
+			t.Errorf("handEnd: %d people, nextAt %d prevHand %v turn %d", people, s.NextAt, s.PrevHand != nil, s.Turn)
 		}
 		wantKeys(t, "prevHand", field(t, m.S, "prevHand"), []string{"tricks", "result"})
 		wantKeys(t, "result", field(t, field(t, m.S, "prevHand"), "result"),
