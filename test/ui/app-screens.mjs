@@ -226,15 +226,18 @@ async function bidFlow(P) {
   await snap(P, '15-bid');
 }
 
-// Training with open cards: hint bubble and advised card.
+// Training with open cards, without the lessons: hint bubble and advised
+// card.
 async function trainingFlow(P) {
   await home(P);
   await press(P, '#btn-train');
   await waitFor(P, () => document.querySelector('.m-train.open'), { label: 'training sheet' });
   // A tap while the sheet still slides in can miss the switch.
   await waitFor(P, () => !document.querySelector('.m-train').getAnimations({ subtree: true }).some(a => a.effect.getComputedTiming().endTime < Infinity), { label: 'training sheet in place' });
-  await press(P, '.m-train .switch input');
-  await waitFor(P, () => document.querySelector('.m-train .switch input:checked'), { label: 'open cards switched on' });
+  await press(P, '#train-lessons');
+  await waitFor(P, () => !document.querySelector('#train-lessons:checked'), { label: 'lessons switched off' });
+  await press(P, '#train-open');
+  await waitFor(P, () => document.querySelector('#train-open:checked'), { label: 'open cards switched on' });
   await press(P, '#btn-train-go');
   await playUntil(P, '.hand.my-turn .card.hint', { timeout: 60000 });
   await sleep(500);

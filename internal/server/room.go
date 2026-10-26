@@ -126,6 +126,14 @@ type room struct {
 	nextAt    time.Time // when the summary moves on (zero: it waits for ready); training: when the last trick, kept for its tip, goes
 	trickNo   int       // tricks completed in this room, for bot chat limits
 
+	// Training with lessons (lesson.go).
+	lesson      *lessonStep    // on screen until read: a pause waits for it, or on the learner's turn the hint does
+	lessons     []lessonStep   // the steps after it
+	lessonChat  bool           // lesson went to the chat
+	lessonN     int            // steps numbered so far
+	lessonHands int            // hands dealt with lessons: in the first one every trick waits for its explanation
+	taught      map[string]int // the lessons given in this room, and how often
+
 	// The review of the humans' play (review.go).
 	matchID    string
 	handTricks [][]game.Trick // the tricks of every finished hand of the match
@@ -461,16 +469,16 @@ func (r *room) fillSeats() {
 	}
 }
 
-// seatTraining sets up the training table: Juf Ans opposite the player,
+// seatTraining sets up the training table: Juf Jannie opposite the player,
 // two random opponents.
 func (r *room) seatTraining() {
-	ans, ok := r.persona("ans")
+	juf, ok := r.persona("jannie")
 	if !ok {
-		ans = r.randomPersona()
+		juf = r.randomPersona()
 	}
-	r.seats[2] = r.newBot(ans)
-	r.seats[1] = r.newBot(r.randomPersona(ans.ID))
-	r.seats[3] = r.newBot(r.randomPersona(ans.ID))
+	r.seats[2] = r.newBot(juf)
+	r.seats[1] = r.newBot(r.randomPersona(juf.ID))
+	r.seats[3] = r.newBot(r.randomPersona(juf.ID))
 }
 
 // ---- messages to clients ----
@@ -493,6 +501,7 @@ func (r *room) emitTo(ev any, fresh *client) {
 		}
 		st.client.send(mustJSON(updateMsg{T: "update", Seq: r.seq, Ev: e, S: r.stateFor(game.Seat(i))}))
 	}
+	r.chatLesson()
 }
 
 // resync sends c its full state without an event.
@@ -545,11 +554,14 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	}
 	switch {
 	case r.training:
-		r.opts.Players = 4 // with Juf Ans as partner
+		r.opts.Players = 4 // with Juf Jannie as partner
 	case r.expert:
 		r.opts.Players = 4 // the engine reasons for four
 	default:
 		r.opts.Open = false
+	}
+	if !r.training {
+		r.opts.Lessons = false
 	}
 	r.expertOpts()
 	r.seats[0] = newHuman(cleanName(m.Name))
@@ -979,7 +991,7 @@ func (r *room) handle(c *client, m *inMsg) {
 	case "ready":
 		r.cmdReady(c, i)
 	case "tipRead":
-		r.cmdTipRead()
+		r.cmdTipRead(m.N)
 	case "vote":
 		r.cmdVote(c, i, m)
 	case "chat":
@@ -1125,7 +1137,7 @@ func (r *room) cmdOpts(c *client, i game.Seat, m *inMsg) {
 	}
 	if n := patch.Players; n != nil && *n != r.opts.Players {
 		if r.training {
-			c.sendError(errInvalid, "In de oefenmodus speel je altijd met z'n vieren, samen met Juf Ans.")
+			c.sendError(errInvalid, "In de oefenmodus speel je altijd met z'n vieren, samen met Juf Jannie.")
 			return
 		}
 		if err := r.setPlayers(*n); err != nil {
@@ -1135,7 +1147,7 @@ func (r *room) cmdOpts(c *client, i game.Seat, m *inMsg) {
 	}
 	patch.apply(&r.opts)
 	if !r.training {
-		r.opts.Open = false
+		r.opts.Open, r.opts.Lessons = false, false
 	}
 	r.expertOpts()
 	r.emit(evLobby{Type: "lobby"})
@@ -1161,10 +1173,14 @@ func (r *room) cmdReady(c *client, i game.Seat) {
 	r.emitState()
 }
 
-// cmdTipRead ends the pause on the last trick of a hand in training, kept
-// for reading its tip: the summary follows at once. Once that pause is
-// over it is a late tap and changes nothing.
-func (r *room) cmdTipRead() {
+// cmdTipRead moves on from the lesson step n on screen (readLesson), or
+// ends the pause on the last trick of a hand in training, kept for reading
+// its tip: the summary follows at once. Once that pause is over it is a
+// late tap and changes nothing.
+func (r *room) cmdTipRead(n *int) {
+	if r.readLesson(n) {
+		return
+	}
 	if r.pending != stepCollect || r.nextAt.IsZero() {
 		return
 	}

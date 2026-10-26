@@ -89,6 +89,18 @@ type Option struct {
 	Parts []float64
 }
 
+// Signal is a card that told the partner something at this table (design
+// §8), as everyone there reads it (see bot.TrickSignal): Kind is the
+// agreement ("aas", "kleintjeBoer", "boerOverBoer", "hoogLaag"), Means the
+// card it says Seat holds (the 10, the trump boer, or the highest card of
+// the suit for a low discard).
+type Signal struct {
+	Seat  game.Seat
+	Card  game.Card
+	Kind  string
+	Means game.Card
+}
+
 // ChatEvent is something a bot may comment on (see bot.ChatEvent).
 type ChatEvent struct {
 	Kind            string
@@ -116,5 +128,10 @@ type AI interface {
 	// their turn, for the expert mode.
 	Explain(v game.View) Explanation
 	ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
+	// TrickSignals finds the signals in the last completed trick of v, and
+	// SignalChance one the player of v can give truthfully on their turn
+	// (prefer first), at a table of four, for the lessons in training.
+	TrickSignals(v game.View) []Signal
+	SignalChance(v game.View, prefer game.Card) (Signal, bool)
 	Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
 }

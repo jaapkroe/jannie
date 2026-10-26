@@ -470,7 +470,7 @@ test('bediening covers the whole interface', () => {
   const text = renderManual('bediening').textContent;
   for (const w of ['Snel spelen', 'Nieuw spel', 'Meedoen', 'Oefenen', '(AI)', 'Kopieer link', 'Delen', 'Start',
     'Spelen', 'Passen', 'Wij – Zij', 'Laatste slag', 'Scorebord', 'Chat', 'Instellingen', 'vierkleurenspel',
-    'minder animaties', 'Juf Ans', 'Utrechts/Amsterdams', '16', 'grijs', 'veeg omhoog', 'Enter']) {
+    'minder animaties', 'Juf Jannie', 'Utrechts/Amsterdams', '16', 'donkerder', 'veeg omhoog', 'Enter']) {
     assert.ok(text.includes(w), w);
   }
 });
@@ -551,9 +551,9 @@ test('bediening says an AI plays for someone who is gone only when everyone agre
   assert.doesNotMatch(text, /seconden een AI-speler voor je|neemt een AI-speler je plaats in|neemt de plaats over/);
 });
 
-test('bediening says when Juf Ans tells what she had advised', () => {
+test('bediening says when Juf Jannie tells what she had advised', () => {
   const text = renderManual('bediening').textContent;
-  assert.match(text, /Speel je een andere kaart, dan vertelt Juf Ans na de slag welke kaart zij had aangeraden en waarom\./);
+  assert.match(text, /Speel je een andere kaart, dan vertelt Juf Jannie na de slag welke kaart zij had aangeraden en waarom\./);
   assert.match(text, /Kies je een andere troef, of speel of pas je tegen haar advies in, dan hoor je dat na de eerste slag\./);
 });
 

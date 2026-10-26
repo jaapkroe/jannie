@@ -309,13 +309,21 @@ function openNewGame() {
 function openTraining() {
   sound.unlock();
   sound.play('click');
-  const opts = { open: false, tempo: 'rustig', trumpMode: 'utrechts', rules: 'amsterdams' };
-  const open = h('input', { type: 'checkbox', onchange: e => { opts.open = e.target.checked; } });
+  // Speluitleg stays as last chosen: once the game is known, it is off.
+  const opts = { open: false, lessons: store.get('lessons', '1') === '1', tempo: 'rustig', trumpMode: 'utrechts', rules: 'amsterdams' };
+  const open = h('input', { type: 'checkbox', id: 'train-open', onchange: e => { opts.open = e.target.checked; } });
+  const lessons = h('input', { type: 'checkbox', id: 'train-lessons', checked: opts.lessons, onchange: e => {
+    opts.lessons = e.target.checked;
+    store.set('lessons', opts.lessons ? '1' : '0');
+  } });
   const m = panels.openModal({
-    id: 'train', title: 'Oefenen met Juf Ans', cls: 'm-sheet m-train', body: [
+    id: 'train', title: 'Oefenen met Juf Jannie', cls: 'm-sheet m-train', body: [
       h('div', { class: 'train-intro' },
         h('span', { class: 'avatar is-bot train-av', text: '👩‍🏫' }),
-        h('p', { text: 'Je speelt samen met Juf Ans tegen twee AI-spelers. Bij elke beurt krijg je een tip, en na elke slag legt ze uit wat er gebeurde.' })),
+        h('p', { text: 'Je speelt samen met Juf Jannie tegen twee AI-spelers. Bij elke beurt krijg je een tip, en na elke slag legt ze uit wat er gebeurde.' })),
+      h('label', { class: 'set-row' },
+        h('span', { class: 'set-txt' }, h('b', { text: 'Speluitleg' }), h('small', { text: 'Juf Jannie legt het spel stap voor stap uit' })),
+        h('span', { class: 'switch' }, lessons, h('i'))),
       h('label', { class: 'set-row' },
         h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
         h('span', { class: 'switch' }, open, h('i'))),

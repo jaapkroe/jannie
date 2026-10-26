@@ -72,6 +72,19 @@ func (botAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
 	return bot.ExplainTrick(t, trump, names)
 }
 
+func (botAI) TrickSignals(v game.View) []server.Signal {
+	var out []server.Signal
+	for _, s := range bot.TrickSignals(v) {
+		out = append(out, server.Signal(s))
+	}
+	return out
+}
+
+func (botAI) SignalChance(v game.View, prefer game.Card) (server.Signal, bool) {
+	s, ok := bot.SignalChance(v, prefer)
+	return server.Signal(s), ok
+}
+
 func (botAI) Chat(personaID string, ev server.ChatEvent, rng *rand.Rand) string {
 	p, ok := bot.ByID(personaID)
 	if !ok {

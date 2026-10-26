@@ -45,8 +45,13 @@ interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
 - **Handleiding**: the controls, the rules (also for two and three players),
   card values, roem, signals (*seinen*, also called *voorkaarten*), tips and a
   glossary.
-- **Oefenen**: a training game with Juf Ans as partner, hints on every turn,
-  an explanation after every trick, and optionally all cards face up.
+- **Oefenen**: a training game with Juf Jannie as partner, hints on every turn,
+  an explanation after every trick (also in the chat, to read back), and
+  optionally all cards face up. With *Speluitleg* she teaches the game step by
+  step: the table and the screen, trump, which cards may be played and the
+  score in the first hand, roem from the third and the table's signals from
+  the fifth (until then nobody signals), pointed out the first few times;
+  the game waits for each step.
 - Built for phones (touch, portrait and landscape), tablets and desktop
   browsers (mouse and keyboard).
 
@@ -79,7 +84,7 @@ node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     #
 node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
 node app-play.mjs ... --players 3 | --players 2                                  # the auction and laying away; the piles
 node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at six sizes, into test/ui/out/
-node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 29 behaviour checks (coach, taps, back button, lost socket, full table, takeover vote, summary on a phone, card corners, expert mode…); needs -fast, ~15 min
+node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 30 behaviour checks (coach, lessons, taps, back button, lost socket, full table, takeover vote, summary on a phone, card corners, expert mode…); needs -fast, ~15 min
 node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image
 ```
 

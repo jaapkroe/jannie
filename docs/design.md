@@ -222,6 +222,7 @@ Set by the host in the lobby; JSON keys on the wire:
 | `ai` | `makkelijk`, `normaal`, `sterk` | `normaal` | Strength of every bot in the room |
 | `tempo` | `rustig`, `normaal`, `snel` | `normaal` | Pacing of bots and pauses (§6) |
 | `open` | bool | false | Training only: show all hands face up |
+| `lessons` | bool | false | Training only: Juf Jannie explains the game step by step (§6 Lessons; *Speluitleg*, on in the Oefenen sheet as last chosen, `kj.lessons`) |
 | `signals` | `{"aas","kleintjeBoer","hoogLaag","boerOverBoer"}`, bools | all true but `boerOverBoer` | The table's agreements on signals (§8), for four players; keys left out keep their default |
 | `seed` | 1..999999999, or 0 / null | 0 | Every match deals from a seed: with this one the same cards (first dealer, hands, talon, turned suit) for the same options and number of players, also on `rematch`; 0 draws a new seed per match. The start line in the chat and the Spelanalyse show the seed of the match. The client never remembers it in `kj.opts` |
 | `from` | 1..24, or 0 / null | 0 | Expert only (else 0): the match is hand `from` of the seed's deals alone, dealt as in the whole match (the deals before it are drawn and passed over, the deal passing on as often) and numbered so; `hands` is raised to a length that holds it. 0: the whole match |
@@ -231,9 +232,11 @@ The UI label for the variant is "Utrechts/Amsterdams" etc.: `trumpMode` +
 bid), with two "Met z'n tweeën, Utrechts" (no rules: nobody has a partner).
 
 **Training mode** (`training: true` at create) is a solo room: 1 human at seat
-0, partner bot **Juf Ans** at seat 2, two random opponents, tempo `rustig` by
+0, partner bot **Juf Jannie** at seat 2, two random opponents, tempo `rustig` by
 default, hints on, explanatory tips after every trick (the last trick of a
-hand waits for its tip, §6), nobody else can join.
+hand waits for its tip, §6; each tip is a line of Juf Jannie in the chat too),
+nobody else can join. With option `lessons` Juf Jannie also teaches the game
+step by step (§6 Lessons).
 
 **Expert mode** (`expert: true` at create, issue #34; reached only by an
 easter egg on the home screen, §9) is a solo room as well: 1 human at seat 0,
@@ -469,6 +472,15 @@ func Advise(v game.View) Advice
 // Dutch explanation of a finished trick for training tips:
 // "Fatima (AI) wint de slag met ♥B, de hoogste troef. 25 punten, roem: stuk (20)."
 func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
+// The signals (§8) in the last completed trick of v at a table of four, as
+// the table reads them (true or not), for the lessons: Kind
+// "kleintjeBoer", "boerOverBoer" (a lead), "aas" or "hoogLaag" (a low
+// discard); Means the card it says Seat holds (the trump boer, the 10, the
+// highest card left in the suit). SignalChance: a signal the player of v
+// can give truthfully with a legal card on their turn, prefer first.
+type Signal struct{ Seat game.Seat; Card game.Card; Kind string; Means game.Card }
+func TrickSignals(v game.View) []Signal
+func SignalChance(v game.View, prefer game.Card) (Signal, bool)
 
 // The review at the end of a match (§9 Spelanalyse). GradeChoice runs the
 // search of Advise on the same view (same seed), so it agrees with the hint.
@@ -624,6 +636,7 @@ type Grade struct{ Stake, Lost, Gain float64; Better Choice; Text string; Nat fl
 type Explanation struct{ Normaal Choice; Rule string; Sterk, Hint Choice; HintText string; Worlds int; Options []Option } // as bot.Explanation
 type Option struct{ Choice; Value, SE float64; Outcome; Parts []float64 }
 type ChatEvent struct{ Kind string; Mine bool; Text string; Points int; InHand, Playing bool } // as bot.ChatEvent
+type Signal struct{ Seat game.Seat; Card game.Card; Kind string; Means game.Card }           // as bot.Signal
 type AI interface {
     Personas() []Persona
     NewBrain(personaID, level string, seed uint64) Brain   // level "makkelijk"|"normaal"|"sterk";
@@ -634,6 +647,8 @@ type AI interface {
     HandLuck(v game.View) float64
     Explain(v game.View) Explanation      // the expert's why (§7)
     ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
+    TrickSignals(v game.View) []Signal                    // the lessons (§6)
+    SignalChance(v game.View, prefer game.Card) (Signal, bool)
     Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
 }
 type Config struct {
@@ -673,7 +688,7 @@ Display name is always `"<Name> (AI)"`, built by the server into
 | `sjaak` | Sjaak | 🎲 | Gokker: speelt op dunne handen en gaat voor de pit. |
 | `fatima` | Fatima | 🧠 | Wiskundestudent die elke kaart telt; kort van stof. |
 | `kees` | Kees de Visser | 🎣 | Mopperkont, maar eerlijk; moppert als hij nat gaat. |
-| `ans` | Juf Ans | 👩‍🏫 | Geduldige juf die graag uitlegt; partner in de oefenmodus. |
+| `jannie` | Juf Jannie | 👩‍🏫 | Geduldige juf die graag uitlegt; partner in de oefenmodus. |
 | `bram` | Bram | 🛹 | Jong en snel, speelt op gevoel, chat met emoji. |
 | `vera` | Bakker Vera | 🥐 | Staat om vijf uur op, speelt scherp en vriendelijk. |
 
@@ -899,6 +914,60 @@ table until the tip is read: the trick pause, or longer for a longer tip
 tempo), or until `tipRead`. `nextAt` says when it goes; the summary would
 otherwise cover the tip at once.
 
+### Lessons (training with option `lessons`, issue #41)
+
+Juf Jannie teaches the game a step at a time, and a little more each time
+(`lesson.go`). A step is the state's `lesson`, `{n, text, spot, card}`, for
+the learner alone; `spot` names the part of the screen it is about (§9),
+`card` the card in the hand for spot `card`. The game waits for it without a timer: the pause
+it comes in (`turn` -1, `nextAt` 0) ends only when the learner has read every
+step of it, each with `tipRead` and its `n` (a `tipRead` for another `n` came
+late and changes nothing). On the learner's own turn a step needs no pause:
+the turn is open, the hint follows once it is read, and playing a card reads
+it too. Every step is a line of Juf Jannie in the chat (`coach`), after the first
+update that shows it. What is taught, per room (the hands counted from the
+first one dealt with lessons):
+
+- **Intro**, after the deal of the room's first hand, before the first turn:
+  six steps: Juf Jannie is your partner, opposite (`partner`; how to go on), 32
+  cards, 8 each (`hand`), a trick and who leads the next (`trick`), trump and
+  who chooses it in this hand, or in gedraaid that a suit will be turned up
+  (`trump`), points and Wij/Zij (`score`), tips, explanations and the chat
+  (`chat`).
+- **Trump**, when the first trump announcement ends: how trump and the other
+  suits rank, and the card points (`trump`, two steps).
+- **The learner's turn** in play, the first time they lead (`lead`), must
+  follow suit (`follow`), trump was led and they hold trump (`trumpLed`), may
+  play anything (`free`: no card of the suit led and no trump, or trump led
+  and none held), must trump (`trump`, with overtroeven when a trump lies),
+  or need not trump on the partner's trick (`partner`); spot `rule`. Other
+  situations are left to the rule above the hand.
+- **The first hand**: every trick waits for its explanation (the tip as a
+  step, spot `trick`; no `tip` message), and the last one also for the score:
+  points and roem per side, who made trump and had to get more, gehaald or
+  nat (`score`).
+- **Roem**, from the third hand (`roemHand`): at its deal, before the first
+  turn, what roem is, who gets it, and what each kind is worth (two steps);
+  then the first three tricks with roem (`lessonShows`): the cards it is made
+  of ("♠9, ♠10 en ♠B op een rij (driekaart, 20)", "♥V en ♥H van troef
+  (stuk, 20)") and which side gets it (spot `trick`).
+- **Signals**, from the fifth hand (`signalHand`), at a table that agreed on
+  any: at its deal what a signal is, then each agreement of the table in a
+  step of its own. Until then the table plays without them: every view
+  (bots, hints, the review) has no agreements (`room.signals`), so nobody
+  gives or reads a signal and no hint mentions one. Then the first three
+  chances the learner has to signal truthfully (`SignalChance`, the hint's
+  card first): on their turn, before the hint, what the card would say and
+  what Juf Jannie does with it, and "Mijn tip is een andere kaart." when the
+  hint is another (spot `card`, the card lit up in the hand); and the first
+  three signals by a bot (`TrickSignals`, the learner's own left out): who
+  gave it, what it says at this table, and when Juf Jannie gave it what
+  follows for the learner (spot `trick`).
+
+A trick with a roem or signal step waits for its explanation first, then for
+the step. Juf Jannie does not greet in chat when she is about to introduce
+herself.
+
 During a pause nobody may act (`turn` is -1). Humans have no time limit.
 Pauses start with `deal`, `trump` (and a `bid` with `play: true`), `contract`
 (three players: the announcement pause, then the soloist lays away), `trick`
@@ -955,7 +1024,7 @@ client rotates so `you` is at the bottom.
 | `discard` | `cards` [2] | Three players: you play alone, phase `discard` |
 | `play` | `card` | Your turn, phase `play` |
 | `ready` | | Phase `handEnd`: continue now (ignored once the next hand is dealt: a late tap on the summary) |
-| `tipRead` | | Training, the last trick of a hand waiting for its tip (`nextAt` set in phase `play`): on to the summary now (ignored once it is up: a late tap) |
+| `tipRead` | `n` (optional) | Training, a lesson step on screen (`lesson`, §6 Lessons): read, on to the next (ignored when `n` is another step's: a late tap); else the last trick of a hand waiting for its tip (`nextAt` set in phase `play`): on to the summary now (ignored once it is up: a late tap) |
 | `vote` | `seat`, `ai` bool, `left` bool (optional) | While state `takeover` is set, every connected human: may an AI play that seat (`true`), or wait (`false`)? `seat`, and `left` when sent, as in `takeover`: the question it answers (the client sends `left`, so a yes for a stand-in never counts for a seat given away). Can change while the question is open (§6); the same answer again changes nothing, so no `update` follows |
 | `chat` | `text` | Any time |
 | `rematch` | | Host, phase `gameOver`: new match, same seats and options |
@@ -972,9 +1041,9 @@ client rotates so `you` is at the bottom.
 |---|---|
 | `joined` | `code`, `seat`, `token` (store in localStorage under `kj.token.<code>`) |
 | `update` | `seq`, `ev` (event or null), `s` (full state for you) |
-| `chat` | `msg`: `{seat, name, text, ts, bot, sys}` (`sys`: system line, seat -1) |
+| `chat` | `msg`: `{seat, name, text, ts, bot, sys, coach}` (`sys`: system line, seat -1; `coach`: training, a line of Juf Jannie that the coach bubble shows, a lesson step or a trick's tip, not a speech bubble) |
 | `chatlog` | `msgs`: last 50, sent after `joined` |
-| `tip` | `text` (training: explanation after a trick, Dutch; when you played another card than the hint, it ends with the advised card and why: "Juf Ans had ♣9 aangeraden: …"; the first trick's tip of a hand also says so of a trump choice or bid against the hint, before any card: "Juf Ans had ♥ als troef aangeraden: …", "Juf Ans had aangeraden om te passen: …") |
+| `tip` | `text` (training: explanation after a trick, Dutch, also a `coach` chat line; not while the trick waits for it as a lesson step (§6 Lessons); when you played another card than the hint, it ends with the advised card and why: "Juf Jannie had ♣9 aangeraden: …"; the first trick's tip of a hand also says so of a trump choice or bid against the hint, before any card: "Juf Jannie had ♥ als troef aangeraden: …", "Juf Jannie had aangeraden om te passen: …") |
 | `refused` | `name`: to the host only, someone could not join because the table is full (§6); no state change, so no `update` |
 | `saved` | `what`: `"feedback"`: kept in the game log |
 | `why` | Expert: `hand`, `trick`, `seat` (as asked), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `hint`, `hintText`, `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
@@ -1030,7 +1099,7 @@ persona on a seat its player left). `away` comes once per lost connection.
 {
   "code": "KQXB", "phase": "lobby|auction|discard|trump|bid|play|handEnd|gameOver",
   "opts": { "players":4, "hands":16, "trumpMode":"utrechts", "rules":"amsterdams",
-            "ai":"normaal", "tempo":"normaal", "open":false,
+            "ai":"normaal", "tempo":"normaal", "open":false, "lessons":false,
             "signals":{"aas":true,"kleintjeBoer":true,"hoogLaag":true,"boerOverBoer":false}, "seed":0, "from":0 },
   "training": false, "you": 0, "host": 0,
   "expert": null,                  // an expert match: {"hands":[hand…],"marks":[…]}, below
@@ -1062,6 +1131,7 @@ persona on a seat its player left). `away` comes once per lost connection.
   "prevHand": { "tricks":[ /* 8 completed tricks */ ], "result": { /* HandResult */ } }, // after a hand ends, until the next hand ends
   "nextAt": 0,                     // handEnd: unix ms of auto-continue (0 alone at the table: waits for ready); training, play: when the last trick, waiting for its tip, goes (§6)
   "hint": null,                    // training, your turn: {"card":"AH"} | {"suit":"H"} | {"play":true}, plus "text"
+  "lesson": null,                  // training with lessons: the step on screen, {"n":3,"text":"…","spot":"trick"}, spot "card" with "card":"8D" (§6 Lessons)
   "hands4": null,                  // training or expert with open: all four hands [[...],...]
   "winner": -1,                    // gameOver
   "review": null                   // gameOver: your own review (§6, §9 Spelanalyse), below
@@ -1503,21 +1573,40 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   each trick (`tip`), shown until you play your next card; while the last
   trick of a hand waits for its tip (`nextAt` in phase `play`) the bubble
   has *Verder* with a countdown ring, and *Verder*, ✕ or Enter sends
-  `tipRead`; optional open cards; Juf Ans as partner; the hand summary has
+  `tipRead`; optional open cards; Juf Jannie as partner; the hand summary has
   no countdown ring (`nextAt` 0) and waits for *Volgend potje*. In short
   landscape the bubble sits in the top-left corner and never covers the left
   seat (who plays after you): a long text shows the lines that fit and *Lees
   verder* (then *Minder*); the tip of a hand's last trick shows in full, as
-  nobody plays after it.
+  nobody plays after it. Every tip is also a line of Juf Jannie in the chat
+  (`coach`: tinted, no sound, no speech bubble at her seat).
+- **Lessons** (Speluitleg, issue #41; the Oefenen sheet has the switch
+  *Speluitleg*, "Juf Jannie legt het spel stap voor stap uit", on until turned
+  off, kept in `kj.lessons`): the step on screen (`lesson`) is in the coach
+  bubble, 👩‍🏫 without a label, with *Verder* without a ring; *Verder*, ✕,
+  Enter or Space, or a tap anywhere on the table that is no button (also on
+  a card while the game waits for the step) sends `tipRead` with its `n`,
+  once per step and not in its first 450 ms (the second tap of a double tap,
+  or a tap meant for the card that completed the trick, would skip it). A
+  tap beside the hand with a card lifted puts the card down first. On the
+  learner's turn the step comes before the hint: the advised card glows once
+  it is read. The part of the screen a step is about lights up (`.spot`, a
+  pulsing gold outline, steady with reduced motion): `partner` Juf Jannie's
+  seat, `hand` the cards in the hand (their hint glow), `card` one card in
+  the hand (the same glow; the hint's glow waits), `trick` a box round
+  the trick, `trump` the trump badge, `score` the score pill, `rule` the
+  rule above the hand, `chat` the chat button, or on wide screens the chat
+  beside the table. Input handlers read the step on screen (`app.view`): the
+  trick animation shows a trick's explanation before it becomes `app.s`.
 - **Spelanalyse** (issues #6 and #18, four players only): under the final
-  score, a line for the player alone: *Jouw spel volgens Juf Ans: 87% (goed
+  score, a line for the player alone: *Jouw spel volgens Juf Jannie: 87% (goed
   gespeeld) ›* (*Jouw spelanalyse wordt berekend…*, disabled, while grades
-  are out; hidden without a review). Juf Ans stands for the engine of the
+  are out; hidden without a review). Juf Jannie stands for the engine of the
   hints, so the numbers read as hers, not as a fact. The verdict is
   *sterk gespeeld* from 95%, *goed gespeeld* from 82%, else *kan beter*
   (`reviewVerdict`; the bounds fit the bots' averages in `TestGradeLevels`:
   sterk ≈ 99, normaal ≈ 87, makkelijk ≈ 76). It opens *Jouw spelanalyse*:
-  *Volgens Juf Ans* over the percentage with ⓘ (who Juf Ans is, how she
+  *Volgens Juf Jannie* over the percentage with ⓘ (who Juf Jannie is, how she
   plays every option out over deals of the unseen cards, what a point is:
   the difference between the two teams' scores, so a point that goes to
   the opponents counts twice and a higher chance of nat costs much, that it
@@ -1543,7 +1632,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   *16 potjes · 118 keuzes · seed 482913*. Then
   *Vorige partijen 79% · 83%* (the percentages of up to five earlier matches
   on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
-  Dit is slechts de mening van Juf Ans.*, and last *Opmerkingen*: a text
+  Dit is slechts de mening van Juf Jannie.*, and last *Opmerkingen*: a text
   field (*Wat viel je op? Wat klopt er volgens jou niet?*) with *Versturen*
   (`feedback`; *Bewaard.* on `saved`) and the line *Je opmerking wordt met
   je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor

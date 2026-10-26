@@ -154,7 +154,7 @@ func classifyReply(text string) string {
 	return ""
 }
 
-// mentions reports whether text names the persona ("dirk", "ans"): the
+// mentions reports whether text names the persona ("dirk", "jannie"): the
 // first word of its name, after a title such as "Opa" or "Juf".
 func mentions(p Persona, text string) bool {
 	name := strings.Fields(strings.ToLower(p.Name))
@@ -844,7 +844,7 @@ var voices = map[string]*voice{
 			"name":     {"Wat?", "Ja, wat is er?", "Ik zit hier, hoor."},
 		},
 	},
-	"ans": {
+	"jannie": {
 		lines: map[string][]string{
 			"greet": {
 				"Hallo allemaal! Fijn dat jullie er zijn. Veel plezier!",

@@ -29,6 +29,8 @@ type fakeAI struct {
 	graded    atomic.Int64
 	lucked    atomic.Int64
 	reasoned  atomic.Int64
+	signalled atomic.Int64
+	signalsIn sync.Map // hand number → whether a hint's view had signals agreed
 }
 
 var fakePersonas = []Persona{
@@ -37,7 +39,7 @@ var fakePersonas = []Persona{
 	{ID: "sjaak", Name: "Sjaak", Emoji: "🎲", Color: "#e07b24", Bio: "Sjaak.", Chattiness: 0.5, Speed: 0.8},
 	{ID: "fatima", Name: "Fatima", Emoji: "🧠", Color: "#5b6ee1", Bio: "Fatima.", Chattiness: 0.2, Speed: 0.9},
 	{ID: "kees", Name: "Kees de Visser", Emoji: "🎣", Color: "#2a8c9c", Bio: "Kees.", Chattiness: 0.5, Speed: 1},
-	{ID: "ans", Name: "Juf Ans", Emoji: "👩‍🏫", Color: "#3f9b5a", Bio: "Ans.", Chattiness: 0.5, Speed: 1.2},
+	{ID: "jannie", Name: "Juf Jannie", Emoji: "👩‍🏫", Color: "#3f9b5a", Bio: "Jannie.", Chattiness: 0.5, Speed: 1.2},
 	{ID: "bram", Name: "Bram", Emoji: "🛹", Color: "#9b59b6", Bio: "Bram.", Chattiness: 0.7, Speed: 0.6},
 	{ID: "vera", Name: "Bakker Vera", Emoji: "🥐", Color: "#c9a227", Bio: "Vera.", Chattiness: 0.4, Speed: 0.85},
 }
@@ -48,6 +50,9 @@ func (*fakeAI) NewBrain(id, level string, seed uint64) Brain { return fakeBrain{
 
 func (a *fakeAI) Advise(v game.View) Advice {
 	a.advised.Add(1)
+	if v.Signals != nil {
+		a.signalsIn.Store(v.HandNo, *v.Signals != game.Signals{})
+	}
 	switch v.Phase {
 	case game.PhaseTrump:
 		s := firstSuit(v)
@@ -127,6 +132,26 @@ func (a *fakeAI) Explain(v game.View) Explanation {
 func (a *fakeAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
 	a.explained.Add(1)
 	return names[t.Winner] + " wint de slag."
+}
+
+// TrickSignals reads the lead of every trick as kleintje boer, at a table
+// that agreed on signals.
+func (a *fakeAI) TrickSignals(v game.View) []Signal {
+	a.signalled.Add(1)
+	if *v.Signals == (game.Signals{}) {
+		return nil
+	}
+	lead := v.Tricks[len(v.Tricks)-1].Cards[0]
+	return []Signal{{Seat: lead.Seat, Card: lead.Card, Kind: "kleintjeBoer", Means: game.Card{Rank: game.Jack, Suit: v.Trump}}}
+}
+
+// SignalChance offers prefer as aas vraagt 10 on every turn that follows
+// a lead, at a table that agreed on signals.
+func (a *fakeAI) SignalChance(v game.View, prefer game.Card) (Signal, bool) {
+	if *v.Signals == (game.Signals{}) || len(v.Current.Cards) == 0 {
+		return Signal{}, false
+	}
+	return Signal{Seat: v.Seat, Card: prefer, Kind: "aas", Means: game.Card{Rank: game.Ten, Suit: prefer.Suit}}, true
 }
 
 // fakeGreetings are said in turn; fakeRoem is a pool of four, as for the

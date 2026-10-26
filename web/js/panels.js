@@ -934,11 +934,11 @@ function reviewLine(btn, r) {
     return;
   }
   reviewHistory(r);
-  btn.replaceChildren(h('span', {}, 'Jouw spel volgens Juf Ans: ', h('b', { text: `${r.pct}%` }), ` (${reviewVerdict(r.pct)})`), icon('forward'));
+  btn.replaceChildren(h('span', {}, 'Jouw spel volgens Juf Jannie: ', h('b', { text: `${r.pct}%` }), ` (${reviewVerdict(r.pct)})`), icon('forward'));
 }
 
 // The review (design §9 Spelanalyse): numbers and facts about the
-// player's own play, for them alone, as Juf Ans (the engine of the hints)
+// player's own play, for them alone, as Juf Jannie (the engine of the hints)
 // sees it.
 function openReview() {
   const s = app.s;
@@ -960,12 +960,12 @@ function openReview() {
   openModal({
     id: 'review', title: 'Jouw spelanalyse', cls: 'm-review', body: [
       h('div', { class: 'rv-head' },
-        h('small', { class: 'rv-who', text: 'Volgens Juf Ans' }),
+        h('small', { class: 'rv-who', text: 'Volgens Juf Jannie' }),
         h('div', { class: 'rv-pct' }, h('b', { text: `${r.pct}%` }), h('span', { text: `(${reviewVerdict(r.pct)})` }), infoBtn('Spelanalyse', [
-          'Juf Ans is de game engine van dit spel: dezelfde die de AI-spelers laat spelen en bij Oefenen de tips geeft. Dit is haar berekening, met alleen wat jij op dat moment wist.',
+          'Juf Jannie is de game engine van dit spel: dezelfde die de AI-spelers laat spelen en bij Oefenen de tips geeft. Dit is haar berekening, met alleen wat jij op dat moment wist.',
           'Bij elke keuze speelt ze het potje honderden keren uit, voor elke kaart, troefkleur of elk bod dat je had, telkens met een andere verdeling van de kaarten die je niet kon zien. Wat een keuze gemiddeld oplevert, is haar waarde.',
           'Punten zijn het verschil tussen de score van jullie koppel en die van de tegenstanders aan het eind van het potje. Een punt dat naar de tegenstanders gaat in plaats van naar jullie, telt dus twee keer. Gaat een potje nat, dan krijgen de tegenstanders alle punten: een keuze die de kans op nat groter maakt, kost gemiddeld veel, ook als de kaart zelf weinig punten waard is.',
-          'Het blijft een schatting: Juf Ans speelt de rest van het potje met eenvoudige regels uit.',
+          'Het blijft een schatting: Juf Jannie speelt de rest van het potje met eenvoudige regels uit.',
           'Het percentage zegt hoeveel van de punten die met je keuzes te winnen waren, je ook haalde. Je kaarten tellen niet mee: ook met slechte kaarten kun je 100% halen.',
           'Laten liggen: wat een betere keuze gemiddeld meer had opgeleverd. Verschillen van minder dan 5 punten tellen niet mee.',
           'Sterke zet: de beste keuze, terwijl de voor de hand liggende keuze minstens 10 punten minder opleverde.',
@@ -1003,7 +1003,7 @@ function openReview() {
       r.replay?.length ? h('button', { class: 'btn btn-ghost btn-block rv-replay', type: 'button', onclick: () => (s.expert ? openExpert() : openReplay(s, { hands: r.replay })) },
         icon('history'), 'Potjes terugkijken') : null,
       prev.length ? h('p', { class: 'rv-prev' }, 'Vorige partijen ', h('b', { text: prev.map(p => `${p}%`).join(' · ') })) : null,
-      h('p', { class: 'legend', text: 'Disclaimer: Dit is slechts de mening van Juf Ans.' }),
+      h('p', { class: 'legend', text: 'Disclaimer: Dit is slechts de mening van Juf Jannie.' }),
       h('section', { class: 'rv-sec' }, h('h3', {}, 'Opmerkingen'),
         feedbackForm(() => ({}), 'Opmerking over dit spel of de analyse'),
         h('p', { class: 'legend', text: 'Je opmerking wordt met je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor statistieken en om het spel te verbeteren.' })),
@@ -1149,7 +1149,7 @@ export function openReplay(s, { hands, moment = null, at = null, source = null, 
         now && marks.size ? h('p', { class: 'rp-legend' },
           h('span', {}, h('span', { class: 'rp-key ' + playedCls }), suitify(`${cardShort(mo.played.card)} gespeeld`)),
           alt?.card ? h('span', {}, h('span', { class: 'rp-key ' + (mo.better ? 'rp-better' : 'rp-alt') }),
-            suitify(`${cardShort(alt.card)} ${mo.better ? 'beter volgens Juf Ans' : 'voor de hand liggend'}`)) : null) : null,
+            suitify(`${cardShort(alt.card)} ${mo.better ? 'beter volgens Juf Jannie' : 'voor de hand liggend'}`)) : null) : null,
         seats.slice(1).map(hand4)),
       h('p', { class: 'legend', text: 'Alle kaarten liggen open. Bij een keuze wist de speler alleen de eigen kaarten en wat er gespeeld was.' }),
     ].filter(Boolean));
@@ -1327,7 +1327,7 @@ function msgEl(m) {
   const sys = m.sys || m.seat < 0;
   const mine = s && m.seat === s.you && !sys;
   const team = s && !sys && m.seat >= 0 ? teamCls(s, m.seat) : '';
-  return h('div', { class: 'msg' + (sys ? ' sys' : '') + (mine ? ' mine' : '') + (m.bot ? ' bot' : '') },
+  return h('div', { class: 'msg' + (sys ? ' sys' : '') + (mine ? ' mine' : '') + (m.bot ? ' bot' : '') + (m.coach ? ' coach-msg' : '') },
     sys ? null : h('span', { class: 'msg-name ' + team, text: m.name || 'Speler' }),
     h('span', { class: 'msg-text' }, suitify(m.text)));
 }
@@ -1341,7 +1341,8 @@ export function chatAdd(m, live = true) {
   if (!live) return;
   const mine = app.s && m.seat === app.s.you && !m.sys;
   if (!mine) {
-    if (!m.sys) sound.play('chat');
+    // Juf Jannie's explanations come with every trick in training: no sound.
+    if (!m.sys && !m.coach) sound.play('chat');
     // The badge means a person wrote: system lines do not count, and bot
     // chatter already shows as a speech bubble at the table.
     if (!m.sys && !m.bot && m.seat >= 0 && !chatVisible()) { unread++; badge(); }

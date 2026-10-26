@@ -39,6 +39,9 @@ func (r *room) stateFor(i game.Seat) *state {
 	if s.Scores == nil {
 		s.Scores = []scoreRow{}
 	}
+	if r.training && i == r.learner() {
+		s.Lesson = r.lesson
+	}
 	if s.Total == nil {
 		s.Total = make([]int, game.Scorers(r.players()))
 	}

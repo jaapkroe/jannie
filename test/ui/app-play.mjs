@@ -284,7 +284,7 @@ async function multi() {
   return [...H.errors, ...G.errors];
 }
 
-// Training: Juf Ans as partner, a hint on every own turn (advised suit plus
+// Training: Juf Jannie as partner, a hint on every own turn (advised suit plus
 // text in the trump panel, or glowing card plus text in the coach bubble) and
 // an explanation after tricks, which is done with once you play your next
 // card: it must not come back over the new trick. Two potjes, then leave
@@ -313,10 +313,12 @@ async function training() {
     await sleep(300);
     const fast = await P.page.$$('.m-train .opt-row:nth-child(3) .seg-btn');
     await pressEl(P, fast[2]);
+    // Hints and tips without the lessons (app-checks.mjs --only lessons has those).
+    if (await P.page.$eval('#train-lessons', e => e.checked)) await press(P, '#train-lessons');
     await press(P, '#btn-train-go');
     await waitFor(P, () => document.body.dataset.screen === 'game', { label: 'training table' });
     const partner = await P.page.$eval('.seat-top .nm', e => e.textContent);
-    if (partner !== 'Juf Ans (AI)') throw new Error(`partner is ${partner}, want Juf Ans (AI)`);
+    if (partner !== 'Juf Jannie (AI)') throw new Error(`partner is ${partner}, want Juf Jannie (AI)`);
     const deadline = Date.now() + 6 * 60000;
     while (Date.now() < deadline) {
       const st = await P.page.evaluate(() => ({

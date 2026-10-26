@@ -20,6 +20,7 @@ type Options struct {
 	AI        string         `json:"ai"`
 	Tempo     string         `json:"tempo"`
 	Open      bool           `json:"open"`
+	Lessons   bool           `json:"lessons"` // training: Juf Jannie explains the game step by step (lesson.go)
 	Signals   game.Signals   `json:"signals"` // the table's agreements on signals (design §8)
 	Seed      int            `json:"seed"`    // 1..maxSeed: every match deals the same cards; 0: a new seed per match
 	From      int            `json:"from"`    // expert: 1..maxHands: the match is that one hand of the seed's deals; 0: the whole match
@@ -55,6 +56,7 @@ type optsPatch struct {
 	AI        *string
 	Tempo     *string
 	Open      *bool
+	Lessons   *bool
 	Signals   *game.Signals
 	Seed      *int
 	From      *int
@@ -133,6 +135,13 @@ func parseOpts(raw json.RawMessage, lenient bool) (optsPatch, error) {
 			} else {
 				p.Open = &b
 			}
+		case "lessons":
+			var b bool
+			if json.Unmarshal(val, &b) != nil {
+				err = fail("Ongeldige waarde voor speluitleg.")
+			} else {
+				p.Lessons = &b
+			}
 		case "seed":
 			var n *int
 			if json.Unmarshal(val, &n) != nil || n != nil && (*n < 0 || *n > maxSeed) {
@@ -190,6 +199,9 @@ func (p optsPatch) apply(o *Options) {
 	}
 	if p.Open != nil {
 		o.Open = *p.Open
+	}
+	if p.Lessons != nil {
+		o.Lessons = *p.Lessons
 	}
 	if p.Signals != nil {
 		o.Signals = *p.Signals

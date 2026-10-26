@@ -98,7 +98,7 @@ func TestHealthcheck(t *testing.T) {
 func TestBotAI(t *testing.T) {
 	var ai server.AI = botAI{}
 	personas := ai.Personas()
-	if len(personas) != 8 || !slices.ContainsFunc(personas, func(p server.Persona) bool { return p.ID == "ans" }) {
+	if len(personas) != 8 || !slices.ContainsFunc(personas, func(p server.Persona) bool { return p.ID == "jannie" }) {
 		t.Fatalf("personas %+v", personas)
 	}
 	for _, p := range personas {
@@ -144,7 +144,7 @@ func TestBotAI(t *testing.T) {
 				}
 				err = d.Play(s, c)
 				if tr := d.Current(); tr.Complete() {
-					if text := ai.ExplainTrick(tr, v.Trump, [4]string{"Jij", "Opa Dirk (AI)", "Juf Ans (AI)", "Bram (AI)"}); text == "" {
+					if text := ai.ExplainTrick(tr, v.Trump, [4]string{"Jij", "Opa Dirk (AI)", "Juf Jannie (AI)", "Bram (AI)"}); text == "" {
 						t.Errorf("no explanation for trick %+v", tr)
 					}
 				}

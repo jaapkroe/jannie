@@ -112,10 +112,15 @@ async function newGame(P, { players = 4, hands = 4 } = {}) {
   return P.page.$$eval('.code-big span', els => els.map(e => e.textContent).join(''));
 }
 
-async function training(P, trumpMode = 'Utrechts') {
+// Starts a training game, by default without the lessons (Speluitleg).
+async function training(P, trumpMode = 'Utrechts', { lessons = false } = {}) {
   await press(P, '#btn-train');
   await waitFor(P, () => document.querySelector('.m-train.open'), { label: 'training sheet' });
   await sleep(300);
+  if (await P.page.$eval('#train-lessons', e => e.checked) !== lessons) {
+    await press(P, '#train-lessons');
+    await waitFor(P, on => document.querySelector('#train-lessons').checked === on, { label: 'speluitleg' }, lessons);
+  }
   if (trumpMode !== 'Utrechts') await pickOpt(P, '.m-train', 1, trumpMode);
   await pickOpt(P, '.m-train', 3, 'Snel');
   await press(P, '#btn-train-go');
@@ -238,11 +243,115 @@ CHECKS.coach = async browser => {
   });
 };
 
+// Training with Speluitleg (issue #41): Juf Jannie's steps wait for Verder,
+// a tap on the table or Enter, without a countdown, and light up what they
+// are about; a double tap reads one step; every trick of the first hand
+// stays until its explanation is read; on the player's turn the hint
+// follows the step; every step is a line of Juf Jannie in the chat, without
+// a speech bubble at her seat.
+CHECKS.lessons = async browser => {
+  for (const vp of ['iphone', 'desktop']) {
+    const P = await page(browser, VP[vp], `lessons-${vp}`);
+    await run(P, async () => {
+      await home(P, 'Leerling');
+      await training(P, 'Utrechts', { lessons: true });
+      const step = () => P.page.evaluate(() => {
+        const c = document.querySelector('.coach');
+        const go = document.querySelector('.coach-go');
+        if (!c || c.hidden || !go || go.hidden || !go.classList.contains('no-ring')) return null;
+        return { text: c.querySelector('.coach-txt').textContent, spot: document.querySelector('.spot')?.classList[0] || '', ring: !go.querySelector('.ring-cd').hasAttribute('hidden') };
+      });
+      const next = async (prev, label) => {
+        await waitFor(P, p => {
+          const c = document.querySelector('.coach');
+          const go = document.querySelector('.coach-go');
+          return c && !c.hidden && go && !go.hidden && c.querySelector('.coach-txt').textContent !== p;
+        }, { label }, prev);
+        await sleep(600); // past the moment in which a tap does not count yet
+        return step();
+      };
+      const felt = async () => {
+        // Beside the trick and the seats: the bare table.
+        const at = await P.page.$eval('.table', e => { const b = e.getBoundingClientRect(); return { x: b.left + b.width * 0.5, y: b.top + b.height * 0.25 }; });
+        if (P.touch) await P.page.touchscreen.tap(at.x, at.y); else await P.page.mouse.click(at.x, at.y);
+      };
+      const texts = new Set(); // every step seen
+      let st = await next('', 'the first step');
+      texts.add(st.text);
+      if (!st.text.includes('Ik ben Juf Jannie') || st.spot !== 'seat-id' || st.ring) throw new Error(`first step ${JSON.stringify(st)}`);
+      await shot(P, 'lesson-intro');
+      await felt();
+      st = await next(st.text, 'step 2 by a tap on the table');
+      texts.add(st.text);
+      if (st.spot !== 'hand') throw new Error(`step 2 ${JSON.stringify(st)}`);
+      // A double tap reads one step.
+      await felt();
+      await sleep(80);
+      await felt();
+      st = await next(st.text, 'step 3');
+      texts.add(st.text);
+      await sleep(800);
+      if (!(await step())?.text.startsWith('Om de beurt')) throw new Error(`a double tap read two steps: ${JSON.stringify(await step())}`);
+      if (st.spot !== 'trick') throw new Error(`step 3 ${JSON.stringify(st)}`);
+      if (!P.touch) {
+        await P.page.keyboard.press('Enter');
+        st = await next(st.text, 'step 4 by Enter');
+        texts.add(st.text);
+      }
+      // On through the first hand: Verder, the advised trump, a legal card.
+      let held = 0;
+      let turnLesson = false;
+      let read = '';
+      for (let t0 = Date.now(); !(await P.page.$('.m-summary.open')); ) {
+        if (Date.now() - t0 > 240000) throw new Error('first hand not over');
+        const now = await step();
+        if (now && now.text !== read) {
+          read = now.text;
+          texts.add(now.text);
+          await sleep(500); // past the moment in which a tap does not count yet
+          const ui = await P.page.evaluate(() => ({
+            cards: document.querySelectorAll('.trick .slot .card').length,
+            mine: !!document.querySelector('.hand.my-turn .card.legal'),
+            glow: !!document.querySelector('.hand .card.hint'),
+          }));
+          if (ui.cards === 4 && held < 2) {
+            // The trick waits for its explanation (at -fast it would be gone in a blink).
+            await sleep(1500);
+            if (await P.page.$$eval('.trick .slot .card', els => els.length) !== 4) throw new Error('the trick went before its explanation was read');
+            held++;
+          }
+          if (ui.mine && !turnLesson) {
+            turnLesson = true;
+            if (ui.glow || now.spot !== 'rule') throw new Error(`turn lesson ${JSON.stringify({ ...now, ...ui })}`);
+            await shot(P, 'lesson-turn');
+            await press(P, '.coach-go');
+            await waitFor(P, () => document.querySelector('.coach .coach-lbl')?.textContent === 'Tip ' && document.querySelector('.hand .card.hint'), { label: 'the hint after the turn lesson' });
+            continue;
+          }
+          await press(P, '.coach-go');
+          continue;
+        }
+        const ui = await P.page.evaluate(UI);
+        if (ui.trump) await press(P, '.panel-trump .suit-btn.advised:not(:disabled), .panel-trump .suit-btn:not(:disabled)');
+        else if (ui.play && !now) await playLegal(P);
+        await sleep(150);
+      }
+      if (held < 2 || !turnLesson || texts.size < 6 + 2 + 8 + 1) throw new Error(`first hand: ${texts.size} steps, ${held} tricks held, turn lesson ${turnLesson}`);
+      const chat = await P.page.evaluate(() => ({
+        coach: [...document.querySelectorAll('.chat-list .msg.coach-msg .msg-text')].map(e => e.textContent),
+        bubbles: [...document.querySelectorAll('.seat .bubble')].map(e => e.textContent).filter(t => t.includes('Klaverjassen speel je')),
+      }));
+      const missing = [...texts].filter(t => !chat.coach.includes(t));
+      if (missing.length || chat.bubbles.length) throw new Error(`chat lacks ${JSON.stringify(missing)}; bubbles ${JSON.stringify(chat.bubbles)}`);
+    });
+  }
+};
+
 // Training on a short landscape screen: the coach in the top-left corner
 // never covers the left seat (who plays after you) or the partner on top;
 // a long text shows the lines that fit and "Lees verder", which opens it.
 CHECKS.coachfit = async browser => {
-  const LONG = 'Kees de Visser (AI) wint de slag met ♣A, de hoogste kaart in de gevraagde kleur. 27 punten. Juf Ans had ♦10 aangeraden. Je maat had de slag al, dus gooi dan punten bij: een 10 of een aas van een kleur die je niet kunt bekennen.';
+  const LONG = 'Kees de Visser (AI) wint de slag met ♣A, de hoogste kaart in de gevraagde kleur. 27 punten. Juf Jannie had ♦10 aangeraden. Je maat had de slag al, dus gooi dan punten bij: een 10 of een aas van een kleur die je niet kunt bekennen.';
   for (const vp of ['smallLandscape', 'landscape']) {
     const P = await page(browser, VP[vp], `coachfit-${vp}`, { hooks: true });
     await run(P, async () => {

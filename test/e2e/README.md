@@ -48,7 +48,7 @@ node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --players 3 --humans 2 --rul
 | `--ai` | `makkelijk`, `normaal`, `sterk` | `normaal` |
 | `--hands` | 4, 8, 12, 16, 20, 24 | 4 |
 | `--tempo` | `rustig`, `normaal`, `snel` | `normaal` (`rustig` in training) |
-| `--training` | training game: one player, Juf Ans as partner, hints and tips | off |
+| `--training` | training game: one player, Juf Jannie as partner, hints and tips | off |
 | `--open` | training with open cards (`hands4`) | off |
 | `--reconnect` | players sometimes drop the connection for up to 1.5 s and rejoin with their seat token; the others answer the question whether an AI may play for them (mostly yes, now and then a no that may turn into a yes) | off |
 | `--games` | games per configuration | 1 |

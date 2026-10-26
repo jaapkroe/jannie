@@ -28,6 +28,7 @@ type inMsg struct {
 	Left     *bool           `json:"left"`  // vote, optional: the question it answers is about a seat its player left
 	Hand     *int            `json:"hand"`  // mark, why, feedback: the hand (its number)
 	Trick    *int            `json:"trick"` // mark, why, feedback: the trick (1–8; 0: the trump choice or bid)
+	N        *int            `json:"n"`     // tipRead: the lesson step read (lesson.go)
 }
 
 // whyMsg is the engine's reasoning for one decision (expert): see
@@ -105,6 +106,9 @@ type chatMsg struct {
 	TS   int64  `json:"ts"`
 	Bot  bool   `json:"bot"`
 	Sys  bool   `json:"sys"`
+	// Coach: training, a line of Juf Jannie that the coach bubble shows (a
+	// lesson step or the explanation of a trick), not a speech bubble.
+	Coach bool `json:"coach,omitempty"`
 }
 
 type chatOut struct {
@@ -270,6 +274,7 @@ type state struct {
 	PrevHand    *prevHand           `json:"prevHand"`
 	NextAt      int64               `json:"nextAt"`
 	Hint        *hint               `json:"hint"`
+	Lesson      *lessonStep         `json:"lesson"`
 	Hands4      *[4][]game.Card     `json:"hands4"`
 	Winner      int                 `json:"winner"`
 	Review      *reviewState        `json:"review"`
