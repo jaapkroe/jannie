@@ -29,6 +29,7 @@ type table struct {
 	trickNo int    // completed tricks
 	won     [2]int // tricks won per team
 	hasLed  [4]bool
+	suitLed [game.NumSuits]bool // a trick has been led in the suit
 	// boerSig per team: the seat that signalled holding the trump boer by
 	// leading a small side card or a side boer (kleintje boer, boer over
 	// boer; see signalsBoer), NoSeat if none.
@@ -99,22 +100,20 @@ func (t *table) signalsBoer(seat game.Seat, c game.Card) bool {
 }
 
 // Signals tell the partner which suit to lead, so they count only while
-// the partner may still choose a lead afterwards: after an ace lead in the
-// sixth trick the partner leads at most the last trick, with one card
-// left, and after a discard in the seventh trick likewise.
-const (
-	aceSignalTricks = 5 // aas voorspelen counts in the first five tricks
-	lowSignalTricks = 6 // laag bijspelen in the first six
-)
+// the partner may still choose a lead afterwards: after a discard in the
+// seventh trick the partner leads at most the last trick, with one card
+// left.
+const signalTricks = 6 // a discard signals in the first six tricks
 
-// aceSignal reports whether leading c says "ik heb de 10 ook" (aas
-// voorspelen, design §8), when the table agreed on it: c is the ace of a
-// side suit whose 10 is still out, led in time for the partner to come
-// back to the suit. It returns that 10, which makes the suit safe for the
-// partner.
+// aceSignal reports whether discarding c says "ik heb de 10 ook" (aas
+// vraagt 10, design §8), when the table agreed on it: c is the ace of a
+// side suit that nobody has led yet, given to the partner's trick while
+// its 10 is still out, in time for the partner to come back to the suit.
+// It returns that 10, the highest card of the suit once the ace is gone.
 func (t *table) aceSignal(c game.Card) (game.Card, bool) {
 	ten := tenOf(c.Suit)
-	return ten, t.sig.Aas && t.n == 0 && c.Rank == game.Ace && c.Suit != t.trump && !t.played.has(ten) && t.trickNo < aceSignalTricks
+	return ten, t.sig.Aas && t.partnersTrick() && c.Rank == game.Ace && c.Suit != t.trump && !t.suitLed[c.Suit] &&
+		!t.played.has(ten) && t.trickNo < signalTricks
 }
 
 // partnersTrick reports whether the partner of the seat to play holds the
@@ -130,7 +129,7 @@ func (t *table) partnersTrick() bool {
 // not led, so a discard, on the partner's trick, and a card of that suit is
 // still out besides c. It returns the highest such card.
 func (t *table) lowSignal(c game.Card) (game.Card, bool) {
-	if !t.sig.HoogLaag || !t.partnersTrick() || c.Suit == t.trump || c.Suit == t.led() || c.Rank > game.Nine || t.trickNo >= lowSignalTricks {
+	if !t.sig.HoogLaag || !t.partnersTrick() || c.Suit == t.trump || c.Suit == t.led() || c.Rank > game.Nine || t.trickNo >= signalTricks {
 		return game.Card{}, false
 	}
 	return (suitSet(c.Suit) &^ t.played &^ bit(c)).top(c.Suit, t.trump)
@@ -144,15 +143,16 @@ func (t *table) apply(seat game.Seat, c game.Card) {
 		if t.signalsBoer(seat, c) && !t.boerSig[seat.Team()].Valid() {
 			t.boerSig[seat.Team()] = seat
 		}
-		if ten, ok := t.aceSignal(c); ok {
-			t.said[seat] |= bit(ten)
-			t.sigBy[seat] |= bit(c)
-		}
 		t.leader, t.win, t.best, t.high, t.points = seat, seat, c, -1, 0
 		t.hasLed[seat] = true
+		t.suitLed[c.Suit] = true
 	} else {
 		if hi, ok := t.lowSignal(c); ok {
 			t.said[seat] |= bit(hi)
+			t.sigBy[seat] |= bit(c)
+		}
+		if ten, ok := t.aceSignal(c); ok {
+			t.said[seat] |= bit(ten)
 			t.sigBy[seat] |= bit(c)
 		}
 		t.infer(seat, c)

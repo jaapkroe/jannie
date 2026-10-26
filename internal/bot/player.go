@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"math"
 	"math/rand/v2"
 	"sync/atomic"
 
@@ -130,22 +129,20 @@ func (b *player) Play(v game.View) (c game.Card) {
 // Signals at sterk: the search alone would rarely give kleintje boer and
 // would sometimes fake a signal, but partners (and humans following the
 // manual) read the signals of design §8 as promises. The search may break
-// kleintje boer and laag bijspelen only for a clear gain, and aas
-// voorspelen never while an honest card is left: the playouts hold a bare
-// ace for a while (see falseAce), so the search overrates cashing it now.
+// them only for a clear gain.
 const (
 	fakeSignalGain  = 10 // points a false kleintje boer must gain over the best honest card
-	fakeLowGain     = 20 // the same for a false laag bijspelen
+	fakeLowGain     = 20 // the same for a false laag bijspelen or aas vraagt 10
 	signalTolerance = 6  // points a genuine kleintje boer may cost
 )
 
 // lieGain returns how much more than the best honest card c must bring in
 // when playing it would signal something untrue (kleintje boer, aas
-// voorspelen or laag bijspelen), or 0 when c is honest.
+// vraagt 10 or laag bijspelen), or 0 when c is honest.
 func (m *mover) lieGain(c game.Card) float64 {
 	switch {
 	case m.falseAce(c):
-		return math.Inf(1)
+		return fakeLowGain
 	case m.fakeSignal(c):
 		return fakeSignalGain
 	case m.falseLow(c):
@@ -166,8 +163,10 @@ func sterkChoice(v *game.View, cfg searchConfig, seed uint64, aggr float64) game
 // sterkPick returns the index in res (the search of m's legal cards) of
 // the sterk card. When the rule-based card pref is within a point of the
 // best (signalTolerance for a genuine kleintje boer), it is played instead:
-// the difference is noise, and the rule-based card looks natural. A false
-// signal needs its lieGain.
+// the difference is noise, and the rule-based card looks natural. So is a
+// pref that wins and loses alike with the best card (equivalent), unless
+// the search can tell the two apart (teachTolerance, two standard errors):
+// with ♥A and ♥10 the 10 goes first. A false signal needs its lieGain.
 func sterkPick(m *mover, res []playResult, pref game.Card) int {
 	best := bestResult(res, pref, m.t.trump)
 	if gain := m.lieGain(res[best].card); gain > 0 {
@@ -181,14 +180,34 @@ func sterkPick(m *mover, res []playResult, pref game.Card) int {
 			best = alt
 		}
 	}
-	tol := 1.0
-	if m.t.signalsBoer(m.seat, pref) && !m.fakeSignal(pref) {
-		tol = signalTolerance
+	i := resultIndex(res, pref)
+	if i < 0 {
+		return best
 	}
-	if i := resultIndex(res, pref); i >= 0 && res[best].mean()-res[i].mean() < tol {
+	tol := 1.0
+	switch {
+	case m.t.signalsBoer(m.seat, pref) && !m.fakeSignal(pref):
+		tol = signalTolerance
+	case m.equivalent(pref, res[best].card) && m.lieGain(pref) == 0:
+		tol = max(teachTolerance, 2*pairSE(res, best, i))
+	}
+	if res[best].mean()-res[i].mean() < tol {
 		return i
 	}
 	return best
+}
+
+// equivalent reports whether a and b, cards of one suit in the mover's
+// hand, win and lose alike: no card that is still out lies between them.
+func (m *mover) equivalent(a, b game.Card) bool {
+	trump := m.t.trump
+	if a.Suit != b.Suit {
+		return false
+	}
+	if game.Order(a, trump) > game.Order(b, trump) {
+		a, b = b, a
+	}
+	return m.unk.higher(a, trump)&m.unk.lower(b, trump) == 0
 }
 
 // normalChoice is the rule-based card for v.

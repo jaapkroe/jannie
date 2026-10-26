@@ -529,7 +529,7 @@ test('card value headers keep "(hier ♠)" together when they wrap', () => {
 test('seinen covers every signal from design section 8', () => {
   const el = renderManual('seinen');
   const heads = byTag(el, 'h3').map((h) => h.textContent.toLowerCase());
-  for (const w of ['aas voorspelen', 'kleintje boer', 'boer over boer', 'hoog of laag', 'tegenkleur', 'spekken (ook wel smeren)', 'maat heeft de slag']) {
+  for (const w of ['aas vraagt 10', 'kleintje boer', 'boer over boer', 'hoog of laag', 'tegenkleur', 'spekken (ook wel smeren)', 'maat heeft de slag']) {
     assert.ok(heads.some((h) => h.includes(w)), w);
   }
   assert.match(el.textContent, /geen valsspelen/);
@@ -564,10 +564,11 @@ test('seinen keeps its short title and names voorkaarten in the text', () => {
   assert.ok(blocksOf('glossary')[0].some(([t]) => t === 'Seinen (voorkaarten)'));
 });
 
-test('seinen explains aas voorspelen and hoog of laag as the house agrees them', () => {
+test('seinen explains aas vraagt 10 and hoog of laag as the house agrees them', () => {
   const text = renderManual('seinen').textContent;
-  assert.match(text, /ik heb ook de 10 van deze kleur/);
-  assert.match(text, /veilig in die kleur terugkomen/);
+  assert.match(text, /Heeft je maat de slag, .*gooi dan een aas bij van een bijkleur .*“ik heb ook de 10 van deze kleur”/);
+  assert.match(text, /Je maat speelt die kleur later naar je toe, en dan pak jij de slag met je 10\./);
+  assert.match(text, /Uitkomen met een aas zegt niets\./);
   assert.match(text, /klein kaartje \(7, 8 of 9: kaarten zonder punten\) bijspelen zegt: “speel deze kleur, daar heb ik de hoogste van”/);
   assert.match(text, /10 of een plaatje .*“ik heb weinig in deze kleur/);
 });

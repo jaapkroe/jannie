@@ -245,7 +245,7 @@ const teachTolerance = 5
 // advises the rule-based card, or else the cheapest card, if that card has
 // a reason of its own and the search cannot tell the two apart: the gap is
 // under teachTolerance points or two standard errors. It never moves to a
-// card that would signal something untrue (kleintje boer, aas voorspelen,
+// card that would signal something untrue (kleintje boer, aas vraagt 10,
 // laag bijspelen; see lieGain), which sterk play also avoids.
 func teachPlay(v *game.View, tab *table, cfg searchConfig, seed uint64) (game.Card, string) {
 	m := newMover(tab, v.Seat, setOf(v.Hand), setOf(v.Legal), 0.5)
@@ -551,9 +551,9 @@ func sideLeadText(m *explainer, c game.Card) string {
 		pts := strconv.Itoa(game.Points(c, trump)) + " punten"
 		switch {
 		case c.Rank == game.Ace:
-			return "Speel " + cs + ": de aas is de hoogste kaart in " + suitName + " en levert " + pts + " op." + m.aceSignalText(c)
+			return "Speel " + cs + ": de aas is de hoogste kaart in " + suitName + " en levert " + pts + " op."
 		case m.hand.higher(c, trump) != 0:
-			return "Speel " + cs + ": de hogere " + suitName + " heb je zelf, dus in " + suitName + " kan niemand hier overheen."
+			return "Speel " + cs + ": de hogere " + suitName + " heb je zelf, dus in " + suitName + " kan niemand hier overheen." + m.tenFirstText(c)
 		case c.Rank == game.Ten:
 			return "Speel " + cs + ": de aas is al gespeeld, dus je 10 is nu de hoogste " + suitName + " (" + pts + ")."
 		}
@@ -612,34 +612,63 @@ func sideLeadText(m *explainer, c game.Card) string {
 	return "Speel " + cs + ": " + m.noReason(c, "dat levert hier naar verwachting het meeste op", "") + "."
 }
 
-// aceSignalText finishes the text for leading c, a side ace, with what it
-// tells the partner (aas voorspelen): that the mover has the 10 too, or a
-// warning when it has not and an opponent may hold it.
+// tenFirstText finishes the text for leading c, a side 10, when the mover
+// holds that ace too: why the 10 goes first. The ace makes roem only with
+// the heer and vrouw, the 10 with any two cards next to it.
+func (m *mover) tenFirstText(c game.Card) string {
+	ace := aceOf(c.Suit)
+	if c.Rank != game.Ten || !m.hand.has(ace) {
+		return ""
+	}
+	after := " Daarna is je " + game.CardShortNL(ace) + " de hoogste " + game.SuitNameNL(c.Suit) + "."
+	if m.roemChance(c) && !m.roemChance(ace) {
+		return " Met de 10 kan er nog roem in de slag komen, met de aas niet." + after
+	}
+	return after
+}
+
+// roemChance reports whether c, led now, can still make roem in its
+// trick: for some run of three in its suit through c, the other two cards
+// are both still out.
+func (m *mover) roemChance(c game.Card) bool {
+	for lo := max(int(c.Rank)-2, 0); lo <= int(c.Rank) && lo+2 < game.NumRanks; lo++ {
+		run := cardSet(0b111) << (uint(c.Suit)*8 + uint(lo))
+		if m.unk&run == run&^bit(c) {
+			return true
+		}
+	}
+	return false
+}
+
+// aceSignalText is the sentence about what discarding c, a side ace, on
+// the partner's trick tells the partner (aas vraagt 10), starting with a
+// space: that the mover has the 10 too, or a warning when it has not and
+// an opponent may hold it; "" when c says nothing.
 func (m *mover) aceSignalText(c game.Card) string {
 	ten, ok := m.t.aceSignal(c)
 	switch {
 	case !ok:
 		return ""
 	case m.hand.has(ten):
-		return " Je hebt ook " + game.CardShortNL(ten) + ", dus zo weet je maat dat die veilig in " +
-			game.SuitNameNL(c.Suit) + " kan terugkomen (aas voorspelen)."
+		return " Je hebt ook " + game.CardShortNL(ten) + ", en dat weet je maat nu (aas vraagt 10): zonder de aas is je 10 de hoogste " +
+			game.SuitNameNL(c.Suit) + " en kan die nog een slag halen."
 	case m.falseAce(c):
-		return " Let op: je maat kan dit lezen als aas voorspelen (“ik heb " + game.CardShortNL(ten) + " ook”), maar die heb je niet."
+		return " Let op: je maat kan dit lezen als aas vraagt 10 (“ik heb " + game.CardShortNL(ten) + " ook”), maar die heb je niet."
 	}
 	return ""
 }
 
 // partnerSaid says how the partner told that it holds hi, the highest card
 // of its suit (see partnerHigh), and so why a lead in that suit goes to
-// the partner: "je maat kwam uit met ♠A en zei daarmee “ik heb ♠10 ook”
-// (aas voorspelen), dus zo kom je veilig in schoppen terug".
+// the partner: "je maat gooide ♠A bij en zei daarmee “ik heb ♠10 ook”
+// (aas vraagt 10), dus zo speel je schoppen naar je maat toe".
 func (m *mover) partnerSaid(hi game.Card) string {
 	s := hi.Suit
 	name := game.SuitNameNL(s)
 	by := m.t.sigBy[m.partner()].inSuit(s)
 	if a := aceOf(s); hi == tenOf(s) && by.has(a) {
-		return "je maat kwam uit met " + game.CardShortNL(a) + " en zei daarmee “ik heb " + game.CardShortNL(hi) +
-			" ook” (aas voorspelen), dus zo kom je veilig in " + name + " terug"
+		return "je maat gooide " + game.CardShortNL(a) + " bij en zei daarmee “ik heb " + game.CardShortNL(hi) +
+			" ook” (aas vraagt 10), dus zo speel je " + name + " naar je maat toe"
 	}
 	low, _ := by.bottom(s, m.t.trump)
 	return "je maat gooide " + game.CardShortNL(low) + " bij en zei daarmee “speel " + name +
@@ -923,7 +952,7 @@ func followText(m *explainer, c game.Card) string {
 			}
 			return head + ": " + m.noReason(c, cs+" levert hier naar verwachting het meeste op", "") + "."
 		case pts >= 10:
-			return head + ": spek hem met je " + cs + ", dat is " + strconv.Itoa(pts) + " punten extra." + m.highSignalText(c)
+			return head + ": spek hem met je " + cs + ", dat is " + strconv.Itoa(pts) + " punten extra." + m.aceSignalText(c) + m.highSignalText(c)
 		case pts > 0:
 			return head + ": geef " + cs + " mee, dat is " + count(pts, "punt", "punten") + " erbij." + m.highSignalText(c)
 		case c.Suit != led && c.Suit != trump && rules == game.Amsterdams && m.hand.inSuit(trump) != 0:

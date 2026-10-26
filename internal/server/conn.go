@@ -21,7 +21,7 @@ const (
 // client is one websocket connection. The reader goroutine decodes and
 // dispatches messages; the writer goroutine owns all writes and pings.
 type client struct {
-	srv  *Server
+	srv    *Server
 	conn   *websocket.Conn
 	ip     string
 	device string // the browser's User-Agent, cut short (game log)
