@@ -661,10 +661,8 @@ func (r *room) missedText(i game.Seat, m *missedHint) string {
 	case h.Play != nil:
 		advised = "had aangeraden om te passen"
 	}
-	app, why, ok := splitHint(h)
+	why, ok := hintWhy(h)
 	switch {
-	case ok && why != "" && app != "":
-		return who + " " + advised + ", " + app + ": " + why
 	case ok && why != "":
 		return who + " " + advised + ": " + why
 	case h.Text == "":
@@ -673,14 +671,13 @@ func (r *room) missedText(i game.Seat, m *missedHint) string {
 	return who + " " + advised + ". " + h.Text
 }
 
-// splitHint splits the text of hint h into its reason and, for a card,
-// what the opening says of the card besides naming it (app). The opening
-// only names the advice: "Speel ♣9: ", "Kies ♥ als troef: ", "Passen: ".
-// ok is false for a hint that opens otherwise (see cardWhy).
-func splitHint(h *hint) (app, why string, ok bool) {
+// hintWhy returns the reason in the text of hint h, after its opening that
+// only names the advice: "Speel ♣9: ", "Kies ♥ als troef: ", "Spelen: ",
+// "Passen: ". ok is false for a hint that opens otherwise.
+func hintWhy(h *hint) (why string, ok bool) {
 	switch {
 	case h.Card != nil:
-		return cardWhy(h.Text, game.CardShortNL(*h.Card))
+		why, ok = strings.CutPrefix(h.Text, "Speel "+game.CardShortNL(*h.Card)+": ")
 	case h.Suit != nil:
 		_, why, ok = strings.Cut(h.Text, "Kies "+h.Suit.Symbol()+" als troef: ")
 	case h.Play != nil && *h.Play:
@@ -688,46 +685,7 @@ func splitHint(h *hint) (app, why string, ok bool) {
 	case h.Play != nil:
 		why, ok = strings.CutPrefix(h.Text, "Passen: ")
 	}
-	return "", why, ok
-}
-
-// cardVerbs open a card hint that names the card right after them.
-var cardVerbs = []string{"Speel ", "Kom uit met ", "Troef met ", "Overtroef met ", "Pak de slag met ",
-	"Trek troef met ", "Duik met ", "Neem de slag over met "}
-
-// cardWhy splits the text of a hint for card cs whose opening, up to the
-// first colon, only says to play cs: it returns what the opening says of
-// the card besides (app) and the reason after the colon. "Speel ♣9: …"
-// gives "" and "…"; "Speel ♠8, je laatste schoppen: …", "Speel je
-// laagste, ♠8: …" and "Gooi je laatste schoppen af (♠8): …" give "je
-// laatste schoppen" or "je laagste" too. ok is false for another opening
-// ("Je maat heeft de slag: spek hem met je ♠10, …"), which says more.
-func cardWhy(text, cs string) (app, why string, ok bool) {
-	head, why, found := strings.Cut(text, ": ")
-	if !found || why == "" {
-		return "", "", false
-	}
-	for _, verb := range cardVerbs {
-		rest, cut := strings.CutPrefix(head, verb)
-		switch {
-		case !cut:
-		case rest == cs, rest == "troef ("+cs+")":
-			return "", why, true
-		case strings.HasPrefix(rest, cs+", "):
-			return strings.TrimPrefix(rest, cs+", "), why, true
-		case strings.HasSuffix(rest, ", "+cs):
-			return strings.TrimSuffix(rest, ", "+cs), why, true
-		}
-	}
-	if rest, cut := strings.CutPrefix(head, "Gooi "); cut {
-		switch {
-		case rest == cs+" af", rest == "je "+cs+" af":
-			return "", why, true
-		case strings.HasSuffix(rest, " af ("+cs+")"):
-			return strings.TrimSuffix(rest, " af ("+cs+")"), why, true
-		}
-	}
-	return "", "", false
+	return why, ok
 }
 
 func (r *room) explainTrick(t game.Trick, trump game.Suit, names [4]string) (text string) {

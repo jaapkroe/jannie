@@ -88,9 +88,9 @@ func gradePlay(v *game.View, c game.Card, seed uint64) Grade {
 	v.Legal = legal
 	tab := tableFromView(v)
 	m := newMover(&tab, v.Seat, setOf(v.Hand), setOf(legal), 0.5)
-	pref := m.choose()
+	pref, r := m.decide()
 	res := searchPlay(v, &tab, gradeSearch, seed, 0.5)
-	adv, text := teachPick(v, &tab, &m, res, pref)
+	adv, text := teachPick(&m, res, pref, r)
 	i, a := resultIndex(res, c), resultIndex(res, adv)
 	if i < 0 || a < 0 {
 		return Grade{}

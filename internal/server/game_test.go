@@ -1228,20 +1228,10 @@ func TestMissedText(t *testing.T) {
 	nine := game.Card{Rank: game.Nine, Suit: game.Clubs}
 	cs := game.CardShortNL(nine)
 	for text, want := range map[string]string{
-		"Speel " + cs + ": je maat heeft de slag al.":                    "Juf Ans had " + cs + " aangeraden: je maat heeft de slag al.",
-		"Kom uit met " + cs + ": een lage kaart kost weinig.":            "Juf Ans had " + cs + " aangeraden: een lage kaart kost weinig.",
-		"Gooi " + cs + " af: je kunt niet bekennen.":                     "Juf Ans had " + cs + " aangeraden: je kunt niet bekennen.",
-		"Gooi je " + cs + " af: die is niets waard.":                     "Juf Ans had " + cs + " aangeraden: die is niets waard.",
-		"Troef met " + cs + ": je kunt niet bekennen.":                   "Juf Ans had " + cs + " aangeraden: je kunt niet bekennen.",
-		"Overtroef met " + cs + ": je kunt niet bekennen.":               "Juf Ans had " + cs + " aangeraden: je kunt niet bekennen.",
-		"Speel troef (" + cs + "): je maat vroeg om troef.":              "Juf Ans had " + cs + " aangeraden: je maat vroeg om troef.",
-		"Speel " + cs + ", je laatste klaveren: dan ben je die kwijt.":   "Juf Ans had " + cs + " aangeraden, je laatste klaveren: dan ben je die kwijt.",
-		"Speel je laagste, " + cs + ": daarmee is de slag al zeker.":     "Juf Ans had " + cs + " aangeraden, je laagste: daarmee is de slag al zeker.",
-		"Gooi je laatste klaveren af (" + cs + "): dan kun je straks...": "Juf Ans had " + cs + " aangeraden, je laatste klaveren: dan kun je straks...",
-		"Je maat heeft de slag: spek hem met je " + cs + ".":             "Juf Ans had " + cs + " aangeraden. Je maat heeft de slag: spek hem met je " + cs + ".",
-		"Trek troef met " + cs + ".":                                     "Juf Ans had " + cs + " aangeraden. Trek troef met " + cs + ".",
-		"Speel ♣8: een andere kaart.":                                    "Juf Ans had " + cs + " aangeraden. Speel ♣8: een andere kaart.",
-		"":                                                               "Juf Ans had " + cs + " aangeraden.",
+		"Speel " + cs + ": je maat heeft de slag al.": "Juf Ans had " + cs + " aangeraden: je maat heeft de slag al.",
+		"Speel ♣8: een andere kaart.":                 "Juf Ans had " + cs + " aangeraden. Speel ♣8: een andere kaart.",
+		"Iets anders.":                                "Juf Ans had " + cs + " aangeraden. Iets anders.",
+		"":                                            "Juf Ans had " + cs + " aangeraden.",
 	} {
 		if got := r.missedText(0, &missedHint{seat: 0, hint: hint{Card: &nine, Text: text}}); got != want {
 			t.Errorf("missedText(%q) = %q, want %q", text, got, want)
