@@ -49,7 +49,7 @@ func (r *room) stateFor(i game.Seat) *state {
 	case phaseLobby:
 		s.Roster = r.roster()
 		return s
-	case phaseHandEnd:
+	case phaseHandEnd, phasePlay: // play: training, the last trick kept for its tip
 		s.NextAt = unixMilli(r.nextAt)
 	case phaseGameOver:
 		s.Winner = r.winner

@@ -31,6 +31,7 @@ const (
 	hostGrace    = 30 * time.Second // a disconnected host before another human takes over
 	reclaimAfter = 3 * time.Minute  // a disconnected seat before its name alone takes it back
 	refusedGap   = 30 * time.Second // at most one "wilde aanschuiven" notice per room this often
+	tipReadMax   = 20 * time.Second // training: the longest wait on the last trick for reading its tip
 	chatLog      = 50
 )
 
@@ -121,8 +122,8 @@ type room struct {
 	prev      *prevHand
 	lastTrick *game.Trick
 	winner    int
-	nextAt    time.Time
-	trickNo   int // tricks completed in this room, for bot chat limits
+	nextAt    time.Time // when the summary moves on (zero: it waits for ready); training: when the last trick, kept for its tip, goes
+	trickNo   int       // tricks completed in this room, for bot chat limits
 
 	// The review of the humans' play (review.go).
 	matchID    string
@@ -290,9 +291,8 @@ func (r *room) setClient(i game.Seat, c *client) {
 func (r *room) resume() {
 	now := time.Now()
 	r.turnAt = now
-	if r.pending == stepNextHand && !r.training {
-		r.pendingAt = now.Add(r.scaled(r.pace().summary))
-		r.nextAt = r.pendingAt
+	if r.pending == stepNextHand {
+		r.timeSummary(now)
 	}
 	if w := r.waitingFor(); w != game.NoSeat {
 		if st := &r.seats[w]; st.kind == seatHuman && now.Sub(latest(r.openedAt, st.leftAt)) >= r.scaled(askAfter) {
@@ -642,6 +642,9 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 	r.seats[i] = newHuman(name)
 	r.setClient(i, c)
 	r.logSeat(i)
+	if r.phase == phaseHandEnd && r.humanCount() == 2 {
+		r.timeSummary(time.Now()) // no longer alone: the summary counts down
+	}
 	if r.host == game.NoSeat {
 		r.host = i
 	}
@@ -802,6 +805,9 @@ func (r *room) leave(c *client, i game.Seat) {
 		r.host = game.NoSeat
 		r.pickHost(i)
 	}
+	if r.phase == phaseHandEnd && r.humanCount() == 1 {
+		r.timeSummary(time.Now()) // alone now: the summary waits for ready
+	}
 	r.emit(evSeat{Type: "leave", Seat: i})
 	// The others may all have been waiting for this player: to be ready,
 	// or to answer the question.
@@ -954,6 +960,8 @@ func (r *room) handle(c *client, m *inMsg) {
 		r.humanAct(c, i, action{kind: actPlay, card: card})
 	case "ready":
 		r.cmdReady(c, i)
+	case "tipRead":
+		r.cmdTipRead()
 	case "vote":
 		r.cmdVote(c, i, m)
 	case "chat":
@@ -1130,6 +1138,16 @@ func (r *room) cmdReady(c *client, i game.Seat) {
 		return
 	}
 	r.emitState()
+}
+
+// cmdTipRead ends the pause on the last trick of a hand in training, kept
+// for reading its tip: the summary follows at once. Once that pause is
+// over it is a late tap and changes nothing.
+func (r *room) cmdTipRead() {
+	if r.pending != stepCollect || r.nextAt.IsZero() {
+		return
+	}
+	r.runPending()
 }
 
 // allReady reports whether every connected human pressed ready.

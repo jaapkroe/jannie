@@ -131,7 +131,7 @@ export const CONTENT = {
     { tip: 'Zie je ergens een ⓘ? Tik erop voor een korte uitleg.' },
 
     { h: 'Na elk potje' },
-    { p: 'Na de laatste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle slagen. Tik op een slag om te zien wie wat speelde. Het volgende potje begint na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt.' },
+    { p: 'Na de laatste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle slagen. Tik op een slag om te zien wie wat speelde. Speel je met anderen, dan begint het volgende potje na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt. Speel je alleen met AI-spelers, dan wacht het spel tot je op [Volgend potje] tikt, zodat je de slagen rustig kunt nalopen.' },
     { p: 'Na het laatste potje wint het koppel met de meeste punten, of met z’n drieën of tweeën de speler met de meeste punten. De host kan met [Nog een partij] meteen opnieuw beginnen, met dezelfde spelers en spelregels.' },
     { p: 'Onder de eindstand staat **Jouw spel volgens Juf Ans**: een percentage voor je eigen keuzes. Juf Ans is de game engine die ook de AI-spelers en de tips aanstuurt; ze rekent met alleen wat jij op dat moment wist. Tik erop voor hoe je kaarten waren, je bedenktijd, je sterkste zetten en waar punten bleven liggen. Tik op zo’n zet om het potje kaart voor kaart terug te kijken, met alle kaarten open. Alleen jij ziet je eigen analyse. De analyse is er alleen bij een spel met z’n vieren.' },
     { p: 'Bij het terugkijken kun je bij elke zet van jou de kaart aantikken die jij **bij nader inzien** het beste vindt, dezelfde of een andere, en bij je troefkeuze de kleur. Onder de spelanalyse, en bij elke situatie, kun je een **opmerking** achterlaten. Bovenaan de analyse staat de **seed** van de partij: vul die bij Nieuw spel in om dezelfde kaarten nog eens te spelen.' },
@@ -146,6 +146,7 @@ export const CONTENT = {
         'Ben je aan de beurt, dan geeft een tipballon advies en licht de aangeraden kaart op. Moet je troef kiezen, dan staat de tip in het venster met de kleuren. Met ✕ verberg je de tip tot je volgende beurt.',
         'Je mag het advies ook in de wind slaan: zo leer je het meest. Speel je een andere kaart, dan vertelt Juf Ans na de slag welke kaart zij had aangeraden en waarom. Kies je een andere troef, of speel of pas je tegen haar advies in, dan hoor je dat na de eerste slag.',
         'Na elke slag legt Juf Ans uit wat er gebeurde: wie er won, met welke kaart en hoeveel punten en roem erin zaten.',
+        'Na de laatste slag van een potje blijft die slag even liggen, zodat je de uitleg kunt lezen. Met [Verder] ga je meteen door naar de uitslag.',
         'Na elk potje wacht het spel tot je op [Volgend potje] tikt, zodat je de slagen rustig kunt nalopen.',
         'Het tempo staat op rustig, zodat je alles goed kunt volgen.',
       ],

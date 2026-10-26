@@ -91,6 +91,10 @@ func checkUpdate(t *testing.T, c *tclient, m *msg) {
 			t.Errorf("hand outside a hand: %v", s.Hand)
 		}
 	}
+	// In play only training's last trick, kept for its tip, has a nextAt.
+	if s.Phase == phasePlay && s.NextAt != 0 && (!s.Training || me.Cards != 0 || s.Turn != -1) {
+		t.Errorf("nextAt %d in play (training %v, %d cards, turn %d)", s.NextAt, s.Training, me.Cards, s.Turn)
+	}
 	switch {
 	case n == 3 && s.Soloist >= 0 && (s.Soloist != s.Bidder || s.Bid < game.MinBid || s.Phase == phaseAuction):
 		t.Errorf("three players: soloist %d, bid %d by %d in phase %s", s.Soloist, s.Bid, s.Bidder, s.Phase)
@@ -975,6 +979,143 @@ func TestTrainingSummaryWaits(t *testing.T) {
 	c2.send(map[string]any{"t": "ready"})
 	if s := c2.waitEvent("deal").state; s.HandNo != 2 {
 		t.Errorf("deal of hand %d", s.HandNo)
+	}
+}
+
+// TestSoloSummaryWaits: one person with bots outside training: the summary
+// has no countdown either and waits for ready.
+func TestSoloSummaryWaits(t *testing.T) {
+	_, ts, _ := newTestServer(t)
+	c := dial(t, ts)
+	c.create("Piet", map[string]any{"hands": 4}, false, true)
+	drive(t, func() bool { return c.phase() == phaseHandEnd }, c)
+	if c.s.NextAt != 0 {
+		t.Errorf("summary alone with nextAt %d", c.s.NextAt)
+	}
+	// Ten times the summary time of normaal at this scale: still there.
+	time.Sleep(600 * time.Millisecond)
+	for m := c.poll(); m != nil; m = c.poll() {
+	}
+	if c.phase() != phaseHandEnd || c.s.HandNo != 1 {
+		t.Fatalf("summary went on by itself: phase %s hand %d", c.phase(), c.s.HandNo)
+	}
+	c.send(map[string]any{"t": "ready"})
+	if s := c.waitEvent("deal").state; s.HandNo != 2 {
+		t.Errorf("deal of hand %d", s.HandNo)
+	}
+}
+
+// TestSummaryCountdownWithOthers: with another person at the table the
+// summary counts down; once that person leaves it waits for ready, and a
+// joiner in their place brings the countdown back.
+func TestSummaryCountdownWithOthers(t *testing.T) {
+	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
+	h := dial(t, ts)
+	h.create("Host", map[string]any{"hands": 4}, false, false)
+	g := dial(t, ts)
+	g.join(h.code, "Gast", "")
+	h.send(map[string]any{"t": "start"})
+	drive(t, func() bool { return h.phase() == phaseHandEnd }, h, g)
+	if h.s.NextAt == 0 {
+		t.Fatalf("summary of two people without a countdown")
+	}
+	holdSummary(t, s, h.code)
+	g.send(map[string]any{"t": "leave"})
+	if st := h.waitEvent("leave").state; st.Phase != phaseHandEnd || st.NextAt != 0 {
+		t.Fatalf("alone after the leave: phase %s nextAt %d", st.Phase, st.NextAt)
+	}
+	time.Sleep(300 * time.Millisecond)
+	for m := h.poll(); m != nil; m = h.poll() {
+	}
+	if h.phase() != phaseHandEnd {
+		t.Fatalf("summary went on by itself after the leave: %s", h.phase())
+	}
+	j := dial(t, ts)
+	j.join(h.code, "Joost", "")
+	if j.s.Phase != phaseHandEnd || j.s.NextAt == 0 {
+		t.Errorf("joiner sees phase %s nextAt %d", j.s.Phase, j.s.NextAt)
+	}
+	if st := h.waitEvent("deal").state; st.HandNo != 2 {
+		t.Errorf("deal of hand %d", st.HandNo)
+	}
+}
+
+// longTipAI explains every trick at length, so the last trick waits the
+// longest for its tip to be read.
+type longTipAI struct{ fakeAI }
+
+func (a *longTipAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
+	return a.fakeAI.ExplainTrick(t, trump, names) + strings.Repeat(" Lees dit rustig.", 40)
+}
+
+// TestTrainingLastTip: in training the last trick of a hand stays on the
+// table until its tip is read: nextAt says until when, tipRead ends it at
+// once, and a late tipRead leaves the summary alone.
+func TestTrainingLastTip(t *testing.T) {
+	s, ts := newTestServerWith(t, &longTipAI{})
+	c := dial(t, ts)
+	c.create("Leerling", map[string]any{"hands": 4}, true, true)
+	lastTrick := func() bool {
+		return c.phase() == phasePlay && c.s.NextAt != 0 && c.events[len(c.events)-1] == "trick"
+	}
+	drive(t, lastTrick, c)
+	if n := c.s.Players[c.seat].Cards; n != 0 {
+		t.Fatalf("nextAt with %d cards in hand", n)
+	}
+	if left := time.Until(time.UnixMilli(c.s.NextAt)); left < 50*time.Millisecond {
+		t.Errorf("the last trick waits %v for a long tip", left)
+	}
+	r := roomOf(t, s, c.code)
+	held := false
+	call(r, func() {
+		if held = r.pending == stepCollect; held {
+			r.pendingAt = time.Now().Add(time.Hour)
+			r.nextAt = r.pendingAt
+			r.drive()
+		}
+	})
+	if !held {
+		t.Fatalf("the last trick went before the test could hold it")
+	}
+	tips := c.tips
+	c.waitType("tip")
+	if c.tips != tips+1 {
+		t.Errorf("%d tips with the last trick", c.tips-tips)
+	}
+	c.send(map[string]any{"t": "tipRead"})
+	c.waitEvent("collect")
+	if st := c.waitEvent("handEnd").state; st.NextAt != 0 || st.HandNo != 1 {
+		t.Errorf("summary of hand %d with nextAt %d", st.HandNo, st.NextAt)
+	}
+	// A late tap: the summary still waits for ready.
+	c.send(map[string]any{"t": "tipRead"})
+	time.Sleep(100 * time.Millisecond)
+	for m := c.poll(); m != nil; m = c.poll() {
+	}
+	if c.phase() != phaseHandEnd {
+		t.Fatalf("tipRead moved the summary on: %s", c.phase())
+	}
+	// Without tipRead the last trick goes once nextAt has come.
+	c.send(map[string]any{"t": "ready"})
+	c.waitEvent("deal")
+	drive(t, lastTrick, c)
+	at := c.s.NextAt
+	c.waitEvent("handEnd")
+	if now := time.Now().UnixMilli(); now < at {
+		t.Errorf("summary %d ms before nextAt", at-now)
+	}
+}
+
+// TestReadTime: the last trick waits longer for a longer tip, within limits.
+func TestReadTime(t *testing.T) {
+	if d := readTime([4]string{}); d != 0 {
+		t.Errorf("no tips: %v", d)
+	}
+	if d := readTime([4]string{"", "Jij wint de slag."}); d != 3*time.Second {
+		t.Errorf("four words: %v", d)
+	}
+	if d := readTime([4]string{"a b", strings.Repeat("woord ", 200)}); d != tipReadMax {
+		t.Errorf("200 words: %v", d)
 	}
 }
 

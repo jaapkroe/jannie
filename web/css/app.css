@@ -2713,6 +2713,43 @@ body.busy::after {
   height: 16px;
 }
 
+/* Training, the last trick of a hand: the summary waits until the
+   explanation is read, or the ring has run out. */
+.coach-go {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 7px 0 1px;
+  padding: 3px 12px 3px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: #0f6b60;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+}
+
+/* A 44 px target around the small button. */
+.coach-go::before {
+  content: "";
+  position: absolute;
+  inset: -8px -4px;
+}
+
+.coach-go .ring-cd {
+  width: 20px;
+  height: 20px;
+}
+
+.coach-go .ring-bg {
+  stroke: rgba(255, 255, 255, 0.3);
+}
+
+.coach-go .ring-fg {
+  stroke: #fff;
+}
+
 /* Trump and bid hints are shown inside the panel (.panel-hint), which
    would cover the bubble here. */
 .coach.on-stage {

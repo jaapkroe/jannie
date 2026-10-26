@@ -230,7 +230,8 @@ bid), with two "Met z'n tweeën, Utrechts" (no rules: nobody has a partner).
 
 **Training mode** (`training: true` at create) is a solo room: 1 human at seat
 0, partner bot **Juf Ans** at seat 2, two random opponents, tempo `rustig` by
-default, hints on, explanatory tips after every trick, nobody else can join.
+default, hints on, explanatory tips after every trick (the last trick of a
+hand waits for its tip, §6), nobody else can join.
 
 ## 4. Go API contracts
 
@@ -814,9 +815,17 @@ reply attempt.
 | hand summary before auto-continue (unless all humans `ready`) | 15000 | 12000 | 8000 |
 
 The hand summary also ends as soon as every human still connected is `ready`,
-including when the last one not ready leaves or drops. In training it does not
-auto-continue at all: the learner looks back at the hand and goes on with
-`ready` (`nextAt` is 0).
+including when the last one not ready leaves or drops. Alone at the table
+(training, or one person with bots) it does not auto-continue at all: the
+player looks back at the hand and goes on with `ready` (`nextAt` is 0). That
+can change during the summary (`timeSummary`): when a leave leaves one person,
+the countdown stops; when a joiner makes two, it starts in full.
+
+In training the last trick of a hand, which comes with a tip, stays on the
+table until the tip is read: the trick pause, or longer for a longer tip
+(`readTime`: 2 s plus 250 ms a word of the longest tip, at most 20 s, not by
+tempo), or until `tipRead`. `nextAt` says when it goes; the summary would
+otherwise cover the tip at once.
 
 During a pause nobody may act (`turn` is -1). Humans have no time limit.
 Pauses start with `deal`, `trump` (and a `bid` with `play: true`), `contract`
@@ -874,6 +883,7 @@ client rotates so `you` is at the bottom.
 | `discard` | `cards` [2] | Three players: you play alone, phase `discard` |
 | `play` | `card` | Your turn, phase `play` |
 | `ready` | | Phase `handEnd`: continue now (ignored once the next hand is dealt: a late tap on the summary) |
+| `tipRead` | | Training, the last trick of a hand waiting for its tip (`nextAt` set in phase `play`): on to the summary now (ignored once it is up: a late tap) |
 | `vote` | `seat`, `ai` bool, `left` bool (optional) | While state `takeover` is set, every connected human: may an AI play that seat (`true`), or wait (`false`)? `seat`, and `left` when sent, as in `takeover`: the question it answers (the client sends `left`, so a yes for a stand-in never counts for a seat given away). Can change while the question is open (§6); the same answer again changes nothing, so no `update` follows |
 | `chat` | `text` | Any time |
 | `rematch` | | Host, phase `gameOver`: new match, same seats and options |
@@ -975,7 +985,7 @@ persona on a seat its player left). `away` comes once per lost connection.
                 "points":[70,92], "roem":[0,20], "score":[70,112], "gains":[70,112], "nat":false, "pit":false } ],
   "total": [ 418, 391 ],           // per scorer: two teams, or one per player with three or two
   "prevHand": { "tricks":[ /* 8 completed tricks */ ], "result": { /* HandResult */ } }, // after a hand ends, until the next hand ends
-  "nextAt": 0,                     // handEnd: unix ms of auto-continue (0 in training: waits for ready)
+  "nextAt": 0,                     // handEnd: unix ms of auto-continue (0 alone at the table: waits for ready); training, play: when the last trick, waiting for its tip, goes (§6)
   "hint": null,                    // training, your turn: {"card":"AH"} | {"suit":"H"} | {"play":true}, plus "text"
   "hands4": null,                  // training with open: all four hands [[...],...]
   "winner": -1,                    // gameOver
@@ -1386,7 +1396,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   are a 4 × 2 grid of small tiles (number and points over the cards; 5 × 2
   with three players, 8 × 2 with two), in short landscape they sit beside
   the score; the ready chips show only with another person at the table
-  (who left no longer counts).
+  (who left no longer counts), and alone at the table there is no
+  countdown ring either (`nextAt` 0).
 - **Chat**: drawer (side panel on wide screens), quick reactions (👍 😂 😱 😭
   "Mooi!" "Nat!" "Goed gespeeld"), bot lines, system lines, unread badge (counts what
   people write; system lines and bot chatter, shown as speech bubbles, do not).
@@ -1397,11 +1408,15 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
 - **Training**: tip bubble with the hint text and a glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it); ✕ closes a hint until the next one; tips after
-  each trick (`tip`), shown until you play your next card; optional open
-  cards; Juf Ans as partner; the hand summary has no countdown ring (`nextAt`
-  0) and waits for *Volgend potje*. In short landscape the bubble sits in the
-  top-left corner and never covers the left seat (who plays after you): a
-  long text shows the lines that fit and *Lees verder* (then *Minder*).
+  each trick (`tip`), shown until you play your next card; while the last
+  trick of a hand waits for its tip (`nextAt` in phase `play`) the bubble
+  has *Verder* with a countdown ring, and *Verder*, ✕ or Enter sends
+  `tipRead`; optional open cards; Juf Ans as partner; the hand summary has
+  no countdown ring (`nextAt` 0) and waits for *Volgend potje*. In short
+  landscape the bubble sits in the top-left corner and never covers the left
+  seat (who plays after you): a long text shows the lines that fit and *Lees
+  verder* (then *Minder*); the tip of a hand's last trick shows in full, as
+  nobody plays after it.
 - **Spelanalyse** (issues #6 and #18, four players only): under the final
   score, a line for the player alone: *Jouw spel volgens Juf Ans: 87% (goed
   gespeeld) ›* (*Jouw spelanalyse wordt berekend…*, disabled, while grades
