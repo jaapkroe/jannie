@@ -313,6 +313,8 @@ async function training() {
     await sleep(300);
     const fast = await P.page.$$('.m-train .opt-row:nth-child(3) .seg-btn');
     await pressEl(P, fast[2]);
+    // Hints and tips without the lessons (app-checks.mjs --only lessons has those).
+    if (await P.page.$eval('#train-lessons', e => e.checked)) await press(P, '#train-lessons');
     await press(P, '#btn-train-go');
     await waitFor(P, () => document.body.dataset.screen === 'game', { label: 'training table' });
     const partner = await P.page.$eval('.seat-top .nm', e => e.textContent);

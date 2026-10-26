@@ -401,7 +401,8 @@ function titleCue() {
 function onChat(msg) {
   if (!msg) return;
   panels.chatAdd(msg, true);
-  if (app.s && msg.seat >= 0 && !msg.sys) table.bubble(app.s, msg.seat, msg.text);
+  // Juf Ans's lessons and explanations show in the coach bubble already.
+  if (app.s && msg.seat >= 0 && !msg.sys && !msg.coach) table.bubble(app.s, msg.seat, msg.text);
 }
 
 // ---------- boot ----------

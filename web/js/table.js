@@ -30,6 +30,10 @@ let rejoinSent = null;    // after a rejoin: {card, action} we sent just before 
 let heldTrick = null;     // completed trick kept on the table until "collect"
 let tip = '';             // training explanation after a trick, until our next card
 let dismissed = '';       // training hint closed with ✕ (JSON of s.hint)
+let lessonRead = 0;       // training with lessons: the step we said we read (tipRead), until the next one shows
+let lessonShown = 0;      // the step on screen, and when it appeared
+let lessonAt = 0;
+let spotEl = null;        // the part of the screen the lesson step is about
 let drag = null;
 let stageKey = '';
 
@@ -636,29 +640,84 @@ function renderPrompt(s) {
   const ask = askText(s);
   if (E.ask.textContent !== ask) E.ask.textContent = ask;
 
-  const key = s.hint?.text && PLAYING.has(s.phase) && my ? JSON.stringify(s.hint) : '';
+  // A lesson step goes before the hint: on our turn the hint follows it.
+  const lesson = s.lesson?.text || '';
+  if (s.lesson?.n !== lessonRead) lessonRead = 0;
+  if (lesson && s.lesson.n !== lessonShown) {
+    lessonShown = s.lesson.n;
+    lessonAt = performance.now();
+  }
+  const key = !lesson && s.hint?.text && PLAYING.has(s.phase) && my ? JSON.stringify(s.hint) : '';
   if (dismissed !== key) dismissed = ''; // a new hint shows again
   const hint = key && !dismissed ? s.hint.text : '';
-  const show = hint || tip;
+  const show = lesson || hint || tip;
   E.coach.hidden = !show;
   // Trump and bid hints are in the panel; only short landscape screens,
   // where the coach sits in a free corner, keep the bubble (see app.css).
   E.coach.classList.toggle('on-stage', !!hint && s.phase !== 'play');
-  // The last trick of a hand waits for its explanation to be read.
-  const reading = !hint && !!tip && readingTip(s);
-  E.coachGo.hidden = !reading;
+  // The last trick of a hand waits for its explanation to be read, with a
+  // countdown; a lesson step waits for Verder without one.
+  const reading = !lesson && !hint && !!tip && readingTip(s);
+  E.coachGo.hidden = !reading && !lesson;
+  E.coachGo.classList.toggle('no-ring', !!lesson);
+  E.coachRing.el.toggleAttribute('hidden', !reading);
   if (reading) E.coachRing.set(s.nextAt);
   if (show) {
     E.coach.classList.toggle('is-tip', !hint);
     E.coachIcon.textContent = hint ? '💡' : '👩‍🏫';
-    E.coachLbl.textContent = hint ? 'Tip ' : 'Uitleg ';
+    E.coachLbl.textContent = lesson ? '' : hint ? 'Tip ' : 'Uitleg ';
     if (E.coachText.dataset.text !== show) {
       E.coachText.dataset.text = show;
       E.coachText.replaceChildren(suitify(show));
       E.coach.classList.remove('open'); // a new text starts short again
+      if (lesson) anim(E.coachTxt, [{ opacity: 0.2 }, { opacity: 1 }], 220); // the next step, not the same one
     }
   }
   fitCoach();
+  spotlight(s);
+}
+
+// Training with lessons: the part of the screen the step on screen is
+// about (lesson spot, design §9) lights up.
+function spotlight(s) {
+  const el = s.lesson?.spot ? spotTarget(s, s.lesson.spot) : null;
+  if (el !== spotEl) spotEl?.classList.remove('spot');
+  spotEl = el;
+  el?.classList.add('spot'); // again: renderTop and renderPrompt set the classes of theirs anew
+}
+
+function spotTarget(s, spot) {
+  switch (spot) {
+    case 'partner': return seats[posOf(s, (s.you + 2) % seatCount(s))]?.root.querySelector('.seat-id');
+    case 'hand': return E.hand;
+    case 'trick': return E.trick;
+    case 'trump': return E.badge;
+    case 'score': return E.pill;
+    case 'rule': return E.rule;
+    case 'chat': {
+      // On wide screens the chat is a side panel, without a button.
+      const b = E.top.querySelector('.tb-chat');
+      return b?.offsetParent ? b : document.getElementById('chat');
+    }
+  }
+  return null;
+}
+
+// The lesson step on screen. An animation shows the next state (a trick
+// with its explanation) before it becomes app.s.
+const shownLesson = () => app.view?.lesson || null;
+
+// Says we read the lesson step on screen: the server shows the next one,
+// or the game goes on. Once per step, however often it is tapped, and not
+// in its first moment: the second tap of a double tap, or a tap meant for
+// the card that completed the trick, would skip it unread.
+const LESSON_SETTLE_MS = 450;
+function readLesson() {
+  const n = shownLesson()?.n;
+  if (!n || lessonRead === n || performance.now() - lessonAt < LESSON_SETTLE_MS) return;
+  lessonRead = n;
+  sound.play('click');
+  app.send({ t: 'tipRead', n });
 }
 
 // On a short landscape screen the coach sits in the top-left corner, above
@@ -709,6 +768,7 @@ function liftedText(code) {
 
 function closeCoach() {
   const s = app.s;
+  if (shownLesson()) return readLesson();
   if (s?.hint?.text && !E.coach.classList.contains('is-tip')) dismissed = JSON.stringify(s.hint);
   else if (tip && s && readingTip(s)) app.send({ t: 'tipRead' }); // read: on to the summary
   tip = '';
@@ -761,7 +821,7 @@ function renderHand(s, o = {}) {
     el.classList.toggle('selected', c === selected);
     el.classList.toggle('picked', picked.includes(c));
     el.classList.toggle('from-talon', talon.has(c));
-    el.classList.toggle('hint', playing && s.hint?.card === c);
+    el.classList.toggle('hint', playing && !s.lesson && s.hint?.card === c);
     el.classList.toggle('dealing', !!o.dealing);
     el.style.zIndex = i + 1;
   });
@@ -844,6 +904,7 @@ function bindHand() {
 function tap(code, type) {
   const s = app.s;
   if (!s) return;
+  if (shownLesson() && app.view.turn < 0) return readLesson(); // the game waits for the lesson: any tap goes on
   if (s.phase === 'discard' && s.turn === s.you) return pick(code);
   const playing = s.phase === 'play' && s.turn === s.you && !pending;
   const legal = (s.legal || []).includes(code);
@@ -862,14 +923,17 @@ function tap(code, type) {
 }
 
 // A tap beside the hand (the felt, a seat, the trick; not a button) puts a
-// lifted card down again. Clicks in the hand are its own: with the pointer
-// captured, a tap on a card may arrive as a click on the hand.
+// lifted card down again, or else goes on from a lesson step. Clicks in
+// the hand are its own: with the pointer captured, a tap on a card may
+// arrive as a click on the hand.
 function tapAside(e) {
   const s = app.s;
-  if (!selected || !s || E.hand.contains(e.target) || e.target.closest?.('button, a, input, textarea, select, label')) return;
-  selected = '';
-  renderHand(s);
-  renderPrompt(s);
+  if (!s || E.hand.contains(e.target) || e.target.closest?.('button, a, input, textarea, select, label')) return;
+  if (selected) {
+    selected = '';
+    renderHand(s);
+    renderPrompt(s);
+  } else if (shownLesson()) readLesson();
 }
 
 // Three players, laying away: a tap chooses a card or puts it back; a
@@ -935,6 +999,11 @@ function onKey(e) {
   if (!s || document.body.dataset.screen !== 'game' || panels.isOpen()) return;
   if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
   if ((e.key === 'Enter' || e.key === ' ') && e.target.closest?.('button')) return;
+  if ((e.key === 'Enter' || e.key === ' ') && shownLesson() && !selected) {
+    e.preventDefault();
+    readLesson();
+    return;
+  }
   if ((e.key === 'Enter' || e.key === ' ') && tip && readingTip(s)) {
     e.preventDefault();
     closeCoach();
@@ -1571,6 +1640,9 @@ export function resetRoom() {
   selected = '';
   tip = '';
   dismissed = '';
+  lessonRead = lessonShown = 0;
+  spotEl?.classList.remove('spot');
+  spotEl = null;
   stageKey = '';
   waitingBubbles = [];
   for (const pos of POS) endBubble(seats[pos]);

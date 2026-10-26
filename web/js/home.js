@@ -309,13 +309,21 @@ function openNewGame() {
 function openTraining() {
   sound.unlock();
   sound.play('click');
-  const opts = { open: false, tempo: 'rustig', trumpMode: 'utrechts', rules: 'amsterdams' };
-  const open = h('input', { type: 'checkbox', onchange: e => { opts.open = e.target.checked; } });
+  // Speluitleg stays as last chosen: once the game is known, it is off.
+  const opts = { open: false, lessons: store.get('lessons', '1') === '1', tempo: 'rustig', trumpMode: 'utrechts', rules: 'amsterdams' };
+  const open = h('input', { type: 'checkbox', id: 'train-open', onchange: e => { opts.open = e.target.checked; } });
+  const lessons = h('input', { type: 'checkbox', id: 'train-lessons', checked: opts.lessons, onchange: e => {
+    opts.lessons = e.target.checked;
+    store.set('lessons', opts.lessons ? '1' : '0');
+  } });
   const m = panels.openModal({
     id: 'train', title: 'Oefenen met Juf Ans', cls: 'm-sheet m-train', body: [
       h('div', { class: 'train-intro' },
         h('span', { class: 'avatar is-bot train-av', text: '👩‍🏫' }),
         h('p', { text: 'Je speelt samen met Juf Ans tegen twee AI-spelers. Bij elke beurt krijg je een tip, en na elke slag legt ze uit wat er gebeurde.' })),
+      h('label', { class: 'set-row' },
+        h('span', { class: 'set-txt' }, h('b', { text: 'Speluitleg' }), h('small', { text: 'Juf Ans legt het spel stap voor stap uit' })),
+        h('span', { class: 'switch' }, lessons, h('i'))),
       h('label', { class: 'set-row' },
         h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
         h('span', { class: 'switch' }, open, h('i'))),
@@ -369,6 +377,9 @@ function openExpert() {
   const m = panels.openModal({
     id: 'expert', title: 'Expert', cls: 'm-sheet m-train', body: [
       h('p', { class: 'sheet-note', text: 'Speel een spel opnieuw met de seed, of één potje ervan, tegen drie AI-spelers. Tijdens en na het spel kijk je elk potje kaart voor kaart terug: bij elke kaart, troefkeuze of elk bod zie je de redenering van de AI, geef je je eigen keuze en schrijf je commentaar.' }),
+      h('label', { class: 'set-row' },
+        h('span', { class: 'set-txt' }, h('b', { text: 'Speluitleg' }), h('small', { text: 'Juf Ans legt het spel stap voor stap uit' })),
+        h('span', { class: 'switch' }, lessons, h('i'))),
       h('label', { class: 'set-row' },
         h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
         h('span', { class: 'switch' }, open, h('i'))),

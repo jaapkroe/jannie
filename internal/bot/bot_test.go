@@ -357,6 +357,53 @@ func TestExplainTrick(t *testing.T) {
 	}
 }
 
+// TestTrickSignal: the first signal in the last trick, as the table reads
+// it, and none for a signal in an earlier trick or a card that says nothing.
+func TestTrickSignal(t *testing.T) {
+	// Hearts are trump, seat 0 leads the first trick; each trick is led by
+	// the winner of the one before.
+	view := func(trumpBy game.Seat, sig game.Signals, tricks ...string) game.View {
+		v := game.View{Players: 4, Trump: game.Hearts, TrumpKnown: true, TrumpBy: trumpBy, Rules: game.Amsterdams, Signals: &sig}
+		leader := game.Seat(0)
+		for _, codes := range tricks {
+			cards := game.MustParseCards(codes)
+			tr := game.Trick{Leader: leader}
+			best := 0
+			for i, c := range cards {
+				tr.Cards = append(tr.Cards, game.Played{Seat: (leader + game.Seat(i)) & 3, Card: c})
+				if game.Beats(c, cards[best], cards[0].Suit, game.Hearts) {
+					best = i
+				}
+			}
+			tr.Winner = tr.Cards[best].Seat
+			leader = tr.Winner
+			v.Tricks = append(v.Tricks, tr)
+		}
+		return v
+	}
+	none := Signal{}
+	sig := game.DefaultSignals
+	for _, c := range []struct {
+		name string
+		v    game.View
+		want Signal
+	}{
+		{"kleintje boer", view(0, sig, "7S 8S AS 9S"), Signal{Seat: 0, Card: card("7S"), Kind: "kleintjeBoer", Means: card("JH")}},
+		{"boer over boer", view(0, game.Signals{BoerOverBoer: true}, "JS 8S AS 9S"), Signal{Seat: 0, Card: card("JS"), Kind: "boerOverBoer", Means: card("JH")}},
+		{"a small lead of the other team", view(1, sig, "7S 8S AS 9S"), none},
+		{"aas vraagt 10", view(1, sig, "KD 7D AS 8D"), Signal{Seat: 2, Card: card("AS"), Kind: "aas", Means: card("TS")}},
+		{"laag bijspelen", view(1, sig, "KD 7D 8C 8D"), Signal{Seat: 2, Card: card("8C"), Kind: "hoogLaag", Means: card("AC")}},
+		{"hoog/laag not agreed", view(1, game.Signals{Aas: true}, "KD 7D 8C 8D"), none},
+		{"in the second trick", view(1, sig, "7S 8S 9S AS", "KD 7D 8C 9D"), Signal{Seat: 1, Card: card("8C"), Kind: "hoogLaag", Means: card("AC")}},
+		{"only in an earlier trick", view(0, sig, "7S 8S AS 9S", "KD 7D 8D 9D"), none},
+	} {
+		got, ok := TrickSignal(c.v)
+		if ok != (c.want != none) || got != c.want {
+			t.Errorf("%s: %+v %v, want %+v", c.name, got, ok, c.want)
+		}
+	}
+}
+
 func card(s string) game.Card {
 	c, err := game.ParseCard(s)
 	if err != nil {

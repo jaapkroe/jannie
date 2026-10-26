@@ -1327,7 +1327,7 @@ function msgEl(m) {
   const sys = m.sys || m.seat < 0;
   const mine = s && m.seat === s.you && !sys;
   const team = s && !sys && m.seat >= 0 ? teamCls(s, m.seat) : '';
-  return h('div', { class: 'msg' + (sys ? ' sys' : '') + (mine ? ' mine' : '') + (m.bot ? ' bot' : '') },
+  return h('div', { class: 'msg' + (sys ? ' sys' : '') + (mine ? ' mine' : '') + (m.bot ? ' bot' : '') + (m.coach ? ' coach-msg' : '') },
     sys ? null : h('span', { class: 'msg-name ' + team, text: m.name || 'Speler' }),
     h('span', { class: 'msg-text' }, suitify(m.text)));
 }
@@ -1341,7 +1341,8 @@ export function chatAdd(m, live = true) {
   if (!live) return;
   const mine = app.s && m.seat === app.s.you && !m.sys;
   if (!mine) {
-    if (!m.sys) sound.play('chat');
+    // Juf Ans's explanations come with every trick in training: no sound.
+    if (!m.sys && !m.coach) sound.play('chat');
     // The badge means a person wrote: system lines do not count, and bot
     // chatter already shows as a speech bubble at the table.
     if (!m.sys && !m.bot && m.seat >= 0 && !chatVisible()) { unread++; badge(); }

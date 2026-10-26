@@ -17,7 +17,7 @@ var baseKeys = []string{
 	"dealer", "voorhand", "turned", "bids", "forced", "bid", "bidder", "soloist", "talon",
 	"discards", "piles", "openRoem", "trump", "trumpBy", "playingTeam",
 	"turn", "takeover", "hand", "trick", "lastTrick", "tricksWon", "handPoints", "handRoem", "scores",
-	"total", "prevHand", "nextAt", "hint", "hands4", "winner", "review",
+	"total", "prevHand", "nextAt", "hint", "lesson", "hands4", "winner", "review",
 }
 
 func keysOf(t *testing.T, raw json.RawMessage) []string {
@@ -68,7 +68,7 @@ func testStateKeys(t *testing.T, players int) {
 		t.Errorf("first update ev %s, want null", lobby.Ev)
 	}
 	wantKeys(t, "lobby", lobby.S, append(slices.Clone(baseKeys), "roster"))
-	wantKeys(t, "opts", field(t, lobby.S, "opts"), []string{"players", "hands", "trumpMode", "rules", "ai", "tempo", "open", "signals", "seed", "from"})
+	wantKeys(t, "opts", field(t, lobby.S, "opts"), []string{"players", "hands", "trumpMode", "rules", "ai", "tempo", "open", "lessons", "signals", "seed", "from"})
 	var seats []json.RawMessage
 	json.Unmarshal(field(t, lobby.S, "players"), &seats)
 	if len(seats) != players {
@@ -84,7 +84,7 @@ func testStateKeys(t *testing.T, players int) {
 	var roster []json.RawMessage
 	json.Unmarshal(field(t, lobby.S, "roster"), &roster)
 	wantKeys(t, "roster entry", roster[0], []string{"id", "name", "emoji", "color", "bio"})
-	for _, k := range []string{"trick", "lastTrick", "prevHand", "hint", "hands4", "turned", "trump", "piles", "openRoem", "review", "takeover", "expert"} {
+	for _, k := range []string{"trick", "lastTrick", "prevHand", "hint", "lesson", "hands4", "turned", "trump", "piles", "openRoem", "review", "takeover", "expert"} {
 		if v := string(field(t, lobby.S, k)); v != "null" {
 			t.Errorf("lobby %s = %s, want null", k, v)
 		}

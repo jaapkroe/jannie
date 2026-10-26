@@ -142,10 +142,11 @@ export const CONTENT = {
     {
       ul: [
         'Tik op [Oefenen] en dan op [Start oefenspel]. Je speelt alleen met AI-spelers: **Juf Ans (AI)** is je maat en niemand anders kan aanschuiven.',
+        'Staat **Speluitleg** aan, dan legt Juf Ans het spel stap voor stap uit: wie waar zit en wat je op het scherm ziet, troef, welke kaarten je mag spelen, hoe een potje telt, roem, en vanaf het tweede potje seinen. Het spel wacht tot je op [Verder] of ergens op tafel tikt. In het eerste potje blijft elke slag liggen tot je de uitleg hebt gelezen. Ken je het spel al, zet Speluitleg dan uit.',
         'Zet **Open kaarten** aan als je alle vier de handen wilt zien. Zo snap je beter waarom iemand iets speelt.',
         'Ben je aan de beurt, dan geeft een tipballon advies en licht de aangeraden kaart op. Moet je troef kiezen, dan staat de tip in het venster met de kleuren. Met ✕ verberg je de tip tot je volgende beurt.',
         'Je mag het advies ook in de wind slaan: zo leer je het meest. Speel je een andere kaart, dan vertelt Juf Ans na de slag welke kaart zij had aangeraden en waarom. Kies je een andere troef, of speel of pas je tegen haar advies in, dan hoor je dat na de eerste slag.',
-        'Na elke slag legt Juf Ans uit wat er gebeurde: wie er won, met welke kaart en hoeveel punten en roem erin zaten.',
+        'Na elke slag legt Juf Ans uit wat er gebeurde: wie er won, met welke kaart en hoeveel punten en roem erin zaten. Wat ze uitlegt, kun je teruglezen in de chat.',
         'Na de laatste slag van een potje blijft die slag even liggen, zodat je de uitleg kunt lezen. Met [Verder] ga je meteen door naar de uitslag.',
         'Na elk potje wacht het spel tot je op [Volgend potje] tikt, zodat je de slagen rustig kunt nalopen.',
         'Het tempo staat op rustig, zodat je alles goed kunt volgen.',

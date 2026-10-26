@@ -378,6 +378,57 @@ func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
 	return b.String()
 }
 
+// Signal is a card that told the partner something at this table (design
+// §8), as everyone there reads it.
+type Signal struct {
+	Seat game.Seat
+	Card game.Card
+	// Kind is the agreement, as in game.Signals: "kleintjeBoer" and
+	// "boerOverBoer" (a lead), "aas" and "hoogLaag" (a low discard).
+	Kind string
+	// Means is the card the signal says Seat holds: the trump boer, the
+	// 10 (aas vraagt 10), or the highest card left in the suit (laag
+	// bijspelen).
+	Means game.Card
+}
+
+// TrickSignal returns the first signal given in the last completed trick
+// of v at a table of four, as the table reads it (signalsBoer, aceSignal,
+// lowSignal): what the bots read, whether or not it is true. ok is false
+// without one.
+func TrickSignal(v game.View) (s Signal, ok bool) {
+	if v.Players != 4 || !v.TrumpKnown || len(v.Tricks) == 0 {
+		return Signal{}, false
+	}
+	t := newTable(v.Voorhand, v.Trump, v.TrumpBy, v.Rules, game.SignalsOf(&v))
+	last := len(v.Tricks) - 1
+	for _, tr := range v.Tricks[:last] {
+		for _, p := range tr.Cards {
+			t.apply(p.Seat, p.Card)
+		}
+	}
+	for _, p := range v.Tricks[last].Cards {
+		s = Signal{Seat: p.Seat, Card: p.Card}
+		if t.n == 0 {
+			if t.signalsBoer(p.Seat, p.Card) {
+				s.Kind, s.Means = "kleintjeBoer", jackOf(t.trump)
+				if p.Card.Rank == game.Jack {
+					s.Kind = "boerOverBoer"
+				}
+				return s, true
+			}
+		} else if ten, yes := t.aceSignal(p.Card); yes {
+			s.Kind, s.Means = "aas", ten
+			return s, true
+		} else if hi, yes := t.lowSignal(p.Card); yes {
+			s.Kind, s.Means = "hoogLaag", hi
+			return s, true
+		}
+		t.apply(p.Seat, p.Card)
+	}
+	return Signal{}, false
+}
+
 // joinNL joins items as "a, b en c".
 func joinNL(items []string) string {
 	switch len(items) {

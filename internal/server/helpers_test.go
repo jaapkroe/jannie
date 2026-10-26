@@ -29,6 +29,7 @@ type fakeAI struct {
 	graded    atomic.Int64
 	lucked    atomic.Int64
 	reasoned  atomic.Int64
+	signalled atomic.Int64
 }
 
 var fakePersonas = []Persona{
@@ -127,6 +128,13 @@ func (a *fakeAI) Explain(v game.View) Explanation {
 func (a *fakeAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
 	a.explained.Add(1)
 	return names[t.Winner] + " wint de slag."
+}
+
+// TrickSignal reads the lead of every trick as kleintje boer.
+func (a *fakeAI) TrickSignal(v game.View) (Signal, bool) {
+	a.signalled.Add(1)
+	lead := v.Tricks[len(v.Tricks)-1].Cards[0]
+	return Signal{Seat: lead.Seat, Card: lead.Card, Kind: "kleintjeBoer", Means: game.Card{Rank: game.Jack, Suit: v.Trump}}, true
 }
 
 // fakeGreetings are said in turn; fakeRoem is a pool of four, as for the

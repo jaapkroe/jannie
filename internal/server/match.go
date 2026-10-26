@@ -214,6 +214,9 @@ func (r *room) startHand() {
 	}
 	r.handNo++
 	r.missed, r.misses = nil, nil
+	if r.lessonsOn() {
+		r.lessonHands++
+	}
 	hands, talon := game.ShuffleFor(n, r.deals)
 	turned := game.Suit(r.deals.IntN(game.NumSuits))
 	r.dealt = dealtCards{dealer: dealer, talon: slices.Clone(talon), turned: turned}
@@ -274,6 +277,7 @@ func (r *room) openTurn() {
 	r.openedOn = turn != game.NoSeat && r.seats[turn].client != nil
 	r.step++
 	r.think = r.thinkTime(turn)
+	r.turnLesson(turn)
 }
 
 func (r *room) thinkTime(i game.Seat) time.Duration {
@@ -307,9 +311,10 @@ func (r *room) drive() {
 	live := r.live()
 	if r.pending != stepNone {
 		// The hand summary waits for the players (alone at the table only
-		// for ready, see timeSummary); the other pauses are part of the
-		// animation and always end.
-		if r.pending == stepNextHand && (!live || r.pendingAt.IsZero()) {
+		// for ready, see timeSummary), and a pause with a lesson on screen
+		// for it to be read; the other pauses are part of the animation and
+		// always end.
+		if r.pending == stepNextHand && (!live || r.pendingAt.IsZero()) || r.lesson != nil {
 			return
 		}
 		r.after(time.Until(r.pendingAt), r.runPending)
@@ -344,8 +349,12 @@ func latest(a, b time.Time) time.Time {
 	return b
 }
 
-// runPending ends the current pause.
+// runPending ends the current pause, unless a lesson is due first (teach):
+// then it ends once that is read.
 func (r *room) runPending() {
+	if r.teach() {
+		return
+	}
 	s := r.pending
 	r.pending = stepNone
 	switch s {
@@ -460,6 +469,9 @@ func (r *room) humanAct(c *client, i game.Seat, a action) {
 	miss := r.missedHintFor(i, a)
 	if a.kind == actPlay {
 		r.missed = miss // explained with the trick
+		if r.pending == stepNone {
+			r.clearLesson() // the lesson of the turn has done its job
+		}
 	}
 	v, graded := r.beforeChoice(i, a)
 	opened, on := r.openedAt, r.openedOn
@@ -564,7 +576,11 @@ func (r *room) act(i game.Seat, a action) error {
 		r.trickNo++
 		tips := r.trickTips(t)
 		r.pause(stepCollect, p.trick)
-		if read := readTime(tips); d.Phase() == game.PhaseDone && read > 0 {
+		lesson := r.trickLessons(t, tips)
+		switch read := readTime(tips); {
+		case lesson != nil:
+			r.pendingAt = time.Time{} // the trick waits for the lesson, its explanation first
+		case d.Phase() == game.PhaseDone && read > 0:
 			// Training: the summary would cover the last tip at once, so
 			// the last trick stays until it is read (or tipRead).
 			r.pause(stepCollect, max(p.trick, read))
@@ -575,9 +591,14 @@ func (r *room) act(i game.Seat, a action) error {
 		if roem == nil {
 			roem = []game.RoemItem{}
 		}
+		if lesson != nil {
+			r.startLesson(lesson) // on screen with the trick
+		}
 		r.emit(evTrick{Type: "trick", Winner: t.Winner, Points: t.Points, Roem: roem, Last: d.Phase() == game.PhaseDone})
 		r.reviewTrick(t)
-		r.sendTips(tips)
+		if lesson == nil {
+			r.sendTips(tips)
+		}
 		r.chatTrick(t)
 	default:
 		return errors.New("onbekende actie")
@@ -648,11 +669,13 @@ func (r *room) trickTips(t game.Trick) (tips [4]string) {
 	return tips
 }
 
-// sendTips sends the tips of trickTips.
+// sendTips sends the tips of trickTips, each also in the chat as a line of
+// Juf Ans, to read back.
 func (r *room) sendTips(tips [4]string) {
 	for i, text := range tips {
 		if st := &r.seats[i]; text != "" && st.client != nil {
 			st.client.send(mustJSON(tipMsg{T: "tip", Text: text}))
+			r.coachChat(text)
 		}
 	}
 }
