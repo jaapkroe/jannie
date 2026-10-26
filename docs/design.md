@@ -436,8 +436,15 @@ func New(p Persona, lvl Level, seed uint64) Player
 // roem, banks points in a sure trick, keeps the trumps, the highest card of
 // a side suit or the guard of an honour); without one it says by how much
 // the search rates it higher ("volgens de berekening levert ♠A gemiddeld 9
-// punten meer op dan ♠8"). The search values every option by the points it
-// brings alone: the bots' appetite for pit (Aggression) plays no part.
+// punten meer op dan ♠8"). When roem is why the card beats the one the
+// search rates best without roem (roem swings at least 3 points, and two
+// paired SE, its way), a hint that names no roem yet says so: in this
+// trick with the cards still out that could make it ("♠9 en ♠B zijn nog in
+// het spel, dus in deze slag kan roem vallen. Volgens de berekening: met
+// ♠10 gemiddeld 18 roem voor jullie, met ♠A 7."), else over the hand, per
+// saldo, and nat when that differs by 10 percentage points. The search
+// values every option by the points it brings alone: the bots' appetite
+// for pit (Aggression) plays no part.
 type Advice struct {
     Card *game.Card; Suit *game.Suit; Play *bool
     Text string     // e.g. "Speel ♥A: je maat heeft de slag nog niet en de aas is hoog."
