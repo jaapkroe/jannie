@@ -58,7 +58,9 @@ type seat struct {
 	vote   *bool     // their answer to the question (takeover), nil: none yet; a no outlasts a drop-out a while (see disconnected)
 	ready  bool
 	chat   tokenBucket
-	review *review // the analysis of their play in this match
+	call   *callState  // in the call (call.go); ends with the connection
+	signal tokenBucket // call and rtc messages
+	review *review     // the analysis of their play in this match
 
 	// Bots, and the substitute of a human.
 	persona  Persona
@@ -288,6 +290,9 @@ func (r *room) setClient(i game.Seat, c *client) {
 		r.srv.players.Add(-1)
 	}
 	resumed := c != nil && r.connectedHumans() == 0
+	if st.client != c {
+		st.call = nil // a call belongs to its connection
+	}
 	st.client = c
 	if c != nil {
 		r.idleSince = time.Time{}
@@ -353,10 +358,11 @@ func (r *room) botPlays(i game.Seat) bool {
 
 func newHuman(name string) seat {
 	return seat{
-		kind:  seatHuman,
-		name:  name,
-		token: newToken(),
-		chat:  tokenBucket{tokens: 5, max: 5, rate: 1},
+		kind:   seatHuman,
+		name:   name,
+		token:  newToken(),
+		chat:   tokenBucket{tokens: 5, max: 5, rate: 1},
+		signal: tokenBucket{tokens: 10, max: 10, rate: 2},
 	}
 }
 
@@ -758,8 +764,10 @@ func (r *room) reconnect(c *client, i game.Seat) {
 		old.sendError(errUnknown, "Je speelt nu verder in een ander venster.")
 	}
 	wasAway := st.away
+	hadCall := st.call != nil
 	if wasConnected {
 		st.client = c // a new connection replaces the old one
+		st.call = nil
 	} else {
 		r.setClient(i, c)
 	}
@@ -770,8 +778,13 @@ func (r *room) reconnect(c *client, i game.Seat) {
 	}
 	if wasConnected {
 		// Another window of the same player: nothing changes for the game,
-		// so there is nothing to schedule either.
-		r.resync(c, i)
+		// so there is nothing to schedule either. Only a call of the old
+		// window ends, for everyone to see.
+		if hadCall {
+			r.emitTo(nil, c)
+		} else {
+			r.resync(c, i)
+		}
 		r.checkHost()
 		return
 	}
@@ -996,6 +1009,10 @@ func (r *room) handle(c *client, m *inMsg) {
 		r.cmdVote(c, i, m)
 	case "chat":
 		r.cmdChat(c, i, m)
+	case "call":
+		r.cmdCall(c, i, m)
+	case "rtc":
+		r.cmdRTC(c, i, m)
 	case "rematch":
 		r.cmdRematch(c, i)
 	case "lobby":

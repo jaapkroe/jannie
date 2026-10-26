@@ -58,6 +58,10 @@ for path in / /KQXB /js/main.js /favicon.svg /api/health /bestaat-niet; do
     expect "$h on $path, times sent" 1 "$(printf '%s\n' "$headers" | grep -ci "^$h:")"
   done
 done
+# The call (issue #43) needs the camera and microphone for the page itself.
+expect "Permissions-Policy lets the page call" "camera=(self) microphone=(self)" \
+  "$(curl -s -D - -o /dev/null --max-time 5 "$base/" | tr -d '\r' | sed -n 's/^[Pp]ermissions-[Pp]olicy: //p' \
+    | grep -o '\(camera\|microphone\)=([^)]*)' | sort | tr '\n' ' ' | sed 's/ $//')"
 cache() { curl -s -D - -o /dev/null --max-time 5 "$base$1" | tr -d '\r' | sed -n 's/^[Cc]ache-[Cc]ontrol: //p'; }
 expect "Cache-Control on /js/main.js" no-cache "$(cache /js/main.js)"
 expect "Cache-Control on /favicon.svg" "public, max-age=86400" "$(cache /favicon.svg)"

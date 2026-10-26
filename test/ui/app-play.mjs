@@ -7,7 +7,8 @@
 //
 // Phone uses touch with two taps per card; desktop uses single mouse clicks.
 // --multi: a host (desktop) and a guest who opens the /CODE link (phone)
-// chat, the host seats a bot, and both play one game to the end.
+// chat, the host seats a bot, both join the call, and both play one game to
+// the end.
 // --training: two potjes of Oefenen, checking hints and tips.
 // --players: the table size for the solo games (default 4): with three the
 // auction and laying away, with two the piles.
@@ -173,7 +174,8 @@ async function run(name) {
 
 // Host creates a table with Nieuw spel, the guest follows the /CODE link,
 // both chat, the host seats a chosen bot (and removes and re-adds it), starts,
-// a chat line shows as a speech bubble mid-game, and both play to the end.
+// both join the call, a chat line shows as a speech bubble mid-game, and
+// both play to the end.
 async function multi() {
   const browser = await connect(A.cdp);
   const H = await openPage(browser, VIEWPORTS.desktop, 'multi-host');
@@ -241,6 +243,15 @@ async function multi() {
     await press(H, '#btn-start:not(:disabled)');
     await Promise.all([H, G].map(P => waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelectorAll('.seat:not(.empty)').length === 4,
       { label: 'game with four players' })));
+    // The call is proposed to both; both call, and each sees the other's
+    // video at their seat (scripts/chrome has a fake camera).
+    for (const P of [H, G]) {
+      await waitFor(P, () => document.querySelector('.m-call.open .btn-go'), { label: 'call proposed' });
+      await sleep(300);
+      await press(P, '.m-call .btn-go');
+    }
+    await Promise.all([H, G].map(P => waitFor(P, () => [...document.querySelectorAll('.seat:not([hidden]) .ring > video.call-video')]
+      .filter(v => v.videoWidth > 0).length === 2, { label: 'own video and the other\'s', timeout: 30000 })));
     const players = await H.page.$$eval('.seat .nm', els => els.map(e => e.textContent));
     if (!players.includes('Bakker Vera (AI)') || !players.includes('Gast') || players.filter(n => / \(AI\)$/.test(n)).length !== 2) {
       throw new Error(`unexpected players at the table: ${players}`);

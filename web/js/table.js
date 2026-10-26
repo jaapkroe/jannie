@@ -84,7 +84,9 @@ export function init() {
         (E.coachRing = panels.countdownRing()).el, h('span', { text: 'Verder' }))),
     h('button', { class: 'coach-x', type: 'button', 'aria-label': 'Sluiten', onclick: closeCoach }, icon('close')));
   E.rule = h('div', { class: 'rule', 'aria-live': 'polite' });
-  E.prompt = h('div', { class: 'prompt' }, seats.bottom.root, E.rule, ...panels.toolButtons(['last']), E.coach);
+  // The call buttons (call.js), right of the rule; on phones above the last trick.
+  E.callDock = h('div', { class: 'call-dock', role: 'group', 'aria-label': 'Bellen', hidden: true });
+  E.prompt = h('div', { class: 'prompt' }, seats.bottom.root, E.rule, ...panels.toolButtons(['last']), E.callDock, E.coach);
   E.hand = h('div', { class: 'hand', role: 'group', 'aria-label': 'Jouw kaarten' });
   E.table.append(E.prompt, E.hand);
 
@@ -146,6 +148,16 @@ export function render(s, o = {}) {
   renderStage(s);
   renderPrompt(s);
   renderHand(s, o);
+  renderCall();
+}
+
+// The call, once call.js is loaded: a seat's video in place of its face,
+// or the mark of who is in the call, and the call buttons.
+export function renderCall() {
+  const s = app.view;
+  if (!app.call || !s) return;
+  app.call.dock(E.callDock);
+  for (let seat = 0; seat < seatCount(s); seat++) app.call.decorate(seats[posOf(s, seat)].ring, seat);
 }
 
 // The names behind a score in the pill, each shortened on its own with its

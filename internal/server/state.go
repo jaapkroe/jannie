@@ -164,6 +164,7 @@ func (r *room) playerState(i game.Seat) *playerState {
 			Connected: st.client != nil,
 			Away:      st.away,
 			Vote:      st.vote,
+			Call:      st.call,
 			Cards:     cards,
 			Ready:     st.ready && r.phase == phaseHandEnd,
 		}

@@ -5,9 +5,13 @@ set -eu
 port=${1:?usage: chrome PORT}
 podman rm -f "kj-chrome-$port" >/dev/null 2>&1 || true
 # Room in /dev/shm for the compositor: with the default 64 MB, large pages
-# with many animated layers stall the renderer.
+# with many animated layers stall the renderer. A call (app-checks --only
+# call) gets a fake camera and microphone, allowed without asking, and the
+# pages' real local addresses, as the container cannot resolve mDNS names.
 podman run -d --rm --name "kj-chrome-$port" --network host --shm-size=1g \
   docker.io/zenika/alpine-chrome:124 --headless --no-sandbox --disable-gpu \
   --autoplay-policy=no-user-gesture-required \
+  --use-fake-ui-for-media-stream --use-fake-device-for-media-stream \
+  --disable-features=WebRtcHideLocalIpsWithMdns \
   --remote-debugging-address=127.0.0.1 --remote-debugging-port="$port" about:blank >/dev/null
 echo "kj-chrome-$port: CDP at http://127.0.0.1:$port/json/version"

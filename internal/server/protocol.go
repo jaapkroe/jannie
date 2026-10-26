@@ -17,7 +17,7 @@ type inMsg struct {
 	Code     string          `json:"code"`
 	Token    string          `json:"token"`
 	Seat     *int            `json:"seat"` // also mark, why, feedback (expert): whose decision; default your own
-	ID       string          `json:"id"`
+	ID       string          `json:"id"`   // bot: the persona; call: the call session ("" hangs up)
 	Suit     string          `json:"suit"`
 	Play     *bool           `json:"play"`
 	Bid      *int            `json:"bid"`
@@ -29,6 +29,10 @@ type inMsg struct {
 	Hand     *int            `json:"hand"`  // mark, why, feedback: the hand (its number)
 	Trick    *int            `json:"trick"` // mark, why, feedback: the trick (1–8; 0: the trump choice or bid)
 	N        *int            `json:"n"`     // tipRead: the lesson step read (lesson.go)
+	Mic      *bool           `json:"mic"`   // call: the microphone is on
+	Cam      *bool           `json:"cam"`   // call: the camera is on
+	To       string          `json:"to"`    // rtc: the call session it is for
+	Desc     *rtcDesc        `json:"desc"`  // rtc: the session description (call.go)
 }
 
 // whyMsg is the engine's reasoning for one decision (expert): see
@@ -125,6 +129,15 @@ type chatlogMsg struct {
 type refusedMsg struct {
 	T    string `json:"t"`
 	Name string `json:"name"`
+}
+
+// rtcOut passes a session description on from one call session to
+// another (call.go).
+type rtcOut struct {
+	T    string   `json:"t"` // "rtc"
+	From string   `json:"from"`
+	Seat int      `json:"seat"`
+	Desc *rtcDesc `json:"desc"`
 }
 
 type tipMsg struct {
@@ -289,17 +302,18 @@ type rosterEntry struct {
 }
 
 type playerState struct {
-	Name      string `json:"name"`
-	Bot       bool   `json:"bot"`
-	BotID     string `json:"botId"`
-	Emoji     string `json:"emoji"`
-	Color     string `json:"color"`
-	Connected bool   `json:"connected"`
-	Away      bool   `json:"away"`
-	Left      bool   `json:"left"`
-	Vote      *bool  `json:"vote"`
-	Cards     int    `json:"cards"`
-	Ready     bool   `json:"ready"`
+	Name      string     `json:"name"`
+	Bot       bool       `json:"bot"`
+	BotID     string     `json:"botId"`
+	Emoji     string     `json:"emoji"`
+	Color     string     `json:"color"`
+	Connected bool       `json:"connected"`
+	Away      bool       `json:"away"`
+	Left      bool       `json:"left"`
+	Vote      *bool      `json:"vote"`
+	Call      *callState `json:"call"`
+	Cards     int        `json:"cards"`
+	Ready     bool       `json:"ready"`
 }
 
 // takeoverState is the question to the table: may an AI play the seat the

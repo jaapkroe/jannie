@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	maxMessageBytes = 4096
+	maxMessageBytes = 16384 // a call's session description takes several KiB
 	sendQueueLen    = 256
 	writeTimeout    = 10 * time.Second
 	pingEvery       = 25 * time.Second

@@ -470,7 +470,8 @@ test('bediening covers the whole interface', () => {
   const text = renderManual('bediening').textContent;
   for (const w of ['Snel spelen', 'Nieuw spel', 'Meedoen', 'Oefenen', '(AI)', 'Kopieer link', 'Delen', 'Start',
     'Spelen', 'Passen', 'Wij – Zij', 'Laatste slag', 'Scorebord', 'Chat', 'Instellingen', 'vierkleurenspel',
-    'minder animaties', 'Juf Jannie', 'Utrechts/Amsterdams', '16', 'donkerder', 'veeg omhoog', 'Enter']) {
+    'minder animaties', 'Juf Jannie', 'Utrechts/Amsterdams', '16', 'donkerder', 'veeg omhoog', 'Enter',
+    'Bellen', 'Microfoon', 'Camera', 'Ophangen', 'Bellen voorstellen']) {
     assert.ok(text.includes(w), w);
   }
 });

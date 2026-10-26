@@ -408,10 +408,12 @@ function buildLobby() {
   E.lbSeats = {};
   for (const pos of POS) E.lbTable.append(E.lbSeats[pos] = h('div', { class: 'lseat ls-' + pos }));
   E.lbCount = h('p', { class: 'lb-count' });
+  E.lbCall = h('div', { class: 'call-dock lb-call', role: 'group', 'aria-label': 'Bellen', hidden: true });
+  E.lbAv = [];
   E.lbOpts = h('section', { class: 'lb-card lb-opts' });
   E.lbFoot = h('div', { class: 'lobby-foot' });
   E.lobby.append(bar, h('div', { class: 'lobby-main' },
-    h('div', { class: 'lb-col' }, E.lbCodeCard, h('section', { class: 'lb-card lb-seats' }, h('div', { class: 'lb-lbl', text: 'Aan tafel' }), E.lbTable, E.lbCount)),
+    h('div', { class: 'lb-col' }, E.lbCodeCard, h('section', { class: 'lb-card lb-seats' }, h('div', { class: 'lb-lbl', text: 'Aan tafel' }), E.lbTable, E.lbCount, E.lbCall)),
     h('div', { class: 'lb-col' }, E.lbOpts)), E.lbFoot);
 }
 
@@ -466,7 +468,9 @@ export function renderLobby(s, fresh = false) {
   const n = seatCount(s);
   E.lbTable.dataset.players = n;
   for (const pos of POS) E.lbSeats[pos].hidden = true;
+  E.lbAv = [];
   for (let seat = 0; seat < n; seat++) renderLobbySeat(s, seat, host);
+  renderCall();
   const taken = s.players.filter(Boolean).length;
   const free = taken < n;
   const bots = s.players.some(p => p?.bot);
@@ -539,7 +543,7 @@ function renderLobbySeat(s, seat, host) {
       class: 'ls-main', type: 'button', disabled: !(host && p.bot),
       title: host && p.bot ? 'Tik om een andere AI-speler te kiezen' : p.name,
       onclick: host && p.bot ? () => panels.openBotPicker(seat, s) : null,
-    }, avatar(p), playerName(p.name, { cls: 'ls-name' }), h('span', { class: 'ls-tag', text: tag })));
+    }, E.lbAv[seat] = avatar(p), playerName(p.name, { cls: 'ls-name' }), h('span', { class: 'ls-tag', text: tag })));
     if (host && p.bot) kids.push(h('button', { class: 'ls-x', type: 'button', title: 'AI-speler weghalen', 'aria-label': `${p.name} weghalen`, onclick: () => { sound.play('click'); app.send({ t: 'unbot', seat }); } }, icon('close')));
   } else {
     kids.push(h('button', {
@@ -549,6 +553,14 @@ function renderLobbySeat(s, seat, host) {
     }, h('span', { class: 'avatar empty-av' }, icon('plus')), h('span', { class: 'ls-name', text: host ? 'AI-speler' : 'Hier zitten' }), h('span', { class: 'ls-tag', text: isWij(s, seat) ? 'maat · vrij' : 'vrij' })));
   }
   el.replaceChildren(...kids);
+}
+
+// The call, once call.js is loaded: videos in place of the faces, who is
+// in the call, and the call buttons under the table.
+export function renderCall() {
+  if (!app.call) return;
+  app.call.dock(E.lbCall);
+  E.lbAv.forEach((av, seat) => av && app.call.decorate(av, seat));
 }
 
 export function resetLobby() {
