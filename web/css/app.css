@@ -2763,7 +2763,7 @@ body.busy::after {
 
 /* Training with lessons: the part of the screen the step is about
    (table.js spotlight). */
-.spot:not(.trick, .hand),
+.spot:not(.trick, .hand, .card),
 .trick.spot::before {
   outline: 3px solid var(--gold);
   outline-offset: 4px;
@@ -2781,8 +2781,10 @@ body.busy::after {
   animation: none;
 }
 
-/* The hand runs off the bottom of a phone: its cards glow as for a hint. */
-.hand.spot > .card::after {
+/* The hand runs off the bottom of a phone: its cards glow as for a hint,
+   as does the one card a step is about. */
+.hand.spot > .card::after,
+.hand > .card.spot::after {
   opacity: 1;
   box-shadow: 0 0 0 3px var(--kj-card-glow), 0 0 18px 6px rgb(255 196 0 / 0.75);
   animation: kj-card-hint 1.1s ease-in-out infinite alternate;
@@ -5026,7 +5028,7 @@ body.chat-open .chat-scrim {
   color: var(--zij-hi);
 }
 
-/* Juf Ans in training: her lessons and the explanation of every trick. */
+/* Juf Jannie in training: her lessons and the explanation of every trick. */
 .msg.coach-msg {
   background: rgba(43, 179, 163, 0.13);
   box-shadow: inset 3px 0 0 rgba(43, 179, 163, 0.7);
@@ -6097,7 +6099,8 @@ body.reduced .logo-suits span,
 body.reduced .over-emoji,
 body.reduced .spot,
 body.reduced .trick.spot::before,
-body.reduced .hand.spot > .card::after {
+body.reduced .hand.spot > .card::after,
+body.reduced .hand > .card.spot::after {
   animation: none;
 }
 

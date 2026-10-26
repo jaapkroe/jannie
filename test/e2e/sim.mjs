@@ -248,10 +248,10 @@ class Player {
         this.check(Array.isArray(m.msgs) && m.msgs.length <= 50, 'bad chatlog');
         break;
       case 'chat':
-        // At most 200 characters, as people may type; Juf Ans's explanations
+        // At most 200 characters, as people may type; Juf Jannie's explanations
         // in training (coach) may run longer.
         this.check(m.msg && typeof m.msg.text === 'string' && m.msg.text.length > 0 && ([...m.msg.text].length <= 200 || m.msg.coach), 'bad chat message');
-        if (m.msg.coach) this.check(this.game.cfg.training && m.msg.bot && m.msg.seat === 2, `coach line outside training or not of Juf Ans: ${JSON.stringify(m.msg)}`);
+        if (m.msg.coach) this.check(this.game.cfg.training && m.msg.bot && m.msg.seat === 2, `coach line outside training or not of Juf Jannie: ${JSON.stringify(m.msg)}`);
         if (m.msg.bot) this.check(/ \(AI\)$/.test(m.msg.name), `bot chat without (AI): ${m.msg.name}`);
         break;
       case 'tip':

@@ -128,8 +128,10 @@ type AI interface {
 	// their turn, for the expert mode.
 	Explain(v game.View) Explanation
 	ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
-	// TrickSignal finds the first signal in the last completed trick of v,
-	// at a table of four, for the lessons in training.
-	TrickSignal(v game.View) (Signal, bool)
+	// TrickSignals finds the signals in the last completed trick of v, and
+	// SignalChance one the player of v can give truthfully on their turn
+	// (prefer first), at a table of four, for the lessons in training.
+	TrickSignals(v game.View) []Signal
+	SignalChance(v game.View, prefer game.Card) (Signal, bool)
 	Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
 }

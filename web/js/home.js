@@ -317,12 +317,12 @@ function openTraining() {
     store.set('lessons', opts.lessons ? '1' : '0');
   } });
   const m = panels.openModal({
-    id: 'train', title: 'Oefenen met Juf Ans', cls: 'm-sheet m-train', body: [
+    id: 'train', title: 'Oefenen met Juf Jannie', cls: 'm-sheet m-train', body: [
       h('div', { class: 'train-intro' },
         h('span', { class: 'avatar is-bot train-av', text: '👩‍🏫' }),
-        h('p', { text: 'Je speelt samen met Juf Ans tegen twee AI-spelers. Bij elke beurt krijg je een tip, en na elke slag legt ze uit wat er gebeurde.' })),
+        h('p', { text: 'Je speelt samen met Juf Jannie tegen twee AI-spelers. Bij elke beurt krijg je een tip, en na elke slag legt ze uit wat er gebeurde.' })),
       h('label', { class: 'set-row' },
-        h('span', { class: 'set-txt' }, h('b', { text: 'Speluitleg' }), h('small', { text: 'Juf Ans legt het spel stap voor stap uit' })),
+        h('span', { class: 'set-txt' }, h('b', { text: 'Speluitleg' }), h('small', { text: 'Juf Jannie legt het spel stap voor stap uit' })),
         h('span', { class: 'switch' }, lessons, h('i'))),
       h('label', { class: 'set-row' },
         h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
@@ -377,9 +377,6 @@ function openExpert() {
   const m = panels.openModal({
     id: 'expert', title: 'Expert', cls: 'm-sheet m-train', body: [
       h('p', { class: 'sheet-note', text: 'Speel een spel opnieuw met de seed, of één potje ervan, tegen drie AI-spelers. Tijdens en na het spel kijk je elk potje kaart voor kaart terug: bij elke kaart, troefkeuze of elk bod zie je de redenering van de AI, geef je je eigen keuze en schrijf je commentaar.' }),
-      h('label', { class: 'set-row' },
-        h('span', { class: 'set-txt' }, h('b', { text: 'Speluitleg' }), h('small', { text: 'Juf Ans legt het spel stap voor stap uit' })),
-        h('span', { class: 'switch' }, lessons, h('i'))),
       h('label', { class: 'set-row' },
         h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
         h('span', { class: 'switch' }, open, h('i'))),

@@ -127,12 +127,12 @@ type room struct {
 	trickNo   int       // tricks completed in this room, for bot chat limits
 
 	// Training with lessons (lesson.go).
-	lesson      *lessonStep     // on screen until read: a pause waits for it, or on the learner's turn the hint does
-	lessons     []lessonStep    // the steps after it
-	lessonChat  bool            // lesson went to the chat
-	lessonN     int             // steps numbered so far
-	lessonHands int             // hands dealt with lessons: in the first one every trick waits for its explanation
-	taught      map[string]bool // the lessons given in this room
+	lesson      *lessonStep    // on screen until read: a pause waits for it, or on the learner's turn the hint does
+	lessons     []lessonStep   // the steps after it
+	lessonChat  bool           // lesson went to the chat
+	lessonN     int            // steps numbered so far
+	lessonHands int            // hands dealt with lessons: in the first one every trick waits for its explanation
+	taught      map[string]int // the lessons given in this room, and how often
 
 	// The review of the humans' play (review.go).
 	matchID    string
@@ -469,16 +469,16 @@ func (r *room) fillSeats() {
 	}
 }
 
-// seatTraining sets up the training table: Juf Ans opposite the player,
+// seatTraining sets up the training table: Juf Jannie opposite the player,
 // two random opponents.
 func (r *room) seatTraining() {
-	ans, ok := r.persona("ans")
+	juf, ok := r.persona("jannie")
 	if !ok {
-		ans = r.randomPersona()
+		juf = r.randomPersona()
 	}
-	r.seats[2] = r.newBot(ans)
-	r.seats[1] = r.newBot(r.randomPersona(ans.ID))
-	r.seats[3] = r.newBot(r.randomPersona(ans.ID))
+	r.seats[2] = r.newBot(juf)
+	r.seats[1] = r.newBot(r.randomPersona(juf.ID))
+	r.seats[3] = r.newBot(r.randomPersona(juf.ID))
 }
 
 // ---- messages to clients ----
@@ -554,7 +554,7 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	}
 	switch {
 	case r.training:
-		r.opts.Players = 4 // with Juf Ans as partner
+		r.opts.Players = 4 // with Juf Jannie as partner
 	case r.expert:
 		r.opts.Players = 4 // the engine reasons for four
 	default:
@@ -1137,7 +1137,7 @@ func (r *room) cmdOpts(c *client, i game.Seat, m *inMsg) {
 	}
 	if n := patch.Players; n != nil && *n != r.opts.Players {
 		if r.training {
-			c.sendError(errInvalid, "In de oefenmodus speel je altijd met z'n vieren, samen met Juf Ans.")
+			c.sendError(errInvalid, "In de oefenmodus speel je altijd met z'n vieren, samen met Juf Jannie.")
 			return
 		}
 		if err := r.setPlayers(*n); err != nil {

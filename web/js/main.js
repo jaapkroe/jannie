@@ -401,7 +401,7 @@ function titleCue() {
 function onChat(msg) {
   if (!msg) return;
   panels.chatAdd(msg, true);
-  // Juf Ans's lessons and explanations show in the coach bubble already.
+  // Juf Jannie's lessons and explanations show in the coach bubble already.
   if (app.s && msg.seat >= 0 && !msg.sys && !msg.coach) table.bubble(app.s, msg.seat, msg.text);
 }
 

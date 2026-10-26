@@ -170,7 +170,7 @@ const ROSTER = [
   { id: 'sjaak', name: 'Sjaak', emoji: '🎲', color: '#d9822b', bio: 'Gokker: speelt op dunne handen en gaat voor de pit.' },
   { id: 'fatima', name: 'Fatima', emoji: '🧠', color: '#6a4fc4', bio: 'Wiskundestudent die elke kaart telt.' },
   { id: 'kees', name: 'Kees de Visser', emoji: '🎣', color: '#2f6f9f', bio: 'Mopperkont, maar eerlijk.' },
-  { id: 'ans', name: 'Juf Ans', emoji: '👩‍🏫', color: '#3c9d6b', bio: 'Geduldige juf die graag uitlegt.' },
+  { id: 'jannie', name: 'Juf Jannie', emoji: '👩‍🏫', color: '#3c9d6b', bio: 'Geduldige juf die graag uitlegt.' },
   { id: 'bram', name: 'Bram', emoji: '🛹', color: '#e0457b', bio: 'Jong en snel, speelt op gevoel.' },
   { id: 'vera', name: 'Bakker Vera', emoji: '🥐', color: '#b8862e', bio: 'Staat om vijf uur op, speelt scherp en vriendelijk.' },
 ];
@@ -732,7 +732,7 @@ function onMessage(ws, m) {
     case 'create': {
       const r = createRoom(m.opts, !!m.training);
       if (r.training) {
-        r.players[2] = { ...botPlayer(r, 'ans') };
+        r.players[2] = { ...botPlayer(r, 'jannie') };
         r.players[1] = botPlayer(r);
         r.players[3] = botPlayer(r);
       }

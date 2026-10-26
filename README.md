@@ -45,11 +45,12 @@ interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
 - **Handleiding**: the controls, the rules (also for two and three players),
   card values, roem, signals (*seinen*, also called *voorkaarten*), tips and a
   glossary.
-- **Oefenen**: a training game with Juf Ans as partner, hints on every turn,
+- **Oefenen**: a training game with Juf Jannie as partner, hints on every turn,
   an explanation after every trick (also in the chat, to read back), and
   optionally all cards face up. With *Speluitleg* she teaches the game step by
-  step: the table and the screen, trump, which cards may be played, the
-  score, roem the first time it falls and signals from the second hand, and
+  step: the table and the screen, trump, which cards may be played and the
+  score in the first hand, roem from the third and the table's signals from
+  the fifth (until then nobody signals), pointed out the first few times;
   the game waits for each step.
 - Built for phones (touch, portrait and landscape), tablets and desktop
   browsers (mouse and keyboard).

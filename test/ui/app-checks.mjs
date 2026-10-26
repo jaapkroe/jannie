@@ -243,11 +243,11 @@ CHECKS.coach = async browser => {
   });
 };
 
-// Training with Speluitleg (issue #41): Juf Ans's steps wait for Verder,
+// Training with Speluitleg (issue #41): Juf Jannie's steps wait for Verder,
 // a tap on the table or Enter, without a countdown, and light up what they
 // are about; a double tap reads one step; every trick of the first hand
 // stays until its explanation is read; on the player's turn the hint
-// follows the step; every step is a line of Juf Ans in the chat, without
+// follows the step; every step is a line of Juf Jannie in the chat, without
 // a speech bubble at her seat.
 CHECKS.lessons = async browser => {
   for (const vp of ['iphone', 'desktop']) {
@@ -278,7 +278,7 @@ CHECKS.lessons = async browser => {
       const texts = new Set(); // every step seen
       let st = await next('', 'the first step');
       texts.add(st.text);
-      if (!st.text.includes('Ik ben Juf Ans') || st.spot !== 'seat-id' || st.ring) throw new Error(`first step ${JSON.stringify(st)}`);
+      if (!st.text.includes('Ik ben Juf Jannie') || st.spot !== 'seat-id' || st.ring) throw new Error(`first step ${JSON.stringify(st)}`);
       await shot(P, 'lesson-intro');
       await felt();
       st = await next(st.text, 'step 2 by a tap on the table');
@@ -351,7 +351,7 @@ CHECKS.lessons = async browser => {
 // never covers the left seat (who plays after you) or the partner on top;
 // a long text shows the lines that fit and "Lees verder", which opens it.
 CHECKS.coachfit = async browser => {
-  const LONG = 'Kees de Visser (AI) wint de slag met ♣A, de hoogste kaart in de gevraagde kleur. 27 punten. Juf Ans had ♦10 aangeraden. Je maat had de slag al, dus gooi dan punten bij: een 10 of een aas van een kleur die je niet kunt bekennen.';
+  const LONG = 'Kees de Visser (AI) wint de slag met ♣A, de hoogste kaart in de gevraagde kleur. 27 punten. Juf Jannie had ♦10 aangeraden. Je maat had de slag al, dus gooi dan punten bij: een 10 of een aas van een kleur die je niet kunt bekennen.';
   for (const vp of ['smallLandscape', 'landscape']) {
     const P = await page(browser, VP[vp], `coachfit-${vp}`, { hooks: true });
     await run(P, async () => {

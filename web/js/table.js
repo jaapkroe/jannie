@@ -694,6 +694,7 @@ function spotTarget(s, spot) {
     case 'trump': return E.badge;
     case 'score': return E.pill;
     case 'rule': return E.rule;
+    case 'card': return handEls.get(s.lesson.card) || null; // a card to signal with
     case 'chat': {
       // On wide screens the chat is a side panel, without a button.
       const b = E.top.querySelector('.tb-chat');

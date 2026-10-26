@@ -20,7 +20,7 @@ type Options struct {
 	AI        string         `json:"ai"`
 	Tempo     string         `json:"tempo"`
 	Open      bool           `json:"open"`
-	Lessons   bool           `json:"lessons"` // training: Juf Ans explains the game step by step (lesson.go)
+	Lessons   bool           `json:"lessons"` // training: Juf Jannie explains the game step by step (lesson.go)
 	Signals   game.Signals   `json:"signals"` // the table's agreements on signals (design §8)
 	Seed      int            `json:"seed"`    // 1..maxSeed: every match deals the same cards; 0: a new seed per match
 	From      int            `json:"from"`    // expert: 1..maxHands: the match is that one hand of the seed's deals; 0: the whole match

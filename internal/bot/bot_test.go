@@ -14,7 +14,7 @@ import (
 var quickSearch = searchConfig{playWorlds: 16, trumpWorlds: 16, workers: 1}
 
 func TestRoster(t *testing.T) {
-	ids := []string{"dirk", "truus", "sjaak", "fatima", "kees", "ans", "bram", "vera"}
+	ids := []string{"dirk", "truus", "sjaak", "fatima", "kees", "jannie", "bram", "vera"}
 	r := Roster()
 	if len(r) != len(ids) {
 		t.Fatalf("roster has %d personas, want %d", len(r), len(ids))
@@ -357,9 +357,10 @@ func TestExplainTrick(t *testing.T) {
 	}
 }
 
-// TestTrickSignal: the first signal in the last trick, as the table reads
-// it, and none for a signal in an earlier trick or a card that says nothing.
-func TestTrickSignal(t *testing.T) {
+// TestTrickSignals: the signals in the last trick, as the table reads
+// them, and none for a signal in an earlier trick or a card that says
+// nothing.
+func TestTrickSignals(t *testing.T) {
 	// Hearts are trump, seat 0 leads the first trick; each trick is led by
 	// the winner of the one before.
 	view := func(trumpBy game.Seat, sig game.Signals, tricks ...string) game.View {
@@ -397,7 +398,54 @@ func TestTrickSignal(t *testing.T) {
 		{"in the second trick", view(1, sig, "7S 8S 9S AS", "KD 7D 8C 9D"), Signal{Seat: 1, Card: card("8C"), Kind: "hoogLaag", Means: card("AC")}},
 		{"only in an earlier trick", view(0, sig, "7S 8S AS 9S", "KD 7D 8D 9D"), none},
 	} {
-		got, ok := TrickSignal(c.v)
+		got := TrickSignals(c.v)
+		if c.want == none && len(got) > 0 || c.want != none && (len(got) != 1 || got[0] != c.want) {
+			t.Errorf("%s: %+v, want %+v", c.name, got, c.want)
+		}
+	}
+	// Two in one trick: an ace and a low card on the partner's trick.
+	if got := TrickSignals(view(1, sig, "KD 7D AS 8C")); len(got) != 1 || got[0].Card != card("AS") {
+		t.Errorf("seat 3 discards on the opponents' trick: %+v", got)
+	}
+	if got := TrickSignals(view(1, sig, "7D KD AS 8C")); len(got) != 1 || got[0].Seat != 3 || got[0].Kind != "hoogLaag" {
+		t.Errorf("seat 3's low card on seat 1's trick: %+v", got)
+	}
+}
+
+// TestSignalChance: a signal the player can give truthfully with a legal
+// card now, the preferred card first; none when the hand does not hold
+// what the signal would say, or no card signals.
+func TestSignalChance(t *testing.T) {
+	// Hearts are trump, made by seat trumpBy; seat 0 leads the first
+	// trick. hand is the player's, trick the cards before it.
+	view := func(seat, trumpBy game.Seat, hand, trick string) game.View {
+		v := game.View{Players: 4, Seat: seat, Turn: seat, Phase: game.PhasePlay, Trump: game.Hearts, TrumpKnown: true, TrumpBy: trumpBy,
+			Rules: game.Amsterdams, Hand: game.MustParseCards(hand)}
+		v.Current.Leader = 0
+		for k, c := range game.MustParseCards(trick) {
+			v.Current.Cards = append(v.Current.Cards, game.Played{Seat: game.Seat(k), Card: c})
+		}
+		v.Legal = game.LegalMoves(v.Hand, v.Current, v.Seat, v.Trump, v.Rules)
+		return v
+	}
+	none := Signal{}
+	for _, c := range []struct {
+		name   string
+		v      game.View
+		prefer string
+		want   Signal
+	}{
+		{"kleintje boer with the boer", view(0, 0, "7S AS JH 8D", ""), "AS", Signal{Seat: 0, Card: card("7S"), Kind: "kleintjeBoer", Means: card("JH")}},
+		{"kleintje boer, the hint first", view(0, 0, "7S AS JH 8D", ""), "8D", Signal{Seat: 0, Card: card("8D"), Kind: "kleintjeBoer", Means: card("JH")}},
+		{"a small lead without the boer", view(0, 0, "7S AS 9H 8D", ""), "AS", none},
+		{"the other team leads", view(0, 1, "7S AS JH 8D", ""), "AS", none},
+		{"aas vraagt 10 with the 10", view(2, 1, "AS TS 7C", "KD 7D"), "7C", Signal{Seat: 2, Card: card("AS"), Kind: "aas", Means: card("TS")}},
+		{"an ace without the 10", view(2, 1, "AS 7C", "KD 7D"), "AS", none},
+		{"laag with the highest", view(2, 1, "8S AS", "KD 7D"), "AS", Signal{Seat: 2, Card: card("8S"), Kind: "hoogLaag", Means: card("AS")}},
+		{"on the opponents' trick", view(2, 1, "AS TS 7C", "7D KD"), "AS", none},
+		{"following suit", view(2, 1, "AS TS 8D", "KD 7D"), "AS", none},
+	} {
+		got, ok := SignalChance(c.v, card(c.prefer))
 		if ok != (c.want != none) || got != c.want {
 			t.Errorf("%s: %+v %v, want %+v", c.name, got, ok, c.want)
 		}

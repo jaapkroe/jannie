@@ -392,13 +392,13 @@ type Signal struct {
 	Means game.Card
 }
 
-// TrickSignal returns the first signal given in the last completed trick
-// of v at a table of four, as the table reads it (signalsBoer, aceSignal,
-// lowSignal): what the bots read, whether or not it is true. ok is false
-// without one.
-func TrickSignal(v game.View) (s Signal, ok bool) {
+// TrickSignals returns the signals given in the last completed trick of v
+// at a table of four, in the order played, as the table reads them
+// (signalsBoer, aceSignal, lowSignal): what the bots read, whether or not
+// it is true.
+func TrickSignals(v game.View) []Signal {
 	if v.Players != 4 || !v.TrumpKnown || len(v.Tricks) == 0 {
-		return Signal{}, false
+		return nil
 	}
 	t := newTable(v.Voorhand, v.Trump, v.TrumpBy, v.Rules, game.SignalsOf(&v))
 	last := len(v.Tricks) - 1
@@ -407,26 +407,61 @@ func TrickSignal(v game.View) (s Signal, ok bool) {
 			t.apply(p.Seat, p.Card)
 		}
 	}
+	var out []Signal
 	for _, p := range v.Tricks[last].Cards {
-		s = Signal{Seat: p.Seat, Card: p.Card}
-		if t.n == 0 {
-			if t.signalsBoer(p.Seat, p.Card) {
-				s.Kind, s.Means = "kleintjeBoer", jackOf(t.trump)
-				if p.Card.Rank == game.Jack {
-					s.Kind = "boerOverBoer"
-				}
-				return s, true
-			}
-		} else if ten, yes := t.aceSignal(p.Card); yes {
-			s.Kind, s.Means = "aas", ten
-			return s, true
-		} else if hi, yes := t.lowSignal(p.Card); yes {
-			s.Kind, s.Means = "hoogLaag", hi
-			return s, true
+		if s, ok := t.signal(p.Seat, p.Card); ok {
+			out = append(out, s)
 		}
 		t.apply(p.Seat, p.Card)
 	}
+	return out
+}
+
+// SignalChance returns a signal the player of v, on their turn in play at
+// a table of four, can give truthfully now: a legal card whose signal
+// says what the hand holds. prefer is tried first (the hint), then the
+// legal cards in order. ok is false without one.
+func SignalChance(v game.View, prefer game.Card) (s Signal, ok bool) {
+	if v.Players != 4 || v.Phase != game.PhasePlay || !v.TrumpKnown || v.Turn != v.Seat {
+		return Signal{}, false
+	}
+	legal := legalCards(v)
+	t := tableFromView(&v)
+	hand := setOf(v.Hand)
+	order := legal
+	if slices.Contains(legal, prefer) {
+		order = append([]game.Card{prefer}, legal...)
+	}
+	for _, c := range order {
+		if s, ok := t.signal(v.Seat, c); ok && hand.has(s.Means) {
+			return s, true
+		}
+	}
 	return Signal{}, false
+}
+
+// signal is the signal seat gives by playing c next, as the table reads
+// it.
+func (t *table) signal(seat game.Seat, c game.Card) (Signal, bool) {
+	s := Signal{Seat: seat, Card: c}
+	switch {
+	case t.n == 0 && t.signalsBoer(seat, c):
+		s.Kind, s.Means = "kleintjeBoer", jackOf(t.trump)
+		if c.Rank == game.Jack {
+			s.Kind = "boerOverBoer"
+		}
+	case t.n == 0:
+		return Signal{}, false
+	default:
+		if ten, ok := t.aceSignal(c); ok {
+			s.Kind, s.Means = "aas", ten
+		} else if hi, ok := t.lowSignal(c); ok {
+			s.Kind, s.Means = "hoogLaag", hi
+		} else {
+			return Signal{}, false
+		}
+	}
+	return s, true
 }
 
 // joinNL joins items as "a, b en c".

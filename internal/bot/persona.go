@@ -92,7 +92,7 @@ var roster = []Persona{
 		Aggression: 0.35, Chattiness: 0.6, Speed: 1.0,
 	},
 	{
-		ID: "ans", Name: "Juf Ans", Emoji: "👩‍🏫", Color: "#3f9b5a",
+		ID: "jannie", Name: "Juf Jannie", Emoji: "👩‍🏫", Color: "#3f9b5a",
 		Bio:        "Geduldige juf die graag uitlegt waarom een kaart goed valt.",
 		Aggression: 0.4, Chattiness: 0.5, Speed: 1.2,
 	},

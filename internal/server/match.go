@@ -392,7 +392,7 @@ func (r *room) viewFor(i game.Seat) game.View {
 	v.HandNo = r.handNo
 	v.HandsTotal = r.opts.Hands
 	v.MatchScore = slices.Clone(r.total)
-	sig := r.opts.Signals
+	sig := r.signals()
 	v.Signals = &sig
 	return v
 }
@@ -670,7 +670,7 @@ func (r *room) trickTips(t game.Trick) (tips [4]string) {
 }
 
 // sendTips sends the tips of trickTips, each also in the chat as a line of
-// Juf Ans, to read back.
+// Juf Jannie, to read back.
 func (r *room) sendTips(tips [4]string) {
 	for i, text := range tips {
 		if st := &r.seats[i]; text != "" && st.client != nil {
@@ -693,8 +693,8 @@ func readTime(tips [4]string) time.Duration {
 	return min(2*time.Second+time.Duration(words)*250*time.Millisecond, tipReadMax)
 }
 
-// missedText says what the hint advised, with its reason: "Juf Ans had ♣9
-// aangeraden: …", "Juf Ans had ♥ als troef aangeraden: …", "Juf Ans had
+// missedText says what the hint advised, with its reason: "Juf Jannie had ♣9
+// aangeraden: …", "Juf Jannie had ♥ als troef aangeraden: …", "Juf Jannie had
 // aangeraden om te passen: …". The opening of the hint that only repeats
 // the advice ("Speel ♣9: ", "Kies ♥ als troef: ", "Passen: ") is left out.
 func (r *room) missedText(i game.Seat, m *missedHint) string {
