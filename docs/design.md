@@ -32,13 +32,14 @@ web/                       static frontend, vanilla ES modules, no build step
   css/app.css  css/cards.css  css/manual.css
   js/main.js … (app modules)  js/cards.js  js/sound.js  js/manual.js
   js/expert.js               the expert mode's tools, loaded only when an expert game needs them
+  js/call.js                 the call with the others at the table, loaded once another person sits there
 test/e2e/                  node scripts that play full games over the websocket
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
                            and og-image.mjs, which renders web/og.png
 deploy/                    nginx.conf, quadlet templates (*.in), npm-advanced.conf, README-deploy.md
 scripts/go                 Go toolchain in a container: `scripts/go test ./...`
 scripts/dev-server PORT    run the server from source on 127.0.0.1:PORT serving web/ (flags after PORT)
-scripts/chrome PORT        headless Chromium with CDP on 127.0.0.1:PORT
+scripts/chrome PORT        headless Chromium with CDP on 127.0.0.1:PORT, with a fake camera and microphone
 scripts/pod-check [ADDR [SITE]]  check a running pod without NPM: pages, websocket, link preview,
                            security headers (`make check`)
 scripts/deploy-test        `make test`: the units through podman's quadlet generator, and how
@@ -862,6 +863,26 @@ reply attempt.
   device, host changes, rematch, back to the lobby (and a gone player's seat
   freed).
 
+- **Calls** (issue #43, `call.go`): the people at a table may call each
+  other with sound and video. The media go directly between their browsers
+  (WebRTC, a connection for every two of them in the call); the server only
+  keeps who is in the call and passes the session descriptions on, and it
+  logs nothing of a call. A connected human joins with `call`, naming a
+  session the browser makes up (8–32 letters and digits, none another
+  seat's), with `mic` and `cam` on or off, and changes them with the same
+  message; `call` with `id` "" hangs up. Every change is an update without
+  event (`players[i].call`; in the lobby a `lobby` event). The call belongs
+  to the connection: it ends when the connection goes (`away`), when another
+  connection takes the seat (a second window, a reconnect, a reclaim by
+  name) and when the seat is left or taken over; a seat moved in the lobby
+  keeps it, and so do a rematch and the way back to the lobby. `rtc` passes
+  a description (an offer or an answer, with every address found, at most
+  12000 bytes) from a seat in the call to the session it names (`to`), as
+  `rtc` with the sender's session and seat; a description for a session
+  that is no longer in the call, or from a seat that is not in it, is
+  dropped. `call` and `rtc` share a bucket per seat: 10, then 2 a second
+  (more: error `limiet`).
+
 - **Game log** (flag `-games DIR`; the pod keeps it in the volume
   `klaverjas-games`, §10): one JSON line per event, appended to
   `games-YYYY-MM.jsonl` (UTC month) by one writer goroutine behind a queue
@@ -979,7 +1000,8 @@ discards after the contract; voorhand's first lead after trump).
 
 ### Limits
 
-WebSocket messages ≤ 4 KiB; per connection ≤ 20 messages/s (excess:
+WebSocket messages ≤ 16 KiB (a call's session description takes several);
+per connection ≤ 20 messages/s (excess:
 disconnect) and ≤ 1 `join` per second (burst 3; more: error `limiet`); chat
 ≤ 200 characters, 1 per second with burst 5; names 1–20 characters (nothing
 visible → "Speler") and never with "(AI)" in them, in any spelling (case, full
@@ -1027,6 +1049,8 @@ client rotates so `you` is at the bottom.
 | `tipRead` | `n` (optional) | Training, a lesson step on screen (`lesson`, §6 Lessons): read, on to the next (ignored when `n` is another step's: a late tap); else the last trick of a hand waiting for its tip (`nextAt` set in phase `play`): on to the summary now (ignored once it is up: a late tap) |
 | `vote` | `seat`, `ai` bool, `left` bool (optional) | While state `takeover` is set, every connected human: may an AI play that seat (`true`), or wait (`false`)? `seat`, and `left` when sent, as in `takeover`: the question it answers (the client sends `left`, so a yes for a stand-in never counts for a seat given away). Can change while the question is open (§6); the same answer again changes nothing, so no `update` follows |
 | `chat` | `text` | Any time |
+| `call` | `id` (8–32 letters and digits; "" hangs up), `mic` bool, `cam` bool | Any time: join the call, switch the microphone or camera, hang up (§6 Calls). The same again changes nothing |
+| `rtc` | `to` (a session in the call), `desc`: `{type: "offer"\|"answer", sdp}` | In the call: a session description for that session, passed on as `rtc` (§6 Calls) |
 | `rematch` | | Host, phase `gameOver`: new match, same seats and options |
 | `lobby` | | Host, phase `gameOver`, not training: back to the lobby, same code and options (§6) |
 | `leave` | | Leave the room |
@@ -1046,6 +1070,7 @@ client rotates so `you` is at the bottom.
 | `tip` | `text` (training: explanation after a trick, Dutch, also a `coach` chat line; not while the trick waits for it as a lesson step (§6 Lessons); when you played another card than the hint, it ends with the advised card and why: "Juf Jannie had ♣9 aangeraden: …"; the first trick's tip of a hand also says so of a trump choice or bid against the hint, before any card: "Juf Jannie had ♥ als troef aangeraden: …", "Juf Jannie had aangeraden om te passen: …") |
 | `refused` | `name`: to the host only, someone could not join because the table is full (§6); no state change, so no `update` |
 | `saved` | `what`: `"feedback"`: kept in the game log |
+| `rtc` | `from` (the sender's session), `seat` (the sender's), `desc` as sent: to the session named only (§6 Calls) |
 | `why` | Expert: `hand`, `trick`, `seat` (as asked), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `hint`, `hintText`, `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
@@ -1106,11 +1131,12 @@ persona on a seat its player left). `away` comes once per lost connection.
   "roster": [ {"id":"dirk","name":"Opa Dirk","emoji":"👴","color":"#8a5a2b","bio":"…"} ],  // lobby only: bot picker
   "players": [ // opts.players entries; null = empty seat
     { "name":"Piet", "bot":false, "botId":"", "emoji":"", "color":"",
-      "connected":true, "away":false, "left":false, "vote":null, "cards":8, "ready":false },
+      "connected":true, "away":false, "left":false, "vote":null,
+      "call":{"id":"9f2c41d07a3b88e1","mic":true,"cam":false}, "cards":8, "ready":false },
     { "name":"Jaap", "bot":false, "botId":"", "emoji":"", "color":"",
-      "connected":false, "away":false, "left":false, "vote":null, "cards":8, "ready":false },
+      "connected":false, "away":false, "left":false, "vote":null, "call":null, "cards":8, "ready":false },
     { "name":"Opa Dirk (AI)", "bot":true, "botId":"dirk", "emoji":"👴", "color":"#8a5a2b",
-      "connected":true, "away":false, "left":false, "vote":null, "cards":8, "ready":false }, null ],
+      "connected":true, "away":false, "left":false, "vote":null, "call":null, "cards":8, "ready":false }, null ],
   "handNo": 3, "hands": 16, "dealer": 1, "voorhand": 2,
   "turned": null, "bids": [-1,-1,-1,-1], "forced": false,   // bids: one per seat
   "bid": 0, "bidder": -1, "soloist": -1,   // three players: highest bid and bidder; the soloist once the auction is over
@@ -1225,6 +1251,9 @@ Every key above is always present, except `roster` (lobby only) and `legal` and
   moment after its voter dropped out (§6). `away`: the substitute plays for a
   player who dropped out, with everyone's consent, until they return (or the
   match ends).
+- `players[i].call`: `{id, mic, cam}` while that human is in the call (§6
+  Calls), else null; always null for bots and for seats nobody is connected
+  to.
 
 ## 8. Seinen (signals) — used by normaal and sterk bots and explained in the manual
 
@@ -1287,8 +1316,9 @@ text. At most 17 requests per page load in total, the websocket included
 (NPM's rate limit for the name is in shrek-infra, `docs/services/klaverjas.md`):
 html, 3 css, favicon, manifest, one PNG icon (Chrome's install check),
 ≤ 6 app modules, cards.js, sound.js, manual.js, the websocket; `expert.js` is
-imported only when an expert game first needs it, so a page load never
-fetches it. No service worker. System font stack.
+imported only when an expert game first needs it, and `call.js` once another
+person sits at the table, so a page load never fetches them. No service
+worker. System font stack.
 `localStorage` access wrapped in try/catch (keys prefixed `kj.`).
 Icons: `favicon.svg` (tab; manifest `any`), `icon-192.png` and `icon-512.png`
 (manifest `any`, rendered from favicon.svg), and from the full-bleed
@@ -1523,7 +1553,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   your answer. Leaving while offline sends `join` (with the seat
   token) + `leave` over a short-lived connection of its own once the network
   is back. Without `localStorage` the name and seat tokens live in memory
-  for the life of the page.
+  for the life of the page. A rejoin of a page in the call joins it again
+  with a new session (the server ended the old one with its connection).
 - **Game over**: final score with the team names (with three or two players
   one score per player, the top one marked); the host gets *Nog een
   partij* (`rematch`) and, outside training and the expert mode, *Spelers of regels wijzigen*
@@ -1567,6 +1598,47 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   other: a chat line in the way of another bubble waits for room (dropped
   after 6 s; it is in the chat log), while a bid (*Ik speel!*, *Pas*) shows at
   once and ends a chat bubble in its way.
+- **Calling** (issue #43, `call.js`, loaded once another person is at the
+  table, in a browser with WebRTC and a camera API): at the start of a game
+  with another person (the first update of a match, or the first at a table
+  joined mid-game, once per room and page) a dialog *Meebellen?* proposes
+  the call: "Gast zit ook aan tafel. Bel mee met geluid, en met beeld als je
+  wilt." (or who already calls), switches *Microfoon* and *Camera* as last
+  chosen, a line that sound and picture go from device to device, not
+  through the server, and *Niet nu* / *Meebellen*. Not in the lobby, where
+  the call is offered but not proposed, and not in training or alone with
+  bots. *Meebellen* asks the browser for microphone and camera together;
+  refused, for each on its own, so the microphone may still come when the
+  camera is blocked. What cannot be had is a toast ("Geen toegang tot de
+  camera", "Geen microfoon gevonden", "De camera is in gebruik"), and the
+  player joins without it, still hearing and seeing the others. Then the
+  page sends `call`; every two pages in the call connect, the lower session
+  id offering, with one audio and one video transceiver from the start, so
+  switching later only swaps tracks (the camera's track is stopped, its
+  light goes off; the microphone's is muted). One description each way,
+  with the addresses found within 2.5 s (no trickling, for the message
+  limit); STUN from Google and Cloudflare, no TURN. A connection not up
+  within 20 s, or lost for 8 s, failed: the offerer tries again three
+  times, then the seat is marked. The call buttons sit in the prompt row
+  right of the rule: *Microfoon* and *Camera* toggles (`aria-pressed`,
+  coral while off) and a red *Ophangen*; while they show, a long rule wraps
+  sooner, so the two never overlap. On phones under 600 px the two toggles
+  stand in a row above the last-trick button, clear of the right seat and
+  the trick, and *Ophangen* is in the ⋯ menu. Not in the call, one button
+  *Bellen* (on phones also in the ⋯ menu) opens the dialog. In the lobby
+  the same buttons sit under the table, *Bellen* and *Ophangen* with their
+  label. In short landscape the dialog puts the two switches side by side,
+  so its answers stay in view. A seat in the call shows that person's
+  video in place of the face (in the ring, and in the lobby's avatar), ours
+  mirrored, while the camera is on and pictures arrive, and a mark at the
+  bottom left of the ring: a microphone, crossed out and coral while it is
+  off, or a warning sign when no connection could be made. A toast says
+  "Kees belt mee". The microphone and camera last chosen are kept in
+  `kj.call` (`mic`, `cam`), with `ask`: Instellingen *Bellen voorstellen*
+  ("Bij een spel met andere spelers vragen of je meebelt"). A browser that
+  refuses to play the sound before a tap gets "Tik ergens om de anderen te
+  horen". Leaving the room hangs up. `app-checks.mjs --only call` plays it through with the
+  fake devices of `scripts/chrome`.
 - **Training**: tip bubble with the hint text and a glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it); ✕ closes a hint until the next one; tips after
@@ -1712,7 +1784,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   connect-src 'self' wss://@SITE@; img-src 'self' data:; style-src 'self';
   script-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self';
   object-src 'none'; form-action 'none'`, nosniff, Referrer-Policy,
-  Permissions-Policy, COOP, HSTS `max-age=31536000; includeSubDomains`), each sent
+  Permissions-Policy (camera and microphone for the page itself, for the
+  call; geolocation, payment and USB for nobody), COOP, HSTS
+  `max-age=31536000; includeSubDomains`), each sent
   once on every path (`scripts/pod-check`); `Cache-Control: no-cache` for html/js/css (ETag
   revalidation) so a deploy is picked up at once, a day for images, but never
   for a 404, which is `text/html` whatever the path's extension; gzip; `X-Real-IP` forwarding:

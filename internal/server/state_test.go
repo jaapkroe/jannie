@@ -74,7 +74,7 @@ func testStateKeys(t *testing.T, players int) {
 	if len(seats) != players {
 		t.Fatalf("players has %d entries", len(seats))
 	}
-	playerKeys := []string{"name", "bot", "botId", "emoji", "color", "connected", "away", "left", "vote", "cards", "ready"}
+	playerKeys := []string{"name", "bot", "botId", "emoji", "color", "connected", "away", "left", "vote", "call", "cards", "ready"}
 	wantKeys(t, "player", seats[0], playerKeys)
 	for i, p := range seats[1:] {
 		if string(p) != "null" {

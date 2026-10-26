@@ -1792,6 +1792,189 @@ body.busy::after {
   color: var(--suit-red);
 }
 
+/* ---------- the call (call.js) ---------- */
+
+/* A seat's video in place of its face: in the ring at the table, in the
+   avatar in the lobby. Ours is mirrored, as in a mirror. */
+.call-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #000;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.call-video.self {
+  transform: scaleX(-1);
+}
+
+.ring > .call-video {
+  top: 3px;
+  left: 3px;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+}
+
+.lseat .avatar {
+  position: relative;
+}
+
+/* Who is in the call: the microphone on or off, or no connection. */
+.call-tag {
+  position: absolute;
+  left: -5px;
+  bottom: -3px;
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: #12382d;
+  color: var(--wij-hi);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.call-tag .icon {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.4;
+}
+
+.call-tag.off {
+  background: #4a1b17;
+  color: var(--zij-hi);
+}
+
+.call-tag.lost {
+  background: #4d3a08;
+  color: var(--gold-hi);
+}
+
+/* The call buttons: right of the rule above the hand, on phones above
+   the last trick (table.js); under the seats in the lobby. */
+.call-dock {
+  display: flex;
+  gap: 8px;
+}
+
+.call-dock[hidden] {
+  display: none;
+}
+
+.prompt .call-dock {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.prompt .call-dock .tb {
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.call-dock .tb[aria-pressed="false"] {
+  color: var(--zij-hi);
+}
+
+.prompt .call-dock .tb-hangup,
+.call-dock .tb-hangup {
+  background: var(--red);
+  color: #fff;
+}
+
+.call-dock .tb-hangup:hover:not(:disabled) {
+  background: #f0656a;
+}
+
+.lb-call {
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.call-dock .tb.labeled {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+  padding: 0 16px 0 13px;
+  font-weight: 800;
+}
+
+/* Beside the rule the buttons need their room: a long rule wraps sooner. */
+@media (min-width: 600px) {
+  .prompt[data-call="out"] {
+    --dock-w: 44px;
+  }
+
+  .prompt[data-call="in"] {
+    --dock-w: 148px;
+  }
+
+  .prompt[data-call] .rule {
+    max-width: min(66vw, 440px, calc(100vw - 2 * (var(--dock-w) + 26px)));
+  }
+}
+
+@media (max-width: 599px) {
+  /* A row above the last trick, clear of the right seat and the trick;
+     hanging up is in the menu. */
+  .prompt .call-dock {
+    position: absolute;
+    right: calc(var(--sar) + 10px);
+    bottom: calc(100% + 6px);
+  }
+
+  .prompt .call-dock .tb {
+    width: 44px;
+  }
+
+  .prompt .call-dock .tb-hangup {
+    display: none;
+  }
+}
+
+.m-call > .dialog {
+  width: min(100%, 420px);
+}
+
+.m-call p {
+  margin: 0 0 6px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.m-call .call-note {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.m-call .btn-row {
+  margin-top: 14px;
+}
+
+/* Short landscape: the switches side by side, so the answers stay in view. */
+@media (orientation: landscape) and (max-height: 520px) {
+  :where(html:not(.kb)) .m-call > .dialog {
+    width: min(100%, 580px);
+  }
+
+  :where(html:not(.kb)) .m-call .dlg-body {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 24px;
+  }
+
+  :where(html:not(.kb)) .m-call .dlg-body > :not(.set-row) {
+    grid-column: 1 / -1;
+  }
+}
+
 .backs {
   --card-w: var(--back-w);
   display: flex;

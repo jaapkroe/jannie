@@ -273,6 +273,7 @@ function stateFor(room, seat) {
       name: p.name, bot: p.bot, botId: p.botId || '', emoji: p.emoji || '', color: p.color || '',
       connected: p.bot ? true : p.connected, away: !!p.away, left: !!p.left, cards: playing ? d.hands[i].length : 0, ready: !!p.ready,
       vote: room.takeover && typeof p.vote === 'boolean' ? p.vote : null,
+      call: !p.bot && p.connected && p.call ? p.call : null,
     }),
     takeover: room.takeover && { seat: room.takeover.seat, left: room.takeover.left },
     handNo: room.handNo || 1, hands: room.opts.hands, dealer: room.dealer, voorhand: (room.dealer + 1) % 4,
@@ -754,6 +755,7 @@ function onMessage(ws, m) {
         const paused = !live(r);
         p.ws = ws;
         p.connected = true;
+        p.call = null; // a call belongs to its connection
         p.away = false;
         p.asked = false; // a later drop-out asks again
         conn.room = r;
@@ -879,6 +881,25 @@ function onMessage(ws, m) {
       if (bot >= 0 && rand() < 0.7) later(room, 700, () => botSay(room, bot, 'reply', true));
       return;
     }
+    case 'call': {
+      // As the server: join, switch the microphone or camera, or (id "")
+      // hang up; the sound and video go between the browsers.
+      const id = String(m.id || '');
+      if (id && (!/^[A-Za-z0-9]{8,32}$/.test(id) || room.players.some((x, i) => i !== seat && x?.call?.id === id))) return err('ongeldig', 'Dat bericht begrijp ik niet.');
+      const next = id ? { id, mic: m.mic === true, cam: m.cam === true } : null;
+      if (JSON.stringify(next) === JSON.stringify(room.players[seat].call || null)) return;
+      room.players[seat].call = next;
+      return broadcast(room, room.phase === 'lobby' ? { type: 'lobby' } : null);
+    }
+    case 'rtc': {
+      // A session description, to the session in the call it names.
+      const from = room.players[seat].call;
+      const d = m.desc;
+      if (!d || !['offer', 'answer'].includes(d.type) || !d.sdp || String(d.sdp).length > 12000) return err('ongeldig', 'Dat bericht begrijp ik niet.');
+      const to = room.players.find(x => x && !x.bot && x.connected && x.call && x.call.id === m.to);
+      if (from && to && to.call.id !== from.id) send(to.ws, { t: 'rtc', from: from.id, seat, desc: { type: d.type, sdp: d.sdp } });
+      return;
+    }
     case 'feedback':
       if (room.phase !== 'gameOver') return err('ongeldig', 'Een opmerking geef je bij de spelanalyse, na het spel.');
       if (!String(m.text || '').trim()) return err('ongeldig', 'Schrijf eerst wat je kwijt wilt.');
@@ -956,7 +977,7 @@ const server = http.createServer((req, res) => {
   });
 });
 
-const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 4096 });
+const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16384 });
 wss.on('connection', ws => {
   ws.kj = { room: null, seat: -1 };
   ws.on('message', data => {
@@ -971,6 +992,7 @@ wss.on('connection', ws => {
     if (!p || p.ws !== ws) return;
     p.connected = false;
     p.ws = null;
+    p.call = null;
     const at = p.droppedAt = Date.now();
     // No longer asked, but a no outlasts a short drop-out: it holds for
     // askAfter, as on the server.

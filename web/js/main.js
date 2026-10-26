@@ -25,6 +25,8 @@ let joinTimer = 0;
 let ackTimer = 0;
 let startTimer = 0;
 let leaveLater = null; // {code, token, name}: a leave that could not go out yet
+let callLoad = null;   // call.js on its way
+let callState = null;  // the latest state received, for call.js once it is there
 
 const net = createNet({ onMessage, onOpen, onClose });
 app.send = send;
@@ -136,6 +138,8 @@ function enterRoom(code) {
   home.resetLobby();
   panels.closeAll();
   panels.chatReset();
+  app.call?.leave();
+  callState = null;
 }
 
 function goHome() {
@@ -181,7 +185,7 @@ function onMessage(m) {
   }
   switch (m.t) {
     case 'joined': onJoined(m); break;
-    case 'update': if (inRoom) enqueue(m); break;
+    case 'update': if (inRoom) { toCall(m.s); enqueue(m); } break;
     case 'chat': if (inRoom) enqueue(m); break;
     case 'chatlog': if (inRoom) panels.chatSet(m.msgs); break;
     case 'tip': if (inRoom) enqueue(m); break;
@@ -189,6 +193,7 @@ function onMessage(m) {
     case 'error': onError(m); break;
     case 'saved': panels.onSaved(m); break;
     case 'why': if (inRoom) import('./expert.js').then(x => x.onWhy(m)); break;
+    case 'rtc': if (inRoom) app.call?.onRTC(m); break;
     default: break;
   }
 }
@@ -197,8 +202,12 @@ function onJoined(m) {
   const code = String(m.code || '').toUpperCase();
   if (code !== app.code) enterRoom(code);
   // A rejoin: what the table still shows as sent or in flight may never
-  // have arrived. The resync that follows is the whole truth.
-  else enqueue({ t: 'rejoin' });
+  // have arrived. The resync that follows is the whole truth. A call goes
+  // on from the new connection.
+  else {
+    enqueue({ t: 'rejoin' });
+    app.call?.joined();
+  }
   inRoom = true;
   joining = false;
   clearTimeout(joinTimer);
@@ -273,6 +282,28 @@ function onRefused(name) {
   }
   sound.play('join');
   toast(`${name || 'Iemand'} wil meedoen, maar de tafel is vol`, { sub, ms: 7000 });
+}
+
+// ---------- the call ----------
+
+// Every state goes to the call as it arrives, ahead of the animations: who
+// is in the call decides the connections. call.js loads once someone else
+// sits at the table, in a browser that can call.
+function toCall(s) {
+  if (!s) return;
+  callState = s;
+  if (app.call) {
+    app.call.state(s);
+    return;
+  }
+  const others = s.players.some((p, seat) => seat !== s.you && p && !p.bot && p.connected);
+  if (callLoad || !others || !window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) return;
+  callLoad = import('./call.js').then(m => {
+    app.call = m;
+    if (callState && inRoom) m.state(callState);
+    table.renderCall();
+    home.renderCall();
+  }).catch(() => { callLoad = null; });
 }
 
 // ---------- update queue ----------

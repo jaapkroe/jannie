@@ -31,6 +31,11 @@ interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
   every move register. Sound effects are synthesised in the browser.
 - **Score sheet, last trick and the whole previous hand** to look back on;
   chat with quick reactions.
+- **Calling the table**: a game with friends starts with the question
+  whether to call along, with sound and, if you like, video, which then
+  takes the place of your face at your seat. Microphone and camera switch
+  with one tap during the game and are remembered for the next one. Sound
+  and video go from browser to browser (WebRTC), not through the server.
 - **Spelanalyse** at the end of a game of four, for each player alone: a
   percentage for their own choices, judged by the strongest bot from what
   they knew at the time, how good their cards were, and the moves that
@@ -84,7 +89,7 @@ node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     #
 node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
 node app-play.mjs ... --players 3 | --players 2                                  # the auction and laying away; the piles
 node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at six sizes, into test/ui/out/
-node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 30 behaviour checks (coach, lessons, taps, back button, lost socket, full table, takeover vote, summary on a phone, card corners, expert mode…); needs -fast, ~15 min
+node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 31 behaviour checks (coach, lessons, taps, back button, lost socket, full table, takeover vote, summary on a phone, card corners, expert mode, a call…); needs -fast, ~15 min
 node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image
 ```
 

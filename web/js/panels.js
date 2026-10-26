@@ -239,6 +239,8 @@ function openMenu() {
       item('help', 'Handleiding', () => openManual()),
       item('settings', 'Instellingen', openSettings),
       item(sound.isMuted() ? 'soundOff' : 'soundOn', sound.isMuted() ? 'Geluid aanzetten' : 'Geluid uitzetten', toggleSound),
+      app.call?.inCall() ? item('hangup', 'Ophangen', () => app.call.hangup())
+        : app.call?.possible() && app.call.supported() ? item('phone', 'Bellen', () => app.call.openSheet()) : null,
       s ? item('leave', 'Spel verlaten', () => confirmLeave(), 'danger') : null,
     ],
   });
@@ -536,7 +538,7 @@ export function openTrumpInfo() {
 
 // ---------- settings ----------
 
-function toggleRow(label, sub, on, fn) {
+export function toggleRow(label, sub, on, fn) {
   const input = h('input', { type: 'checkbox', checked: on, onchange: e => fn(e.target.checked) });
   return h('label', { class: 'set-row' }, h('span', { class: 'set-txt' }, h('b', { text: label }), sub ? h('small', { text: sub }) : null),
     h('span', { class: 'switch' }, input, h('i')));
@@ -597,6 +599,10 @@ export function openSettings() {
         h('small', { text: 'Met een muis speel je altijd met één klik.' })),
       segmented([['one', 'Eén tik'], ['two', 'Twee tikken']], prefs.tap, v => { prefs.tap = v; savePrefs(); }, 'Kaart spelen')),
       h('p', { class: 'set-note', text: 'Twee tikken: eerste tik tilt de kaart op, tweede tik (of omhoog vegen) speelt hem.' })),
+    h('section', { class: 'set-group' },
+      h('h3', { text: 'Bellen' }),
+      toggleRow('Bellen voorstellen', 'Bij een spel met andere spelers vragen of je meebelt', store.json('call', {}).ask !== false,
+        on => store.setJSON('call', { ...store.json('call', {}), ask: on }))),
     h('section', { class: 'set-group' },
       h('h3', { text: 'Weergave' }),
       toggleRow('Minder animaties', 'Kortere en rustigere bewegingen', prefs.reduced, on => { prefs.reduced = on; savePrefs(); applyPrefs(); })),
