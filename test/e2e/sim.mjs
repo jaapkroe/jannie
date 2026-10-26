@@ -469,16 +469,11 @@ class Player {
       r.replay.forEach((rh, h) => {
         const dealt = new Set(rh.cards.flat());
         const played = rh.tricks.flatMap(t => t.cards);
-        this.check(dealt.size === 32 && played.length === 32 && played.every(pc => rh.cards[pc.seat].includes(pc.card)), `replay of hand ${h + 1} does not add up`);
+        this.check(rh.hand === h + 1 && dealt.size === 32 && played.length === 32 && played.every(pc => rh.cards[pc.seat].includes(pc.card)), `replay of hand ${h + 1} does not add up`);
       });
       const sp = r.speed;
       this.check(sp === null || sp.n >= 1 && sp.median <= sp.slowest.ms && sp.slowest.ms <= sp.total, `review speed ${JSON.stringify(sp)}`);
-      this.check(Number.isInteger(r.seed) && r.seed >= 1 && r.seed <= 999999999 && Array.isArray(r.marks), `review seed ${r.seed}, marks ${JSON.stringify(r.marks)}`);
-      // Per trick the cards this player could play there: the card played among them.
-      r.replay.forEach((rh, h) => rh.tricks.forEach((t, k) => {
-        const mine = t.cards.find(pc => pc.seat === s.you);
-        this.check(!mine || rh.legal[k]?.includes(mine.card), `replay of hand ${h + 1}, trick ${k + 1}: ${mine?.card} not among the legal ${rh.legal[k]}`);
-      }));
+      this.check(Number.isInteger(r.seed) && r.seed >= 1 && r.seed <= 999999999 && r.marks === undefined, `review seed ${r.seed}, marks ${JSON.stringify(r.marks)}`);
     }
 
     this.check(s.scores.length === (s.phase === 'handEnd' || s.phase === 'gameOver' ? s.handNo : s.handNo - 1),

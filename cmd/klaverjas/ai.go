@@ -53,6 +53,21 @@ func (botAI) Grade(v game.View, c server.Choice) server.Grade {
 
 func (botAI) HandLuck(v game.View) float64 { return bot.HandLuck(v) }
 
+func (botAI) Explain(v game.View) server.Explanation {
+	e := bot.Explain(v)
+	choice := func(c bot.Choice) server.Choice { return server.Choice{Card: c.Card, Suit: c.Suit, Play: c.Play} }
+	out := server.Explanation{
+		Normaal: choice(e.Normaal), Rule: e.Rule, Sterk: choice(e.Sterk),
+		Hint: choice(e.Hint), HintText: e.HintText, Worlds: e.Worlds,
+	}
+	for _, o := range e.Options {
+		out.Options = append(out.Options, server.Option{
+			Choice: choice(o.Choice), Value: o.Value, SE: o.SE, Outcome: server.Outcome(o.Outcome), Parts: o.Parts,
+		})
+	}
+	return out
+}
+
 func (botAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
 	return bot.ExplainTrick(t, trump, names)
 }

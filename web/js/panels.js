@@ -189,6 +189,7 @@ const TOOLS = {
   settings: ['settings', 'Instellingen', 'Instellingen: geluid, kaarten, animaties en je naam', () => openSettings()],
   sound: ['soundOn', 'Geluid', 'Geluid aan', () => toggleSound()], // a toggle: soundState sets icon, tooltip, aria-pressed
   menu: ['menu', 'Meer', 'Meer: scorebord, handleiding, instellingen', () => openMenu()],
+  expert: ['search', 'Expert', 'Expert: terugkijken, de redenering van de AI en commentaar', () => openExpert({ hand: app.s?.handNo, step: 'end' })],
 };
 
 export function toolButtons(names) {
@@ -197,6 +198,7 @@ export function toolButtons(names) {
     const b = h('button', { class: 'tb tb-' + n, type: 'button', title, 'aria-label': label, onclick: () => { sound.unlock(); fn(); } }, icon(ic));
     if (n === 'chat') b.append(h('span', { class: 'chat-badge', hidden: true }));
     if (n === 'sound') soundState(b);
+    if (n === 'expert') b.hidden = true; // shown in an expert game (table.js)
     return b;
   });
 }
@@ -685,7 +687,9 @@ export function sync(s, ev) {
   } else {
     byId('over')?.close(true);
     byId('review')?.close(true);
-    byId('replay')?.close(true);
+    // The expert looks back while the match runs.
+    if (s.expert) byId('replay')?.refresh?.(s);
+    else byId('replay')?.close(true);
     if (byId('trick')?.owner === 'review') byId('trick').close(true);
   }
   if (s.phase === 'lobby') { byId('score')?.close(true); byId('last')?.close(true); }
@@ -707,7 +711,7 @@ function showSummary(s, ev) {
     const ready = h('div', { class: 'ready-list' });
     const ring = countdownRing();
     const go = h('button', { class: 'btn btn-go btn-big', type: 'button', onclick: () => { sound.play('click'); app.send({ t: 'ready' }); go.disabled = true; go.lastChild.textContent = 'Wachten op de rest'; } },
-      ring.el, h('span', { text: s.handNo >= s.hands ? 'Naar de uitslag' : 'Volgend potje' }));
+      ring.el, h('span', { text: s.handNo >= (s.opts.from || s.hands) ? 'Naar de uitslag' : 'Volgend potje' }));
     m = openModal({
       id: 'summary', cls: 'm-summary passive', closable: false, label: 'Uitslag van het potje', body: [
         h('div', { class: 'sum-head ' + T.cls },
@@ -720,7 +724,9 @@ function showSummary(s, ev) {
         seatCount(s) === 3 ? discardLine(s, r) : natWhy(s, r, w),
         tricks.length ? h('div', { class: 'sum-review' + (n !== 4 ? ` sum-review-${n}` : '') }, h('h3', {}, 'De slagen', h('small', { text: ' · tik voor wie wat speelde' })),
           review(asInHand(s, r), tricks, 'summary')) : null,
-        h('div', { class: 'sum-foot' }, go, ready),
+        h('div', { class: 'sum-foot' }, go, ready,
+          s.expert ? h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: () => openExpert({ hand: s.handNo }) },
+            icon('search'), 'Dit potje terugkijken') : null),
       ],
     });
     m.go = go;
@@ -861,7 +867,7 @@ function showGameOver(s, ev) {
   const host = s.host === s.you;
   // A rematch is a whole new partij of potjes; sent once, until it is refused.
   // "lobby" takes the table back to Klaarzetten (same code) to change seats
-  // or rules; training has no lobby.
+  // or rules; training and the expert mode have no lobby.
   let sent = false;
   const label = hst => (sent ? 'Even wachten…' : hst ? 'Nog een partij' : 'Wachten op de host');
   const send = t => {
@@ -872,7 +878,7 @@ function showGameOver(s, ev) {
     m.refresh(app.s);
   };
   const again = h('button', { class: 'btn btn-go btn-big', type: 'button', disabled: !host, onclick: () => send('rematch') }, label(host));
-  const setup = h('button', { class: 'btn btn-ghost btn-block btn-setup', type: 'button', hidden: !host || s.training, onclick: () => send('lobby') },
+  const setup = h('button', { class: 'btn btn-ghost btn-block btn-setup', type: 'button', hidden: !host || s.training || !!s.expert, onclick: () => send('lobby') },
     icon('users'), 'Spelers of regels wijzigen');
   const rv = h('button', { class: 'review-line', type: 'button', onclick: () => openReview() });
   reviewLine(rv, s.review);
@@ -891,6 +897,7 @@ function showGameOver(s, ev) {
       h('div', { class: 'btn-col' },
         again,
         setup,
+        s.expert ? h('button', { class: 'btn btn-ghost btn-block', type: 'button', onclick: () => openExpert() }, icon('search'), 'Potjes terugkijken') : null,
         h('div', { class: 'btn-row' },
           h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => openScoreSheet() }, icon('score'), 'Scorebord'),
           h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => app.leave() }, icon('leave'), 'Naar start'))),
@@ -900,7 +907,7 @@ function showGameOver(s, ev) {
     const hst = st.host === st.you;
     again.disabled = !hst || sent;
     again.textContent = label(hst);
-    setup.hidden = !hst || st.training;
+    setup.hidden = !hst || st.training || !!st.expert;
     setup.disabled = sent;
     reviewLine(rv, st.review);
     m.root.classList.toggle('with-review', !!st.review);
@@ -946,7 +953,7 @@ function openReview() {
     h('ul', { class: 'rv-list' }, list.map(m => h('li', {},
       h('button', {
         class: 'rv-moment', type: 'button', disabled: !r.replay?.[m.hand - 1],
-        title: 'Tik om dit potje terug te kijken', onclick: () => openReplay(s, r, m),
+        title: 'Tik om dit potje terug te kijken', onclick: () => (s.expert ? openExpert({ moment: m }) : openReplay(s, { hands: r.replay, moment: m })),
       }, h('span', { class: 'rv-where', text: momentWhere(m) }), line(m),
       h('span', { class: 'rv-sum' }, suitify(outcomeLine(m))), icon('forward')))))) : null);
   const sp = r.speed;
@@ -993,7 +1000,7 @@ function openReview() {
         return h('span', { class: 'rv-text' }, h('b', {}, suitify(l.what)), suitify(l.rest));
       }),
       moments('Laten liggen', r.missed, r.lostN, m => h('span', { class: 'rv-text' }, suitify(missedLine(m)))),
-      r.replay?.length ? h('button', { class: 'btn btn-ghost btn-block rv-replay', type: 'button', onclick: () => openReplay(s, r) },
+      r.replay?.length ? h('button', { class: 'btn btn-ghost btn-block rv-replay', type: 'button', onclick: () => (s.expert ? openExpert() : openReplay(s, { hands: r.replay })) },
         icon('history'), 'Potjes terugkijken') : null,
       prev.length ? h('p', { class: 'rv-prev' }, 'Vorige partijen ', h('b', { text: prev.map(p => `${p}%`).join(' · ') })) : null,
       h('p', { class: 'legend', text: 'Disclaimer: Dit is slechts de mening van Juf Ans.' }),
@@ -1006,46 +1013,61 @@ function openReview() {
 
 // ---------- replay ----------
 
-// The replay of the review (design §9): a finished hand card by card with
-// every hand open, from a moment of the review (just before the player's
-// card, or at the deal for a trump choice or bid) or from the deal. A step
-// is the number of cards played: at 4 × n trick n lies complete.
-function openReplay(s, r, moment = null) {
-  const hands = r.replay || [];
-  if (!hands.length) return;
+// The replay (design §9 Terugkijken): a hand card by card with every hand
+// open, from a moment of the review (just before the player's card, or at
+// the deal for a trump choice or bid), from the deal, or at {hand, step}
+// (step 'end': after the latest card). A step is the number of cards
+// played: at 4 × n trick n lies complete. hands are the hands to step
+// through (review.replay, or the expert's hands, with the hand in play);
+// source(st) gives them in a later state. The expert mode adds its tools
+// (expert.js): tools.card(el, seat, card, ctx) for every card in the hands,
+// tools.box(ctx) for what goes under the table, tools.onError() when the
+// server refused something; ctx.render() shows the replay again.
+export function openReplay(s, { hands, moment = null, at = null, source = null, tools = null }) {
+  if (!hands?.length) return;
   sound.play('click');
   const seats = [0, 1, 2, 3].map(k => (s.you + k) % 4);
+  const cardsOf = rh => rh.tricks.flatMap(t => t.cards);
+  const indexOf = n => Math.max(0, hands.findIndex(x => x.hand === n));
   const before = m => {
-    const t = m.trick ? hands[m.hand - 1]?.tricks[m.trick - 1] : null;
+    const t = m.trick ? hands[indexOf(m.hand)]?.tricks[m.trick - 1] : null;
     return t ? 4 * (m.trick - 1) + Math.max(0, t.cards.findIndex(pc => pc.seat === s.you)) : 0;
   };
-  let hand = moment ? moment.hand - 1 : 0;
-  let step = moment ? before(moment) : 0;
-  // The player's own choices, as the server last sent them (cmdMark).
-  let own = r.marks || [];
-  const ownAt = (hd, tr) => own.find(x => x.hand === hd && x.trick === tr);
-  const mark = (tr, choice) => { sound.play('click'); app.send({ t: 'mark', hand: hand + 1, trick: tr, ...choice }); };
-  // One form for the whole replay, so typed text survives the steps; it is
-  // about the situation shown when it is sent.
-  const feedback = feedbackForm(() => ({ hand: hand + 1, trick: step === 0 ? 0 : Math.ceil(step / 4) }), 'Opmerking over deze situatie');
-  const m = openModal({ id: 'replay', title: 'Terugkijken', cls: 'm-replay', body: [] });
+  let hand = moment ? indexOf(moment.hand) : at ? indexOf(at.hand) : 0;
+  let step = moment ? before(moment) : at?.step === 'end' ? cardsOf(hands[hand]).length : at?.step || 0;
+  const m = openModal({ id: 'replay', title: tools ? 'Expert: terugkijken' : 'Terugkijken', cls: 'm-replay' + (tools ? ' m-expert' : ''), body: [] });
+  // A later state: the same hand, following the cards of the hand in play
+  // when the replay showed its latest one.
   m.refresh = st => {
-    if (!st.review?.replay) return;
-    own = st.review.marks || [];
+    const fresh = source ? source(st) : st.review?.replay;
+    if (!fresh?.length) return;
+    const shown = hands[hand]?.hand;
+    const atEnd = step === cardsOf(hands[hand]).length;
+    s = st;
+    hands = fresh;
+    const k = hands.findIndex(x => x.hand === shown);
+    if (k < 0) {
+      hand = hands.length - 1;
+      step = 0;
+    } else {
+      hand = k;
+      if (atEnd) step = cardsOf(hands[k]).length;
+    }
     render();
   };
+  m.onError = () => tools?.onError?.();
   // The steps stay in view below the scrolling body.
   const bar = h('div', { class: 'rp-bar' });
   m.dlg.append(bar);
   const go = (hd, st) => {
     hand = Math.max(0, Math.min(hands.length - 1, hd));
-    step = Math.max(0, Math.min(32, st));
+    step = Math.max(0, Math.min(cardsOf(hands[hand]).length, st));
     const key = document.activeElement?.dataset?.key;
     render();
     if (key) m.dlg.querySelector(`[data-key="${key}"]:not(:disabled)`)?.focus({ preventScroll: true });
   };
   m.dlg.addEventListener('keydown', e => {
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.target.closest?.('textarea, input')) {
       e.preventDefault();
       go(hand, step + (e.key === 'ArrowLeft' ? -1 : 1));
     }
@@ -1053,15 +1075,21 @@ function openReplay(s, r, moment = null) {
 
   function render() {
     const rh = hands[hand];
-    const row = s.scores?.find(x => x.hand === hand + 1);
-    const played = rh.tricks.flatMap(t => t.cards);
+    const row = s.scores?.find(x => x.hand === rh.hand);
+    const played = cardsOf(rh);
+    const n = played.length;
+    step = Math.min(step, n);
     const gone = new Set(played.slice(0, step).map(pc => pc.card));
     const ti = Math.ceil(step / 4) - 1; // the trick on the table; -1 before the first card
     const trick = rh.tricks[ti];
     const shown = trick ? trick.cards.slice(0, step - 4 * ti) : [];
     const complete = shown.length === 4;
-    const next = step < 32 ? played[step].seat : -1;
-    const mo = moment?.hand === hand + 1 ? moment : null;
+    // The hand in play (expert): after its latest card it is whoever's turn it is now.
+    const live = !row && rh.hand === s.handNo && PLAYING.has(s.phase);
+    const next = step < n ? played[step].seat : live && s.turn >= 0 ? s.turn : -1;
+    const trump = row ? { suit: row.trump, by: row.trumpBy } : live && s.trump ? { suit: s.trump, by: s.trumpBy } : null;
+    const ctx = { s, rh, step, played, next, live, trick: Math.floor(step / 4) + 1, render };
+    const mo = moment?.hand === rh.hand ? moment : null;
     const now = mo && step === before(mo);
     // The player's choice and the option it is measured against, marked in
     // their hand at the moment itself: the stronger of the two in gold.
@@ -1071,7 +1099,7 @@ function openReplay(s, r, moment = null) {
     if (now && (mo.better || mo.alt)?.card) marks.set((mo.better || mo.alt).card, mo.better ? 'rp-better' : 'rp-alt');
 
     const stand = [0, 0];
-    rh.tricks.slice(0, complete ? ti + 1 : ti).forEach(t => { stand[t.winner % 2] += t.points + roemTotal(t.roem); });
+    rh.tricks.slice(0, Math.max(0, complete ? ti + 1 : ti)).forEach(t => { stand[t.winner % 2] += t.points + roemTotal(t.roem); });
     const wij = s.you % 2;
 
     const cross = h('div', { class: 'cross rp-cross' }, seats.map(seat => {
@@ -1086,48 +1114,23 @@ function openReplay(s, r, moment = null) {
         h('b', { text: `${nameOf(s, trick.winner)} neemt de slag` }),
         h('span', { text: ` · ${trick.points} punten` }),
         roemTotal(trick.roem) ? h('span', { class: 'gold', text: ` · roem: ${roemText(trick.roem)}` }) : null)
-      : h('p', { class: 'last-sum rp-what' }, next === s.you ? 'Jij bent aan de beurt' : `${nameOf(s, next)} is aan de beurt`);
+      : next >= 0 ? h('p', { class: 'last-sum rp-what' }, next === s.you ? 'Jij bent aan de beurt' : `${nameOf(s, next)} is aan de beurt`) : null;
 
-    // At a card of the player's: the cards they could play can be marked as
-    // their own choice, looking back (tap again to clear).
-    const myTurn = next === s.you;
-    const tk = Math.floor(step / 4); // the trick the next card goes into
-    const legal = new Set(myTurn ? rh.legal?.[tk] || [] : []);
-    const mine = myTurn ? ownAt(hand + 1, tk + 1)?.card : null;
     const card = (seat, c) => {
       const el = mini(c, marks.get(c) || '');
-      if (c === mine) el.classList.add('rp-mine');
-      if (seat !== s.you || !legal.has(c)) return el;
-      el.classList.add('rp-pick');
-      el.tabIndex = 0;
-      el.setAttribute('role', 'button');
-      el.setAttribute('aria-pressed', String(c === mine));
-      el.setAttribute('aria-label', `${cardShort(c)} als jouw keuze`);
-      const pick = () => mark(tk + 1, c === mine ? {} : { card: c });
-      el.addEventListener('click', pick);
-      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pick(); } });
+      tools?.card(el, seat, c, ctx);
       return el;
     };
     const hand4 = seat => h('div', { class: 'rp-hand ' + teamCls(s, seat) + (seat === next && !complete ? ' turn' : '') },
       playerName(nameOf(s, seat), { cls: 'rp-name', title: true }),
       h('div', { class: 'rp-cards' }, rh.cards[seat].filter(c => !gone.has(c)).map(c => card(seat, c))));
-    const ownLine = myTurn && legal.size > 1 ? h('p', { class: 'rp-own' },
-      mine ? [h('span', { class: 'rp-key rp-mine' }), h('span', {}, suitify(`${cardShort(mine)} is jouw keuze bij nader inzien. Tik er nog eens op om hem weg te halen.`))]
-        : 'Bij nader inzien: tik op de kaart die jij hier het beste vindt.') : null;
-    // A trump choice of the player's at the deal: four suits to choose from.
-    const ownTrump = step === 0 && row?.trumpBy === s.you ? ownAt(hand + 1, 0)?.suit : undefined;
-    const trumpLine = step === 0 && row?.trumpBy === s.you ? h('div', { class: 'rp-own rp-own-suits' },
-      h('span', { text: 'Jouw troefkeuze bij nader inzien:' }),
-      ['C', 'D', 'H', 'S'].map(su => h('button', {
-        class: 'btn btn-ghost btn-sm rp-suit' + (isRed(su) ? ' red' : ''), type: 'button', 'aria-pressed': String(su === ownTrump),
-        'aria-label': suitName(su), title: suitName(su), onclick: () => mark(0, su === ownTrump ? {} : { suit: su }),
-      }, suitSym(su)))) : null;
     const alt = mo && (mo.better || mo.alt);
-    m.body.replaceChildren(
+    // replaceChildren would show a null as text.
+    m.body.replaceChildren(...[
       h('div', { class: 'rp-head' },
         h('button', { class: 'icon-btn', type: 'button', dataset: { key: 'hand-prev' }, 'aria-label': 'Vorig potje', title: 'Vorig potje', disabled: hand === 0, onclick: () => go(hand - 1, 0) }, icon('back')),
-        h('div', { class: 'rp-title' }, h('b', { text: `Potje ${hand + 1} van ${hands.length}` }),
-          row ? h('small', {}, suitify(`${suitSym(row.trump)} troef · ${nameOf(s, row.trumpBy)} speelt`)) : null),
+        h('div', { class: 'rp-title' }, h('b', { text: `Potje ${rh.hand} van ${s.hands}` }),
+          trump ? h('small', {}, suitify(`${suitSym(trump.suit)} troef · ${nameOf(s, trump.by)} speelt`)) : null),
         h('button', { class: 'icon-btn', type: 'button', dataset: { key: 'hand-next' }, 'aria-label': 'Volgend potje', title: 'Volgend potje', disabled: hand === hands.length - 1, onclick: () => go(hand + 1, 0) }, icon('forward'))),
       mo ? h('div', { class: 'rp-moment' + (now ? ' now' : '') },
         h('span', { class: 'rv-where', text: momentWhere(mo) }),
@@ -1140,36 +1143,46 @@ function openReplay(s, r, moment = null) {
         h('p', { class: 'rp-stand' }, step === 32 && row
           ? `Uitslag: Wij ${row.score[wij]} – Zij ${row.score[1 - wij]}` + (row.nat ? ` · ${row.playingTeam === wij ? 'Wij' : 'Zij'} nat` : row.pit ? ' · pit' : '')
           : `Stand in dit potje: Wij ${stand[wij]} – Zij ${stand[1 - wij]}`)),
+      tools?.box(ctx) || null,
       h('div', { class: 'rp-hands' },
         hand4(s.you),
         now && marks.size ? h('p', { class: 'rp-legend' },
           h('span', {}, h('span', { class: 'rp-key ' + playedCls }), suitify(`${cardShort(mo.played.card)} gespeeld`)),
           alt?.card ? h('span', {}, h('span', { class: 'rp-key ' + (mo.better ? 'rp-better' : 'rp-alt') }),
             suitify(`${cardShort(alt.card)} ${mo.better ? 'beter volgens Juf Ans' : 'voor de hand liggend'}`)) : null) : null,
-        ownLine,
-        trumpLine,
         seats.slice(1).map(hand4)),
-      h('p', { class: 'legend', text: 'Alle kaarten liggen open. Bij je keuze wist je alleen je eigen kaarten en wat er gespeeld was.' }),
-      h('details', { class: 'rp-fb' }, h('summary', { text: 'Opmerking over deze situatie' }), feedback),
-    );
+      h('p', { class: 'legend', text: 'Alle kaarten liggen open. Bij een keuze wist de speler alleen de eigen kaarten en wat er gespeeld was.' }),
+    ].filter(Boolean));
     bar.replaceChildren(
       h('div', { class: 'rp-steps' },
         h('button', { class: 'btn btn-ghost', type: 'button', dataset: { key: 'prev' }, 'aria-label': 'Een kaart terug', title: 'Een kaart terug (←)', disabled: step === 0, onclick: () => go(hand, step - 1) }, icon('back')),
         h('span', { class: 'rp-pos', text: step === 0 ? 'Voor de eerste kaart' : `Slag ${ti + 1} · ${shown.length} van 4 kaarten` }),
-        h('button', { class: 'btn btn-ghost', type: 'button', dataset: { key: 'next' }, 'aria-label': 'Een kaart verder', title: 'Een kaart verder (→)', disabled: step === 32, onclick: () => go(hand, step + 1) }, icon('forward'))),
-      h('div', { class: 'rp-tricks', role: 'group', 'aria-label': 'Slagen' }, rh.tricks.map((t, k) => h('button', {
-        class: 'rp-tn ' + teamCls(s, t.winner) + (k === ti ? ' on' : ''), type: 'button', dataset: { key: `t${k}` },
-        'aria-label': `Slag ${k + 1}`, title: `Slag ${k + 1}: ${nameOf(s, t.winner)} nam de slag`, onclick: () => go(hand, 4 * (k + 1)),
-      }, String(k + 1)))));
+        h('button', { class: 'btn btn-ghost', type: 'button', dataset: { key: 'next' }, 'aria-label': 'Een kaart verder', title: 'Een kaart verder (→)', disabled: step === n, onclick: () => go(hand, step + 1) }, icon('forward'))),
+      h('div', { class: 'rp-tricks', role: 'group', 'aria-label': 'Slagen' }, rh.tricks.map((t, k) => {
+        const open = t.cards.length < 4; // the trick in play
+        return h('button', {
+          class: 'rp-tn ' + (open ? 'open' : teamCls(s, t.winner)) + (k === ti ? ' on' : ''), type: 'button', dataset: { key: `t${k}` },
+          'aria-label': `Slag ${k + 1}`, title: open ? `Slag ${k + 1}: wordt gespeeld` : `Slag ${k + 1}: ${nameOf(s, t.winner)} nam de slag`,
+          onclick: () => go(hand, Math.min(4 * (k + 1), n)),
+        }, String(k + 1));
+      })));
   }
   render();
+  return m;
+}
+
+// The expert's replay (expert.js, loaded when first needed), at {hand,
+// step} or at a moment of the review.
+export function openExpert(at = {}) {
+  import('./expert.js').then(x => x.openPanel(at)).catch(() => toast('Laden lukte niet', { sub: 'Controleer je internet en probeer het nog eens.', kind: 'error' }));
 }
 
 // A free-text form that sends feedback (design §7) with what extra()
-// returns (hand and trick, or nothing for the game as a whole).
+// returns (the expert: hand, trick and seat; else nothing, the game as a
+// whole).
 let feedbackWait = null; // the form waiting for its "saved"
-function feedbackForm(extra, label) {
-  const text = h('textarea', { class: 'field fb-text', maxLength: 2000, rows: 3, placeholder: 'Wat viel je op? Wat klopt er volgens jou niet?', 'aria-label': label });
+export function feedbackForm(extra, label, placeholder = 'Wat viel je op? Wat klopt er volgens jou niet?') {
+  const text = h('textarea', { class: 'field fb-text', maxLength: 2000, rows: 3, placeholder, 'aria-label': label });
   const status = h('span', { class: 'fb-status', role: 'status' });
   const send = h('button', {
     class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => {
@@ -1198,6 +1211,7 @@ export function onSaved() {
 // and so can feedback.
 export function onError() {
   byId('over')?.reset?.();
+  byId('replay')?.onError?.();
   feedbackWait?.failed();
   feedbackWait = null;
 }

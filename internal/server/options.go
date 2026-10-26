@@ -22,6 +22,7 @@ type Options struct {
 	Open      bool           `json:"open"`
 	Signals   game.Signals   `json:"signals"` // the table's agreements on signals (design §8)
 	Seed      int            `json:"seed"`    // 1..maxSeed: every match deals the same cards; 0: a new seed per match
+	From      int            `json:"from"`    // expert: 1..maxHands: the match is that one hand of the seed's deals; 0: the whole match
 }
 
 func defaultOptions() Options {
@@ -35,6 +36,10 @@ func defaultOptions() Options {
 		Signals:   game.DefaultSignals,
 	}
 }
+
+// maxHands is the longest match (option hands), and so the last hand that
+// option from can name.
+const maxHands = 24
 
 var (
 	validHands  = map[int]bool{4: true, 8: true, 12: true, 16: true, 20: true, 24: true}
@@ -52,6 +57,7 @@ type optsPatch struct {
 	Open      *bool
 	Signals   *game.Signals
 	Seed      *int
+	From      *int
 }
 
 // parseOpts reads a partial options object. With lenient, invalid values
@@ -138,6 +144,17 @@ func parseOpts(raw json.RawMessage, lenient bool) (optsPatch, error) {
 				}
 				p.Seed = &seed
 			}
+		case "from":
+			var n *int
+			if json.Unmarshal(val, &n) != nil || n != nil && (*n < 0 || *n > maxHands) {
+				err = fail("Kies een potje van 1 tot 24, of laat het leeg voor het hele spel.")
+			} else {
+				from := 0
+				if n != nil {
+					from = *n
+				}
+				p.From = &from
+			}
 		case "signals":
 			// Agreements left out keep their default.
 			sig := game.DefaultSignals
@@ -179,6 +196,9 @@ func (p optsPatch) apply(o *Options) {
 	}
 	if p.Seed != nil {
 		o.Seed = *p.Seed
+	}
+	if p.From != nil {
+		o.From = *p.From
 	}
 }
 

@@ -86,6 +86,7 @@ type room struct {
 	rng       *rand.Rand
 	opts      Options
 	training  bool
+	expert    bool    // the expert mode (expert.go): alone against three bots, looking back at any moment
 	alwaysOn  bool    // tests: bots play on without a connected human
 	seats     [4]seat // seats 0..opts.Players-1; the others stay empty
 	host      game.Seat
@@ -130,18 +131,26 @@ type room struct {
 	handTricks [][]game.Trick // the tricks of every finished hand of the match
 
 	// The deals and the game log (matchlog.go).
-	seed     uint64     // of this match: every deal comes from it
-	deals    *rand.Rand // the stream the deals come from (dealRNG)
-	dealt    dealtCards // the cards of the hand in play as dealt
-	acts     string     // the decisions of the hand in play (actToken), space-separated
-	handActs []string   // acts of every finished hand of the match
+	seed      uint64       // of this match: every deal comes from it
+	deals     *rand.Rand   // the stream the deals come from (dealRNG)
+	firstHand int          // the number of the match's first hand: option from, else 1
+	dealt     dealtCards   // the cards of the hand in play as dealt
+	acts      string       // the decisions of the hand in play (actToken), space-separated
+	handActs  []string     // acts of every finished hand of the match
+	handDealt []dealtCards // every finished hand of the match as dealt
+
+	// The expert mode (expert.go).
+	marks      map[markKey]choiceJSON // the expert's own choices for decisions of the match
+	explaining bool                   // an explanation is being worked out (cmdWhy)
 }
 
-// dealtCards is a hand as dealt: the seats' cards and the talon (three
-// players).
+// dealtCards is a hand as dealt: the dealer, the seats' cards, the talon
+// (three players) and the turned suit.
 type dealtCards struct {
-	hands [4][]game.Card
-	talon []game.Card
+	dealer game.Seat
+	hands  [4][]game.Card
+	talon  []game.Card
+	turned game.Suit
 }
 
 func newRoom(s *Server, code string) *room {
@@ -526,6 +535,7 @@ func (r *room) sysChat(format string, args ...any) {
 func (r *room) handleCreate(c *client, m *inMsg) {
 	patch, _ := parseOpts(m.Opts, true)
 	r.training = m.Training
+	r.expert = m.Expert && !r.training
 	if r.training {
 		r.opts.Tempo = "rustig"
 	}
@@ -533,21 +543,25 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	if patch.Players != nil {
 		r.opts.Players = *patch.Players
 	}
-	if r.training {
+	switch {
+	case r.training:
 		r.opts.Players = 4 // with Juf Ans as partner
-	} else {
+	case r.expert:
+		r.opts.Players = 4 // the engine reasons for four
+	default:
 		r.opts.Open = false
 	}
+	r.expertOpts()
 	r.seats[0] = newHuman(cleanName(m.Name))
 	r.setClient(0, c)
 	r.host = 0
 	if r.training {
 		r.seatTraining()
 	}
-	r.log.Info("room created", "training", r.training, "players", r.opts.Players, "start", m.Start)
+	r.log.Info("room created", "training", r.training, "expert", r.expert, "players", r.opts.Players, "start", m.Start)
 	r.welcome(c, 0)
 	r.emitTo(evLobby{Type: "lobby"}, c)
-	if m.Start {
+	if m.Start || r.expert { // an expert game has no lobby
 		r.startMatch()
 	}
 }
@@ -587,6 +601,10 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 	}
 	if r.training {
 		fail(errFull, "Dit is een oefenspel; daar kun je niet aan meedoen.")
+		return
+	}
+	if r.expert {
+		fail(errFull, "Dit is een expertspel; daar kun je niet aan meedoen.")
 		return
 	}
 	if r.phase == phaseLobby {
@@ -974,6 +992,8 @@ func (r *room) handle(c *client, m *inMsg) {
 		r.leave(c, i)
 	case "mark":
 		r.cmdMark(c, i, m)
+	case "why":
+		r.cmdWhy(c, i, m)
 	case "feedback":
 		r.cmdFeedback(c, i, m)
 	default:
@@ -1117,6 +1137,7 @@ func (r *room) cmdOpts(c *client, i game.Seat, m *inMsg) {
 	if !r.training {
 		r.opts.Open = false
 	}
+	r.expertOpts()
 	r.emit(evLobby{Type: "lobby"})
 }
 
@@ -1208,6 +1229,9 @@ func (r *room) cmdLobby(c *client, i game.Seat) {
 		return
 	case r.training:
 		c.sendError(errInvalid, "In de oefenmodus ligt de tafel vast.")
+		return
+	case r.expert:
+		c.sendError(errInvalid, "In de expertmodus ligt de tafel vast.")
 		return
 	}
 	if i != r.host {

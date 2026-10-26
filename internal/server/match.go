@@ -160,9 +160,6 @@ func (r *room) inHand() bool {
 
 // startMatch fills the empty seats and deals the first hand.
 func (r *room) startMatch() {
-	if r.phase == phaseLobby {
-		r.sysChat("Het spel begint: %d potjes, %s. Veel plezier!", r.opts.Hands, r.opts.variantNL())
-	}
 	r.fillSeats()
 	for i := range r.seats {
 		st := &r.seats[i]
@@ -188,10 +185,19 @@ func (r *room) startMatch() {
 		r.seed = newSeed()
 	}
 	r.deals = dealRNG(r.seed)
-	r.handActs = nil
+	r.firstHand = max(1, r.opts.From)
+	r.handNo = r.firstHand - 1
+	r.handActs, r.handDealt, r.marks = nil, nil, nil
+	// The seed from the start, so nobody has to play to the end to see it.
+	if r.opts.From > 0 {
+		r.sysChat("Spel (%d) begint: potje %d, %s. Veel plezier!", r.seed, r.firstHand, r.opts.variantNL())
+	} else {
+		r.sysChat("Spel (%d) begint: %d potjes, %s. Veel plezier!", r.seed, r.opts.Hands, r.opts.variantNL())
+	}
 	r.logMatch()
 	r.log.Info("match started", "players", r.players(), "humans", r.humanCount(), "hands", r.opts.Hands,
-		"trumpMode", r.opts.TrumpMode.String(), "rules", r.opts.Rules.String(), "ai", r.opts.AI, "training", r.training)
+		"trumpMode", r.opts.TrumpMode.String(), "rules", r.opts.Rules.String(), "ai", r.opts.AI, "training", r.training,
+		"expert", r.expert)
 	r.startHand()
 	r.greet()
 }
@@ -204,13 +210,13 @@ func (r *room) startHand() {
 	if r.deal != nil {
 		dealer = r.deal.Voorhand()
 	} else {
-		dealer = game.Seat(r.deals.IntN(n))
+		dealer = r.firstDealer()
 	}
 	r.handNo++
 	r.missed, r.misses = nil, nil
 	hands, talon := game.ShuffleFor(n, r.deals)
 	turned := game.Suit(r.deals.IntN(game.NumSuits))
-	r.dealt = dealtCards{talon: slices.Clone(talon)}
+	r.dealt = dealtCards{dealer: dealer, talon: slices.Clone(talon), turned: turned}
 	for i := range hands {
 		r.dealt.hands[i] = slices.Clone(hands[i])
 	}
@@ -227,6 +233,30 @@ func (r *room) startHand() {
 	r.gradeHands()
 	r.emit(evDeal{Type: "deal", HandNo: r.handNo, Dealer: dealer})
 	r.drive()
+}
+
+// firstDealer draws the dealer of the match's first hand from its seed. A
+// match that starts at a later hand (option from) draws the deals before
+// it too, and passes the deal on as often, so that hand is dealt as in the
+// whole match.
+func (r *room) firstDealer() game.Seat {
+	n := r.players()
+	dealer := game.Seat(r.deals.IntN(n))
+	for range r.firstHand - 1 {
+		game.ShuffleFor(n, r.deals)
+		r.deals.IntN(game.NumSuits)
+		dealer = game.Seat((int(dealer) + 1) % n)
+	}
+	return dealer
+}
+
+// lastHand is the number of the match's last hand: the one hand of option
+// from, else the length of the match.
+func (r *room) lastHand() int {
+	if r.opts.From > 0 {
+		return r.firstHand
+	}
+	return r.opts.Hands
 }
 
 // pause starts a pause of d (scaled) that ends with runPending.
@@ -760,6 +790,7 @@ func (r *room) endHand() {
 	r.prev = &prevHand{Tricks: d.Tricks(), Result: res}
 	r.handTricks = append(r.handTricks, d.Tricks())
 	r.handActs = append(r.handActs, r.acts)
+	r.handDealt = append(r.handDealt, r.dealt)
 	r.logHand(res)
 	r.phase = phaseHandEnd
 	for i := range r.seats {
@@ -789,7 +820,7 @@ func (r *room) timeSummary(from time.Time) {
 func (r *room) nextHand() {
 	r.pending = stepNone
 	r.nextAt = time.Time{}
-	if r.handNo < r.opts.Hands {
+	if r.handNo < r.lastHand() {
 		r.startHand()
 		return
 	}

@@ -190,8 +190,10 @@ type logMatch struct {
 	Match    string      `json:"match"`
 	Room     string      `json:"room"`
 	At       time.Time   `json:"at"`
+	Version  string      `json:"version"` // of the server: the git commit it was built from ("dev" from source)
 	Seed     uint64      `json:"seed"`
 	Training bool        `json:"training"`
+	Expert   bool        `json:"expert,omitempty"`
 	Opts     Options     `json:"opts"`
 	Players  []logPlayer `json:"players"`
 }
@@ -249,8 +251,9 @@ type logReview struct {
 	Review *reviewState `json:"review"`
 }
 
-// logMark: a player's own choice for one of their decisions, given while
-// looking back (Terugkijken); a mark without card, suit or play clears it.
+// logMark: the expert's own choice for a decision of seat By (theirs or a
+// bot's), given while looking back; a mark without card, suit or play
+// clears it.
 type logMark struct {
 	T      string      `json:"t"` // "mark"
 	Match  string      `json:"match"`
@@ -259,6 +262,7 @@ type logMark struct {
 	Name   string      `json:"name"`
 	Hand   int         `json:"hand"`
 	Trick  int         `json:"trick"`
+	By     int         `json:"by"`
 	Mark   choiceJSON  `json:"mark"`
 	Played *choiceJSON `json:"played,omitempty"`
 }
@@ -273,6 +277,7 @@ type logFeedback struct {
 	Device string    `json:"device"`
 	Hand   int       `json:"hand,omitempty"` // 0: about the game as a whole
 	Trick  int       `json:"trick,omitempty"`
+	By     *int      `json:"by,omitempty"` // expert: the seat of the decision commented on
 	Text   string    `json:"text"`
 }
 

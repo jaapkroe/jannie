@@ -57,14 +57,14 @@ function send(m) {
 
 // ---------- actions ----------
 
-// name: given for a game with bots only (Snel spelen, Oefenen), which
-// needs none typed; otherwise the home screen asks for it.
-function create({ opts = {}, training = false, start = false, name = home.currentName() }) {
+// name: given for a game with bots only (Snel spelen, Oefenen, Expert),
+// which needs none typed; otherwise the home screen asks for it.
+function create({ opts = {}, training = false, expert = false, start = false, name = home.currentName() }) {
   if (!name) return;
   enterRoom('');
   setStarting(start);
   startJoining();
-  net.send({ t: 'create', name, opts, training, start });
+  net.send({ t: 'create', name, opts, training, start, ...(expert ? { expert } : {}) });
 }
 
 function join(code) {
@@ -188,6 +188,7 @@ function onMessage(m) {
     case 'refused': if (inRoom) onRefused(m.name); break;
     case 'error': onError(m); break;
     case 'saved': panels.onSaved(m); break;
+    case 'why': if (inRoom) import('./expert.js').then(x => x.onWhy(m)); break;
     default: break;
   }
 }
