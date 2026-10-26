@@ -468,10 +468,10 @@ export const CONTENT = {
     {
       trick: {
         trump: 'S',
-        cards: [['links', '7S'], ['maat', 'JS'], ['rechts', '8S'], ['jij', 'AH']],
+        cards: [['links', '7S'], ['maat', 'JS'], ['rechts', '8S'], ['jij', 'TH']],
         winner: 'maat',
-        points: 31,
-        text: 'Je maat speelt de troefboer: die slag is binnen. Jij hebt geen troef meer en spekt de slag met {AH}.',
+        points: 30,
+        text: 'Je maat speelt de troefboer: die slag is binnen. Jij hebt geen troef meer en spekt de slag met {TH}.',
       },
     },
 
