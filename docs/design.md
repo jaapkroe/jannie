@@ -504,20 +504,27 @@ Strength levels:
   team, keep the nel/boer guarded, count trumps played, sensible trump choice
   (boer/nel/aas/length). Gives and reads kleintje boer (§8) and never leads a
   small side card that would falsely promise the boer when it has another
-  lead. Likewise it holds back a side ace whose 10 it lacks (aas voorspelen,
-  §8, would promise that 10), never leads under its own ace, avoids a low
-  discard that would falsely claim the highest card of its suit (laag
-  bijspelen), and leads into a suit whose highest card the partner signalled.
+  lead. Holding the ace and the 10 of a side suit it leads the 10 first: it
+  wins just as surely, can still bring roem (the ace only with heer and
+  vrouw), and leaves the ace on top (in self-play +1.2 points per hand over
+  ace first). It never leads under its own ace, gives the ace with its 10
+  to the partner's trick (aas vraagt 10, §8) but avoids an ace without it,
+  avoids a low discard that would falsely claim the highest card of its
+  suit (laag bijspelen), and leads into a suit whose highest card the
+  partner signalled.
 - **sterk**: card tracking with inference (voids from not following suit,
   trump obligations), determinised Monte Carlo: sample hidden hands consistent
   with everything known, evaluate each legal move by playouts with the normaal
   policy, ~150–400 samples within ~150 ms; trump choice by simulation; reads the
-  signals of §8 (aas voorspelen, kleintje boer, laag bijspelen) as soft
+  signals of §8 (aas vraagt 10, kleintje boer, laag bijspelen) as soft
   evidence. It gives kleintje boer when that costs at most a few points, and
   fakes it (a small side card without the boer) only when that gains clearly
-  (≥ 10 points), a false laag bijspelen only for ≥ 20 points, and a false aas
-  voorspelen never while it has an honest card to lead, since partners and
-  humans read the signals as promises. Exactly equal search
+  (≥ 10 points), a false laag bijspelen or aas vraagt 10 only for ≥ 20
+  points, since partners and humans read the signals as promises. Between
+  cards that win and lose alike (no card still out lies between them, as
+  ♥A and ♥10 in one hand), it plays the normaal card unless the search
+  rates the other higher by more than the hints' tolerance (5 points, or
+  two paired standard errors); the hints and the Spelanalyse do the same. Exactly equal search
   results go to the rule-based card, then to the cheaper card.
 
 Each persona modulates its level's choices (Aggression shifts thresholds) and
@@ -1062,13 +1069,16 @@ a view without them means the defaults), and the bots, the hints, the
 search's playouts and the Spelanalyse give, read and explain only the
 signals agreed. Tegenkleur is described in the manual but never agreed.
 
-- **Aas voorspelen** (*aas vraagt 10*, `aas`): leading the ace of a side suit says "ik heb ook de
-  10 van deze kleur". After the ace that 10 is the highest card of the suit,
-  so the partner can safely lead the suit back later (*veilig terugkomen*).
-  An ace led without the 10 breaks the promise. Bots read it while the 10 is
-  out, in the first five tricks, and come back in the suit with a low card.
-  Normaal holds back an ace whose 10 it lacks; sterk never leads such an ace
-  while it has an honest card to lead.
+- **Aas vraagt 10** (`aas`): on the **partner's trick**, discarding the ace
+  of a side suit that nobody has led yet says "ik heb ook de 10 van deze
+  kleur". The ace's 11 points go to the partner's trick, and after the ace
+  that 10 is the highest card of the suit, so it can still win a trick: the
+  partner leads the suit to it. An ace given without the 10 breaks the
+  promise. Leading an ace says nothing: with the ace and the 10 one leads
+  the 10 first (§6 normaal). Bots read it while the 10 is out, in the first
+  six tricks, and lead the suit with a low card; they give the ace with its
+  10 rather than keep it, and avoid an ace without it (sterk only for ≥ 20
+  points).
 - **Kleintje boer** (`kleintjeBoer`): leading a small card (7, 8, 9) of a side suit signals "ik heb de
   troefboer"; partner wins and returns trump. It is given by the trump maker
   on its first lead (in utrechts the opening lead of the hand; bots as maker

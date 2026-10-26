@@ -29,7 +29,7 @@ const OPTS = [
   { key: 'signals', label: 'Seinen', players: [4], multi: true,
     choices: [['aas', 'Aas vraagt 10'], ['kleintjeBoer', 'Kleintje boer'], ['hoogLaag', 'Hoog/laag'], ['boerOverBoer', 'Boer over boer']],
     info: ['De afspraken aan deze tafel: welke kaarten je maat iets vertellen. De AI-spelers en de tips houden zich eraan.',
-      'Aas vraagt 10: kom je uit met een aas van een bijkleur, dan heb je de 10 van die kleur ook.',
+      'Aas vraagt 10: gooi je op een slag van je maat een aas bij van een bijkleur die nog niet gespeeld is, dan heb je de 10 van die kleur ook.',
       'Kleintje boer: komt de spelende partij voor het eerst uit met een 7, 8 of 9 van een bijkleur, dan heeft die de troefboer.',
       'Hoog/laag: kun je niet bekennen op een slag van je maat, dan zegt een klein kaartje “speel deze kleur, daar heb ik de hoogste van” en een 10 of plaatje “ik heb weinig in deze kleur”. Op een slag van de tegenpartij zegt je bijkaart niets.',
       'Boer over boer: komt de spelende partij voor het eerst uit met een boer van een bijkleur, dan heeft die de troefboer.'] },
