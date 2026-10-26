@@ -402,6 +402,67 @@ CHECKS.review = async browser => {
   });
 };
 
+// The expert mode (issue #34): five taps on the version open its sheet;
+// seed 4242 and potje 3 deal that hand alone, the chat names the seed at
+// the start. The search button opens the replay of the hand in play; a
+// card back, the reasoning of the AI for that card, a card of the expert's
+// own and a comment; the summary and game over offer the replay, not the
+// lobby.
+CHECKS.expert = async browser => {
+  const P = await page(browser, VP.iphone, 'expert', { hooks: true });
+  await run(P, async () => {
+    await home(P);
+    for (let i = 0; i < 5; i++) await press(P, '.home-ver');
+    await waitFor(P, () => document.querySelector('.m-train.open #btn-expert-go'), { label: 'expert sheet' });
+    for (const [key, v] of [['seed', '4242'], ['from', '3']]) {
+      await P.page.$eval(`.modal.open .opt-row[data-key="${key}"] input`, (e, v) => { e.value = v; e.dispatchEvent(new Event('change')); }, v);
+    }
+    if (!(await P.page.$eval('.modal.open .opt-row[data-key="hands"]', e => e.hidden))) throw new Error('the Potjes row shows with a potje');
+    await press(P, '#btn-expert-go');
+    await waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelector('.potje-n b')?.textContent === '3', { label: 'potje 3' });
+    const start = await P.page.$$eval('.chat-list .msg.sys', els => els.map(e => e.textContent));
+    if (!start.some(t => t.includes('Spel (4242) begint: potje 3'))) throw new Error(`start line ${start}`);
+    const created = await P.page.evaluate(() => window.__kj.sent.find(m => m.t === 'create'));
+    if (!created?.expert || created.opts.seed !== 4242 || created.opts.from !== 3) throw new Error(`create ${JSON.stringify(created)}`);
+
+    await playUntil(P, () => document.querySelectorAll('.hand .card').length <= 6 && !!document.querySelector('.hand.my-turn .card.legal'), { label: 'my turn in trick 3' });
+    await press(P, '.tb-expert');
+    await waitFor(P, () => /Jij bent aan de beurt/.test(document.querySelector('.m-expert.open .xp-head')?.textContent), { label: 'the replay now' });
+    await press(P, '.m-expert [data-key="prev"]');
+    await waitFor(P, () => /speelde/.test(document.querySelector('.m-expert .xp-head')?.textContent), { label: 'a card back' });
+    await press(P, '.m-expert .xp-box > .btn');
+    await waitFor(P, () => document.querySelector('.m-expert .xp-why .xp-table tbody tr'), { label: 'the reasoning' });
+    const why = await P.page.evaluate(() => ({
+      rows: document.querySelectorAll('.m-expert .xp-table tbody tr').length,
+      played: [...document.querySelectorAll('.m-expert .xp-table tbody small')].map(e => e.textContent.trim()),
+      lines: [...document.querySelectorAll('.m-expert .xp-why > p b')].map(e => e.textContent.trim()),
+    }));
+    if (!why.rows || String(why.played) !== 'gespeeld' || String(why.lines) !== 'Normaal:,Sterk:,Tip:') throw new Error(`reasoning ${JSON.stringify(why)}`);
+    await checkOverflow(P, 'reasoning');
+    const pick = await P.page.$('.m-expert .rp-pick');
+    if (pick) {
+      await pressEl(P, pick);
+      await waitFor(P, () => /Jouw keuze: /.test(document.querySelector('.m-expert .rp-own')?.textContent) && document.querySelector('.m-expert .rp-mine'), { label: 'own choice' });
+    }
+    await press(P, '.m-expert .xp-fb summary');
+    await type(P, '.m-expert .fb-text', 'Waarom deze kaart?');
+    await press(P, '.m-expert .fb .btn');
+    await waitFor(P, () => document.querySelector('.m-expert .fb-status')?.textContent === 'Bewaard.', { label: 'comment kept' });
+    const sent = await P.page.evaluate(() => window.__kj.sent.filter(m => m.t === 'feedback' || m.t === 'why' || m.t === 'mark'));
+    const fb = sent.find(m => m.t === 'feedback');
+    if (fb?.hand !== 3 || !(fb.trick >= 1) || !(fb.seat >= 0) || !sent.some(m => m.t === 'why' && m.seat === fb.seat && m.trick === fb.trick)) throw new Error(`sent ${JSON.stringify(sent)}`);
+    await P.page.keyboard.press('Escape');
+
+    await playUntil(P, () => !!document.querySelector('.m-summary.open'), { ready: false, label: 'the summary' });
+    const foot = await P.page.$$eval('.m-summary .sum-foot button', els => els.map(e => e.textContent.trim()));
+    if (!foot.includes('Naar de uitslag') || !foot.includes('Dit potje terugkijken')) throw new Error(`summary buttons ${foot}`);
+    await press(P, '.m-summary .btn-go');
+    await waitFor(P, () => document.querySelector('.m-over.open'), { label: 'game over' });
+    const over = await P.page.$$eval('.m-over .btn-col button', els => els.filter(e => !e.hidden).map(e => e.textContent.trim()));
+    if (over.some(t => t.includes('Spelers of regels')) || !over.includes('Potjes terugkijken')) throw new Error(`game over buttons ${over}`);
+  });
+};
+
 // Snel spelen with the last chosen options, named in its subtitle; it goes
 // from home straight to the table without a lobby frame.
 CHECKS.quick = async browser => {

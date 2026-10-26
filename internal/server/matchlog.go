@@ -42,9 +42,11 @@ func (r *room) logPlayerAt(i game.Seat) logPlayer {
 	return p
 }
 
-// logMatch records a match that starts, with its seed and players.
+// logMatch records a match that starts, with the version of the server,
+// its seed and players.
 func (r *room) logMatch() {
-	rec := logMatch{T: "match", Match: r.matchID, Room: r.code, At: time.Now().UTC(), Seed: r.seed, Training: r.training, Opts: r.opts}
+	rec := logMatch{T: "match", Match: r.matchID, Room: r.code, At: time.Now().UTC(), Version: r.srv.cfg.Version, Seed: r.seed,
+		Training: r.training, Expert: r.expert, Opts: r.opts}
 	for i := range r.players() {
 		rec.Players = append(rec.Players, r.logPlayerAt(game.Seat(i)))
 	}

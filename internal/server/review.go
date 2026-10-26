@@ -6,7 +6,6 @@ import (
 	"math"
 	"runtime"
 	"slices"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -70,8 +69,7 @@ type review struct {
 	thinks []think // how long each decision took (see timeChoice)
 	logged bool    // the complete review is in the game log
 
-	marks     map[[2]int]choiceJSON // the player's own choices by hand and trick (cmdMark)
-	feedbackN int                   // feedback lines given (cmdFeedback)
+	feedbackN int // feedback lines given (cmdFeedback)
 }
 
 // think is how long a human took over one decision, from the turn opening.
@@ -130,15 +128,6 @@ type reviewState struct {
 	Speed  *speedState  `json:"speed"`  // null when no decision was timed
 	Replay []replayHand `json:"replay"` // the finished hands of the match
 	Seed   uint64       `json:"seed"`   // of the match (design §3)
-	Marks  []markJSON   `json:"marks"`  // the player's own choices, given while looking back
-}
-
-// markJSON is the player's own choice for the decision in hand Hand,
-// trick Trick (0: the trump choice or bid): one of card, suit or play.
-type markJSON struct {
-	Hand  int `json:"hand"`
-	Trick int `json:"trick"`
-	choiceJSON
 }
 
 // speedState is how fast the player decided (design §7): times in ms.
@@ -158,13 +147,16 @@ type speedSum struct {
 	Total  int `json:"total"`  // ms: the time the table waited for these decisions
 }
 
-// replayHand is a finished hand as the replay shows it: the cards dealt to
-// each seat, sorted as in a hand under its trump, the tricks, and per trick
-// the cards the player could play in it (for a mark of their own).
+// replayHand is a hand as the replay shows it (handReplay): its number,
+// the cards dealt to each seat, sorted as in a hand under its trump, and
+// the tricks. An expert match adds the decisions before the first card
+// and, per card played, the cards its player could play (for a mark).
 type replayHand struct {
+	Hand   int            `json:"hand"`
 	Cards  [4][]game.Card `json:"cards"`
 	Tricks []game.Trick   `json:"tricks"`
-	Legal  [][]game.Card  `json:"legal"`
+	Pre    []preJSON      `json:"pre,omitempty"`
+	Legal  [][]game.Card  `json:"legal,omitempty"`
 }
 
 // reviewOf returns the review of human seat i, started when needed (a
@@ -431,13 +423,8 @@ func (r *room) reviewFor(i game.Seat) *reviewState {
 	}
 	out.Strong, out.Missed = r.listed(rv.strong), r.listed(rv.missed)
 	out.Speed = r.speedOf(i)
-	out.Replay = r.replay(i)
+	out.Replay = r.replay()
 	out.Seed = r.seed
-	out.Marks = make([]markJSON, 0, len(rv.marks))
-	for k, m := range rv.marks {
-		out.Marks = append(out.Marks, markJSON{Hand: k[0], Trick: k[1], choiceJSON: m})
-	}
-	slices.SortFunc(out.Marks, func(a, b markJSON) int { return cmp.Or(cmp.Compare(a.Hand, b.Hand), cmp.Compare(a.Trick, b.Trick)) })
 	return out
 }
 
@@ -479,148 +466,33 @@ func (r *room) speedOf(i game.Seat) *speedState {
 	return sp
 }
 
-// replay is every finished hand of the match for the replay of the review
-// of seat i: a table of four, where every card dealt is played.
-func (r *room) replay(i game.Seat) []replayHand {
-	out := make([]replayHand, len(r.handTricks))
-	for h, tricks := range r.handTricks {
-		out[h].Tricks = tricks
-		for _, t := range tricks {
-			for _, p := range t.Cards {
-				out[h].Cards[p.Seat] = append(out[h].Cards[p.Seat], p.Card)
-			}
-		}
-		for s := range out[h].Cards {
-			out[h].Cards[s] = game.SortHand(out[h].Cards[s], r.scores[h].Trump, true)
-		}
-		out[h].Legal = make([][]game.Card, len(tricks))
-		for t := range tricks {
-			if hand, cur, ok := r.handAt(i, h+1, t+1); ok {
-				out[h].Legal[t] = game.LegalMoves(hand, cur, i, r.scores[h].Trump, r.opts.Rules)
-			}
-		}
+// replay is every finished hand of the match, for the replay of the
+// review (and the expert's).
+func (r *room) replay() []replayHand {
+	out := make([]replayHand, len(r.handDealt))
+	for k := range out {
+		out[k] = r.handReplay(r.firstHand + k)
 	}
 	return out
 }
 
-// handAt is what seat i held before its card in trick t (1–8) of finished
-// hand h (1-based), and the trick so far; false when i played no card in it.
-// At a table of four every card dealt is played, so the hand is the cards i
-// played from trick t on.
-func (r *room) handAt(i game.Seat, h, t int) ([]game.Card, game.Trick, bool) {
-	if h < 1 || h > len(r.handTricks) || t < 1 || t > len(r.handTricks[h-1]) {
-		return nil, game.Trick{}, false
-	}
-	tricks := r.handTricks[h-1]
-	var hand []game.Card
-	for _, tr := range tricks[t-1:] {
-		for _, p := range tr.Cards {
-			if p.Seat == i {
-				hand = append(hand, p.Card)
-			}
-		}
-	}
-	cur := tricks[t-1]
-	at := slices.IndexFunc(cur.Cards, func(p game.Played) bool { return p.Seat == i })
-	if at < 0 {
-		return nil, game.Trick{}, false
-	}
-	return hand, game.Trick{Leader: cur.Leader, Cards: slices.Clone(cur.Cards[:at])}, true
-}
-
-// Limits on what a player adds to their review.
+// Limits on the feedback of a player.
 const (
-	maxOwnMarks    = 200
-	maxFeedback    = 20   // feedback lines per player and match
+	maxFeedback    = 20   // feedback lines per player and match (maxExpertFeedback for the expert)
 	maxFeedbackLen = 2000 // characters
 )
 
-// cmdMark sets or clears the player's own choice for one of their
-// decisions (design §7 mark): a legal card for a card they played, a suit
-// for a trump choice they made, spelen or passen for a bid they gave. The
-// mark goes to the game log, and the review shows it.
-func (r *room) cmdMark(c *client, i game.Seat, m *inMsg) {
-	rv := r.seats[i].review
-	if r.phase != phaseGameOver || rv == nil || m.Hand == nil || m.Trick == nil {
-		c.sendError(errInvalid, "Je eigen keuze geef je in de spelanalyse, na het spel.")
-		return
-	}
-	h, t := *m.Hand, *m.Trick
-	if h < 1 || h > len(r.handTricks) {
-		c.sendError(errInvalid, "Dat potje bestaat niet.")
-		return
-	}
-	var mark, played choiceJSON
-	switch {
-	case t >= 1:
-		hand, cur, ok := r.handAt(i, h, t)
-		if !ok {
-			c.sendError(errInvalid, "In die slag speelde je geen kaart.")
-			return
-		}
-		pc := r.handTricks[h-1][t-1].Cards[len(cur.Cards)].Card
-		played.Card = &pc
-		if m.Card != "" {
-			card, err := game.ParseCard(m.Card)
-			if err != nil || !slices.Contains(game.LegalMoves(hand, cur, i, r.scores[h-1].Trump, r.opts.Rules), card) {
-				c.sendError(errInvalid, "Die kaart mocht je daar niet spelen.")
-				return
-			}
-			mark.Card = &card
-		}
-	case t == 0 && m.Suit != "" || t == 0 && m.Play == nil && r.scores[h-1].TrumpBy == i:
-		if r.scores[h-1].TrumpBy != i {
-			c.sendError(errInvalid, "In dat potje koos je geen troef.")
-			return
-		}
-		trump := r.scores[h-1].Trump
-		played.Suit = &trump
-		if m.Suit != "" {
-			s, err := game.ParseSuit(m.Suit)
-			if err != nil {
-				c.sendError(errInvalid, "Kies een kleur: klaveren, ruiten, harten of schoppen.")
-				return
-			}
-			mark.Suit = &s
-		}
-	case t == 0:
-		// The bid's token in acts, "<seat>b1" or "<seat>b0" (actToken);
-		// the padding makes the found index that of the token in acts.
-		at := strings.Index(" "+r.handActs[h-1]+" ", " "+strconv.Itoa(int(i))+"b")
-		if at < 0 {
-			c.sendError(errInvalid, "In dat potje bood je niet.")
-			return
-		}
-		p := r.handActs[h-1][at+2] == '1'
-		played.Play = &p
-		mark.Play = m.Play
-	default:
-		c.sendError(errInvalid, "Die slag bestaat niet.")
-		return
-	}
-	key := [2]int{h, t}
-	if mark == (choiceJSON{}) {
-		delete(rv.marks, key)
-	} else {
-		if _, ok := rv.marks[key]; !ok && len(rv.marks) >= maxOwnMarks {
-			c.sendError(errLimit, "Je hebt al genoeg zetten van een eigen keuze voorzien.")
-			return
-		}
-		if rv.marks == nil {
-			rv.marks = make(map[[2]int]choiceJSON)
-		}
-		rv.marks[key] = mark
-	}
-	r.srv.games.write(logMark{T: "mark", Match: r.matchID, At: time.Now().UTC(), Seat: int(i), Name: r.displayName(i),
-		Hand: h, Trick: t, Mark: mark, Played: &played})
-	r.resync(c, i)
-}
-
-// cmdFeedback keeps a player's free text about the game, or about one
-// situation of it (hand, trick), in the game log (design §7 feedback).
+// cmdFeedback keeps a player's free text about the game in the game log
+// (design §7 feedback), at game over with a review. The expert gives it
+// while the match runs too, also about one decision of it (hand, trick
+// and seat).
 func (r *room) cmdFeedback(c *client, i game.Seat, m *inMsg) {
 	rv := r.seats[i].review
-	if r.phase != phaseGameOver || rv == nil {
+	limit := maxFeedback
+	switch {
+	case r.expert && r.phase != phaseLobby && rv != nil:
+		limit = maxExpertFeedback
+	case r.phase != phaseGameOver || rv == nil:
 		c.sendError(errInvalid, "Een opmerking geef je bij de spelanalyse, na het spel.")
 		return
 	}
@@ -629,15 +501,18 @@ func (r *room) cmdFeedback(c *client, i game.Seat, m *inMsg) {
 		c.sendError(errInvalid, "Schrijf eerst wat je kwijt wilt.")
 		return
 	}
-	if rv.feedbackN >= maxFeedback {
+	if rv.feedbackN >= limit {
 		c.sendError(errLimit, "Je hebt al genoeg opmerkingen gegeven bij dit spel.")
 		return
 	}
 	rv.feedbackN++
 	rec := logFeedback{T: "feedback", Match: r.matchID, At: time.Now().UTC(), Seat: int(i), Name: r.displayName(i),
 		IP: c.ip, Device: c.device, Text: text}
-	if m.Hand != nil && m.Trick != nil && *m.Hand >= 1 && *m.Hand <= len(r.handTricks) && *m.Trick >= 0 && *m.Trick <= 8 {
-		rec.Hand, rec.Trick = *m.Hand, *m.Trick
+	if h, t, seat, ok := decisionArgs(i, m); r.expert && ok && seat.ValidFor(r.players()) && t >= 0 && t <= 8 {
+		if _, _, found := r.handData(h); found {
+			by := int(seat)
+			rec.Hand, rec.Trick, rec.By = h, t, &by
+		}
 	}
 	r.srv.games.write(rec)
 	c.send(mustJSON(savedMsg{T: "saved", What: "feedback"}))
@@ -671,8 +546,8 @@ func (r *room) listed(all []moment) []moment {
 	})
 	for k := range out {
 		m := &out[k]
-		if m.Trick > 0 && m.Hand-1 < len(r.handTricks) && m.Trick-1 < len(r.handTricks[m.Hand-1]) {
-			t := r.handTricks[m.Hand-1][m.Trick-1]
+		if h := m.Hand - r.firstHand; m.Trick > 0 && h >= 0 && h < len(r.handTricks) && m.Trick-1 < len(r.handTricks[h]) {
+			t := r.handTricks[h][m.Trick-1]
 			m.Table = &t
 		}
 	}

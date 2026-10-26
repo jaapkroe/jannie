@@ -64,6 +64,31 @@ type Outcome struct {
 	NatUs, NatThem float64
 }
 
+// Explanation is the engine's reasoning for one decision, for the expert
+// mode (see bot.Explanation): the rule-based choice of normaal and its
+// reason, the choices of sterk and of the hint, and the value of every
+// option.
+type Explanation struct {
+	Normaal  Choice
+	Rule     string // a card: the hint text of the rule that chose it
+	Sterk    Choice
+	Hint     Choice
+	HintText string
+	Worlds   int // deals sampled per option; 0 without a search
+	Options  []Option
+}
+
+// Option is what the search found one option worth (see bot.Option):
+// Value is the expected score difference, SE the standard error of its
+// difference with the best option, Parts a card's value per part (points
+// in its trick and later, roem in its trick and later, nat and pit).
+type Option struct {
+	Choice
+	Value, SE float64
+	Outcome
+	Parts []float64
+}
+
 // ChatEvent is something a bot may comment on (see bot.ChatEvent).
 type ChatEvent struct {
 	Kind            string
@@ -87,6 +112,9 @@ type AI interface {
 	// end of the match.
 	Grade(v game.View, c Choice) Grade
 	HandLuck(v game.View) float64
+	// Explain gives the reasoning for the decision of the player of v, on
+	// their turn, for the expert mode.
+	Explain(v game.View) Explanation
 	ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
 	Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
 }

@@ -17,10 +17,11 @@ import (
 	"klaverjas/internal/game"
 )
 
-// TestGameLog plays a match of two people with the game log on, then marks
-// their own choices and gives feedback, and reads the log back: the match
-// with its seed and who played, every hand with its cards and moves, the
-// end, both reviews, the marks and the feedback (design §6 Game log).
+// TestGameLog plays a match of two people with the game log on, then gives
+// feedback, and reads the log back: the match with its seed and who
+// played, every hand with its cards and moves, the end, both reviews and
+// the feedback (design §6 Game log). Outside the expert mode a player
+// gives no choices of their own and no feedback about one situation.
 func TestGameLog(t *testing.T) {
 	dir := t.TempDir()
 	srv, ts := newTestServerWith(t, newGradeAI(false), func(s *Server) {
@@ -34,59 +35,21 @@ func TestGameLog(t *testing.T) {
 	host.send(map[string]any{"t": "start"})
 	playGame(t, rand.New(rand.NewPCG(21, 22)), 4, host, guest)
 	s := host.waitState("the review", func(s *state) bool { return s.Review != nil && !s.Review.Pending })
-	if s.Review.Seed != 4242 {
-		t.Errorf("review seed %d, want 4242", s.Review.Seed)
+	// The seed is in the chat from the start.
+	start := "Spel (4242) begint: 4 potjes, Utrechts/Amsterdams. Veel plezier!"
+	if !slices.ContainsFunc(guest.chats, func(m chatMsg) bool { return m.Sys && m.Text == start }) {
+		t.Errorf("no start line with the seed in %+v", guest.chats)
 	}
-
-	// The host's own choice: another legal card, then an illegal one.
-	rh := s.Review.Replay[0]
-	var trick int
-	var own, played game.Card
-	for k, legal := range rh.Legal {
-		at := slices.IndexFunc(rh.Tricks[k].Cards, func(p game.Played) bool { return p.Seat == game.Seat(host.seat) })
-		if len(legal) > 1 && at >= 0 {
-			trick, played = k+1, rh.Tricks[k].Cards[at].Card
-			own = legal[0]
-			if own == played {
-				own = legal[1]
-			}
-			break
-		}
+	if s.Review.Seed != 4242 || s.Expert != nil {
+		t.Errorf("review seed %d, want 4242; expert %+v", s.Review.Seed, s.Expert)
 	}
-	if trick == 0 {
-		t.Fatal("no trick in hand 1 with a choice for the host")
-	}
-	host.send(map[string]any{"t": "mark", "hand": 1, "trick": trick, "card": own.String()})
-	s = host.waitState("the mark", func(s *state) bool { return s.Review != nil && len(s.Review.Marks) == 1 })
-	if m := s.Review.Marks[0]; m.Hand != 1 || m.Trick != trick || m.Card == nil || *m.Card != own {
-		t.Errorf("mark %+v, want %v in trick %d", m, own, trick)
-	}
-	var illegal game.Card
-	for _, c := range rh.Cards[(host.seat+1)%4] {
-		illegal = c // another seat's card: never in the host's hand
-		break
-	}
-	host.send(map[string]any{"t": "mark", "hand": 1, "trick": trick, "card": illegal.String()})
+	played := s.Review.Replay[0].Tricks[0].Cards[0]
+	host.send(map[string]any{"t": "mark", "hand": 1, "trick": 1, "seat": int(played.Seat), "card": played.Card.String()})
 	host.waitError(errInvalid)
-	host.send(map[string]any{"t": "mark", "hand": 9, "trick": 1, "card": own.String()})
+	host.send(map[string]any{"t": "why", "hand": 1, "trick": 1})
 	host.waitError(errInvalid)
-	// A trump choice the host made, if any: a suit of their own.
-	suitMarked := false
-	for h, row := range s.Scores {
-		if row.TrumpBy == game.Seat(host.seat) {
-			host.send(map[string]any{"t": "mark", "hand": h + 1, "trick": 0, "suit": "S"})
-			host.waitState("the suit mark", func(s *state) bool { return len(s.Review.Marks) == 2 })
-			suitMarked = true
-			break
-		}
-	}
-	// Clearing the card mark.
-	host.send(map[string]any{"t": "mark", "hand": 1, "trick": trick})
-	host.waitState("the mark cleared", func(s *state) bool {
-		return !slices.ContainsFunc(s.Review.Marks, func(m markJSON) bool { return m.Hand == 1 && m.Trick == trick })
-	})
 
-	host.send(map[string]any{"t": "feedback", "text": "Mooi spel.\n\nMaar  ♠A\tdaar?", "hand": 1, "trick": trick})
+	host.send(map[string]any{"t": "feedback", "text": "Mooi spel.\n\nMaar  ♠A\tdaar?", "hand": 1, "trick": 2})
 	host.waitType("saved")
 	guest.send(map[string]any{"t": "feedback", "text": "   "})
 	guest.waitError(errInvalid)
@@ -99,11 +62,7 @@ func TestGameLog(t *testing.T) {
 	for _, r := range recs {
 		kinds[r["t"].(string)]++
 	}
-	wantMarks := 2 // the card mark and its clearing
-	if suitMarked {
-		wantMarks = 3
-	}
-	if kinds["match"] != 1 || kinds["hand"] != 4 || kinds["end"] != 1 || kinds["review"] != 2 || kinds["mark"] != wantMarks || kinds["feedback"] != 2 {
+	if kinds["match"] != 1 || kinds["hand"] != 4 || kinds["end"] != 1 || kinds["review"] != 2 || kinds["mark"] != 0 || kinds["feedback"] != 2 {
 		t.Errorf("records %v", kinds)
 	}
 	for _, r := range recs {
@@ -111,7 +70,7 @@ func TestGameLog(t *testing.T) {
 		case "match":
 			var m logMatch
 			remarshal(t, r, &m)
-			if m.Seed != 4242 || m.Room != host.code || m.Opts.Seed != 4242 || len(m.Players) != 4 {
+			if m.Seed != 4242 || m.Room != host.code || m.Opts.Seed != 4242 || len(m.Players) != 4 || m.Expert || m.Version != "dev" {
 				t.Errorf("match record %+v", m)
 			}
 			for _, p := range m.Players {
@@ -145,7 +104,7 @@ func TestGameLog(t *testing.T) {
 		case "feedback":
 			var f logFeedback
 			remarshal(t, r, &f)
-			if f.Name == "Host" && (f.Text != "Mooi spel.\nMaar ♠A daar?" || f.Hand != 1 || f.Trick != trick || f.Device != "klaverjas-test/1.0") {
+			if f.Name == "Host" && (f.Text != "Mooi spel.\nMaar ♠A daar?" || f.Hand != 0 || f.Trick != 0 || f.By != nil || f.Device != "klaverjas-test/1.0") {
 				t.Errorf("feedback record %+v", f)
 			}
 		}
@@ -248,47 +207,6 @@ func TestGameLogClosed(t *testing.T) {
 	var none *gameLog
 	none.write(logEnd{T: "end"})
 	none.close()
-}
-
-// TestMarkBid: a bid of the player's can get a mark of their own (here
-// passen, where seat 3 played); someone who did not bid in that hand cannot
-// mark one.
-func TestMarkBid(t *testing.T) {
-	dir := t.TempDir()
-	s, _, _ := newTestServer(t, func(s *Server) { s.games = newGameLog(dir, s.log) })
-	r := newRoom(s, "TEST")
-	defer r.stop()
-	for i := range 4 {
-		r.seats[i] = newHuman(string(rune('A' + i)))
-	}
-	r.phase = phaseGameOver
-	r.matchID = "m1"
-	r.handTricks = [][]game.Trick{{}}
-	r.handActs = []string{"1b0 2b0 3b1 3tH"}
-	r.scores = []scoreRow{{Hand: 1, Trump: game.Hearts, TrumpBy: 3}}
-	hand, trick, play := 1, 0, false
-	for _, seat := range []game.Seat{3, 0} {
-		c := newClient(s, nil, "1.2.3.4", "test")
-		r.reviewOf(seat)
-		r.cmdMark(c, seat, &inMsg{Hand: &hand, Trick: &trick, Play: &play})
-		got := r.seats[seat].review.marks[[2]int{1, 0}]
-		if seat == 3 && (got.Play == nil || *got.Play) {
-			t.Errorf("seat 3 played and marks passen: %+v", got)
-		}
-		if seat == 0 && got != (choiceJSON{}) {
-			t.Errorf("seat 0 did not bid, yet marks %+v", got)
-		}
-	}
-	s.games.close()
-	recs := readGameLog(t, filepath.Join(dir, "games-"+time.Now().UTC().Format("2006-01")+".jsonl"))
-	if len(recs) != 1 || recs[0]["t"] != "mark" {
-		t.Fatalf("log %v", recs)
-	}
-	var m logMark
-	remarshal(t, recs[0], &m)
-	if m.Seat != 3 || m.Played == nil || m.Played.Play == nil || !*m.Played.Play || m.Mark.Play == nil || *m.Mark.Play {
-		t.Errorf("mark record %+v (played %+v)", m, m.Played)
-	}
 }
 
 // TestGameLogRetention: the writer keeps the current month and the eleven

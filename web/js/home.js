@@ -36,7 +36,7 @@ const OPTS = [
   { key: 'seed', label: 'Seed', input: true, choices: [],
     info: ['Leeg: elke partij krijgt nieuwe kaarten.',
       'Met een getal (1 tot 999999999) krijg je bij dezelfde spelregels dezelfde kaarten, ook bij Nog een partij. Zo speel je een partij nog eens, of dezelfde kaarten als iemand anders.',
-      'De seed van een partij staat in de spelanalyse.'] },
+      'De seed van een partij staat bij de start in de chat, en in de spelanalyse.'] },
 ];
 
 const LABELS = Object.fromEntries(OPTS.map(o => [o.key, Object.fromEntries(o.choices)]));
@@ -67,12 +67,18 @@ function optionsForm(opts, onChange, keys = OPTS.map(o => o.key)) {
 
 // The seed: digits only, at most nine; empty (null) is a new seed per match.
 function seedField(value, fn) {
+  return numberField(value, fn, { max: 999999999, placeholder: 'Willekeurig', label: 'Seed' });
+}
+
+// A whole number from 1 to max, or empty (null).
+function numberField(value, fn, { max, placeholder, label }) {
+  const digits = String(max).length;
   const el = h('input', {
-    type: 'text', inputMode: 'numeric', class: 'field seed-field', maxLength: 9, placeholder: 'Willekeurig',
-    value: value ? String(value) : '', autocomplete: 'off', enterKeyHint: 'done', 'aria-label': 'Seed',
+    type: 'text', inputMode: 'numeric', class: 'field seed-field', maxLength: digits, placeholder,
+    value: value ? String(value) : '', autocomplete: 'off', enterKeyHint: 'done', 'aria-label': label,
   });
   el.addEventListener('change', () => {
-    const n = Number(el.value.replace(/\D/g, '').slice(0, 9)) || 0;
+    const n = Math.min(max, Number(el.value.replace(/\D/g, '').slice(0, digits)) || 0);
     el.value = n ? String(n) : '';
     fn(n || null);
   });
@@ -194,7 +200,7 @@ export function init() {
   root.querySelector('.home-inner').append(E.card,
     h('footer', { class: 'home-foot' },
       h('span', { text: 'Klaverjassen zoals in het café.' }),
-      h('small', { class: 'home-ver', text: `Versie ${versionText(document.querySelector('meta[name="version"]')?.content)}` })),
+      h('small', { class: 'home-ver', text: `Versie ${versionText(document.querySelector('meta[name="version"]')?.content)}`, onclick: versionTap })),
   );
   E.lobby = document.getElementById('lobby');
   buildLobby();
@@ -318,6 +324,59 @@ function openTraining() {
         m.close(true);
         app.create({ opts, training: true, start: true, name: soloName() });
       } }, 'Start oefenspel')),
+    ],
+  });
+}
+
+// ---------- expert ----------
+
+// The expert mode (design §9 Expert) has no button: five quick taps on the
+// version under the home screen open it.
+const EGG_TAPS = 5;
+const EGG_GAP_MS = 1500;
+let taps = 0;
+let tapAt = 0;
+
+function versionTap() {
+  const now = performance.now();
+  taps = now - tapAt < EGG_GAP_MS ? taps + 1 : 1;
+  tapAt = now;
+  if (taps < EGG_TAPS) return;
+  taps = 0;
+  openExpert();
+}
+
+// A game alone against three bots with the cards of a seed: the whole
+// match, or one hand of it (from). The choices stay on the device
+// (kj.expert), the seed too.
+function openExpert() {
+  sound.unlock();
+  sound.play('click');
+  const opts = { ...DEFAULTS, open: false, seed: null, from: null, ...store.json('expert', {}) };
+  delete opts.players;
+  const save = () => store.setJSON('expert', opts);
+  const open = h('input', { type: 'checkbox', checked: !!opts.open, onchange: e => { opts.open = e.target.checked; save(); } });
+  const showHands = () => { form.querySelector('[data-key="hands"]').hidden = !!opts.from; };
+  const form = optionsForm(opts, (k, v) => { opts[k] = v; save(); }, ['seed', 'hands', 'trumpMode', 'rules', 'signals', 'ai', 'tempo']);
+  form.querySelector('[data-key="seed"]').after(h('div', { class: 'opt-row', dataset: { key: 'from' } },
+    h('div', { class: 'opt-lbl' }, h('span', { text: 'Potje' }), panels.infoBtn('Potje', [
+      'Leeg: het hele spel.',
+      'Met een nummer speel je alleen dat potje van de seed: dezelfde kaarten en dezelfde gever als in het hele spel.',
+      'De seed staat bij de start van elk spel in de chat, het nummer van een potje op het scorebord.',
+    ])),
+    numberField(opts.from, v => { opts.from = v; save(); showHands(); }, { max: 24, placeholder: 'Hele spel', label: 'Potje' })));
+  showHands();
+  const m = panels.openModal({
+    id: 'expert', title: 'Expert', cls: 'm-sheet m-train', body: [
+      h('p', { class: 'sheet-note', text: 'Speel een spel opnieuw met de seed, of één potje ervan, tegen drie AI-spelers. Tijdens en na het spel kijk je elk potje kaart voor kaart terug: bij elke kaart, troefkeuze of elk bod zie je de redenering van de AI, geef je je eigen keuze en schrijf je commentaar.' }),
+      h('label', { class: 'set-row' },
+        h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
+        h('span', { class: 'switch' }, open, h('i'))),
+      form,
+      h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-expert-go', onclick: () => {
+        m.close(true);
+        app.create({ opts: { ...opts, players: 4 }, expert: true, start: true, name: soloName() });
+      } }, 'Start expertspel')),
     ],
   });
 }

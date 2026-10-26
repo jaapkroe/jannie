@@ -28,6 +28,7 @@ type fakeAI struct {
 	greets    atomic.Int64
 	graded    atomic.Int64
 	lucked    atomic.Int64
+	reasoned  atomic.Int64
 }
 
 var fakePersonas = []Persona{
@@ -88,6 +89,39 @@ func (a *fakeAI) Grade(v game.View, c Choice) Grade {
 func (a *fakeAI) HandLuck(v game.View) float64 {
 	a.lucked.Add(1)
 	return 3
+}
+
+// Explain names the advised option as everyone's choice and values every
+// legal card, suit or bid at 0 but the advised one at 10.
+func (a *fakeAI) Explain(v game.View) Explanation {
+	a.reasoned.Add(1)
+	adv := a.Advise(v)
+	a.advised.Add(-1)
+	c := Choice{Card: adv.Card, Suit: adv.Suit, Play: adv.Play}
+	e := Explanation{Normaal: c, Sterk: c, Hint: c, HintText: adv.Text, Worlds: 1}
+	opt := func(o Choice, best bool) Option {
+		if best {
+			return Option{Choice: o, Value: 10, Outcome: Outcome{Us: 10}}
+		}
+		return Option{Choice: o, SE: 1}
+	}
+	switch v.Phase {
+	case game.PhasePlay:
+		e.Rule = adv.Text
+		for k := range v.Legal {
+			e.Options = append(e.Options, opt(Choice{Card: &v.Legal[k]}, v.Legal[k] == *adv.Card))
+		}
+	case game.PhaseTrump:
+		for s := game.Suit(0); s < game.NumSuits; s++ {
+			if !(v.Forced && s == v.Turned) {
+				e.Options = append(e.Options, opt(Choice{Suit: &s}, s == *adv.Suit))
+			}
+		}
+	case game.PhaseBid:
+		yes, no := true, false
+		e.Options = []Option{opt(Choice{Play: &yes}, false), opt(Choice{Play: &no}, true)}
+	}
+	return e
 }
 
 func (a *fakeAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
@@ -285,6 +319,7 @@ type msg struct {
 
 	ev    map[string]any
 	state *state
+	raw   []byte // the whole message
 }
 
 func (m *msg) evType() string {
@@ -358,7 +393,7 @@ func dialErr(ts *httptest.Server, ip string) (*tclient, error) {
 				close(c.in)
 				return
 			}
-			m := &msg{}
+			m := &msg{raw: data}
 			if err := json.Unmarshal(data, m); err != nil {
 				c.errc <- fmt.Errorf("bad message %s: %w", data, err)
 				close(c.in)

@@ -12,10 +12,11 @@ type inMsg struct {
 	Name     string          `json:"name"`
 	Opts     json.RawMessage `json:"opts"`
 	Training bool            `json:"training"`
+	Expert   bool            `json:"expert"`
 	Start    bool            `json:"start"`
 	Code     string          `json:"code"`
 	Token    string          `json:"token"`
-	Seat     *int            `json:"seat"`
+	Seat     *int            `json:"seat"` // also mark, why, feedback (expert): whose decision; default your own
 	ID       string          `json:"id"`
 	Suit     string          `json:"suit"`
 	Play     *bool           `json:"play"`
@@ -25,8 +26,37 @@ type inMsg struct {
 	Text     string          `json:"text"`
 	AI       *bool           `json:"ai"`
 	Left     *bool           `json:"left"`  // vote, optional: the question it answers is about a seat its player left
-	Hand     *int            `json:"hand"`  // mark, feedback: the hand (1-based)
-	Trick    *int            `json:"trick"` // mark, feedback: the trick (1–8; 0: the trump choice or bid)
+	Hand     *int            `json:"hand"`  // mark, why, feedback: the hand (its number)
+	Trick    *int            `json:"trick"` // mark, why, feedback: the trick (1–8; 0: the trump choice or bid)
+}
+
+// whyMsg is the engine's reasoning for one decision (expert): see
+// cmdWhy.
+type whyMsg struct {
+	T        string       `json:"t"` // "why"
+	Hand     int          `json:"hand"`
+	Trick    int          `json:"trick"`
+	Seat     game.Seat    `json:"seat"`
+	Played   *choiceJSON  `json:"played"` // null: the decision awaited now
+	Normaal  choiceJSON   `json:"normaal"`
+	Rule     string       `json:"rule"`
+	Sterk    choiceJSON   `json:"sterk"`
+	Hint     choiceJSON   `json:"hint"`
+	HintText string       `json:"hintText"`
+	Worlds   int          `json:"worlds"`
+	Options  []optionJSON `json:"options"`
+}
+
+// optionJSON is one option of an explanation, rounded to tenths.
+type optionJSON struct {
+	choiceJSON
+	Value   float64   `json:"value"`
+	SE      float64   `json:"se"`
+	Us      float64   `json:"us"`
+	Them    float64   `json:"them"`
+	NatUs   float64   `json:"natUs"`   // share of deals
+	NatThem float64   `json:"natThem"` // share of deals
+	Parts   []float64 `json:"parts,omitempty"`
 }
 
 // savedMsg confirms that something the player sent was kept (feedback).
@@ -203,6 +233,7 @@ type state struct {
 	Phase       string              `json:"phase"`
 	Opts        Options             `json:"opts"`
 	Training    bool                `json:"training"`
+	Expert      *expertState        `json:"expert"`
 	You         int                 `json:"you"`
 	Host        int                 `json:"host"`
 	Roster      []rosterEntry       `json:"roster,omitempty"`

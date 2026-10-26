@@ -35,6 +35,13 @@ interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
   percentage for their own choices, judged by the strongest bot from what
   they knew at the time, how good their cards were, and the moves that
   gained or left the most points, each with its trick.
+- **Expert mode**, behind an easter egg (five taps on the version under the
+  home screen): replay a game, or one hand of it, from its seed (the chat
+  names it at the start of every game), step through every card of every
+  hand while it is played and after, ask the engine's reasoning for any
+  seat's decision (the rule, the hint and the value of every option), and
+  give your own choice and a comment, kept in the game log to improve the
+  bots.
 - **Handleiding**: the controls, the rules (also for two and three players),
   card values, roem, signals (*seinen*, also called *voorkaarten*), tips and a
   glossary.
@@ -72,7 +79,7 @@ node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     #
 node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
 node app-play.mjs ... --players 3 | --players 2                                  # the auction and laying away; the piles
 node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at six sizes, into test/ui/out/
-node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 28 behaviour checks (coach, taps, back button, lost socket, full table, takeover vote, summary on a phone, card corners…); needs -fast, ~15 min
+node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 29 behaviour checks (coach, taps, back button, lost socket, full table, takeover vote, summary on a phone, card corners, expert mode…); needs -fast, ~15 min
 node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image
 ```
 

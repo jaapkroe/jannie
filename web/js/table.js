@@ -104,7 +104,8 @@ function buildTopbar(bar) {
     E.badgeSym = h('span', { class: 'tb-sym', text: '?' }),
     E.badgeLbl = h('span', { class: 'tb-lbl', text: 'Troef' }));
   bar.append(E.pill, E.potje, E.badge, h('span', { class: 'spacer' }),
-    ...panels.toolButtons(['last', 'score', 'chat', 'help', 'settings', 'sound', 'menu']));
+    ...panels.toolButtons(['expert', 'last', 'score', 'chat', 'help', 'settings', 'sound', 'menu']));
+  E.expert = bar.querySelector('.tb-expert');
 }
 
 function buildSeat(pos) {
@@ -184,6 +185,7 @@ function renderTop(s) {
     setScoreNames(g.names, s, k);
   });
   E.pill.classList.toggle('three', order.length === 3);
+  E.expert.hidden = !s.expert;
   E.potjeN.textContent = s.handNo || 1;
   E.potjeT.textContent = s.hands || s.opts?.hands || 16;
 

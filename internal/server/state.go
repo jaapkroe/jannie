@@ -13,6 +13,7 @@ func (r *room) stateFor(i game.Seat) *state {
 		Phase:       r.phase,
 		Opts:        r.opts,
 		Training:    r.training,
+		Expert:      r.expertFor(),
 		You:         int(i),
 		Host:        int(r.host),
 		HandNo:      r.handNo,
@@ -127,7 +128,7 @@ func (r *room) stateFor(i game.Seat) *state {
 			s.Hint = r.hintFor(i)
 		}
 	}
-	if r.training && r.opts.Open {
+	if (r.training || r.expert) && r.opts.Open {
 		var all [4][]game.Card
 		for k := range all {
 			all[k] = game.SortHand(d.Hand(game.Seat(k)), trump, known)
