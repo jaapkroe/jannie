@@ -143,13 +143,45 @@ func TestTeachPick(t *testing.T) {
 	tab = tableFromView(&v)
 	m = newMover(&tab, v.Seat, setOf(v.Hand), setOf(v.Legal), 0.5)
 	pref = m.choose()
-	if pref != card("AH") || !m.fakeSignal(card("7C")) || cheapest(v.Legal, v.Trump) != card("7C") {
+	if pref != card("TH") || !m.fakeSignal(card("7C")) || cheapest(v.Legal, v.Trump) != card("7C") {
 		t.Fatalf("setup: pref %v, ♣7 fake %v, cheapest %v", pref, m.fakeSignal(card("7C")), cheapest(v.Legal, v.Trump))
 	}
-	res := fakeResults(&v, map[string]float64{"KS": 30, "7C": 28, "AH": 22}, 0.5)
+	res := fakeResults(&v, map[string]float64{"KS": 30, "7C": 28, "TH": 22}, 0.5)
 	got, text := teachPick(&v, &tab, &m, res, pref)
 	if got != card("KS") || text != "Speel ♠H: volgens de berekening levert ♠H gemiddeld 2 punten meer op dan ♣7." {
 		t.Errorf("got %v %q, want ♠H with the search's estimate", got, text)
+	}
+}
+
+// TestEquivalentPick: between cards that win and lose alike, the hint and
+// sterk keep the rule-based card unless the search tells them apart: with
+// ♠A and ♠10 the 10 goes first.
+func TestEquivalentPick(t *testing.T) {
+	d := build(t, 0, [4]string{"AS TS 8S 7D 9D 7C 8C 9C", "", "", ""}, game.Hearts, game.Amsterdams, "")
+	v := turnView(d)
+	v.Legal = legalCards(v)
+	tab := tableFromView(&v)
+	m := newMover(&tab, v.Seat, setOf(v.Hand), setOf(v.Legal), 0.5)
+	pref := m.choose()
+	if pref != card("TS") || !m.equivalent(card("AS"), card("TS")) || m.equivalent(card("TS"), card("8S")) {
+		t.Fatalf("setup: pref %v, ♠A ♠10 equivalent %v, ♠10 ♠8 %v", pref, m.equivalent(card("AS"), card("TS")), m.equivalent(card("TS"), card("8S")))
+	}
+	for _, c := range []struct {
+		name    string
+		ace, se float64
+		want    string
+	}{
+		{"within the tolerance", 34, 1, "TS"},
+		{"within two standard errors", 38, 5, "TS"},
+		{"a clear gain", 38, 1, "AS"},
+	} {
+		res := fakeResults(&v, map[string]float64{"AS": c.ace, "TS": 30}, c.se)
+		if got, _ := teachPick(&v, &tab, &m, res, pref); got != card(c.want) {
+			t.Errorf("%s: hint %v, want %v", c.name, got, c.want)
+		}
+		if got := res[sterkPick(&m, res, pref)].card; got != card(c.want) {
+			t.Errorf("%s: sterk %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 

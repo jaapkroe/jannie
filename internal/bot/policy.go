@@ -173,9 +173,9 @@ func (m *mover) lead() game.Card {
 			return top
 		}
 	}
-	// Cash a side boss that will not be trumped. An ace whose 10 is still
-	// out says "ik heb de 10 ook" (aas voorspelen): without the 10 the ace
-	// waits.
+	// Cash a side boss that will not be trumped. With the ace and the 10
+	// the 10 goes first: it wins just as surely, it can still bring roem
+	// (the ace only with the heer and vrouw), and the ace stays on top.
 	var best game.Card
 	bestPts := -1
 	for s := game.Suit(0); s < game.NumSuits; s++ {
@@ -183,8 +183,11 @@ func (m *mover) lead() game.Card {
 			continue
 		}
 		top, ok := m.hand.top(s, trump)
-		if !ok || !m.isBoss(top) || m.oppMayRuff(s) || m.falseAce(top) {
+		if !ok || !m.isBoss(top) || m.oppMayRuff(s) {
 			continue
+		}
+		if ten := tenOf(s); top.Rank == game.Ace && m.hand.has(ten) {
+			top = ten
 		}
 		if p := game.Points(top, trump); p > bestPts {
 			best, bestPts = top, p
@@ -246,12 +249,20 @@ func (m *mover) fakeSignal(c game.Card) bool {
 	return m.t.signalsBoer(m.seat, c) && !m.hand.has(jackOf(m.t.trump))
 }
 
-// falseAce reports whether leading c, a side ace, would say "ik heb de 10
-// ook" (aas voorspelen) while the mover lacks that 10 and an opponent may
-// hold it: the partner would come back to the suit and lose the trick.
+// falseAce reports whether discarding c, a side ace, would say "ik heb de
+// 10 ook" (aas vraagt 10) while the mover lacks that 10 and an opponent
+// may hold it: the partner would come back to the suit and lose the trick.
 func (m *mover) falseAce(c game.Card) bool {
 	ten, ok := m.t.aceSignal(c)
 	return ok && !m.hand.has(ten) && m.oppsMayHold(bit(ten)) != 0
+}
+
+// trueAce reports whether discarding c, a side ace, says truthfully "ik
+// heb de 10 ook" (aas vraagt 10): the 10 then takes over as the highest
+// card of the suit.
+func (m *mover) trueAce(c game.Card) bool {
+	ten, ok := m.t.aceSignal(c)
+	return ok && m.hand.has(ten)
 }
 
 // falseLow reports whether discarding c, a 7, 8 or 9, would say "speel deze
@@ -263,7 +274,7 @@ func (m *mover) falseLow(c game.Card) bool {
 }
 
 // partnerHigh returns the card with which the partner said it holds the
-// highest card of side suit s (aas voorspelen or laag bijspelen), when the
+// highest card of side suit s (aas vraagt 10 or laag bijspelen), when the
 // partner may still hold it and it is still the highest card out: a lead
 // in s is then the partner's trick, unless an opponent trumps it.
 func (m *mover) partnerHigh(s game.Suit) (game.Card, bool) {
@@ -332,9 +343,6 @@ func (m *mover) leadCost(c game.Card) int {
 	}
 	if m.fakeSignal(c) {
 		cost += 15 // partner would read kleintje boer and return trump
-	}
-	if m.falseAce(c) {
-		cost += 15 // partner would read aas voorspelen and come back
 	}
 	if c.Rank != game.Ace && m.hand.has(aceOf(s)) {
 		cost += 30 // do not lead under the own ace
@@ -455,9 +463,14 @@ func (m *mover) smear() game.Card {
 		switch {
 		case c.Suit == trump:
 			score -= m.keepValue(c)
+		case m.trueAce(c):
+			// Aas vraagt 10: the 10 stays to win the trick of the suit.
 		case c.Suit != m.t.led() && m.isBoss(c) && m.unk.inSuit(c.Suit) != 0 && !m.oppMayRuff(c.Suit):
 			// A side boss can still win a trick of its own: keep it.
 			score -= 2*game.Points(c, trump) + 6
+		}
+		if m.falseAce(c) {
+			score -= 15 // partner would read aas vraagt 10 and come back
 		}
 		score -= m.guardPenalty(c)
 		if !found || score > bestScore {

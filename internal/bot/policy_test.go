@@ -1,6 +1,7 @@
 package bot
 
 import (
+	"math"
 	"math/rand/v2"
 	"strings"
 	"testing"
@@ -129,21 +130,27 @@ func TestNormaalScenarios(t *testing.T) {
 			want: "8H",
 		},
 		{
-			name: "aas voorspelen: lead the ace with its 10, keep the bare ace", voorhand: 0, trump: game.Hearts,
-			spec: [4]string{"AD 7D AS TS 8S 7C 8C 9C", "", "", ""},
-			want: "AS",
+			name: "with the ace and the 10, lead the 10 first", voorhand: 0, trump: game.Hearts,
+			spec: [4]string{"AS TS 8S 7D 9D 7C 8C 9C", "", "", ""},
+			want: "TS",
 		},
 		{
-			name: "a bare ace waits, and no lead under it", voorhand: 1, trump: game.Hearts,
+			name: "cash a bare ace: an ace lead says nothing", voorhand: 1, trump: game.Hearts,
 			spec:  [4]string{"AS AD 7D 9S KC QC 7C 8C", "KS", "7S", "8S"},
 			plays: "KS 7S 8S AS",
-			want:  "7C",
+			want:  "AD",
 		},
 		{
-			name: "come back to the suit of partner's aas voorspelen", voorhand: 0, trump: game.Hearts,
-			spec:  [4]string{"AS TS 7D JH 9H 8H 7H KH", "7S 8D", "8S AD QS 7C 8C 9C KD QD", "9S 9D"},
-			plays: "AS 7S 8S 9S 7D 8D AD 9D",
-			want:  "QS",
+			name: "aas vraagt 10: give the ace with its 10 to partner's trick", voorhand: 3, trump: game.Hearts,
+			spec:  [4]string{"AD 8S QS 7C 8C 9C KD QD", "8D", "AS TS 7H 8H 9H JC QC KC", "7D"},
+			plays: "7D AD 8D",
+			want:  "AS",
+		},
+		{
+			name: "come back to the suit of partner's aas vraagt 10", voorhand: 3, trump: game.Hearts,
+			spec:  [4]string{"AD 8S QS 7C 8C 9C KD QD", "8D", "AS TS 7H 8H 9H JC QC KC", "7D"},
+			plays: "7D AD 8D AS",
+			want:  "8S",
 		},
 		{
 			name: "laag bijspelen on partner's trick: discard low where you hold the highest card", voorhand: 2, trump: game.Hearts,
@@ -229,16 +236,29 @@ func TestPlayTexts(t *testing.T) {
 			want: "Trek troef met ♥B: jullie spelen en de boer is de hoogste troef. Haal de troeven van de tegenstanders eruit.",
 		},
 		{
-			name: "aas voorspelen: lead an ace with its 10", trump: game.Hearts,
+			name: "lead an ace with its 10: no signal", trump: game.Hearts,
 			spec: [4]string{"JH 9H 8H AS TS 7C 8C 9C", "", "", ""},
 			card: "AS",
-			want: "Speel ♠A: de aas is de hoogste kaart in schoppen en levert 11 punten op. Je hebt ook ♠10, dus zo weet je maat dat die veilig in schoppen kan terugkomen (aas voorspelen).",
+			want: "Speel ♠A: de aas is de hoogste kaart in schoppen en levert 11 punten op.",
 		},
 		{
 			name: "lead an ace without its 10", trump: game.Hearts,
 			spec: [4]string{"JH 9H 8H AS AD 7C 8C 9C", "", "", ""},
 			card: "AS",
-			want: "Speel ♠A: de aas is de hoogste kaart in schoppen en levert 11 punten op. Let op: je maat kan dit lezen als aas voorspelen (“ik heb ♠10 ook”), maar die heb je niet.",
+			want: "Speel ♠A: de aas is de hoogste kaart in schoppen en levert 11 punten op.",
+		},
+		{
+			name: "the 10 before its ace", trump: game.Hearts,
+			spec: [4]string{"JH 9H 8H AS TS 7C 8C 9C", "", "", ""},
+			card: "TS",
+			want: "Speel ♠10: de hogere schoppen heb je zelf, dus in schoppen kan niemand hier overheen. Daarna is je ♠A de hoogste schoppen.",
+		},
+		{
+			name: "the 10 before its ace: only the 10 can make roem", trump: game.Hearts,
+			spec: [4]string{"JH 9H AS TS KS 7C 8C 9C", "", "", ""},
+			card: "TS",
+			want: "Speel ♠10: de hogere schoppen heb je zelf, dus in schoppen kan niemand hier overheen. " +
+				"Met de 10 kan er nog roem in de slag komen, met de aas niet. Daarna is je ♠A de hoogste schoppen.",
 		},
 		{
 			name: "lead an ace whose 10 has fallen", trump: game.Hearts,
@@ -499,11 +519,35 @@ func TestPlayTexts(t *testing.T) {
 			want:  "Je maat heeft de slag: geef ♠B mee, dat is 2 punten erbij.",
 		},
 		{
-			name: "come back after partner's aas voorspelen", voorhand: 0, trump: game.Hearts,
-			spec:  [4]string{"AS TS 7D JH 9H 8H 7H KH", "7S 8D", "8S AD QS 7C 8C 9C KD QD", "9S 9D"},
-			plays: "AS 7S 8S 9S 7D 8D AD 9D",
-			card:  "QS",
-			want:  "Speel ♠V: je maat kwam uit met ♠A en zei daarmee “ik heb ♠10 ook” (aas voorspelen), dus zo kom je veilig in schoppen terug.",
+			name: "aas vraagt 10 on partner's trick", voorhand: 3, trump: game.Hearts,
+			spec:  [4]string{"AD 8S QS 7C 8C 9C KD QD", "8D", "AS TS 7H 8H 9H JC QC KC", "7D"},
+			plays: "7D AD 8D",
+			card:  "AS",
+			want: "Je maat heeft de slag: spek hem met je ♠A, dat is 11 punten extra. Je hebt ook ♠10, en dat weet je maat nu (aas vraagt 10): " +
+				"zonder de aas is je 10 de hoogste schoppen en kan die nog een slag halen.",
+		},
+		{
+			name: "an ace without its 10 on partner's trick", voorhand: 3, trump: game.Hearts,
+			spec:  [4]string{"AD 8S QS 7C 8C 9C KD QD", "8D", "AS KS 7H 8H 9H JC QC KC", "7D"},
+			plays: "7D AD 8D",
+			card:  "AS",
+			want: "Je maat heeft de slag: spek hem met je ♠A, dat is 11 punten extra. " +
+				"Let op: je maat kan dit lezen als aas vraagt 10 (“ik heb ♠10 ook”), maar die heb je niet.",
+		},
+		{
+			name: "aas vraagt 10 not agreed at this table", voorhand: 3, trump: game.Hearts,
+			spec:  [4]string{"AD 8S QS 7C 8C 9C KD QD", "8D", "AS TS 7H 8H 9H JC QC KC", "7D"},
+			sig:   &game.Signals{KleintjeBoer: true, HoogLaag: true},
+			plays: "7D AD 8D",
+			card:  "AS",
+			want:  "Je maat heeft de slag: spek hem met je ♠A, dat is 11 punten extra.",
+		},
+		{
+			name: "come back after partner's aas vraagt 10", voorhand: 3, trump: game.Hearts,
+			spec:  [4]string{"AD 8S QS 7C 8C 9C KD QD", "8D", "AS TS 7H 8H 9H JC QC KC", "7D"},
+			plays: "7D AD 8D AS",
+			card:  "8S",
+			want:  "Speel ♠8: je maat gooide ♠A bij en zei daarmee “ik heb ♠10 ook” (aas vraagt 10), dus zo speel je schoppen naar je maat toe.",
 		},
 		{
 			name: "play to partner's laag bijspelen", voorhand: 3, trump: game.Hearts,
@@ -810,15 +854,20 @@ func TestKleintjeBoerHonest(t *testing.T) {
 }
 
 // TestSignalsHonest: in self-play the aces and small discards that the
-// table reads as signals (aas voorspelen, laag bijspelen) mostly tell the
-// truth, at normaal and at sterk. The rates back the sampling weights
-// (aceSigHeld, lowSigHeld).
+// table reads as signals (aas vraagt 10, laag bijspelen) mostly tell the
+// truth, at normaal and at sterk: nine in ten and seven in ten, or not
+// clearly fewer (two standard errors; there are a few dozen per level).
+// The rates back the sampling weights (aceSigHeld, lowSigHeld).
 func TestSignalsHonest(t *testing.T) {
 	deals := 600
 	if testing.Short() {
 		deals = 150
 	}
+	honest := func(k, n int, p float64) bool {
+		return float64(k) >= float64(n)*p-2*math.Sqrt(float64(n)*p*(1-p))
+	}
 	cfg := searchConfig{playWorlds: 64, trumpWorlds: 32, workers: 1}
+	var allAces, allLows int
 	for _, lvl := range []Level{Normaal, Sterk} {
 		rng := rand.New(rand.NewPCG(75, uint64(lvl)))
 		var aces, aceTrue, lows, lowTrue int
@@ -876,9 +925,14 @@ func TestSignalsHonest(t *testing.T) {
 				}
 			}
 		}
-		t.Logf("%s: %d of %d ace leads with the 10, %d of %d small discards with the highest card", lvl, aceTrue, aces, lowTrue, lows)
-		if aces == 0 || lows == 0 || float64(aceTrue) < 0.9*float64(aces) || float64(lowTrue) < 0.7*float64(lows) {
-			t.Errorf("%s: aas voorspelen %d/%d true, laag bijspelen %d/%d true; want honest signals", lvl, aceTrue, aces, lowTrue, lows)
+		t.Logf("%s: %d of %d ace discards with the 10, %d of %d small discards with the highest card", lvl, aceTrue, aces, lowTrue, lows)
+		if !honest(aceTrue, aces, 0.9) || !honest(lowTrue, lows, 0.7) {
+			t.Errorf("%s: aas vraagt 10 %d/%d true, laag bijspelen %d/%d true; want honest signals", lvl, aceTrue, aces, lowTrue, lows)
 		}
+		allAces += aces
+		allLows += lows
+	}
+	if allAces == 0 || allLows == 0 {
+		t.Errorf("%d ace discards and %d small discards read as signals; want some of each", allAces, allLows)
 	}
 }

@@ -111,20 +111,21 @@ func knowledgeFromView(v *game.View, tab *table) knowledge {
 	return k
 }
 
-// Aas voorspelen and laag bijspelen (table.aceSignal, table.lowSignal) as
+// Aas vraagt 10 and laag bijspelen (table.aceSignal, table.lowSignal) as
 // soft evidence that the signaller holds the card it said. Measured in
-// self-play (TestSignalsHonest): nearly every ace lead that the table
-// reads comes with the 10, but only about three in four small discards
-// come with the highest card, since a discard often has no honest choice.
-// So the low signal weighs less. Humans get the same weights.
+// self-play (TestSignalsHonest): every ace discard that the table reads
+// comes with the 10, but only about three in four small discards come
+// with the highest card, since a discard often has no honest choice. So
+// the low signal weighs less. Humans get the same weights.
 const (
 	aceSigHeld, aceSigNotHeld = 2.0, 0.125
 	lowSigHeld, lowSigNotHeld = 2.0, 0.4
 )
 
 // signalHints reads what the play so far says about the aces (design §8):
-//   - a player who leads a small card in a side suit whose ace is still
-//     out probably does not hold that ace (with it, one leads the ace);
+//   - a player who leads a side card other than the ace or the 10 while
+//     that ace is still out probably does not hold the ace (with it, one
+//     leads the ace, or the 10 first when holding both);
 //   - spekken: a player who gives a side 10 to the partner's trick while
 //     that ace is out probably does not hold the ace either (with both,
 //     one keeps the ace and gives something else).
@@ -140,7 +141,7 @@ func signalHints(v *game.View, me game.Seat) []hint {
 			c, s := p.Card, p.Card.Suit
 			if p.Seat != me && s != trump && !played.has(aceOf(s)) {
 				switch {
-				case i == 0 && c.Rank != game.Ace:
+				case i == 0 && c.Rank != game.Ace && c.Rank != game.Ten:
 					hints = append(hints, hint{p.Seat, aceOf(s), 0.5, 1})
 				case i > 0 && c.Rank == game.Ten && s != tr.Cards[0].Card.Suit:
 					prefix := game.Trick{Leader: tr.Leader, Cards: tr.Cards[:i]}

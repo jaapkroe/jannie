@@ -224,7 +224,7 @@ func TestKleintjeBoerEvidence(t *testing.T) {
 	}
 }
 
-// TestSignalReading: which plays the table reads as aas voorspelen and
+// TestSignalReading: which plays the table reads as aas vraagt 10 and
 // laag bijspelen, and what they say.
 func TestSignalReading(t *testing.T) {
 	play := func(tab *table, cards string) {
@@ -234,9 +234,9 @@ func TestSignalReading(t *testing.T) {
 	}
 	// Trump hearts, made by seat 1; seat 0 leads.
 	tab := newTable(0, game.Hearts, 1, game.Amsterdams, game.DefaultSignals)
-	play(&tab, "AS 7S 8S 9S") // seat 0: aas voorspelen, ♠10 is out
-	if tab.said[0] != bit(card("TS")) || tab.sigBy[0] != bit(card("AS")) {
-		t.Errorf("ace lead: said %v by %v", tab.said[0].appendCards(nil), tab.sigBy[0].appendCards(nil))
+	play(&tab, "AS 7S 8S 9S") // an ace lead says nothing
+	if tab.said[0] != 0 {
+		t.Errorf("ace lead: said %v", tab.said[0].appendCards(nil))
 	}
 	// Seat 0 leads ♦7, seat 1 takes it with ♦8; seat 2 discards ♣9 into
 	// the opponents' trick (no signal), seat 3 ♣7 on its partner's (laag).
@@ -249,10 +249,16 @@ func TestSignalReading(t *testing.T) {
 	if noHoogLaag.said[3] != 0 {
 		t.Errorf("a table without hoog/laag reads ♣7 as %v", noHoogLaag.said[3].appendCards(nil))
 	}
+	// Seat 0 leads ♦A, seat 2 gives ♠A to it: aas vraagt 10, ♠10 is out.
+	aas := newTable(0, game.Hearts, 1, game.Amsterdams, game.DefaultSignals)
+	play(&aas, "AD 7D AS 8D")
+	if aas.said[2] != bit(card("TS")) || aas.sigBy[2] != bit(card("AS")) {
+		t.Errorf("ace discard: said %v by %v", aas.said[2].appendCards(nil), aas.sigBy[2].appendCards(nil))
+	}
 	noAas := newTable(0, game.Hearts, 1, game.Amsterdams, game.Signals{KleintjeBoer: true, HoogLaag: true})
-	play(&noAas, "AS 7S 8S 9S")
-	if noAas.said[0] != 0 {
-		t.Errorf("a table without aas vraagt 10 reads ♠A as %v", noAas.said[0].appendCards(nil))
+	play(&noAas, "AD 7D AS 8D")
+	if noAas.said[2] != 0 {
+		t.Errorf("a table without aas vraagt 10 reads ♠A as %v", noAas.said[2].appendCards(nil))
 	}
 	for _, c := range []struct {
 		name  string
@@ -261,10 +267,14 @@ func TestSignalReading(t *testing.T) {
 		ace   bool
 		low   bool
 	}{
-		{"ace whose 10 has fallen", "7S TS 8S 9S", "AS", false, false},
-		{"trump ace", "", "AH", false, false},
-		{"ace in the sixth trick", "7C 8C 9C TC 7D 8D 9D TD JC QC KC AC JD QD KD AD 7S 8S 9S JS", "AS", false, false},
-		{"ace in the fifth trick", "7C 8C 9C TC 7D 8D 9D TD JC QC KC AC JD QD KD AD", "AS", true, false},
+		{"ace on partner's trick", "AD 7D", "AS", true, false},
+		{"ace lead", "", "AS", false, false},
+		{"ace into an opponents' trick", "7D 8D", "AS", false, false},
+		{"ace whose 10 has fallen", "7D 8D TS 7C AD 9D", "AS", false, false},
+		{"ace of a suit that was led", "7S 8S 9S JS AD 7D", "AS", false, false},
+		{"trump ace", "AD 7D", "AH", false, false},
+		{"ace in the sixth trick", "7C 8C 9C TC 7D 8D 9D TD JC QC KC AC JD QD KD AD 7H 8H 9H 7S JH 8S", "AS", true, false},
+		{"ace in the seventh trick", "7C 8C 9C TC 7D 8D 9D TD JC QC KC AC JD QD KD AD 7H 8H 9H 7S JH 8S TH QH KH 9S", "AS", false, false},
 		{"follow suit low", "7S", "8S", false, false},
 		{"small discard into an opponents' trick", "7S", "8D", false, false},
 		{"small discard on partner's trick", "7S AS 8S", "8D", false, true},
@@ -281,7 +291,7 @@ func TestSignalReading(t *testing.T) {
 		_, ace := tab.aceSignal(x)
 		_, low := tab.lowSignal(x)
 		if ace != c.ace || low != c.low {
-			t.Errorf("%s: aas voorspelen %v, laag bijspelen %v; want %v, %v", c.name, ace, low, c.ace, c.low)
+			t.Errorf("%s: aas vraagt 10 %v, laag bijspelen %v; want %v, %v", c.name, ace, low, c.ace, c.low)
 		}
 	}
 }
@@ -309,8 +319,8 @@ func TestBoerSignals(t *testing.T) {
 	}
 }
 
-// TestSignalEvidence: after aas voorspelen, the other seats' samples
-// mostly give the leader the 10; after laag bijspelen, the discarder
+// TestSignalEvidence: after aas vraagt 10, the other seats' samples
+// mostly give the discarder the 10; after laag bijspelen, the discarder
 // holds the highest card of the suit more often than without the signal.
 func TestSignalEvidence(t *testing.T) {
 	rng := rand.New(rand.NewPCG(29, 30))
@@ -327,13 +337,13 @@ func TestSignalEvidence(t *testing.T) {
 		}
 		return float64(held) / n
 	}
-	// Seat 0 leads ♠A and holds ♠10.
-	d := build(t, 0, [4]string{"AS TS 7D JH 9H 8H 7H KH", "", "", ""}, game.Hearts, game.Amsterdams, "AS")
-	for _, obs := range []game.Seat{1, 2, 3} {
-		f := share(d, obs, 0, card("TS"))
-		t.Logf("seat %d: the ace leader holds ♠10 in %.2f of samples", obs, f)
+	// Seat 2 gives ♠A to its partner's ♦A and holds ♠10.
+	d := build(t, 3, [4]string{"AD", "8D", "AS TS 7H 8H 9H JC QC KC", "7D"}, game.Hearts, game.Amsterdams, "7D AD 8D AS")
+	for _, obs := range []game.Seat{0, 1, 3} {
+		f := share(d, obs, 2, card("TS"))
+		t.Logf("seat %d: the ace discarder holds ♠10 in %.2f of samples", obs, f)
 		if f < 0.75 {
-			t.Errorf("seat %d: the leader of ♠A holds ♠10 in %.2f of samples, want most", obs, f)
+			t.Errorf("seat %d: the discarder of ♠A holds ♠10 in %.2f of samples, want most", obs, f)
 		}
 	}
 	// Seat 1 discards ♠7 on its partner's ♦A and holds ♠A; the partner,
