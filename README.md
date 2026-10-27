@@ -90,8 +90,8 @@ node app-play.mjs ... --gedraaid | --multi | --training                         
 node app-play.mjs ... --players 3 | --players 2                                  # the auction and laying away; the piles
 node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at six sizes, into test/ui/out/
 node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 31 behaviour checks (coach, lessons, taps, back button, lost socket, full table, takeover vote, summary on a phone, card corners, expert mode, a call…); needs -fast, ~15 min
-node app-perf.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # main-thread work per second and chat keystroke times on two emulated phones
 node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image
+node app-perf.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # main-thread work per second and chat keystroke times on two emulated phones
 ```
 
 `make test` also runs the JS unit tests in `test/*.test.mjs` and
