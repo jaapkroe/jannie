@@ -58,6 +58,8 @@ type Server struct {
 	joinFailMax    int // failed joins per client address per joinFailWindow ...
 	joinFailWindow time.Duration
 	joinBlock      time.Duration // ... before its joins are refused this long
+	pingEvery      time.Duration // a connection quiet this long gets a ping ...
+	pingTimeout    time.Duration // ... and is closed without a pong this long after
 
 	ctx    context.Context // cancelled at shutdown
 	cancel context.CancelFunc
@@ -115,6 +117,8 @@ func New(cfg Config) *Server {
 		joinFailMax:    10,
 		joinFailWindow: time.Minute,
 		joinBlock:      5 * time.Minute,
+		pingEvery:      pingEvery,
+		pingTimeout:    pingTimeout,
 		ctx:            ctx,
 		cancel:         cancel,
 		rooms:          make(map[string]*room),

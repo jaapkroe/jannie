@@ -14,8 +14,15 @@ const (
 	maxMessageBytes = 16384 // a call's session description takes several KiB
 	sendQueueLen    = 256
 	writeTimeout    = 10 * time.Second
-	pingEvery       = 25 * time.Second
-	pingTimeout     = 20 * time.Second
+	// A connection the server has heard nothing from, or sent nothing to,
+	// for pingEvery gets a ping (design §6 Limits), checked pingChecks
+	// times as often. The browser pings every 20 s itself (net.js), and the
+	// pong it gets keeps the proxies' idle timeout away just as well, so a
+	// page that pings gets no server pings: a phone's radio wakes for one
+	// keepalive, not for two that run on their own clocks.
+	pingEvery   = 25 * time.Second
+	pingChecks  = 5
+	pingTimeout = 20 * time.Second
 )
 
 // client is one websocket connection. The reader goroutine decodes and
@@ -33,7 +40,8 @@ type client struct {
 	code     websocket.StatusCode
 	reason   string
 	pinging  atomic.Bool
-	aborted  atomic.Bool // closing without flushing the queue
+	aborted  atomic.Bool  // closing without flushing the queue
+	heard    atomic.Int64 // unix ns of the last message or pong from the browser
 
 	mu   sync.Mutex
 	room *room // the room this connection plays in, if any
@@ -43,7 +51,7 @@ type client struct {
 }
 
 func newClient(s *Server, conn *websocket.Conn, ip, device string) *client {
-	return &client{
+	c := &client{
 		srv:        s,
 		conn:       conn,
 		ip:         ip,
@@ -54,7 +62,15 @@ func newClient(s *Server, conn *websocket.Conn, ip, device string) *client {
 		bucket:     tokenBucket{tokens: s.msgRate, max: s.msgRate, rate: s.msgRate},
 		joinBucket: tokenBucket{tokens: s.joinBurst, max: s.joinBurst, rate: s.joinRate},
 	}
+	c.hear(time.Now())
+	return c
 }
+
+// hear notes that the browser is there: a message or a pong came in.
+func (c *client) hear(now time.Time) { c.heard.Store(now.UnixNano()) }
+
+// quiet is how long nothing came in from the browser.
+func (c *client) quiet(now time.Time) time.Duration { return now.Sub(time.Unix(0, c.heard.Load())) }
 
 // send queues a message; a client whose queue is full is disconnected (it
 // resyncs on reconnect). It never blocks.
@@ -113,10 +129,12 @@ func (c *client) leaveRoom(r *room) {
 	c.mu.Unlock()
 }
 
-// writeLoop sends queued messages and pings until the connection closes.
+// writeLoop sends queued messages, and pings a quiet connection, until the
+// connection closes.
 func (c *client) writeLoop(ctx context.Context) {
-	tick := time.NewTicker(pingEvery)
+	tick := time.NewTicker(c.srv.pingEvery / pingChecks)
 	defer tick.Stop()
+	wrote := time.Now() // the last frame out: also the proxies wait for one
 	for {
 		select {
 		case b := <-c.out:
@@ -125,8 +143,12 @@ func (c *client) writeLoop(ctx context.Context) {
 				c.conn.CloseNow()
 				return
 			}
-		case <-tick.C:
-			c.ping(ctx)
+			wrote = time.Now()
+		case now := <-tick.C:
+			if c.quiet(now) >= c.srv.pingEvery || now.Sub(wrote) >= c.srv.pingEvery {
+				c.ping(ctx)
+				wrote = now
+			}
 		case <-c.quit:
 			if c.aborted.Load() {
 				c.conn.CloseNow()
@@ -172,11 +194,13 @@ func (c *client) ping(ctx context.Context) {
 	}
 	go func() {
 		defer c.pinging.Store(false)
-		ctx, cancel := context.WithTimeout(ctx, pingTimeout)
+		ctx, cancel := context.WithTimeout(ctx, c.srv.pingTimeout)
 		defer cancel()
 		if err := c.conn.Ping(ctx); err != nil {
 			c.close(websocket.StatusGoingAway, "geen antwoord")
+			return
 		}
+		c.hear(time.Now())
 	}()
 }
 
@@ -206,7 +230,9 @@ func (c *client) readLoop(ctx context.Context) {
 		if err != nil {
 			return
 		}
-		if !c.bucket.take(time.Now()) {
+		now := time.Now()
+		c.hear(now)
+		if !c.bucket.take(now) {
 			c.closeWithError(errLimit, "Te veel berichten tegelijk; de verbinding is verbroken.", websocket.StatusPolicyViolation)
 			return
 		}

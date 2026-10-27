@@ -1020,8 +1020,12 @@ IP; then joins from that IP get `limiet` for 5 minutes, except a `join` with a
 valid seat token (room codes cannot be guessed). Chat over the limit: error
 `limiet`; over the message rate: error `limiet`, then the server closes the
 connection (status 1008). WebSocket `Origin` must match
-the Host (coder/websocket default) or an `-origin` pattern. Server pings every
-25 s (nginx and NPM time out idle proxied connections at 60 s).
+the Host (coder/websocket default) or an `-origin` pattern. The server pings a
+connection that it has heard nothing from, or sent nothing to, for 25 s
+(checked every 5 s; nginx and NPM time out idle proxied connections at 60 s),
+and closes it when the pong does not come within 20 s. The browser pings every
+20 s itself and gets a `pong`, so a page that runs gets no server pings, and a
+phone's radio wakes for one keepalive rather than two on clocks of their own.
 
 ## 7. Wire protocol
 
