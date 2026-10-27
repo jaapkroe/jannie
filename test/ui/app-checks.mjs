@@ -2291,8 +2291,8 @@ CHECKS.takeover = async browser => {
 // seat; microphone and camera switch with one tap, are remembered, and a
 // refused camera leaves the microphone; a new connection starts a new call
 // session; the phone's menu hangs up; a reload proposes the call again.
-// A camera that goes by itself is switched off; video goes under a
-// ceiling, and a muted microphone sends nothing.
+// A camera or microphone that goes by itself is switched off; video goes
+// under a ceiling, and a muted microphone sends nothing until it is on.
 CHECKS.call = async browser => {
   const H = await page(browser, VP.phone, 'call-host', { call: true });
   // The guest's browser refuses the camera until window.__camOk (the fake
@@ -2410,19 +2410,27 @@ CHECKS.call = async browser => {
     await sends(H, 'host video under the ceiling', 'mic/300000');
     await sends(G, 'guest video under the ceiling', 'mic/300000');
 
-    // The guest's camera goes by itself (its permission withdrawn, as when
-    // it is unplugged or another app takes it): off as with its button.
-    // Allowed again, one tap brings it back, under the same ceiling.
+    // The guest's camera and microphone go by themselves (the permission
+    // withdrawn, as when a device is unplugged or another app takes it):
+    // off as with their buttons. Allowed again, one tap brings each back,
+    // the video under the same ceiling.
     const cdp = await browser.target().createCDPSession();
-    const camera = setting => cdp.send('Browser.setPermission', { permission: { name: 'camera' }, setting, origin: BASE, browserContextId: G.ctx.id });
-    await camera('denied');
+    const permit = (name, setting) => cdp.send('Browser.setPermission', { permission: { name }, setting, origin: BASE, browserContextId: G.ctx.id });
+    await permit('camera', 'denied');
     await waitFor(G, () => document.querySelector('.prompt .call-dock .tb-cam[aria-pressed="false"]'), { label: 'guest camera off by itself' });
     await shows(G, 'the guest without its own video', 'Host');
-    await camera('granted');
+    await permit('microphone', 'denied');
+    await waitFor(G, () => document.querySelector('.prompt .call-dock .tb-mic[aria-pressed="false"]'), { label: 'guest microphone off by itself' });
+    await marked(H, 'guest microphone off on the host page', 'Gast:off,Host:mic');
+    await sends(G, 'no ended microphone on the connection', 'none/300000');
+    await permit('camera', 'granted');
+    await permit('microphone', 'granted');
     await cdp.detach();
     await tapCall(G, '.prompt .call-dock .tb-cam');
     await shows(H, 'guest video back on the host page', 'Gast,Host');
-    await sends(G, 'guest video under the ceiling again', 'mic/300000');
+    await tapCall(G, '.prompt .call-dock .tb-mic');
+    await marked(H, 'guest microphone back on the host page', 'Gast:mic,Host:mic');
+    await sends(G, 'guest microphone back, video under the ceiling again', 'mic/300000');
 
     // The host's microphone off: one tap, marked on the guest page, remembered.
     await tapCall(H, '.prompt .call-dock .tb-mic');
@@ -2430,6 +2438,10 @@ CHECKS.call = async browser => {
     await sends(H, 'no microphone on the connection', 'none/300000');
     const kept = await stored(H);
     if (kept.mic !== false || kept.cam !== true || kept.ask !== true) throw new Error(`host remembers ${JSON.stringify(kept)}`);
+    // On again: the microphone is back on the connection at once.
+    await tapCall(H, '.prompt .call-dock .tb-mic');
+    await marked(G, 'host unmuted', 'Gast:mic,Host:mic');
+    await sends(H, 'microphone back on the connection', 'mic/300000');
 
     // A new connection: the call goes on in a new session.
     const ids = () => G.page.evaluate(() => window.__kj.sent.filter(m => m.t === 'call' && m.id).map(m => m.id));
