@@ -1533,7 +1533,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   entry makes back ask *Spel verlaten?* instead of leaving the page. An
   update still animating when the page leaves the room (or goes to another)
   is dropped after its animation, so no hand summary of the table left
-  opens over the home screen or the next table.
+  opens over the home screen or the next table (`app-checks.mjs --only
+  queue` leaves during the hand end).
 - **On-screen keyboard**: `index.html` sets `interactive-widget=resizes-content`,
   so an open keyboard shrinks the viewport, and an upright phone turns short
   and wide. The keyboard counts as open while a text field (not read-only)
@@ -1607,6 +1608,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   `chatlog` after `joined` takes its turn in the queue as well, so a line
   still queued from before a reconnect is not shown twice, and your own
   line waits behind a chat log still queued, which was sent before it.
+  `app-checks.mjs --only queue` sends lines during the trump banner and
+  drops the socket there.
 - **Calling** (issue #43, `call.js`, loaded once another person is at the
   table, in a browser with WebRTC and a camera API): at the start of a game
   with another person (the first update of a match, or the first at a table
