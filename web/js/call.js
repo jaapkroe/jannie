@@ -462,12 +462,12 @@ function onTrack(p, track) {
   play(p.video);
 }
 
-// Our tracks on a connection: the microphone always (muted it sends
-// silence), the camera while it is on.
+// Our tracks on a connection: the microphone and the camera while they are
+// on. Muted, the microphone is taken off too: no packets of silence.
 function attach(p) {
   for (const t of p.pc?.getTransceivers() || []) {
     const kind = t.receiver.track?.kind;
-    const track = kind === 'audio' ? mic : kind === 'video' ? cam : null;
+    const track = kind === 'audio' ? (micOn ? mic : null) : kind === 'video' ? cam : null;
     if (t.sender.track !== track) t.sender.replaceTrack(track).catch(() => {});
   }
 }

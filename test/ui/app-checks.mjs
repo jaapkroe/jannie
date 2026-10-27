@@ -2292,7 +2292,7 @@ CHECKS.takeover = async browser => {
 // refused camera leaves the microphone; a new connection starts a new call
 // session; the phone's menu hangs up; a reload proposes the call again.
 // A camera that goes by itself is switched off; video goes under a
-// ceiling.
+// ceiling, and a muted microphone sends nothing.
 CHECKS.call = async browser => {
   const H = await page(browser, VP.phone, 'call-host', { call: true });
   // The guest's browser refuses the camera until window.__camOk (the fake
@@ -2427,6 +2427,7 @@ CHECKS.call = async browser => {
     // The host's microphone off: one tap, marked on the guest page, remembered.
     await tapCall(H, '.prompt .call-dock .tb-mic');
     await marked(G, 'host muted', 'Gast:mic,Host:off');
+    await sends(H, 'no microphone on the connection', 'none/300000');
     const kept = await stored(H);
     if (kept.mic !== false || kept.cam !== true || kept.ask !== true) throw new Error(`host remembers ${JSON.stringify(kept)}`);
 

@@ -1625,7 +1625,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   page sends `call`; every two pages in the call connect, the lower session
   id offering, with one audio and one video transceiver from the start, so
   switching later only swaps tracks (the camera's track is stopped, its
-  light goes off; the microphone's is muted). Video goes at most 300 kbit/s
+  light goes off; the microphone's is muted and taken off the connections,
+  so nothing is sent until it is on again). Video goes at most 300 kbit/s
   to each other page (the browser would send 600 for 320x240; the circle
   shows it at most about 160 device pixels wide): the offerer sets it on
   its transceiver, the answerer once the answer is made, and it holds as
@@ -1653,7 +1654,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   refuses to play the sound before a tap gets "Tik ergens om de anderen te
   horen". Leaving the room hangs up. `app-checks.mjs --only call` plays it through with the
   fake devices of `scripts/chrome`, with a camera whose permission is
-  withdrawn and given back, and checks the video ceiling on both sides.
+  withdrawn and given back, and checks the video ceiling on both sides and
+  that a muted microphone is off the connection.
 - **Training**: tip bubble with the hint text and a glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it); ✕ closes a hint until the next one; tips after
