@@ -718,10 +718,15 @@ reply attempt.
 
 - Code: 4 letters from `ABCDEFGHJKLMNPQRSTUVWXYZ` (no I, O), unique among live
   rooms, case-insensitive on input. Join link: `https://klaverjas.kroes.dev/ABCD`.
-- Creator sits at seat 0 and is host. If the host leaves, or stays disconnected
-  for 30 s while another human is connected, the next human becomes host
-  (checked when the 30 s are up, and again when someone else gives a host
-  command such as `rematch` or `lobby`). A room is removed 30 min after game over (players
+- Creator sits at seat 0 and is host. If the host leaves, the next human
+  becomes host (a connected one first); if the host stays disconnected for
+  30 s while another human is connected, the next connected human does. With
+  nobody else connected the role stays, so a host who comes back first keeps
+  it. This is checked when the host's 30 s are up, when a human joins or
+  comes back, and when someone else gives a host command such as `rematch`
+  or `lobby`; a check that finds the host gone for less than 30 s while
+  someone else is connected (a leave may hand the role to a human gone a
+  moment) runs again when the 30 s are up. A room is removed 30 min after game over (players
   still connected get `onbekend`) and at once when the last human leaves its
   lobby. With no human connected it is removed after 30 min while a game runs
   that still has a human seat, and after 5 min in the lobby, after game over,

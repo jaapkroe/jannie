@@ -865,13 +865,26 @@ func (r *room) leave(c *client, i game.Seat) {
 }
 
 // checkHost hands the host role to a connected human when the host has
-// left or has been disconnected longer than the grace period.
+// left or has been disconnected longer than the grace period. With nobody
+// else connected the role stays, so a host who comes back first keeps it.
 func (r *room) checkHost() {
 	if r.host != game.NoSeat {
 		st := &r.seats[r.host]
-		if st.kind == seatHuman && (st.client != nil || time.Since(st.leftAt) < r.scaled(hostGrace)) {
+		if st.kind == seatHuman && st.client != nil {
 			return
 		}
+		if wait := r.scaled(hostGrace) - time.Since(st.leftAt); st.kind == seatHuman && wait > 0 {
+			// Look again when the grace is up: the others have no button
+			// for a host command, and the host may have got the role while
+			// gone (from a leave), so no timer of its own runs.
+			if r.connectedHumans() > 0 {
+				r.later(wait, r.checkHost)
+			}
+			return
+		}
+	}
+	if r.connectedHumans() == 0 {
+		return
 	}
 	if r.pickHost(max(r.host, 0)) {
 		r.emitState()
