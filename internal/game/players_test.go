@@ -436,6 +436,7 @@ func TestRandomSmallDeals(t *testing.T) {
 			if !slices.Equal(v.Legal, want) {
 				t.Fatalf("deal %d: legal %v, reference %v (hand %v trick %v)", i, v.Legal, want, v.Hand, trickCards)
 			}
+			checkMasks(t, d, want)
 			if d.Constraint() == "" {
 				t.Fatal("empty constraint text")
 			}
@@ -445,6 +446,7 @@ func TestRandomSmallDeals(t *testing.T) {
 			}
 			played = append(played, c)
 		}
+		checkMasks(t, d, nil)
 		tricks := d.Tricks()
 		if len(tricks) != handSize[players] || len(played) != players*handSize[players] {
 			t.Fatalf("deal %d: %d tricks, %d cards", i, len(tricks), len(played))
@@ -531,6 +533,11 @@ func TestResumeSmall(t *testing.T) {
 		r, err := Resume(v, hidden)
 		if err != nil {
 			t.Fatalf("deal %d (%d players): Resume: %v", i, players, err)
+		}
+		checkMasks(t, r, r.Legal())
+		into := *d // ResumeInto overwrites whatever is there
+		if err := ResumeInto(&into, &v, hidden); err != nil || into != *r {
+			t.Fatalf("deal %d (%d players): ResumeInto differs from Resume (%v)", i, players, err)
 		}
 		for s := range Seat(players) {
 			if !slices.Equal(r.Hand(s), d.Hand(s)) || r.HandLen(s) != d.HandLen(s) || r.Piles(s) != d.Piles(s) {

@@ -110,6 +110,20 @@ func refLegalWith(hand []Card, trick []Played, partner Seat, trump Suit, rules R
 	return hand
 }
 
+// checkMasks checks the bitmasks of the fast paths against the cards they
+// stand for: HandMask against Hand for every seat, LegalMask against legal.
+func checkMasks(t *testing.T, d *Deal, legal []Card) {
+	t.Helper()
+	for s := range Seat(d.Players()) {
+		if d.HandMask(s) != setOf(d.Hand(s)) {
+			t.Fatalf("seat %v: HandMask %x, hand %v", s, d.HandMask(s), d.Hand(s))
+		}
+	}
+	if d.LegalMask() != setOf(legal) {
+		t.Fatalf("LegalMask %x, legal %v", d.LegalMask(), legal)
+	}
+}
+
 // TestRandomDeals plays thousands of random deals with random legal moves
 // and checks every move and every total against the reference.
 func TestRandomDeals(t *testing.T) {
@@ -144,6 +158,13 @@ func TestRandomDeals(t *testing.T) {
 				t.Fatalf("deal %d: legal %v, reference %v (hand %v trick %v trump %v %v)",
 					i, v.Legal, want, v.Hand, trickCards, trump, rules)
 			}
+			checkMasks(t, d, want)
+			if len(trickCards) == 1 {
+				lead := trickCards[0]
+				if got := LegalReply(setOf(v.Hand), lead.Card, lead.Seat, s, trump, rules); got != setOf(want) {
+					t.Fatalf("deal %d: LegalReply %x, legal %v", i, got, want)
+				}
+			}
 			if rule := ExplainConstraint(v.Hand, v.Current, s, trump, rules); rule == "" {
 				t.Fatal("empty constraint text")
 			}
@@ -169,6 +190,7 @@ func TestRandomDeals(t *testing.T) {
 			played = append(played, c)
 		}
 
+		checkMasks(t, d, nil)
 		if d.Phase() != PhaseDone || d.Turn() != NoSeat || len(played) != 32 {
 			t.Fatalf("deal %d ended in phase %v after %d cards", i, d.Phase(), len(played))
 		}

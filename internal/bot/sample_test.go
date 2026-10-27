@@ -356,3 +356,50 @@ func TestSignalEvidence(t *testing.T) {
 		t.Errorf("laag bijspelen is not read: ♠A with the discarder in %.2f of samples, %.2f without the signal", with, without)
 	}
 }
+
+// TestFeasibleHall checks the written-out Hall's condition of feasible
+// against the condition as stated, set by set.
+func TestFeasibleHall(t *testing.T) {
+	hall := func(cnt [8]int, capa [3]int) bool {
+		if cnt[0] > 0 {
+			return false
+		}
+		for set := 1; set < 8; set++ {
+			n, c := 0, 0
+			for m := 1; m < 8; m++ {
+				if m&^set == 0 {
+					n += cnt[m]
+				}
+			}
+			for j := range 3 {
+				if set&(1<<j) != 0 {
+					c += capa[j]
+				}
+			}
+			if n > c {
+				return false
+			}
+		}
+		return true
+	}
+	var sp sampler
+	rng := rand.New(rand.NewPCG(23, 24))
+	for range 200000 {
+		var cnt [8]int
+		var capa [3]int
+		for m := range cnt {
+			if rng.IntN(3) > 0 {
+				cnt[m] = rng.IntN(5)
+			}
+		}
+		if rng.IntN(2) == 0 {
+			cnt[0] = 0
+		}
+		for j := range capa {
+			capa[j] = rng.IntN(9)
+		}
+		if got, want := sp.feasible(cnt, capa), hall(cnt, capa); got != want {
+			t.Fatalf("feasible(%v, %v) = %v, want %v", cnt, capa, got, want)
+		}
+	}
+}

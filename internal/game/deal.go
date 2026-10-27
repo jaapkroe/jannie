@@ -241,15 +241,64 @@ type View struct {
 	Signals            *Signals // the table's agreements on signals; nil: DefaultSignals
 }
 
-// trickRec is the compact, copyable form of a trick inside Deal.
+// trickRec is the compact, copyable form of a trick inside Deal. It is
+// kept small (seats as int8, roem as indexes into roemItems): simulations
+// copy a whole Deal for every playout.
 type trickRec struct {
 	cards  [4]Card
 	n      uint8
 	nRoem  uint8
-	leader Seat
-	winner Seat
-	points int
-	roem   [2]RoemItem
+	high   int8 // trump order of the highest trump so far, -1 if none (n > 0)
+	best   Card // the card winning the trick so far (n > 0)
+	win    int8 // the seat that played it
+	lead   int8 // the seat that led
+	won    int8 // the seat that won the trick, NoSeat until it is complete
+	points int16
+	roem   [2]uint8
+}
+
+// newTrick starts the trick that leader leads.
+func newTrick(leader Seat) trickRec { return trickRec{lead: int8(leader), won: int8(NoSeat)} }
+
+func (r *trickRec) leader() Seat { return Seat(r.lead) }
+func (r *trickRec) winner() Seat { return Seat(r.won) }
+
+// add puts card c, played by seat, into the trick and keeps track of the
+// card winning it so far.
+func (r *trickRec) add(seat Seat, c Card, trump Suit) {
+	switch {
+	case r.n == 0:
+		r.best, r.win, r.high = c, int8(seat), -1
+	case Beats(c, r.best, r.cards[0].Suit, trump):
+		r.best, r.win = c, int8(seat)
+	}
+	if c.Suit == trump && trumpOrder[c.Rank] > r.high {
+		r.high = trumpOrder[c.Rank]
+	}
+	r.cards[r.n] = c
+	r.n++
+}
+
+// info summarises the trick for the rules (as infoFromTrick) at a table
+// of n players: a complete trick counts as a new, empty one.
+func (r *trickRec) info(n uint8) trickInfo {
+	if r.n == 0 || r.n >= n {
+		return trickInfo{high: -1, winner: NoSeat}
+	}
+	return trickInfo{n: int(r.n), led: r.cards[0].Suit, winner: Seat(r.win), best: r.best, high: r.high}
+}
+
+// score fills in the points (with bonus added) and the roem of the
+// complete trick and returns its points and roem.
+func (r *trickRec) score(trump Suit, bonus int) (points, roem int) {
+	points = CardPoints(r.cards[:r.n], trump) + bonus
+	r.points = int16(points)
+	items, k := trickRoem(r.cards[:r.n], trump)
+	r.nRoem = uint8(copy(r.roem[:], items[:k])) // at most two in a trick
+	for _, it := range r.roem[:r.nRoem] {
+		roem += roemItems[it].Points
+	}
+	return points, roem
 }
 
 // Deal is one hand ("potje") for 2, 3 or 4 players as a pure state
@@ -280,11 +329,15 @@ type Deal struct {
 	// seat s, gone marks the cards played (or laid away) and up the face-up
 	// ones. With two players places 0..7 are the tops of the eight piles
 	// (0..3 the front row) and 8+i the card under pile i; with three,
-	// places 10 and 11 take the talon.
+	// places 10 and 11 take the talon. held is the set (bit Card.Index)
+	// of the cards a seat can play, those up and not gone, and at the
+	// place of each of them: see sync.
 	hands  [4][16]Card
 	nCards [4]uint8
 	gone   [4]uint16
 	up     [4]uint16
+	held   [4]uint32
+	at     [32]uint8
 	tricks [16]trickRec
 	cur    int // index of the current trick in tricks
 	points [2]int
@@ -300,7 +353,9 @@ var handSize = [5]int{2: 16, 3: 10, 4: 8}
 // for gedraaid and ignored for utrechts. It panics on hands of unequal
 // length or longer than 8.
 func NewDeal(dealer Seat, hands [4][]Card, mode TrumpMode, rules Rules, turned Suit) *Deal {
-	return NewDealFor(4, dealer, hands, nil, mode, rules, turned)
+	d := new(Deal) // inlined, as NewDealFor
+	d.start(4, dealer, hands, nil, mode, rules, turned)
+	return d
 }
 
 // NewDealFor starts a hand for 2, 3 or 4 players (design §2), with the
@@ -310,10 +365,19 @@ func NewDeal(dealer Seat, hands [4][]Card, mode TrumpMode, rules Rules, turned S
 // players the two cards of the talon. With three players the mode is
 // ignored: the auction decides. It panics on a bad layout.
 func NewDealFor(players int, dealer Seat, hands [4][]Card, talon []Card, mode TrumpMode, rules Rules, turned Suit) *Deal {
+	// Small enough to be inlined, so that a deal which does not outlive
+	// its caller (a simulation's) stays off the heap.
+	d := new(Deal)
+	d.start(players, dealer, hands, talon, mode, rules, turned)
+	return d
+}
+
+// start sets d up as NewDealFor describes.
+func (d *Deal) start(players int, dealer Seat, hands [4][]Card, talon []Card, mode TrumpMode, rules Rules, turned Suit) {
 	if players < 2 || players > 4 {
 		panic(fmt.Sprintf("game: NewDealFor: %d players", players))
 	}
-	d := &Deal{
+	*d = Deal{
 		n:       uint8(players),
 		dealer:  dealer,
 		mode:    mode,
@@ -348,7 +412,7 @@ func NewDealFor(players int, dealer Seat, hands [4][]Card, talon []Card, mode Tr
 		panic(fmt.Sprintf("game: NewDealFor: talon of %d cards for %d players", len(talon), players))
 	}
 	d.turn = d.next(d.dealer)
-	d.tricks[0] = trickRec{leader: d.turn, winner: NoSeat}
+	d.tricks[0] = newTrick(d.turn)
 	switch {
 	case players == 3:
 		copy(d.talon[:], talon)
@@ -362,7 +426,9 @@ func NewDealFor(players int, dealer Seat, hands [4][]Card, talon []Card, mode Tr
 	if players == 2 {
 		d.up = [4]uint16{0x000F, 0x000F} // the tops of the front rows
 	}
-	return d
+	for s := range Seat(players) {
+		d.sync(s)
+	}
 }
 
 // Shuffle shuffles a deck and deals it 3-2-3 to seats 0..3. A nil rng uses
@@ -515,6 +581,28 @@ func (d *Deal) AppendHand(dst []Card, seat Seat) []Card {
 	return dst
 }
 
+// HandMask returns the cards seat can play (as AppendHand) as a bitmask:
+// bit Card.Index for each.
+func (d *Deal) HandMask(seat Seat) uint32 { return d.held[seat&3] }
+
+// sync sets held[s] from the places, after cards of seat s arrived; a card
+// played or laid away just leaves held, and reveal adds those turned up.
+func (d *Deal) sync(s Seat) {
+	d.held[s] = 0
+	d.reveal(s, d.left(s)&d.up[s])
+}
+
+// reveal adds the cards at places (in play, of seat s) to held[s].
+func (d *Deal) reveal(s Seat, places uint16) {
+	for m := places; m != 0; m &= m - 1 {
+		i := bits.TrailingZeros16(m)
+		if k := uint(d.hands[s][i].Index()); k < 32 {
+			d.held[s] |= 1 << k
+			d.at[k] = uint8(i)
+		}
+	}
+}
+
 // HandLen returns how many cards seat still has, face-down ones included.
 func (d *Deal) HandLen(seat Seat) int { return bits.OnesCount16(d.left(seat & 3)) }
 
@@ -610,14 +698,16 @@ func (d *Deal) completed() int {
 func (d *Deal) TrickCount() int { return d.completed() }
 
 func (r *trickRec) trick(n uint8) Trick {
-	t := Trick{Leader: r.leader, Winner: r.winner, Cards: make([]Played, r.n)}
+	t := Trick{Leader: r.leader(), Winner: r.winner(), Cards: make([]Played, r.n)}
 	for i := range t.Cards {
-		t.Cards[i] = Played{Seat: (r.leader + Seat(i)) % Seat(n), Card: r.cards[i]}
+		t.Cards[i] = Played{Seat: (r.leader() + Seat(i)) % Seat(n), Card: r.cards[i]}
 	}
 	if r.n == n {
-		t.Points = r.points
+		t.Points = int(r.points)
 		t.Roem = make([]RoemItem, r.nRoem)
-		copy(t.Roem, r.roem[:r.nRoem])
+		for i, it := range r.roem[:r.nRoem] {
+			t.Roem[i] = roemItems[it]
+		}
 	}
 	return t
 }
@@ -678,6 +768,7 @@ func (d *Deal) Auction(seat Seat, bid int) error {
 	d.hands[s][n], d.hands[s][n+1] = d.talon[0], d.talon[1]
 	d.nCards[s] = n + 2
 	d.up[s] = 1<<d.nCards[s] - 1
+	d.sync(s)
 	d.phase, d.turn = PhaseDiscard, s
 	return nil
 }
@@ -703,6 +794,7 @@ func (d *Deal) Discard(seat Seat, cards []Card) error {
 	}
 	for k, i := range places {
 		d.gone[seat] |= 1 << i
+		d.held[seat] &^= 1 << cards[k].Index()
 		d.discards[k] = cards[k]
 	}
 	d.phase = PhaseTrump
@@ -712,8 +804,8 @@ func (d *Deal) Discard(seat Seat, cards []Card) error {
 // place returns where c lies among the cards seat can play, -1 if not.
 func (d *Deal) place(seat Seat, c Card) int {
 	s := seat & 3
-	for m := d.left(s) & d.up[s]; m != 0; m &= m - 1 {
-		if i := bits.TrailingZeros16(m); d.hands[s][i] == c {
+	if k := uint(c.Index()); k < 32 && d.held[s]&(1<<k) != 0 {
+		if i := int(d.at[k]); d.hands[s][i] == c {
 			return i
 		}
 	}
@@ -767,11 +859,12 @@ func (d *Deal) Bid(seat Seat, play bool) error {
 func (d *Deal) setTrump(seat Seat, s Suit) {
 	d.trump, d.trumpKnown, d.trumpBy = s, true, seat
 	d.phase = PhasePlay
-	d.turn = d.tricks[0].leader
+	d.turn = d.tricks[0].leader()
 	if d.n == 2 {
 		// The back rows turn over; each player's open cards may hold roem.
 		for p := range Seat(2) {
 			d.up[p] |= 0x00F0
+			d.sync(p)
 			d.roem[p] += SetRoemPoints(d.hands[p][:8], s)
 		}
 	}
@@ -794,18 +887,20 @@ func (d *Deal) Play(seat Seat, c Card) error {
 	}
 	if d.tricks[d.cur].n == d.n {
 		d.cur++
-		d.tricks[d.cur] = trickRec{leader: d.tricks[d.cur-1].winner, winner: NoSeat}
+		d.tricks[d.cur] = newTrick(d.tricks[d.cur-1].winner())
 	}
 	t := &d.tricks[d.cur]
-	var buf [16]Card
-	hand := d.AppendHand(buf[:0], seat)
-	ti := infoFromCards(t.leader, t.cards[:t.n], d.trump, d.n)
-	if sit := judge(hand, &ti, d.Partner(seat), d.trump, d.rules); !sit.allows(c) {
-		return &IllegalError{Card: c, Reason: sit.illegal(c)}
+	// A lead, or a card of the side suit led, is always allowed; judge
+	// the rest.
+	if led := t.cards[0].Suit; t.n > 0 && (c.Suit != led || led == d.trump) {
+		ti := t.info(d.n)
+		if sit := judge(d.held[seat], &ti, d.Partner(seat), d.trump, d.rules); !sit.allows(c) {
+			return &IllegalError{Card: c, Reason: sit.illegal(c)}
+		}
 	}
 	d.gone[seat] |= 1 << i
-	t.cards[t.n] = c
-	t.n++
+	d.held[seat] &^= 1 << c.Index()
+	t.add(seat, c, d.trump)
 	if t.n < d.n {
 		d.turn = d.next(seat)
 		return nil
@@ -815,26 +910,24 @@ func (d *Deal) Play(seat Seat, c Card) error {
 }
 
 func (d *Deal) completeTrick(t *trickRec) {
-	t.winner = (t.leader + Seat(trickWinner(t.cards[:t.n], d.trump))) % Seat(d.n)
-	t.points = CardPoints(t.cards[:t.n], d.trump)
+	t.won = t.win
 	last := true
 	for s := range Seat(d.n) {
 		last = last && d.left(s) == 0
 	}
+	bonus := 0
 	if last {
-		t.points += LastTrickBonus
+		bonus = LastTrickBonus
 	}
-	t.nRoem = uint8(len(AppendTrickRoem(t.roem[:0], t.cards[:t.n], d.trump)))
-	side := d.Side(t.winner)
+	points, roem := t.score(d.trump, bonus)
+	side := d.Side(t.winner())
 	d.won[side]++
-	d.points[side] += t.points
-	for _, r := range t.roem[:t.nRoem] {
-		d.roem[side] += r.Points
-	}
+	d.points[side] += points
+	d.roem[side] += roem
 	if d.n == 2 {
 		d.turnOver()
 	}
-	d.turn = t.winner
+	d.turn = t.winner()
 	if last {
 		d.finish()
 	}
@@ -843,8 +936,10 @@ func (d *Deal) completeTrick(t *trickRec) {
 // turnOver turns the cards over that lie open on the piles again: those
 // whose top card has been played.
 func (d *Deal) turnOver() {
-	for s := range 2 {
+	for s := range Seat(2) {
+		turned := d.gone[s] << 8 &^ d.up[s] &^ d.gone[s]
 		d.up[s] |= d.gone[s] << 8
+		d.reveal(s, turned)
 	}
 }
 
@@ -865,14 +960,26 @@ func (d *Deal) AppendLegal(dst []Card) []Card {
 	s := d.turn
 	var buf [16]Card
 	hand := d.AppendHand(buf[:0], s)
-	t := &d.tricks[d.cur]
-	var ti trickInfo
-	if t.n == d.n {
-		ti = trickInfo{high: -1, winner: NoSeat}
-	} else {
-		ti = infoFromCards(t.leader, t.cards[:t.n], d.trump, d.n)
-	}
+	ti := d.tricks[d.cur].info(d.n)
 	return appendLegal(dst, hand, &ti, d.Partner(s), d.trump, d.rules)
+}
+
+// LegalMask returns the cards the seat on turn may play (as AppendLegal)
+// as a bitmask: bit Card.Index for each; 0 outside phase play.
+func (d *Deal) LegalMask() uint32 {
+	if d.phase != PhasePlay {
+		return 0
+	}
+	hand, t := d.held[d.turn], &d.tricks[d.cur]
+	if t.n == 0 || t.n == d.n {
+		return hand // a lead: anything goes
+	}
+	if led := t.cards[0].Suit; led != d.trump && hand&suitSet(led) != 0 {
+		return hand & suitSet(led) // a side suit led: follow it (judge's needSuit)
+	}
+	ti := t.info(d.n)
+	s := judge(hand, &ti, d.Partner(d.turn), d.trump, d.rules)
+	return hand & s.allowed()
 }
 
 // Legal returns the cards the seat on turn may play.
@@ -886,14 +993,8 @@ func (d *Deal) Constraint() string {
 	if d.phase != PhasePlay {
 		return ""
 	}
-	var buf [16]Card
-	hand := d.AppendHand(buf[:0], d.turn)
-	t := &d.tricks[d.cur]
-	ti := trickInfo{high: -1, winner: NoSeat}
-	if t.n < d.n {
-		ti = infoFromCards(t.leader, t.cards[:t.n], d.trump, d.n)
-	}
-	s := judge(hand, &ti, d.Partner(d.turn), d.trump, d.rules)
+	ti := d.tricks[d.cur].info(d.n)
+	s := judge(d.HandMask(d.turn), &ti, d.Partner(d.turn), d.trump, d.rules)
 	return s.constraint()
 }
 
@@ -973,7 +1074,7 @@ func (d *Deal) View(seat Seat) View {
 		}
 	}
 	if t := &d.tricks[d.cur]; t.n == d.n && d.phase == PhasePlay {
-		v.Current = Trick{Leader: t.winner, Winner: NoSeat, Cards: []Played{}}
+		v.Current = Trick{Leader: t.winner(), Winner: NoSeat, Cards: []Played{}}
 	} else {
 		v.Current = t.trick(d.n)
 	}
@@ -992,21 +1093,32 @@ func (d *Deal) View(seat Seat) View {
 // face down on seat s's piles, pile by pile (a pile's top card before the
 // one under it); the face-up cards come from v.Piles.
 func Resume(v View, hands [4][]Card) (*Deal, error) {
+	d := new(Deal)
+	if err := ResumeInto(d, &v, hands); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// ResumeInto is Resume into d, which it overwrites (on an error with
+// something unusable): a simulation can resume many sampled deals into
+// one Deal without allocating.
+func ResumeInto(d *Deal, v *View, hands [4][]Card) error {
 	n := v.Players
 	if n == 0 {
 		n = 4
 	}
 	if n < 2 || n > 4 {
-		return nil, fmt.Errorf("game: Resume: %d players", n)
+		return fmt.Errorf("game: Resume: %d players", n)
 	}
 	if v.Phase != PhasePlay || !v.TrumpKnown {
-		return nil, errors.New("game: Resume needs a view in phase play")
+		return errors.New("game: Resume needs a view in phase play")
 	}
 	size := handSize[n]
 	if len(v.Tricks) > size || len(v.Current.Cards) > n {
-		return nil, errors.New("game: Resume: too many tricks or cards")
+		return errors.New("game: Resume: too many tricks or cards")
 	}
-	d := &Deal{
+	*d = Deal{
 		n:          uint8(n),
 		dealer:     v.Dealer % Seat(n),
 		mode:       v.Mode,
@@ -1023,7 +1135,7 @@ func Resume(v View, hands [4][]Card) (*Deal, error) {
 	}
 	if n == 3 {
 		if len(v.Discards) != 2 {
-			return nil, errors.New("game: Resume: three players need the discards")
+			return errors.New("game: Resume: three players need the discards")
 		}
 		copy(d.discards[:], v.Discards)
 	}
@@ -1037,66 +1149,66 @@ func Resume(v View, hands [4][]Card) (*Deal, error) {
 	var played [4]int
 	for i, t := range v.Tricks {
 		if len(t.Cards) != n {
-			return nil, fmt.Errorf("game: Resume: trick %d has %d cards", i+1, len(t.Cards))
+			return fmt.Errorf("game: Resume: trick %d has %d cards", i+1, len(t.Cards))
 		}
 		r := &d.tricks[i]
-		r.leader, r.n = t.Leader%Seat(n), uint8(n)
+		*r = newTrick(t.Leader % Seat(n))
 		for j, p := range t.Cards {
-			r.cards[j] = p.Card
-			played[(r.leader+Seat(j))%Seat(n)]++
+			seat := (r.leader() + Seat(j)) % Seat(n)
+			r.add(seat, p.Card, d.trump)
+			played[seat]++
 		}
-		r.winner = (r.leader + Seat(trickWinner(r.cards[:n], d.trump))) % Seat(n)
-		r.points = CardPoints(r.cards[:n], d.trump)
+		r.won = r.win
+		bonus := 0
 		if i == size-1 {
-			r.points += LastTrickBonus
+			bonus = LastTrickBonus
 		}
-		r.nRoem = uint8(len(AppendTrickRoem(r.roem[:0], r.cards[:n], d.trump)))
-		side := d.Side(r.winner)
+		points, roem := r.score(d.trump, bonus)
+		side := d.Side(r.winner())
 		d.won[side]++
-		d.points[side] += r.points
-		for _, it := range r.roem[:r.nRoem] {
-			d.roem[side] += it.Points
-		}
+		d.points[side] += points
+		d.roem[side] += roem
 	}
 	k := len(v.Tricks)
 	switch {
 	case len(v.Current.Cards) > 0 && len(v.Current.Cards) < n:
 		if k == size {
-			return nil, errors.New("game: Resume: trick after the last")
+			return errors.New("game: Resume: trick after the last")
 		}
 		r := &d.tricks[k]
-		r.leader, r.winner = v.Current.Leader%Seat(n), NoSeat
+		*r = newTrick(v.Current.Leader % Seat(n))
 		for j, p := range v.Current.Cards {
-			r.cards[j] = p.Card
-			r.n++
-			played[(r.leader+Seat(j))%Seat(n)]++
+			seat := (r.leader() + Seat(j)) % Seat(n)
+			r.add(seat, p.Card, d.trump)
+			played[seat]++
 		}
 		d.cur = k
-		d.turn = (r.leader + Seat(r.n)) % Seat(n)
+		d.turn = (r.leader() + Seat(r.n)) % Seat(n)
 	case k > 0:
 		d.cur = k - 1
-		d.turn = d.tricks[d.cur].winner
+		d.turn = d.tricks[d.cur].winner()
 	default:
-		d.tricks[0] = trickRec{leader: d.next(d.dealer), winner: NoSeat}
-		d.turn = d.tricks[0].leader
+		d.tricks[0] = newTrick(d.next(d.dealer))
+		d.turn = d.tricks[0].leader()
 	}
-	for s := range n {
+	for s := range Seat(n) {
 		if n == 2 {
-			if err := d.resumePiles(Seat(s), v.Piles[s], hands[s], played[s]); err != nil {
-				return nil, err
+			if err := d.resumePiles(s, v.Piles[s], hands[s], played[s]); err != nil {
+				return err
 			}
-			continue
+		} else {
+			if len(hands[s])+played[s] != size {
+				return fmt.Errorf("game: Resume: seat %d has %d cards, want %d", s, len(hands[s]), size-played[s])
+			}
+			d.nCards[s] = uint8(copy(d.hands[s][:], hands[s]))
+			d.up[s] = 1<<d.nCards[s] - 1
 		}
-		if len(hands[s])+played[s] != size {
-			return nil, fmt.Errorf("game: Resume: seat %d has %d cards, want %d", s, len(hands[s]), size-played[s])
-		}
-		d.nCards[s] = uint8(copy(d.hands[s][:], hands[s]))
-		d.up[s] = 1<<d.nCards[s] - 1
+		d.sync(s)
 	}
 	if k == size {
 		d.finish()
 	}
-	return d, nil
+	return nil
 }
 
 // resumePiles lays seat s's piles out again (two players): the face-up

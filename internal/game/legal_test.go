@@ -246,7 +246,7 @@ func TestLegalCoversEveryReason(t *testing.T) {
 			}
 			played := cards(tc.trick)
 			ti := infoFromTrick(buildTrick(tc.leader, played), Hearts)
-			s := judge(cards(tc.hand), &ti, ((tc.leader + Seat(len(played))) & 3).Partner(), Hearts, rules)
+			s := judge(setOf(cards(tc.hand)), &ti, ((tc.leader + Seat(len(played))) & 3).Partner(), Hearts, rules)
 			seen[s.why] = true
 		}
 	}

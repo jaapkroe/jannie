@@ -396,7 +396,14 @@ Semantics and additions (implemented in `internal/game`):
   `cards`/`roem` as `[]`.
 - Fast paths for simulation (no allocations): `AppendLegalMoves(dst, hand, trick,
   seat, trump, rules)`, `IsLegal(card, hand, trick, seat, trump, rules)`,
-  `AppendTrickRoem(dst, cards, trump)`, `RoemPoints(cards, trump)`;
+  `AppendTrickRoem(dst, cards, trump)`, `RoemPoints(cards, trump)`,
+  `RoemAdded(cards, c, trump)` (the roem card c adds to at most three cards:
+  `RoemPoints` with c less without);
+  on card sets as bitmasks (`uint32`, bit `Card.Index` per card):
+  `LegalReply(hand, lead, leader, seat, trump, rules)` (`LegalMoves` for the
+  second card of a trick that leader led with lead), `d.HandMask(seat)` (as
+  `d.AppendHand`) and `d.LegalMask()` (as `d.AppendLegal`; 0 outside phase
+  play);
   `Deal` holds no slices or maps, so `*dst = *src` (or `d.Clone()`) is a full
   independent copy; `d.AppendLegal(dst)`/`d.Legal()` for the seat on turn,
   `d.AppendHand(dst, seat)`, `d.HandLen(seat)`, `d.TrickCount()`.
@@ -404,9 +411,19 @@ Semantics and additions (implemented in `internal/game`):
   from a view plus every seat's remaining cards (e.g. sampled hidden hands);
   with three players `v.Discards` must hold the (sampled) discards, with two
   `hands[s]` holds only seat s's face-down cards, pile by pile.
+  `ResumeInto(d *Deal, v *View, hands) error` is `Resume` into an existing
+  Deal, which it overwrites (after an error d is unusable), so a search
+  reuses one Deal per worker; `NewDeal`/`NewDealFor` are small enough to be
+  inlined, so a deal that does not outlive its caller stays off the heap.
 - A Deal holds every seat's cards at the places they were dealt (16 places
   per seat) with masks for played and face-up cards, so copying it stays a
-  full copy for every table size.
+  full copy for every table size. It also keeps each seat's playable cards
+  as a mask (with the place of each), and the current trick's winning card
+  and highest trump as cards are played, so the rules need no loop over the
+  hand, and `Play` judges only a card that neither leads nor follows a side
+  suit led (those are always allowed). Its tricks are compact (seats as
+  int8, roem as indexes), so a Deal is about 700 bytes: every playout
+  starts from a copy.
 - Deal accessors for the server: `Dealer()`, `Voorhand()`, `Mode()`, `Rules()`,
   `TricksWon() [2]int`, `HandPoints() [2]int` (incl. last trick),
   `HandRoem() [2]int`.
@@ -417,7 +434,13 @@ stuk+sequence, four of a kind, no false positives), scoring (normal, nat, tie =
 nat, pit, pit by defenders), deal state machine (both trump modes, forced
 choice, turn order, last-trick bonus, 162 total); for three and two players
 the auction, discards, piles, open roem, random deals against the reference
-rules, and Resume.
+rules, and Resume. The random deals also check the bitmask fast paths
+(`HandMask` for every seat, `LegalMask`, `LegalReply`) against the
+reference, and `ResumeInto` against `Resume`; `RoemAdded` is checked
+against `RoemPoints` for every set of up to three cards, every card added
+and every trump. Benchmarks: `BenchmarkPlayout` (a hand of random legal
+cards played out on a copy of a Deal), `BenchmarkLegalMoves`,
+`BenchmarkRoemPoints`.
 
 ### 4.2 `internal/bot`
 
@@ -599,6 +622,17 @@ Strength levels:
 Each persona modulates its level's choices (Aggression shifts thresholds) and
 chat. `internal/bot` has an arena test (skipped with `-short`) that plays many
 hands between levels and asserts sterk > normaal > makkelijk in average points.
+Its benchmarks (`bench_test.go`) time the sterk decisions: with four players
+the first lead (also on one core), a card mid-hand, the trump choice and the
+bid; at the smaller tables a card, the trump choice, the bid with two, the
+auction and the discard with three; a training hint, the grades of one
+player's hand and the same with a hint before each, `HandLuck`; and a whole
+hand of sterk bots at four, three and two players on one core each, the CPU
+a table of bots costs per hand. `TestIdentity`, skipped without
+`-identity.out=FILE`, writes for 384 seeded deals every decision of every
+level, the hints, grades and explanations and the raw search statistics to
+FILE: a change that must keep every decision (a speed-up) leaves it byte for
+byte the same.
 
 At a table of three or two (`internal/bot/small.go`, `smallsearch.go`) the
 levels keep their meaning with their own policy; the signals of §8 play no

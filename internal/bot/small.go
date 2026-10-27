@@ -230,16 +230,17 @@ func (t *pubTable) lead(seat game.Seat, hand, legal, opp cardSet) game.Card {
 func (t *pubTable) sureWin(seat game.Seat, c game.Card, hand, opp cardSet) (int, bool) {
 	trump := t.trump
 	if t.n == 2 {
-		var pb [1]game.Played
-		pb[0] = game.Played{Seat: 0, Card: c}
-		tr := game.Trick{Leader: 0, Cards: pb[:]}
-		var buf, ob [8]game.Card
+		replies := cardSet(game.LegalReply(uint32(opp), c, 0, 1, trump, t.rules))
+		beat := replies.higher(c, trump)
+		if c.Suit != trump {
+			beat |= replies.inSuit(trump)
+		}
+		if beat != 0 {
+			return 0, false
+		}
 		least := 0
-		for i, r := range game.AppendLegalMoves(buf[:0], opp.appendCards(ob[:0]), tr, 1, trump, t.rules) {
-			if game.Beats(r, c, c.Suit, trump) {
-				return 0, false
-			}
-			if p := game.Points(r, trump); i == 0 || p < least {
+		for x, first := replies, true; x != 0; x, first = x&(x-1), false {
+			if p := game.Points(game.CardFromIndex(trailing(x)), trump); first || p < least {
 				least = p
 			}
 		}

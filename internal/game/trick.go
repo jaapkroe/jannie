@@ -132,28 +132,55 @@ func TrickRoem(cards []Card, trump Suit) []RoemItem {
 // AppendTrickRoem appends the roem in cards to dst. A trick holds at most
 // two items (a sequence plus stuk), so a dst with capacity 2 never allocates.
 func AppendTrickRoem(dst []RoemItem, cards []Card, trump Suit) []RoemItem {
+	items, n := trickRoem(cards, trump)
+	for _, it := range items[:n] {
+		dst = append(dst, roemItems[it])
+	}
+	return dst
+}
+
+// roemItems are the kinds of roem, by the index trickRoem gives them.
+var roemItems = [...]RoemItem{
+	roemDrie:       {RoemDrie, 20},
+	roemVier:       {RoemVier, 50},
+	roemStuk:       {RoemStuk, 20},
+	roemVierGelijk: {RoemVierGelijk, 100},
+	roemVierBoeren: {RoemVierBoeren, 200},
+}
+
+const (
+	roemDrie = iota
+	roemVier
+	roemStuk
+	roemVierGelijk
+	roemVierBoeren
+)
+
+// trickRoem returns the roem in cards (see AppendTrickRoem) as indexes
+// into roemItems: four of a kind, or a sequence per suit and stuk.
+func trickRoem(cards []Card, trump Suit) (items [NumSuits + 1]uint8, n int) {
 	if r, ok := sameRank(cards); ok {
 		switch r {
 		case Jack:
-			return append(dst, RoemItem{RoemVierBoeren, 200})
+			items[0], n = roemVierBoeren, 1
 		case Ace, Ten, King, Queen:
-			return append(dst, RoemItem{RoemVierGelijk, 100})
+			items[0], n = roemVierGelijk, 1
 		}
-		return dst
+		return items, n
 	}
 	masks := suitMasks(cards)
 	for _, m := range masks {
-		switch run := longestRun(m); {
-		case run >= 4:
-			dst = append(dst, RoemItem{RoemVier, 50})
-		case run == 3:
-			dst = append(dst, RoemItem{RoemDrie, 20})
+		switch runRoem[m] {
+		case 50:
+			items[n], n = roemVier, n+1
+		case 20:
+			items[n], n = roemDrie, n+1
 		}
 	}
 	if trump < NumSuits && masks[trump]&stukMask == stukMask {
-		dst = append(dst, RoemItem{RoemStuk, 20})
+		items[n], n = roemStuk, n+1
 	}
-	return dst
+	return items, n
 }
 
 // RoemPoints returns the total roem in cards without allocating.
@@ -168,17 +195,43 @@ func RoemPoints(cards []Card, trump Suit) int {
 		return 0
 	}
 	masks := suitMasks(cards)
+	n := int(runRoem[masks[0]]) + int(runRoem[masks[1]]) + int(runRoem[masks[2]]) + int(runRoem[masks[3]])
+	if trump < NumSuits && masks[trump]&stukMask == stukMask {
+		n += 20
+	}
+	return n
+}
+
+// RoemAdded returns the roem that card c adds to cards, at most three
+// cards of a trick (none of them c): RoemPoints with c less RoemPoints
+// without it. It does not allocate.
+func RoemAdded(cards []Card, c Card, trump Suit) int {
+	// Only c's suit changes, unless c completes four of a kind (whose
+	// cards hold no sequence or stuk). Alone in its suit, c makes no
+	// sequence or stuk.
+	var before uint8
+	same := len(cards) == 3
+	for _, x := range cards {
+		if x.Suit == c.Suit {
+			before |= 1 << x.Rank
+		}
+		same = same && x.Rank == c.Rank
+	}
 	n := 0
-	for _, m := range masks {
-		switch run := longestRun(m); {
-		case run >= 4:
-			n += 50
-		case run == 3:
+	if before != 0 {
+		after := before | 1<<c.Rank
+		n = int(runRoem[after]) - int(runRoem[before])
+		if c.Suit == trump && after&stukMask == stukMask && before&stukMask != stukMask {
 			n += 20
 		}
 	}
-	if trump < NumSuits && masks[trump]&stukMask == stukMask {
-		n += 20
+	if same {
+		switch c.Rank {
+		case Jack:
+			n += 200
+		case Ace, Ten, King, Queen:
+			n += 100
+		}
 	}
 	return n
 }
@@ -270,6 +323,20 @@ func suitMasks(cards []Card) [NumSuits]uint8 {
 	return m
 }
 
+// runRoem[m] is the roem of the longest sequence in rank mask m of one
+// suit, as a trick counts it: 50 for four or more in a row, 20 for three.
+var runRoem = func() (t [256]uint8) {
+	for m := range t {
+		switch run := longestRun(uint8(m)); {
+		case run >= 4:
+			t[m] = 50
+		case run == 3:
+			t[m] = 20
+		}
+	}
+	return t
+}()
+
 // longestRun returns the length of the longest run of consecutive set bits.
 func longestRun(m uint8) int {
 	n := 0
@@ -308,37 +375,4 @@ func infoFromTrick(t Trick, trump Suit) trickInfo {
 		}
 	}
 	return ti
-}
-
-// infoFromCards is infoFromTrick for the compact form used inside Deal,
-// with n players.
-func infoFromCards(leader Seat, cards []Card, trump Suit, n uint8) trickInfo {
-	ti := trickInfo{high: -1, winner: NoSeat}
-	if len(cards) == 0 || len(cards) >= int(n) {
-		return ti
-	}
-	ti.n = len(cards)
-	ti.led = cards[0].Suit
-	ti.best = cards[0]
-	ti.winner = leader
-	for i, c := range cards {
-		if i > 0 && Beats(c, ti.best, ti.led, trump) {
-			ti.best, ti.winner = c, (leader+Seat(i))%Seat(n)
-		}
-		if c.Suit == trump && trumpOrder[c.Rank] > ti.high {
-			ti.high = trumpOrder[c.Rank]
-		}
-	}
-	return ti
-}
-
-// trickWinner returns the offset from the leader of the winning card.
-func trickWinner(cards []Card, trump Suit) int {
-	best, led := 0, cards[0].Suit
-	for i := 1; i < len(cards); i++ {
-		if Beats(cards[i], cards[best], led, trump) {
-			best = i
-		}
-	}
-	return best
 }

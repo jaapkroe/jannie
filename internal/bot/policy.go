@@ -503,12 +503,7 @@ func (m *mover) pitHunt() bool {
 
 // roemGain returns the roem that c adds to the cards already in the trick.
 func (m *mover) roemGain(c game.Card) int {
-	t := m.t
-	var cards [4]game.Card
-	n := copy(cards[:], t.trick[:t.n])
-	before := game.RoemPoints(cards[:n], t.trump)
-	cards[n] = c
-	return game.RoemPoints(cards[:n+1], t.trump) - before
+	return game.RoemAdded(m.t.trick[:m.t.n], c, m.t.trump)
 }
 
 // bestWinner returns the legal card that wins the trick now (with needSafe:
