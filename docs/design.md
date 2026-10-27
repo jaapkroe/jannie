@@ -853,8 +853,9 @@ reply attempt.
   bid) and works out a `why`: `AI.Explain` on the view of that seat then,
   match fields filled in as for the bots. A `why` names a decision made, or
   the one awaited now in the hand in play; it runs in the background, one
-  at a time per room (another meanwhile: error `limiet`), and the answer
-  goes to the asker alone. At most 500 marks and 200 feedback lines per
+  at a time per room (another meanwhile: error `limiet`) and one at a time
+  over all rooms (the search takes every core; others wait their turn), and
+  the answer goes to the asker alone. At most 500 marks and 200 feedback lines per
   match.
 - Bot chat (limits in §5): a bot does not repeat one of its last two lines for
   the same kind of event (numbers aside: "20 roem" and "50 roem" are one line);
