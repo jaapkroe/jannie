@@ -35,6 +35,7 @@ web/                       static frontend, vanilla ES modules, no build step
   js/call.js                 the call with the others at the table, loaded once another person sits there
 test/e2e/                  node scripts that play full games over the websocket
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
+                           app-perf.mjs, a benchmark of the frontend on two emulated phones,
                            and og-image.mjs, which renders web/og.png
 deploy/                    nginx.conf, quadlet templates (*.in), npm-advanced.conf, README-deploy.md
 scripts/go                 Go toolchain in a container: `scripts/go test ./...`
