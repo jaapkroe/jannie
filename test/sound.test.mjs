@@ -243,7 +243,7 @@ beforeEach(() => {
 test('exposes exactly the contract sounds', async () => {
   const sound = await freshSound();
   assert.deepEqual([...sound._names].sort(), [...NAMES].sort());
-  for (const fn of ['unlock', 'play', 'setMuted', 'isMuted', 'setVolume', 'getVolume', '_renderTo']) {
+  for (const fn of ['unlock', 'play', 'setMuted', 'isMuted', 'setVolume', 'getVolume', 'setCall', '_renderTo']) {
     assert.equal(typeof sound[fn], 'function', fn);
   }
 });
@@ -469,4 +469,26 @@ test('a closed context is replaced on the next unlock', async () => {
   await sound.unlock();
   assert.equal(FakeAudioContext.instances.length, 2);
   assert.equal(FakeAudioContext.instances[1].state, 'running');
+});
+
+test('iOS audio session: ambient for the game, play-and-record in a call', async () => {
+  const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const audioSession = { type: 'auto' };
+  setGlobal('navigator', { audioSession });
+  try {
+    const sound = await freshSound();
+    sound.setCall(false);
+    assert.equal(audioSession.type, 'auto', 'untouched before the first sound and outside a call');
+    await sound.unlock();
+    assert.equal(audioSession.type, 'ambient');
+    sound.setCall(true);
+    assert.equal(audioSession.type, 'play-and-record');
+    await FakeAudioContext.instances[0].close();
+    await sound.unlock();
+    assert.equal(audioSession.type, 'play-and-record', 'a new context during the call keeps the call\'s session');
+    sound.setCall(false);
+    assert.equal(audioSession.type, 'ambient');
+  } finally {
+    Object.defineProperty(globalThis, 'navigator', nav);
+  }
 });

@@ -1377,6 +1377,7 @@ export const sound = {
   play(name),          // 'card','deal','shuffle','trick','trickWon','roem','trump','turn','chat',
                        // 'nat','pit','handWon','handLost','win','lose','click','error','join'
   setMuted(bool), isMuted(), setVolume(0..1), getVolume()   // persisted in localStorage kj.sound
+  setCall(bool),       // call.js: a call holds the iOS audio session ('play-and-record', else 'ambient')
 };
 
 // web/js/manual.js — the in-game handleiding (Dutch content + renderer)
@@ -1607,7 +1608,13 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   chosen, a line that sound and picture go from device to device, not
   through the server, and *Niet nu* / *Meebellen*. Not in the lobby, where
   the call is offered but not proposed, and not in training or alone with
-  bots. *Meebellen* asks the browser for microphone and camera together;
+  bots. On iOS (`navigator.audioSession`) sound.js plays the game's sounds
+  in an `ambient` session, mixed with the user's own music; as that
+  records nothing and goes quiet with the silent switch, the session is
+  `play-and-record` from the tap on *Meebellen*, before the microphone is
+  asked, until the call ends (hanging up, leaving the room, a join called
+  off), also for a sound context made meanwhile.
+  *Meebellen* asks the browser for microphone and camera together;
   refused, for each on its own, so the microphone may still come when the
   camera is blocked. What cannot be had is a toast ("Geen toegang tot de
   camera", "Geen microfoon gevonden", "De camera is in gebruik"), and the

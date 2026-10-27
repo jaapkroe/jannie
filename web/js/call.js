@@ -125,8 +125,10 @@ async function join(wantMic, wantCam) {
   const g = ++gen;
   joining = true;
   refresh();
+  // iOS: an audio session that records (sound.js), before the microphone is asked.
+  sound.setCall(true);
   const got = await acquire(wantMic, wantCam);
-  if (g !== gen) { // hung up, or left the table, meanwhile
+  if (g !== gen) { // hung up, or left the table, meanwhile (hangup gave the session back)
     stopTracks(got);
     return;
   }
@@ -146,6 +148,7 @@ async function join(wantMic, wantCam) {
 export function hangup(tell = true) {
   gen++;
   joining = false;
+  sound.setCall(false);
   if (!me) {
     refresh();
     return;
