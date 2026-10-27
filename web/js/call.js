@@ -154,18 +154,18 @@ async function join(wantMic, wantCam) {
 export function hangup(tell = true) {
   gen++;
   joining = false;
-  sound.setCall(false);
-  if (!me) {
-    refresh();
-    return;
+  if (me) {
+    for (const p of [...peers.values()]) closePeer(p);
+    stopTracks({ mic, cam });
+    mic = cam = null;
+    micOn = camOn = false;
+    self.srcObject = null;
+    me = null;
+    if (tell) app.send({ t: 'call', id: '' });
   }
-  for (const p of [...peers.values()]) closePeer(p);
-  stopTracks({ mic, cam });
-  mic = cam = null;
-  micOn = camOn = false;
-  self.srcObject = null;
-  me = null;
-  if (tell) app.send({ t: 'call', id: '' });
+  // iOS: the game's audio session again, once the microphone has stopped
+  // (also for a join called off while it waited for the devices).
+  sound.setCall(false);
   refresh();
 }
 

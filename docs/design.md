@@ -1612,8 +1612,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   in an `ambient` session, mixed with the user's own music; as that
   records nothing and goes quiet with the silent switch, the session is
   `play-and-record` from the tap on *Meebellen*, before the microphone is
-  asked, until the call ends (hanging up, leaving the room, a join called
-  off), also for a sound context made meanwhile.
+  asked, until the call ends and the microphone has stopped (hanging up,
+  leaving the room, a join called off), also for a sound context made
+  meanwhile.
   *Meebellen* asks the browser for microphone and camera together;
   refused, for each on its own, so the microphone may still come when the
   camera is blocked. What cannot be had is a toast ("Geen toegang tot de
