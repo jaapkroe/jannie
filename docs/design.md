@@ -396,6 +396,9 @@ Semantics and additions (implemented in `internal/game`):
 - Fast paths for simulation (no allocations): `AppendLegalMoves(dst, hand, trick,
   seat, trump, rules)`, `IsLegal(card, hand, trick, seat, trump, rules)`,
   `AppendTrickRoem(dst, cards, trump)`, `RoemPoints(cards, trump)`;
+  on card sets as bitmasks (`uint32`, bit `Card.Index` per card):
+  `d.HandMask(seat)` (as `d.AppendHand`) and `d.LegalMask()` (as
+  `d.AppendLegal`; 0 outside phase play);
   `Deal` holds no slices or maps, so `*dst = *src` (or `d.Clone()`) is a full
   independent copy; `d.AppendLegal(dst)`/`d.Legal()` for the seat on turn,
   `d.AppendHand(dst, seat)`, `d.HandLen(seat)`, `d.TrickCount()`.
@@ -405,7 +408,11 @@ Semantics and additions (implemented in `internal/game`):
   `hands[s]` holds only seat s's face-down cards, pile by pile.
 - A Deal holds every seat's cards at the places they were dealt (16 places
   per seat) with masks for played and face-up cards, so copying it stays a
-  full copy for every table size.
+  full copy for every table size. It also keeps each seat's playable cards
+  as a mask (with the place of each), and the current trick's winning card
+  and highest trump as cards are played, so the rules need no loop over the
+  hand, and `Play` judges only a card that neither leads nor follows a side
+  suit led (those are always allowed).
 - Deal accessors for the server: `Dealer()`, `Voorhand()`, `Mode()`, `Rules()`,
   `TricksWon() [2]int`, `HandPoints() [2]int` (incl. last trick),
   `HandRoem() [2]int`.
@@ -416,9 +423,10 @@ stuk+sequence, four of a kind, no false positives), scoring (normal, nat, tie =
 nat, pit, pit by defenders), deal state machine (both trump modes, forced
 choice, turn order, last-trick bonus, 162 total); for three and two players
 the auction, discards, piles, open roem, random deals against the reference
-rules, and Resume. Benchmarks: `BenchmarkPlayout` (a hand of random legal
-cards played out on a copy of a Deal), `BenchmarkLegalMoves`,
-`BenchmarkRoemPoints`.
+rules, and Resume. The random deals also check the bitmask fast paths
+(`HandMask` for every seat, `LegalMask`) against the reference. Benchmarks:
+`BenchmarkPlayout` (a hand of random legal cards played out on a copy of a
+Deal), `BenchmarkLegalMoves`, `BenchmarkRoemPoints`.
 
 ### 4.2 `internal/bot`
 

@@ -72,11 +72,13 @@ func (s *sim) finishTrick(aggr *[4]float64) {
 
 // step plays one card with the rule-based policy.
 func (s *sim) step(aggr *[4]float64) {
-	var buf [8]game.Card
 	seat := s.d.Turn()
-	legal := setOf(s.d.AppendLegal(buf[:0]))
-	hand := setOf(s.d.AppendHand(buf[:0], seat))
-	m := newMover(&s.t, seat, hand, legal, aggr[seat])
+	legal := cardSet(s.d.LegalMask())
+	if legal&(legal-1) == 0 {
+		s.play(game.CardFromIndex(trailing(legal))) // the only card, as decide plays it
+		return
+	}
+	m := newMover(&s.t, seat, cardSet(s.d.HandMask(seat)), legal, aggr[seat])
 	s.play(m.choose())
 }
 

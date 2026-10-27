@@ -147,14 +147,12 @@ func (s *smallSim) play(c game.Card) {
 }
 
 func (s *smallSim) run() {
-	var buf [16]game.Card
 	for s.d.Phase() == game.PhasePlay {
 		seat := s.d.Turn()
-		hand := setOf(s.d.AppendHand(buf[:0], seat))
-		legal := setOf(s.d.AppendLegal(buf[:0]))
+		hand, legal := cardSet(s.d.HandMask(seat)), cardSet(s.d.LegalMask())
 		var opp cardSet
 		if s.t.n == 2 {
-			opp = setOf(s.d.AppendHand(buf[:0], 1-seat))
+			opp = cardSet(s.d.HandMask(1 - seat))
 		}
 		s.play(s.t.choose(seat, hand, legal, opp))
 	}
@@ -424,7 +422,7 @@ func estimateSolo(v *game.View, n int, seed uint64) []soloDeal {
 				panic("bot: auction: " + err.Error())
 			}
 		}
-		trump, ds := soloPlan(setOf(d.Hand(me)))
+		trump, ds := soloPlan(cardSet(d.HandMask(me)))
 		if err := d.Discard(me, ds[:]); err != nil {
 			panic("bot: discard: " + err.Error())
 		}

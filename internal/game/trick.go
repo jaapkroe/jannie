@@ -309,36 +309,3 @@ func infoFromTrick(t Trick, trump Suit) trickInfo {
 	}
 	return ti
 }
-
-// infoFromCards is infoFromTrick for the compact form used inside Deal,
-// with n players.
-func infoFromCards(leader Seat, cards []Card, trump Suit, n uint8) trickInfo {
-	ti := trickInfo{high: -1, winner: NoSeat}
-	if len(cards) == 0 || len(cards) >= int(n) {
-		return ti
-	}
-	ti.n = len(cards)
-	ti.led = cards[0].Suit
-	ti.best = cards[0]
-	ti.winner = leader
-	for i, c := range cards {
-		if i > 0 && Beats(c, ti.best, ti.led, trump) {
-			ti.best, ti.winner = c, (leader+Seat(i))%Seat(n)
-		}
-		if c.Suit == trump && trumpOrder[c.Rank] > ti.high {
-			ti.high = trumpOrder[c.Rank]
-		}
-	}
-	return ti
-}
-
-// trickWinner returns the offset from the leader of the winning card.
-func trickWinner(cards []Card, trump Suit) int {
-	best, led := 0, cards[0].Suit
-	for i := 1; i < len(cards); i++ {
-		if Beats(cards[i], cards[best], led, trump) {
-			best = i
-		}
-	}
-	return best
-}
