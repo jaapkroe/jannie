@@ -141,19 +141,23 @@ func gradeViews() (vs []game.View, cs []Choice) {
 		s := d.Turn()
 		v := d.View(s)
 		var c Choice
+		var err error
 		switch d.Phase() {
 		case game.PhaseBid:
 			p := players[s].Bid(v)
 			c.Play = &p
-			_ = d.Bid(s, p)
+			err = d.Bid(s, p)
 		case game.PhaseTrump:
 			t := players[s].ChooseTrump(v)
 			c.Suit = &t
-			_ = d.ChooseTrump(s, t)
+			err = d.ChooseTrump(s, t)
 		case game.PhasePlay:
 			card := players[s].Play(v)
 			c.Card = &card
-			_ = d.Play(s, card)
+			err = d.Play(s, card)
+		}
+		if err != nil {
+			panic(err)
 		}
 		if s == 0 && (c.Card == nil || len(v.Legal) > 1) {
 			vs, cs = append(vs, v), append(cs, c)
