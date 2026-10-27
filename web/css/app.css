@@ -1667,7 +1667,6 @@ body.busy::after {
   border-radius: 50%;
   background: var(--team, #557);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
-  transition: box-shadow 0.25s;
 }
 
 .ring > .avatar {
@@ -1680,8 +1679,39 @@ body.busy::after {
   --persona: linear-gradient(160deg, var(--team-hi), var(--team-lo));
 }
 
-.seat.turn .ring {
-  animation: kj-turn 1.3s ease-in-out infinite;
+/* The turn pulse: the solid ring on the ring itself, the glow of each end
+   of the pulse on a layer of its own (::before, ::after), crossfaded. Only
+   opacity animates, so the compositor runs it without repainting the table
+   every frame. Isolated, so the glow stays under the face and the marks. */
+.seat.turn .ring,
+.table.my-turn .seat-bottom .ring {
+  isolation: isolate;
+  box-shadow: 0 0 0 3px var(--gold), 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.seat.turn .ring::before,
+.seat.turn .ring::after,
+.table.my-turn .seat-bottom .ring::before,
+.table.my-turn .seat-bottom .ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.seat.turn .ring::before,
+.table.my-turn .seat-bottom .ring::before {
+  box-shadow: 0 0 10px 3px rgba(242, 193, 78, 0.45);
+  animation: kj-turn-a 1.3s ease-in-out infinite;
+}
+
+.seat.turn .ring::after,
+.table.my-turn .seat-bottom .ring::after {
+  box-shadow: 0 0 0 4px var(--gold-hi), 0 0 26px 9px rgba(242, 193, 78, 0.7);
+  opacity: 0;
+  animation: kj-turn-b 1.3s ease-in-out infinite;
 }
 
 .seat.empty .ring,
@@ -2312,8 +2342,41 @@ body.busy::after {
   box-shadow: none;
 }
 
+/* The advice pulses as the turn does (see .seat.turn .ring): the ring on
+   the button, the two glows crossfaded on ::before and ::after. The ring
+   is !important, as the animation it replaced beat the button's own
+   shadow, also pressed (:active) and while the choice is sent (:disabled). */
 .advised {
-  animation: kj-hint 1.1s ease-in-out infinite alternate;
+  position: relative;
+  isolation: isolate;
+  box-shadow: 0 0 0 3px rgba(255, 210, 74, 0.6) !important;
+}
+
+/* Positioned too, so the buttons after the advised one still paint over
+   its glow. */
+.advised ~ * {
+  position: relative;
+}
+
+.advised::before,
+.advised::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.advised::before {
+  box-shadow: 0 0 8px 2px rgba(255, 196, 0, 0.35);
+  animation: kj-hint-a 1.1s ease-in-out infinite alternate;
+}
+
+.advised::after {
+  box-shadow: 0 0 0 4px #ffd24a, 0 0 22px 8px rgba(255, 196, 0, 0.75);
+  opacity: 0;
+  animation: kj-hint-b 1.1s ease-in-out infinite alternate;
 }
 
 .turned {
@@ -3070,10 +3133,6 @@ body.busy::after {
 .hand > .card.dealing {
   opacity: 0;
   transition: none;
-}
-
-.table.my-turn .seat-bottom .ring {
-  animation: kj-turn 1.3s ease-in-out infinite;
 }
 
 /* flying cards */
@@ -6188,24 +6247,47 @@ body.chat-open .chat-scrim {
 
 /* ---------- motion ---------- */
 
-@keyframes kj-turn {
+/* The two ends of the turn pulse (see .seat.turn .ring): the glow at rest
+   fades out as the bright one fades in, and back. */
+@keyframes kj-turn-a {
   0%,
   100% {
-    box-shadow: 0 0 0 3px var(--gold), 0 0 10px 3px rgba(242, 193, 78, 0.45), 0 4px 12px rgba(0, 0, 0, 0.45);
+    opacity: 1;
   }
 
   50% {
-    box-shadow: 0 0 0 4px var(--gold-hi), 0 0 26px 9px rgba(242, 193, 78, 0.7), 0 4px 12px rgba(0, 0, 0, 0.45);
+    opacity: 0;
   }
 }
 
-@keyframes kj-hint {
+@keyframes kj-turn-b {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes kj-hint-a {
   from {
-    box-shadow: 0 0 0 3px rgba(255, 210, 74, 0.6), 0 0 8px 2px rgba(255, 196, 0, 0.35);
+    opacity: 1;
   }
 
   to {
-    box-shadow: 0 0 0 4px #ffd24a, 0 0 22px 8px rgba(255, 196, 0, 0.75);
+    opacity: 0;
+  }
+}
+
+@keyframes kj-hint-b {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
   }
 }
 
@@ -6287,10 +6369,22 @@ body.reduced .hand > .card.spot::after {
   animation: none;
 }
 
+/* The steady glow fades in and out; the pulse's solid ring comes and goes
+   with the turn at once, as the animation it replaced did. */
+body.reduced .ring {
+  transition: box-shadow 0.25s;
+}
+
 body.reduced .seat.turn .ring,
 body.reduced .table.my-turn .seat-bottom .ring {
-  animation: none;
   box-shadow: 0 0 0 4px var(--gold), 0 0 18px 6px rgba(242, 193, 78, 0.6);
+}
+
+body.reduced .seat.turn .ring::before,
+body.reduced .seat.turn .ring::after,
+body.reduced .table.my-turn .seat-bottom .ring::before,
+body.reduced .table.my-turn .seat-bottom .ring::after {
+  content: none;
 }
 
 body.reduced .hand > .card {
@@ -6309,5 +6403,12 @@ body.reduced .hand > .card {
   .seat.turn .ring,
   .table.my-turn .seat-bottom .ring {
     box-shadow: 0 0 0 4px var(--gold), 0 0 18px 6px rgba(242, 193, 78, 0.6);
+  }
+
+  .seat.turn .ring::before,
+  .seat.turn .ring::after,
+  .table.my-turn .seat-bottom .ring::before,
+  .table.my-turn .seat-bottom .ring::after {
+    content: none;
   }
 }

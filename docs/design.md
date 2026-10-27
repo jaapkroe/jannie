@@ -1565,6 +1565,14 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   toward the winner, roem burst, trump banner, speech bubbles for bids and bot
   chat, nat/pit splash, animated score count-up, confetti on winning; short
   waits so every move can be followed; `prefers-reduced-motion` shortens all.
+  A glow that pulses until the player acts (the turn, the advice on a trump
+  or bid choice, a hinted card) animates only `opacity`, which the
+  compositor runs: a `box-shadow` animation would restyle and repaint the
+  page every frame (`test/ui/app-perf.mjs` measures it). The turn and the
+  advice keep the two ends of their pulse on two layers (`::before`,
+  `::after`) that crossfade. With `prefers-reduced-motion` these glows, and
+  the lesson spot, are steady; *Minder animaties* (`body.reduced`) holds
+  the turn and the spot steady.
 - **Score sheet**: per hand: trump suit, who played (marker; with three
   players the bid too), points+roem per team (with three or two players a
   column per player, the gains; roem under the soloist only, as the other
@@ -1642,7 +1650,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   fake devices of `scripts/chrome`.
 - **Training**: tip bubble with the hint text and a glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
-  the bubble sits beside it); ✕ closes a hint until the next one; tips after
+  the bubble sits beside it) and the advised suit or *Spelen*/*Passen*
+  glows; ✕ closes a hint until the next one; tips after
   each trick (`tip`), shown until you play your next card; while the last
   trick of a hand waits for its tip (`nextAt` in phase `play`) the bubble
   has *Verder* with a countdown ring, and *Verder*, ✕ or Enter sends
