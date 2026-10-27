@@ -13,11 +13,12 @@ import (
 
 // TestPingOnlyWhenQuiet: a browser that pings itself (net.js, every 20 s)
 // gets no pings from the server, whose pongs keep the connection busy
-// enough; a quiet one gets them, and one that does not answer is closed.
+// enough; a quiet one gets them, and one that does not answer is closed,
+// also while its room keeps writing to it (a phone that dropped mid-game).
 // The pong timeout is generous, so a loaded machine (the image build runs
 // this test) does not close the quiet browser.
 func TestPingOnlyWhenQuiet(t *testing.T) {
-	_, ts := newTestServerWith(t, &fakeAI{}, func(s *Server) {
+	s, ts := newTestServerWith(t, &fakeAI{}, func(s *Server) {
 		s.pingEvery, s.pingTimeout = 400*time.Millisecond, time.Second
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -50,6 +51,22 @@ func TestPingOnlyWhenQuiet(t *testing.T) {
 	talker, talks, _ := open("10.6.0.1", true)
 	_, quiets, quietClosed := open("10.6.0.2", true)
 	_, deaf, deafClosed := open("10.6.0.3", false)
+	go func() { // the server writes to the deaf browser until it is closed
+		for {
+			select {
+			case <-deafClosed:
+				return
+			case <-time.After(40 * time.Millisecond):
+			}
+			s.mu.Lock()
+			for c := range s.clients {
+				if c.ip == "10.6.0.3" {
+					c.send([]byte(`{"t":"pong"}`))
+				}
+			}
+			s.mu.Unlock()
+		}
+	}()
 	for end := time.Now().Add(2 * time.Second); time.Now().Before(end); time.Sleep(40 * time.Millisecond) {
 		if err := talker.Write(ctx, websocket.MessageText, []byte(`{"t":"ping"}`)); err != nil {
 			t.Fatalf("ping: %v", err)
