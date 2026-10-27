@@ -19,6 +19,10 @@ const RESEND_MS = 4000;   // the server shows us otherwise this long after we sa
 const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 // Small: the picture fills a seat's circle, and goes to every other player.
 const VIDEO = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 20 }, facingMode: 'user' };
+// The circle shows the picture at most about 160 device pixels wide: there
+// 300 kbit/s looks the same as the 600 a browser allows 320x240, at half
+// the data to and from every other player, and less encoding and decoding.
+const VIDEO_BITRATE = 300000;
 
 let s = null;        // the latest state received (the table may still animate an older one)
 let me = null;       // our session while in the call: {id, sentAt}
@@ -339,7 +343,7 @@ function wait(p, pc) {
 async function offer(p) {
   const pc = newPC(p);
   pc.addTransceiver('audio', { direction: 'sendrecv' });
-  pc.addTransceiver('video', { direction: 'sendrecv' });
+  pc.addTransceiver('video', { direction: 'sendrecv', sendEncodings: [{ maxBitrate: VIDEO_BITRATE }] });
   attach(p);
   try {
     await pc.setLocalDescription(await pc.createOffer());
@@ -361,6 +365,7 @@ export async function onRTC(m) {
       for (const t of pc.getTransceivers()) t.direction = 'sendrecv';
       attach(p);
       await pc.setLocalDescription(await pc.createAnswer());
+      capVideo(pc);
       await gathered(pc);
       if (p.pc === pc) signal(p, pc.localDescription);
     } catch {
@@ -373,6 +378,18 @@ export async function onRTC(m) {
     } catch {
       failed(p, pc);
     }
+  }
+}
+
+// The one who answers gets its transceivers from the offer, so its video
+// ceiling is set once they are negotiated. It holds when the track changes.
+function capVideo(pc) {
+  for (const t of pc.getTransceivers()) {
+    if (t.receiver.track?.kind !== 'video') continue;
+    const prm = t.sender.getParameters();
+    if (!prm.encodings?.length) continue;
+    prm.encodings[0].maxBitrate = VIDEO_BITRATE;
+    t.sender.setParameters(prm).catch(() => {});
   }
 }
 

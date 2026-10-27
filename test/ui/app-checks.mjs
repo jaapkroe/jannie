@@ -2291,7 +2291,8 @@ CHECKS.takeover = async browser => {
 // seat; microphone and camera switch with one tap, are remembered, and a
 // refused camera leaves the microphone; a new connection starts a new call
 // session; the phone's menu hangs up; a reload proposes the call again.
-// A camera that goes by itself is switched off.
+// A camera that goes by itself is switched off; video goes under a
+// ceiling.
 CHECKS.call = async browser => {
   const H = await page(browser, VP.phone, 'call-host', { call: true });
   // The guest's browser refuses the camera until window.__camOk (the fake
@@ -2305,6 +2306,24 @@ CHECKS.call = async browser => {
       md.getUserMedia = c => (c.video && !window.__camOk ? Promise.reject(new DOMException('Permission denied', 'NotAllowedError')) : real(c));
     },
   });
+  // Keeps the connections, for __sending(): for each connection up, whether
+  // the microphone's track is on it, and the video's ceiling.
+  const keepPCs = () => {
+    const Native = window.RTCPeerConnection;
+    const pcs = [];
+    window.RTCPeerConnection = class extends Native {
+      constructor(...a) {
+        super(...a);
+        pcs.push(this);
+      }
+    };
+    window.__sending = () => pcs.filter(pc => pc.connectionState === 'connected').map(pc => {
+      const sender = kind => pc.getTransceivers().find(t => t.receiver.track.kind === kind).sender;
+      return `${sender('audio').track ? 'mic' : 'none'}/${sender('video').getParameters().encodings[0]?.maxBitrate}`;
+    }).join(',');
+  };
+  for (const P of [H, G]) await P.page.evaluateOnNewDocument(keepPCs);
+  const sends = (P, label, want) => waitFor(P, w => window.__sending() === w, { label }, want);
   // The seats (by name) that show a playing video, and the call marks (name:mic|off|lost).
   const videos = P => P.page.evaluate(() => [...document.querySelectorAll('.seat:not([hidden]) .ring')].flatMap(r => {
     const v = r.querySelector(':scope > video.call-video');
@@ -2387,10 +2406,13 @@ CHECKS.call = async browser => {
     await shot(G, 'videos');
     await checkOverflow(H, 'in the call');
     await checkOverflow(G, 'in the call');
+    // The one who offers and the one who answers each set the ceiling.
+    await sends(H, 'host video under the ceiling', 'mic/300000');
+    await sends(G, 'guest video under the ceiling', 'mic/300000');
 
     // The guest's camera goes by itself (its permission withdrawn, as when
     // it is unplugged or another app takes it): off as with its button.
-    // Allowed again, one tap brings it back.
+    // Allowed again, one tap brings it back, under the same ceiling.
     const cdp = await browser.target().createCDPSession();
     const camera = setting => cdp.send('Browser.setPermission', { permission: { name: 'camera' }, setting, origin: BASE, browserContextId: G.ctx.id });
     await camera('denied');
@@ -2400,6 +2422,7 @@ CHECKS.call = async browser => {
     await cdp.detach();
     await tapCall(G, '.prompt .call-dock .tb-cam');
     await shows(H, 'guest video back on the host page', 'Gast,Host');
+    await sends(G, 'guest video under the ceiling again', 'mic/300000');
 
     // The host's microphone off: one tap, marked on the guest page, remembered.
     await tapCall(H, '.prompt .call-dock .tb-mic');
