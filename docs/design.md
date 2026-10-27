@@ -1379,6 +1379,8 @@ export const sound = {
   setMuted(bool), isMuted(), setVolume(0..1), getVolume()   // persisted in localStorage kj.sound
   setCall(bool),       // call.js: a call holds the iOS audio session ('play-and-record', else 'ambient')
 };
+// The context sleeps (suspend) 30 s after the last sound, or 0.4 s after muting, so the device can
+//   stop its audio output; the next play() wakes it without a gesture, a tap or a key does not.
 
 // web/js/manual.js — the in-game handleiding (Dutch content + renderer)
 export const SECTIONS = [ {id:'bediening',title:'Bediening'}, {id:'regels',title:'Spelregels'},

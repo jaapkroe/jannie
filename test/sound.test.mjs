@@ -133,8 +133,9 @@ class FakeBuffer {
   getChannelData(i) { return this.data[i]; }
 }
 
-class FakeContext {
+class FakeContext extends EventTarget {
   constructor(sampleRate = 48000) {
+    super();
     this.nodes = [];
     this.sampleRate = sampleRate;
     this.currentTime = 0;
@@ -184,10 +185,16 @@ class FakeAudioContext extends FakeContext {
   constructor(opts) {
     super();
     this.opts = opts;
+    this.resumes = 0;
     FakeAudioContext.instances.push(this);
   }
-  resume() { this.state = 'running'; return Promise.resolve(); }
-  close() { this.state = 'closed'; return Promise.resolve(); }
+  setState(state) {
+    this.state = state;
+    this.dispatchEvent(new Event('statechange'));
+  }
+  resume() { this.resumes += 1; this.setState('running'); return Promise.resolve(); }
+  suspend() { this.setState('suspended'); return Promise.resolve(); }
+  close() { this.setState('closed'); return Promise.resolve(); }
 }
 
 class FakeOfflineAudioContext extends FakeContext {
@@ -210,10 +217,14 @@ function setGlobal(name, value) {
   Object.defineProperty(globalThis, name, { value, configurable: true, writable: true });
 }
 
+// A fresh module, which sleeps after `idle` ms of silence (and `muted` ms
+// once muted) instead of 30 s and 0.4 s.
 let instance = 0;
-async function freshSound() {
+async function freshSound({ idle = 60, muted = 20 } = {}) {
   instance += 1;
-  return (await import(`${MODULE}?i=${instance}`)).sound;
+  const { sound } = await import(`${MODULE}?i=${instance}`);
+  Object.assign(sound._napMs, { idle, muted });
+  return sound;
 }
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -232,10 +243,16 @@ function masterOf(ctx) {
   return ctx.nodes.find((n) => n.outputs.includes(shaper));
 }
 
+// The page, where the module listens for gestures.
+let page;
+const gesture = (type) => page.dispatchEvent(new Event(type));
+
 beforeEach(() => {
   FakeAudioContext.instances = [];
   setGlobal('AudioContext', FakeAudioContext);
   setGlobal('localStorage', new MemoryStorage());
+  page = new EventTarget();
+  setGlobal('addEventListener', page.addEventListener.bind(page));
 });
 
 // ---- tests -----------------------------------------------------------------
@@ -490,5 +507,120 @@ test('iOS audio session: ambient for the game, play-and-record in a call', async
     assert.equal(audioSession.type, 'ambient');
   } finally {
     Object.defineProperty(globalThis, 'navigator', nav);
+  }
+});
+
+test('a silent context sleeps, and the next sound wakes it', async () => {
+  const sound = await freshSound();
+  await sound.unlock();
+  const ctx = FakeAudioContext.instances[0];
+  sound.play('click');
+  await wait(120);
+  assert.equal(ctx.state, 'running', 'not while the click still sounds');
+  await wait(400);
+  assert.equal(ctx.state, 'suspended', 'asleep once silent');
+  assert.equal(sound._voiceCount(), 0);
+  const before = sources(ctx).length;
+  sound.play('turn');
+  assert.equal(ctx.state, 'running', 'woken by the sound');
+  const added = sources(ctx).slice(before);
+  assert.ok(added.length > 0 && added.every((s) => s.startAt >= ctx.currentTime && reaches(s, ctx.destination)));
+});
+
+test('keys and taps leave a sleeping context asleep; iOS interruptions still recover', async () => {
+  const sound = await freshSound();
+  await sound.unlock(); // a new context starts suspended (iOS): unlock() resumes it
+  const ctx = FakeAudioContext.instances[0];
+  assert.equal(ctx.state, 'running');
+  await wait(100);
+  assert.equal(ctx.state, 'suspended', 'asleep after a gesture without a sound');
+  const resumes = ctx.resumes;
+  for (const type of ['keydown', 'click', 'touchend', 'pointerup']) gesture(type);
+  await sound.unlock(); // the app's own unlock() on a tap
+  assert.equal(ctx.state, 'suspended', 'still asleep');
+  assert.equal(ctx.resumes, resumes, 'not resumed');
+
+  ctx.setState('interrupted'); // a phone call while asleep
+  gesture('click');
+  assert.equal(ctx.state, 'running', 'the next tap resumes it');
+
+  ctx.setState('interrupted'); // a phone call while running
+  await wait(100); // the nap falls in the interruption
+  assert.equal(ctx.state, 'interrupted');
+  ctx.setState('running'); // over: iOS resumes it by itself
+  await wait(100);
+  assert.equal(ctx.state, 'suspended', 'asleep again once silent');
+
+  ctx.setState('interrupted'); // a phone call while asleep
+  ctx.setState('suspended'); // over: iOS puts back the state of before
+  sound.play('card');
+  assert.equal(ctx.state, 'running', 'the next sound wakes it');
+});
+
+test('muted: the context sleeps soon after the first gesture and after muting', async () => {
+  setGlobal('localStorage', new MemoryStorage({ 'kj.sound': '{"muted":true,"volume":0.6}' }));
+  let sound = await freshSound({ idle: 1000 });
+  await sound.unlock();
+  let ctx = FakeAudioContext.instances[0];
+  assert.equal(ctx.state, 'running');
+  await wait(50);
+  assert.equal(ctx.state, 'suspended', 'asleep, not after the idle wait');
+  sound.play('card');
+  gesture('keydown');
+  assert.equal(ctx.state, 'suspended', 'stays asleep while muted');
+  sound.setMuted(false);
+  sound.play('click');
+  assert.equal(ctx.state, 'running', 'unmuted, the next sound wakes it');
+
+  sound = await freshSound({ idle: 1000 });
+  await sound.unlock();
+  ctx = FakeAudioContext.instances[1];
+  sound.play('click');
+  sound.setMuted(true);
+  await wait(50);
+  assert.equal(ctx.state, 'running', 'not while the click still sounds');
+  await wait(350);
+  assert.equal(ctx.state, 'suspended', 'asleep once muted and silent');
+});
+
+test('a short sound that wakes the context is not cut off while it resumes', async () => {
+  class Slow extends FakeAudioContext { // after the first time, as an iPhone may
+    resume() {
+      if (this.resumes === 0) return super.resume();
+      this.resumes += 1;
+      return new Promise((done) => setTimeout(() => { this.setState('running'); done(); }, 300));
+    }
+  }
+  setGlobal('AudioContext', Slow);
+  const sound = await freshSound();
+  await sound.unlock();
+  const ctx = Slow.instances[0];
+  await wait(100);
+  assert.equal(ctx.state, 'suspended');
+  const before = ctx.nodes.length;
+  sound.play('click'); // its own length plus 250 ms would end it at 290 ms
+  const out = ctx.nodes[before];
+  await wait(350);
+  assert.equal(ctx.state, 'running');
+  assert.equal(sound._voiceCount(), 1);
+  assert.ok(!out.disconnected, 'voice still connected after the resume');
+});
+
+test('a context that cannot sleep never throws', async () => {
+  const kinds = [
+    class extends FakeAudioContext { suspend = undefined; },
+    class extends FakeAudioContext { suspend() { throw new Error('InvalidStateError'); } },
+    class extends FakeAudioContext { suspend() { return Promise.reject(new Error('InvalidStateError')); } },
+  ];
+  for (const AC of kinds) {
+    setGlobal('AudioContext', AC);
+    const sound = await freshSound();
+    await sound.unlock();
+    await wait(100);
+    const ctx = AC.instances.at(-1);
+    assert.equal(ctx.state, 'running');
+    const before = sources(ctx).length;
+    sound.play('card');
+    assert.ok(sources(ctx).length > before, 'still plays');
   }
 });

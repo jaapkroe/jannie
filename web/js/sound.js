@@ -15,6 +15,9 @@ const GAP_MS = 40;          // the same sound at most once per 40 ms ...
 const DEAL_GAP_MS = 15;     // ... except dealing, which comes in quick runs
 const LEAD = 0.01;          // schedule just ahead of currentTime
 const RESUME_GRACE_MS = 1000;
+// Silent this long, or muted this long (past the volume fade), the context
+// sleeps; howler.js's autoSuspend does the same after 30 s.
+const NAP_MS = { idle: 30000, muted: 400 };
 
 const settings = loadSettings();
 const chains = new WeakMap();        // BaseAudioContext → output chain
@@ -24,6 +27,8 @@ const voices = [];                   // sounding voices, oldest first
 let ctx = null;                      // the live AudioContext, made by unlock()
 let resumeUntil = 0;                 // a pending resume() may still start queued sounds
 let calling = false;                 // a call holds the audio session (setCall)
+let napping = false;                 // we suspended the context ourselves
+let napTimer = 0;
 
 // ---- settings --------------------------------------------------------------
 
@@ -492,13 +497,45 @@ function steal(v, now) {
   if (i >= 0) voices.splice(i, 1);
 }
 
+// A running context keeps the audio output busy, also in silence: on iOS the
+// audio hardware and its IO thread, in Chrome a render callback some 100
+// times a second (after 30 s silent into a fake sink). So it sleeps once
+// nothing has sounded for a while; the next sound wakes it, a tap or a key
+// typed in the chat does not.
+function napLater() {
+  clearTimeout(napTimer);
+  napTimer = setTimeout(nap, settings.muted ? NAP_MS.muted : NAP_MS.idle);
+}
+
+function nap() {
+  try {
+    if (!ctx || ctx.state !== 'running' || typeof ctx.suspend !== 'function') return;
+    if (voices.length) { napLater(); return; } // they would freeze, and play on at the next wake
+    napping = true;
+    Promise.resolve(ctx.suspend()).catch(() => { napping = false; });
+  } catch {
+    napping = false;
+  }
+}
+
+// Resumes the context; sounds played meanwhile are scheduled on its stopped
+// clock and start once it runs. Once a context has run, no gesture is needed.
+function wake() {
+  napping = false;
+  resumeUntil = clock() + RESUME_GRACE_MS;
+  const done = () => { resumeUntil = 0; };
+  return Promise.resolve(ctx.resume()).then(done, done);
+}
+
 function ready() {
   return ctx !== null && (ctx.state === 'running' || clock() < resumeUntil);
 }
 
 function play(name) {
   try {
-    if (settings.muted || !ready() || !known(name)) return;
+    if (settings.muted || !known(name)) return;
+    if (napping) wake(); // also while its suspend() is still on the way
+    if (!ready()) return;
     const now = clock();
     if (now - (lastPlayed.get(name) ?? -Infinity) < (name === 'deal' ? DEAL_GAP_MS : GAP_MS)) return;
     lastPlayed.set(name, now);
@@ -510,7 +547,10 @@ function play(name) {
     try {
       SOUNDS[name](v);
     } finally {
-      v.timer = setTimeout(() => release(v), (v.end - t) * 1000 + 250);
+      // While a resume is pending the clock stands still: hold the voice
+      // for the rest of the grace too, or a short one would end unheard.
+      v.timer = setTimeout(() => release(v), (v.end - t) * 1000 + 250 + Math.max(0, resumeUntil - now));
+      napLater();
     }
   } catch { /* a sound must never break the game */ }
 }
@@ -530,15 +570,20 @@ function unlock() {
       const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
       if (!AC) return Promise.resolve();
       session();
-      ctx = new AC({ latencyHint: 'interactive' });
+      const c = new AC({ latencyHint: 'interactive' });
+      ctx = c;
+      napping = false;
       voices.length = 0;
       chainFor(ctx, masterGain(settings.volume, settings.muted));
+      // Running again, also by itself after an iOS interruption: sleep once silent.
+      c.addEventListener?.('statechange', () => { if (c === ctx && c.state === 'running') napLater(); });
+    } else if (ctx.state === 'running' || (napping && ctx.state === 'suspended')) {
+      return Promise.resolve(); // running, or asleep by our own choice: the next sound wakes it
     }
-    if (fresh || ctx.state !== 'running') kick(ctx);
+    kick(ctx);
+    napLater();
     if (ctx.state === 'running') return Promise.resolve();
-    resumeUntil = clock() + RESUME_GRACE_MS;
-    const done = () => { resumeUntil = 0; };
-    return Promise.resolve(ctx.resume()).then(done, done);
+    return wake();
   } catch {
     return Promise.resolve();
   }
@@ -561,7 +606,8 @@ function setCall(on) {
 }
 
 // Unlock on any real user gesture too, and resume after iOS interruptions
-// (phone call, app switch). Touch pointerdown does not count as a gesture.
+// (phone call, app switch), also of a context that was asleep. Touch
+// pointerdown does not count as a gesture.
 function onGesture(e) {
   if (e.type === 'pointerdown' && e.pointerType !== 'mouse') return;
   if (!ctx || ctx.state !== 'running') unlock();
@@ -576,6 +622,7 @@ function setMuted(muted) {
   settings.muted = Boolean(muted);
   saveSettings();
   try { applyVolume(); } catch { /* context gone */ }
+  if (settings.muted && ctx) napLater();
 }
 
 // Accepts a number or a numeric string (a range input's value); anything else is ignored.
@@ -609,4 +656,5 @@ export const sound = {
   _renderTo: renderTo,             // test-only
   _names: Object.freeze(Object.keys(SOUNDS)),   // test-only
   _voiceCount: () => voices.length,             // test-only
+  _napMs: NAP_MS,                                // test-only: shorter waits
 };
