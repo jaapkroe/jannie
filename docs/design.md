@@ -1385,8 +1385,9 @@ export const sound = {
 };
 // The context sleeps (suspend) 30 s after the last sound, or 0.4 s after muting, so the device can
 //   stop its audio output; the next play() wakes it without a gesture, a tap or a key does not.
-//   Not during a call (setCall(true) until setCall(false)): the call keeps the audio output busy
-//   anyway. setCall(false) starts the wait again.
+//   It does not fall asleep during a call (setCall(true) until setCall(false)), which keeps the
+//   audio output busy anyway; one already asleep wakes at the next sound, as outside a call.
+//   setCall(false) starts the wait again.
 
 // web/js/manual.js — the in-game handleiding (Dutch content + renderer)
 export const SECTIONS = [ {id:'bediening',title:'Bediening'}, {id:'regels',title:'Spelregels'},

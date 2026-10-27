@@ -501,8 +501,9 @@ function steal(v, now) {
 // audio hardware and its IO thread, in Chrome a render callback some 100
 // times a second (after 30 s silent into a fake sink). So it sleeps once
 // nothing has sounded for a while; the next sound wakes it, a tap or a key
-// typed in the chat does not. Not during a call (setCall), which keeps the
-// audio hardware busy anyway; after the call the wait starts again.
+// typed in the chat does not. It does not fall asleep during a call (setCall),
+// which keeps the audio hardware busy anyway; one already asleep wakes at the
+// next sound. After the call the wait starts again.
 function napLater() {
   clearTimeout(napTimer);
   napTimer = setTimeout(nap, settings.muted ? NAP_MS.muted : NAP_MS.idle);
