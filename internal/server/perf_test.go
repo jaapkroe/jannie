@@ -215,9 +215,11 @@ func playRoom(tb testing.TB, s *Server, sc perfScenario, seen func(t, ev string,
 	hs := make([]*fakeHuman, sc.humans)
 	for k := range hs {
 		hs[k] = &fakeHuman{s: s, c: newClient(s, nil, perfAddr(), "bench"), rng: rand.New(rand.NewPCG(uint64(k), 7)), done: make(chan struct{})}
-		go hs[k].run()
 	}
 	hs[0].seen = seen
+	for _, h := range hs {
+		go h.run()
+	}
 	m := sc.create
 	m.T, m.Name, m.Start = "create", "Mens0", sc.humans == 1
 	s.dispatch(hs[0].c, &m)
@@ -269,10 +271,11 @@ func BenchmarkGame(b *testing.B) {
 
 // BenchmarkMarshalState encodes again, per op, every update one
 // connection got in a solo match (they decode and encode byte for byte the
-// same; the event as raw JSON): what emitTo does per seat and event.
+// same, checked once; the event as raw JSON): what emitTo does per seat
+// and event.
 func BenchmarkMarshalState(b *testing.B) {
 	var msgs []updateMsg
-	size := 0
+	size, differ := 0, 0
 	playRoom(b, perfServer(b), perfScenarios[0], func(t, _ string, raw []byte) {
 		if t != "update" {
 			return
@@ -289,9 +292,15 @@ func BenchmarkMarshalState(b *testing.B) {
 		if string(m.Ev) != "null" {
 			u.Ev = m.Ev
 		}
+		if !bytes.Equal(mustJSON(u), raw) {
+			differ++
+		}
 		msgs = append(msgs, u)
 		size += len(raw)
 	}, false)
+	if differ > 0 {
+		b.Fatalf("%d of %d updates encode differently once decoded", differ, len(msgs))
+	}
 	b.SetBytes(int64(size))
 	b.ReportAllocs()
 	for b.Loop() {
