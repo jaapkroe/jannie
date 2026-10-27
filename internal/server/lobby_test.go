@@ -409,7 +409,7 @@ func TestHostStaysWhileNobodyConnected(t *testing.T) {
 	r.seats[1].leftAt = time.Now().Add(-11 * time.Second)
 	r.checkHost() // Anna's grace timer
 	if r.host != 0 {
-		t.Fatalf("with nobody connected the role went to %s", r.seats[r.host].name)
+		t.Errorf("with nobody connected the role went to %s", r.seats[r.host].name)
 	}
 	r.setClient(0, a)
 	r.checkHost()
