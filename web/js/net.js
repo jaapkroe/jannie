@@ -2,7 +2,6 @@
 // outbox for messages sent while (re)connecting.
 
 const PING_MS = 20000;   // client keepalive
-const STALE_MS = 55000;  // no traffic at all for this long: reconnect
 const OUTBOX_MAX = 8;    // messages kept while (re)connecting
 
 export function createNet({ onMessage, onOpen, onClose }) {
@@ -125,10 +124,21 @@ export function createNet({ onMessage, onOpen, onClose }) {
     schedule(ms);
   }
 
+  // Dead socket: a ping of ours got no answer by the next tick. Measured
+  // from the ping, not the wall clock: a background tab's timers may fire
+  // only once a minute (Chrome's intensive wake-up throttling), and that
+  // alone must not look like a dead connection.
+  let pingAt = 0;
   setInterval(() => {
     if (!isOpen()) return;
-    if (Date.now() - lastRx > STALE_MS) reconnect();
-    else raw({ t: 'ping' });
+    const now = Date.now();
+    if (pingAt && lastRx < pingAt && now - pingAt > PING_MS / 2) {
+      pingAt = 0;
+      reconnect();
+      return;
+    }
+    pingAt = now;
+    raw({ t: 'ping' });
   }, PING_MS);
 
   const wake = () => {

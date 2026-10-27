@@ -1549,7 +1549,10 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   its landscape layout. `app-checks.mjs --only keyboard` emulates it.
 - **Connection**: a `play`, `trump`, `bid`, `auction`, `discard` or `vote`
   (sent only when it changes the answer) without any answer within 4 s means
-  a dead socket: the client reconnects. Every rejoin drops what was sent
+  a dead socket: the client reconnects. So does the client's keepalive
+  `ping` (every 20 s) with nothing at all received by the next one; that
+  counts from the ping, not the clock, since Chrome may fire the timers of a
+  tab hidden for 5 minutes or more only once a minute. Every rejoin drops what was sent
   but unanswered and renders purely from the resync. A tab in the background still sounds
   the turn (and the takeover question) and shows "● Jouw beurt" in its
   title on your turn, and "● Vraag aan tafel" while the question waits for
