@@ -956,9 +956,10 @@ CHECKS.lost = async browser => {
 
 // The update queue while the table animates, here the trump banner: a
 // line we type shows at once, a bot line at our seat and another player's
-// line wait for the animation, and a line still queued when the socket
-// closes is in the log once after the rejoin. Leaving while the hand end
-// animates opens no hand summary over the home screen.
+// line wait for the animation, a line still queued when the socket closes
+// is in the log once after the rejoin, and so is one we type while the
+// rejoin's chat log waits. Leaving while the hand end animates opens no
+// hand summary over the home screen.
 CHECKS.queue = async browser => {
   const P = await page(browser, VP.phone, 'queue', {
     hooks: true,
@@ -972,9 +973,9 @@ CHECKS.queue = async browser => {
       const { app } = await import('/js/util.js');
       const K = window.__kj;
       const id = Math.floor(Math.random() * 1e6);
-      const T = (window.__q = { mine: `eigen-${id}`, bot: `bot-${id}`, other: `ander-${id}` });
+      const T = (window.__q = { mine: `eigen-${id}`, bot: `bot-${id}`, other: `ander-${id}`, late: `later-${id}` });
       const copies = t => [...document.querySelectorAll('.chat-list .msg-text')].filter(e => e.textContent === t).length;
-      T.copies = () => ({ mine: copies(T.mine), bot: copies(T.bot), other: copies(T.other) });
+      T.copies = () => ({ mine: copies(T.mine), bot: copies(T.bot), other: copies(T.other), late: copies(T.late) });
       const banner = () => !!document.querySelector('.fx .banner');
       K.rewrite = data => {
         const m = JSON.parse(data);
@@ -985,7 +986,11 @@ CHECKS.queue = async browser => {
           // The three echoes are in: what shows during the banner. Then the socket drops.
           setTimeout(() => { T.atOnce = T.copies(); T.echoEarly = banner(); K.last().close(); });
         } else {
-          if (m.t === 'chatlog' && T.atOnce) T.logEarly = banner();
+          if (m.t === 'chatlog' && T.atOnce) {
+            T.logEarly = banner();
+            setTimeout(() => app.send({ t: 'chat', text: T.late })); // typed while the log waits its turn
+          }
+          if (m.t === 'chat' && m.msg.text === T.late) T.lateEarly = banner();
           return data;
         }
         return JSON.stringify(m);
@@ -1008,10 +1013,10 @@ CHECKS.queue = async browser => {
     await sleep(1000);
     const st = await P.page.evaluate(() => {
       const T = window.__q;
-      return { atOnce: T.atOnce, echoEarly: T.echoEarly, logEarly: T.logEarly, after: T.copies() };
+      return { atOnce: T.atOnce, echoEarly: T.echoEarly, logEarly: T.logEarly, lateEarly: T.lateEarly, after: T.copies() };
     });
-    if (!st.echoEarly || !st.logEarly) throw new Error(`the echoes or the rejoin came after the banner, nothing queued to check: ${JSON.stringify(st)}`);
-    if (JSON.stringify(st.atOnce) !== '{"mine":1,"bot":0,"other":0}' || JSON.stringify(st.after) !== '{"mine":1,"bot":1,"other":1}') {
+    if (!st.echoEarly || !st.logEarly || !st.lateEarly) throw new Error(`the echoes or the rejoin came after the banner, nothing queued to check: ${JSON.stringify(st)}`);
+    if (JSON.stringify(st.atOnce) !== '{"mine":1,"bot":0,"other":0,"late":0}' || JSON.stringify(st.after) !== '{"mine":1,"bot":1,"other":1,"late":1}') {
       throw new Error(`chat lines during the banner and after the rejoin: ${JSON.stringify(st)}`);
     }
 
