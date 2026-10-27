@@ -35,7 +35,7 @@ export function openModal({ id = '', title = '', body = [], cls = '', closable =
     if (i < 0) return;
     stack.splice(i, 1);
     m.root.classList.remove('open');
-    setTimeout(() => m.root.remove(), dur(240) + 10);
+    setTimeout(() => { m.root.remove(); m.onRemove?.(); }, dur(240) + 10);
     if (!quiet) m.onClose?.();
     if (back?.isConnected && !stack.length) back.focus?.({ preventScroll: true });
     syncHistory();
@@ -738,6 +738,7 @@ function showSummary(s, ev) {
     m.go = go;
     m.ready = ready;
     m.ring = ring;
+    m.onRemove = () => ring.set(0); // stops the countdown once the fade-out is over
     if (fresh) setTimeout(() => nums.forEach(([el, v]) => countUp(el, v, 1100)), dur(350));
     focusMain(go);
   }
@@ -844,8 +845,10 @@ export function countdownRing() {
   let a = null;
   return {
     el: svg,
+    // 0 stops it, for a ring hidden or removed: unseen, its animation would
+    // still keep the main thread drawing frames until it ends.
     set(nextAt) {
-      if (!nextAt || nextAt === at) return;
+      if (nextAt === at) return;
       at = nextAt;
       const left = Math.max(0, Math.min(60000, nextAt - Date.now()));
       a?.cancel();

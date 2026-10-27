@@ -673,7 +673,7 @@ function renderPrompt(s) {
   E.coachGo.hidden = !reading && !lesson;
   E.coachGo.classList.toggle('no-ring', !!lesson);
   E.coachRing.el.toggleAttribute('hidden', !reading);
-  if (reading) E.coachRing.set(s.nextAt);
+  E.coachRing.set(reading ? s.nextAt : 0);
   if (show) {
     E.coach.classList.toggle('is-tip', !hint);
     E.coachIcon.textContent = hint ? '💡' : '👩‍🏫';

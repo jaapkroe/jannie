@@ -35,6 +35,7 @@ web/                       static frontend, vanilla ES modules, no build step
   js/call.js                 the call with the others at the table, loaded once another person sits there
 test/e2e/                  node scripts that play full games over the websocket
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
+                           app-perf.mjs, a benchmark of the frontend on two emulated phones,
                            and og-image.mjs, which renders web/og.png
 deploy/                    nginx.conf, quadlet templates (*.in), npm-advanced.conf, README-deploy.md
 scripts/go                 Go toolchain in a container: `scripts/go test ./...`
@@ -1564,6 +1565,19 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   toward the winner, roem burst, trump banner, speech bubbles for bids and bot
   chat, nat/pit splash, animated score count-up, confetti on winning; short
   waits so every move can be followed; `prefers-reduced-motion` shortens all.
+  A glow that pulses until the player acts (the turn, the advice on a trump
+  or bid choice, a hinted card) animates only `opacity`, which the
+  compositor runs: a `box-shadow` animation would restyle and repaint the
+  page every frame (`test/ui/app-perf.mjs` measures it). The turn and the
+  advice keep the two ends of their pulse on two layers (`::before`,
+  `::after`) that crossfade. With `prefers-reduced-motion` or *Minder
+  animaties* (`body.reduced`) these glows, and the lesson spot, are steady.
+  A countdown ring stops once it is hidden or its dialog is gone. On a phone
+  (up to 600 × 932 px) the manual is an opaque sheet over all but a strip of
+  the top bar: the pulses and glows, the home logo and the waiting dots under
+  it hold still while it is open (not a lesson spot in the top bar). The
+  sheet is at most 900 px high, so in a taller window the table shows above
+  it and they keep moving.
 - **Score sheet**: per hand: trump suit, who played (marker; with three
   players the bid too), points+roem per team (with three or two players a
   column per player, the gains; roem under the soloist only, as the other
@@ -1641,7 +1655,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   fake devices of `scripts/chrome`.
 - **Training**: tip bubble with the hint text and a glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
-  the bubble sits beside it); ✕ closes a hint until the next one; tips after
+  the bubble sits beside it) and the advised suit or *Spelen*/*Passen*
+  glows; ✕ closes a hint until the next one; tips after
   each trick (`tip`), shown until you play your next card; while the last
   trick of a hand waits for its tip (`nextAt` in phase `play`) the bubble
   has *Verder* with a countdown ring, and *Verder*, ✕ or Enter sends
