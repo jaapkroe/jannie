@@ -78,6 +78,7 @@ network cannot join this one, because it listens on loopback.
 make test       # go vet, the Go tests (-short), the JS unit tests and the deployment files
 make test-all   # also the bot arena: sterk must beat normaal must beat makkelijk
 make e2e        # full games over the websocket against the server from source
+scripts/go test -run '^$' -bench . ./internal/bot ./internal/game   # CPU per bot decision and per hand
 ```
 
 Browser checks with Puppeteer live in `test/ui` and run against a server

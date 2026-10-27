@@ -416,7 +416,9 @@ stuk+sequence, four of a kind, no false positives), scoring (normal, nat, tie =
 nat, pit, pit by defenders), deal state machine (both trump modes, forced
 choice, turn order, last-trick bonus, 162 total); for three and two players
 the auction, discards, piles, open roem, random deals against the reference
-rules, and Resume.
+rules, and Resume. Benchmarks: `BenchmarkPlayout` (a hand of random legal
+cards played out on a copy of a Deal), `BenchmarkLegalMoves`,
+`BenchmarkRoemPoints`.
 
 ### 4.2 `internal/bot`
 
@@ -598,6 +600,17 @@ Strength levels:
 Each persona modulates its level's choices (Aggression shifts thresholds) and
 chat. `internal/bot` has an arena test (skipped with `-short`) that plays many
 hands between levels and asserts sterk > normaal > makkelijk in average points.
+Its benchmarks (`bench_test.go`) time the sterk decisions: with four players
+the first lead (also on one core), a card mid-hand, the trump choice and the
+bid; at the smaller tables a card, the trump choice, the bid with two, the
+auction and the discard with three; a training hint, the grades of one
+player's hand and the same with a hint before each, `HandLuck`; and a whole
+hand of sterk bots at four, three and two players on one core each, the CPU
+a table of bots costs per hand. `TestIdentity`, skipped without
+`-identity.out=FILE`, writes for 384 seeded deals every decision of every
+level, the hints, grades and explanations and the raw search statistics to
+FILE: a change that must keep every decision (a speed-up) leaves it byte for
+byte the same.
 
 At a table of three or two (`internal/bot/small.go`, `smallsearch.go`) the
 levels keep their meaning with their own policy; the signals of §8 play no
