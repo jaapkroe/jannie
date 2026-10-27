@@ -138,8 +138,10 @@ async function join(wantMic, wantCam) {
     return;
   }
   joining = false;
-  mic = got.mic;
-  cam = got.cam;
+  // A track that ended while the other was still asked for fired its
+  // `ended` before watchEnd: it joins switched off.
+  mic = got.mic?.readyState === 'live' ? got.mic : null;
+  cam = got.cam?.readyState === 'live' ? got.cam : null;
   micOn = !!mic;
   camOn = !!cam;
   watchEnd(mic);

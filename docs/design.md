@@ -1621,8 +1621,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   camera", "Geen microfoon gevonden", "De camera is in gebruik"), and the
   player joins without it, still hearing and seeing the others. A
   microphone or camera that ends by itself later (unplugged, taken by
-  another app, its permission withdrawn) is switched off as with its
-  button, but not remembered; a tap asks for it again. Then the
+  another app, its permission withdrawn), or already while the other was
+  still being asked for, is switched off as with its button, but not
+  remembered; a tap asks for it again. Then the
   page sends `call`; every two pages in the call connect, the lower session
   id offering, with one audio and one video transceiver from the start, so
   switching later only swaps tracks (the camera's track is stopped, its
