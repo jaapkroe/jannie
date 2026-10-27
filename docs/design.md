@@ -1530,7 +1530,10 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   takeover` plays it through, also on the mock.
 - **Back button**: every closable overlay (dialog, chat drawer) has a history
   entry, so back (the Android gesture) closes the top one; at a table one more
-  entry makes back ask *Spel verlaten?* instead of leaving the page.
+  entry makes back ask *Spel verlaten?* instead of leaving the page. An
+  update still animating when the page leaves the room (or goes to another)
+  is dropped after its animation, so no hand summary of the table left
+  opens over the home screen or the next table.
 - **On-screen keyboard**: `index.html` sets `interactive-widget=resizes-content`,
   so an open keyboard shrinks the viewport, and an upright phone turns short
   and wide. The keyboard counts as open while a text field (not read-only)

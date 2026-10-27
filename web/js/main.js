@@ -27,6 +27,7 @@ let startTimer = 0;
 let leaveLater = null; // {code, token, name}: a leave that could not go out yet
 let callLoad = null;   // call.js on its way
 let callState = null;  // the latest state received, for call.js once it is there
+let roomGen = 0;       // bumped by enterRoom: an update still animating belongs to a room left
 
 const net = createNet({ onMessage, onOpen, onClose });
 app.send = send;
@@ -128,6 +129,7 @@ function sendLeaveLater() {
 
 // Clears all per-room state before entering a (new) room.
 function enterRoom(code) {
+  roomGen++;
   app.code = code;
   app.s = null;
   inRoom = false;
@@ -371,7 +373,9 @@ async function applyUpdate(u) {
     home.setBusy(false);
   }
   screen('game');
+  const gen = roomGen;
   if (ev && prev) await table.animate(ev, prev, next);
+  if (gen !== roomGen) return; // left the table, or went to another, while it animated
   app.s = next;
   table.settle(next, ev);
   table.render(next);
