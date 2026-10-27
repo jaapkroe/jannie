@@ -1211,6 +1211,9 @@ func (r *room) cmdTipRead(n *int) {
 	if r.readLesson(n) {
 		return
 	}
+	if n != nil {
+		return // a lesson tap that came after its step went: no tip read
+	}
 	if r.pending != stepCollect || r.nextAt.IsZero() {
 		return
 	}

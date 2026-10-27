@@ -947,11 +947,12 @@ Juf Jannie teaches the game a step at a time, and a little more each time
 the learner alone; `spot` names the part of the screen it is about (§9),
 `card` the card in the hand for spot `card`. The game waits for it without a timer: the pause
 it comes in (`turn` -1, `nextAt` 0) ends only when the learner has read every
-step of it, each with `tipRead` and its `n` (a `tipRead` for another `n` came
-late and changes nothing). On the learner's own turn a step needs no pause:
-the turn is open, the hint follows once it is read, and playing a card reads
-it too. Every step is a line of Juf Jannie in the chat (`coach`), after the first
-update that shows it. What is taught, per room (the hands counted from the
+step of it, each with `tipRead` and its `n` (a `tipRead` for another `n`,
+or with an `n` when no step is on screen, came late and changes nothing).
+On the learner's own turn a step needs no pause: the turn is open, the hint
+follows once it is read, and playing a card reads it too. Every step is a
+line of Juf Jannie in the chat (`coach`), after the first update that shows
+it. What is taught, per room (the hands counted from the
 first one dealt with lessons):
 
 - **Intro**, after the deal of the room's first hand, before the first turn:
@@ -1051,7 +1052,7 @@ client rotates so `you` is at the bottom.
 | `discard` | `cards` [2] | Three players: you play alone, phase `discard` |
 | `play` | `card` | Your turn, phase `play` |
 | `ready` | | Phase `handEnd`: continue now (ignored once the next hand is dealt: a late tap on the summary) |
-| `tipRead` | `n` (optional) | Training, a lesson step on screen (`lesson`, §6 Lessons): read, on to the next (ignored when `n` is another step's: a late tap); else the last trick of a hand waiting for its tip (`nextAt` set in phase `play`): on to the summary now (ignored once it is up: a late tap) |
+| `tipRead` | `n` (optional) | Training, a lesson step on screen (`lesson`, §6 Lessons): read, on to the next (ignored when `n` is another step's, or no step is on screen: a late tap); else, without `n`, the last trick of a hand waiting for its tip (`nextAt` set in phase `play`): on to the summary now (ignored once it is up: a late tap) |
 | `vote` | `seat`, `ai` bool, `left` bool (optional) | While state `takeover` is set, every connected human: may an AI play that seat (`true`), or wait (`false`)? `seat`, and `left` when sent, as in `takeover`: the question it answers (the client sends `left`, so a yes for a stand-in never counts for a seat given away). Can change while the question is open (§6); the same answer again changes nothing, so no `update` follows |
 | `chat` | `text` | Any time |
 | `call` | `id` (8–32 letters and digits; "" hangs up), `mic` bool, `cam` bool | Any time: join the call, switch the microphone or camera, hang up (§6 Calls). The same again changes nothing |
