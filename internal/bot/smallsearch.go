@@ -290,7 +290,7 @@ func (b *player) smallTrump(v game.View) (s game.Suit) {
 			s = bestTwo(mine, theirs, v.Forced, v.Turned)
 		}
 	}()
-	st := twoSearch(&v, b.cfg, b.rng.Uint64(), b.persona.Aggression)
+	st := twoSearch(&v, b.cfg, b.rng.Uint64(), b.persona.Aggression, func(game.Suit) bool { return true })
 	return bestSuit(st, v.Forced, v.Turned)
 }
 
@@ -311,7 +311,7 @@ func (b *player) smallBid(v game.View) (play bool) {
 			play = normal
 		}
 	}()
-	st := twoSearch(&v, b.cfg, b.rng.Uint64(), b.persona.Aggression)
+	st := twoSearch(&v, b.cfg, b.rng.Uint64(), b.persona.Aggression, func(su game.Suit) bool { return su == v.Turned })
 	return st[v.Turned].mean()+bidBias(b.persona.Aggression) > 0
 }
 
@@ -534,11 +534,11 @@ func soloSearch(v *game.View, cfg searchConfig, seed uint64, try func(game.Suit)
 	return out
 }
 
-// twoSearch evaluates each trump suit for v.Seat with two players before
-// play, as if v.Seat made it: the face-down cards are dealt at random,
-// then the hand is played out. The value is v.Seat's score minus the
-// opponent's.
-func twoSearch(v *game.View, cfg searchConfig, seed uint64, aggr float64) [game.NumSuits]optionStats {
+// twoSearch evaluates trump suits (those try accepts) for v.Seat with two
+// players before play, as if v.Seat made it: the face-down cards are dealt
+// at random, then the hand is played out. The value is v.Seat's score
+// minus the opponent's.
+func twoSearch(v *game.View, cfg searchConfig, seed uint64, aggr float64, try func(game.Suit) bool) [game.NumSuits]optionStats {
 	me := v.Seat
 	var known [2][16]game.Card
 	var isUp [2]uint16
@@ -574,7 +574,7 @@ func twoSearch(v *game.View, cfg searchConfig, seed uint64, aggr float64) [game.
 			}
 			deal := game.NewDealFor(2, v.Dealer, hands, nil, game.Utrechts, v.Rules, 0)
 			for su := game.Suit(0); su < game.NumSuits; su++ {
-				if v.Forced && su == v.Turned {
+				if v.Forced && su == v.Turned || !try(su) {
 					continue
 				}
 				s := smallSim{d: *deal}

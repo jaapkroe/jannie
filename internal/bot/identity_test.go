@@ -241,7 +241,7 @@ func identitySmall(w *bufio.Writer, n, i int, cfg searchConfig) {
 			}
 			fmt.Fprintf(w, " bids=%v", bids)
 			if n == 2 {
-				fmt.Fprintf(w, " search=%+v", twoSearch(&v, cfg, uint64(i)<<8|uint64(step), 0.7))
+				fmt.Fprintf(w, " search=%+v", twoSearch(&v, cfg, uint64(i)<<8|uint64(step), 0.7, func(game.Suit) bool { return true }))
 			}
 			err = d.Bid(s, bids[lv])
 		case game.PhaseTrump:
@@ -251,7 +251,7 @@ func identitySmall(w *bufio.Writer, n, i int, cfg searchConfig) {
 			}
 			fmt.Fprintf(w, " trumps=%v", suits)
 			if n == 2 {
-				fmt.Fprintf(w, " search=%+v", twoSearch(&v, cfg, uint64(i)<<8|uint64(step), 0.7))
+				fmt.Fprintf(w, " search=%+v", twoSearch(&v, cfg, uint64(i)<<8|uint64(step), 0.7, func(game.Suit) bool { return true }))
 			} else {
 				fmt.Fprintf(w, " search=%+v", soloSearch(&v, cfg, uint64(i)<<8|uint64(step), func(game.Suit) bool { return true }))
 			}

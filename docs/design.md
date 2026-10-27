@@ -399,8 +399,10 @@ Semantics and additions (implemented in `internal/game`):
   `RoemAdded(cards, c, trump)` (the roem card c adds to at most three cards:
   `RoemPoints` with c less without);
   on card sets as bitmasks (`uint32`, bit `Card.Index` per card):
-  `d.HandMask(seat)` (as `d.AppendHand`) and `d.LegalMask()` (as
-  `d.AppendLegal`; 0 outside phase play);
+  `LegalReply(hand, lead, leader, seat, trump, rules)` (`LegalMoves` for the
+  second card of a trick that leader led with lead), `d.HandMask(seat)` (as
+  `d.AppendHand`) and `d.LegalMask()` (as `d.AppendLegal`; 0 outside phase
+  play);
   `Deal` holds no slices or maps, so `*dst = *src` (or `d.Clone()`) is a full
   independent copy; `d.AppendLegal(dst)`/`d.Legal()` for the seat on turn,
   `d.AppendHand(dst, seat)`, `d.HandLen(seat)`, `d.TrickCount()`.
@@ -432,11 +434,12 @@ nat, pit, pit by defenders), deal state machine (both trump modes, forced
 choice, turn order, last-trick bonus, 162 total); for three and two players
 the auction, discards, piles, open roem, random deals against the reference
 rules, and Resume. The random deals also check the bitmask fast paths
-(`HandMask` for every seat, `LegalMask`) against the reference, and
-`ResumeInto` against `Resume`; `RoemAdded` is checked against `RoemPoints`
-for every set of up to three cards, every card added and every trump.
-Benchmarks: `BenchmarkPlayout` (a hand of random legal cards played out on
-a copy of a Deal), `BenchmarkLegalMoves`, `BenchmarkRoemPoints`.
+(`HandMask` for every seat, `LegalMask`, `LegalReply`) against the
+reference, and `ResumeInto` against `Resume`; `RoemAdded` is checked
+against `RoemPoints` for every set of up to three cards, every card added
+and every trump. Benchmarks: `BenchmarkPlayout` (a hand of random legal
+cards played out on a copy of a Deal), `BenchmarkLegalMoves`,
+`BenchmarkRoemPoints`.
 
 ### 4.2 `internal/bot`
 

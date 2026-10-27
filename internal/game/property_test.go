@@ -159,6 +159,12 @@ func TestRandomDeals(t *testing.T) {
 					i, v.Legal, want, v.Hand, trickCards, trump, rules)
 			}
 			checkMasks(t, d, want)
+			if len(trickCards) == 1 {
+				lead := trickCards[0]
+				if got := LegalReply(setOf(v.Hand), lead.Card, lead.Seat, s, trump, rules); got != setOf(want) {
+					t.Fatalf("deal %d: LegalReply %x, legal %v", i, got, want)
+				}
+			}
 			if rule := ExplainConstraint(v.Hand, v.Current, s, trump, rules); rule == "" {
 				t.Fatal("empty constraint text")
 			}

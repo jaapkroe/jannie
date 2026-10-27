@@ -174,6 +174,18 @@ func AppendLegalMoves(dst, hand []Card, trick Trick, seat Seat, trump Suit, rule
 	return appendLegal(dst, hand, &ti, seat.Partner(), trump, rules)
 }
 
+// LegalReply returns the cards of hand that seat may play as the second
+// card of a trick that leader led with lead (as LegalMoves), hand and
+// result as bitmasks: bit Card.Index for each card.
+func LegalReply(hand uint32, lead Card, leader, seat Seat, trump Suit, rules Rules) uint32 {
+	ti := trickInfo{n: 1, led: lead.Suit, winner: leader, best: lead, high: -1}
+	if lead.Suit == trump {
+		ti.high = trumpOrder[lead.Rank]
+	}
+	s := judge(hand, &ti, seat.Partner(), trump, rules)
+	return hand & s.allowed()
+}
+
 func appendLegal(dst, hand []Card, ti *trickInfo, partner Seat, trump Suit, rules Rules) []Card {
 	s := judge(setOf(hand), ti, partner, trump, rules)
 	if s.need == needFree {
