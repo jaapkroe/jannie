@@ -2291,8 +2291,9 @@ CHECKS.takeover = async browser => {
 // seat; microphone and camera switch with one tap, are remembered, and a
 // refused camera leaves the microphone; a new connection starts a new call
 // session; the phone's menu hangs up; a reload proposes the call again.
-// A camera or microphone that goes by itself is switched off; video goes
-// under a ceiling, and a muted microphone sends nothing until it is on.
+// A camera or microphone that goes by itself is switched off, also a
+// microphone that went while joining; video goes under a ceiling, and a
+// muted microphone sends nothing until it is on.
 // The iOS audio session records from before the devices are asked until
 // they have stopped: after a hang-up and after a join called off.
 CHECKS.call = async browser => {
@@ -2322,14 +2323,24 @@ CHECKS.call = async browser => {
     },
   });
   // The guest's browser refuses the camera until window.__camOk (the fake
-  // devices of scripts/chrome are always allowed).
+  // devices of scripts/chrome are always allowed); with window.__camHold,
+  // the camera asked for on its own waits for it first. window.__mic is the
+  // latest microphone track.
   const G = await page(browser, VP.desktop, 'call-guest', {
     call: true,
     hooks: true,
     init: () => {
       const md = navigator.mediaDevices;
       const real = md.getUserMedia.bind(md);
-      md.getUserMedia = c => (c.video && !window.__camOk ? Promise.reject(new DOMException('Permission denied', 'NotAllowedError')) : real(c));
+      md.getUserMedia = async c => {
+        if (c.video && !window.__camOk) {
+          if (!c.audio) await window.__camHold;
+          throw new DOMException('Permission denied', 'NotAllowedError');
+        }
+        const st = await real(c);
+        window.__mic = st.getAudioTracks()[0] || window.__mic;
+        return st;
+      };
     },
   });
   // Keeps the connections, for __sending(): for each connection up, whether
@@ -2453,12 +2464,41 @@ CHECKS.call = async browser => {
     await sends(G, 'no ended microphone on the connection', 'none/300000');
     await permit('camera', 'granted');
     await permit('microphone', 'granted');
-    await cdp.detach();
     await tapCall(G, '.prompt .call-dock .tb-cam');
     await shows(H, 'guest video back on the host page', 'Gast,Host');
     await tapCall(G, '.prompt .call-dock .tb-mic');
     await marked(H, 'guest microphone back on the host page', 'Gast:mic,Host:mic');
     await sends(G, 'guest microphone back, video under the ceiling again', 'mic/300000');
+
+    // The same while joining: the guest hangs up and joins again, the camera
+    // refused once more but slowly, and the microphone goes while the camera
+    // is still asked for. The guest joins with it off, nothing on the
+    // connection; allowed again, one tap brings it back. Then the camera.
+    await tapCall(G, '.prompt .call-dock .tb-hangup');
+    await marked(H, 'guest hung up', 'Host:mic');
+    await G.page.evaluate(() => {
+      window.__camOk = false;
+      window.__camHold = new Promise(r => { window.__camGo = r; });
+    });
+    await tapCall(G, '.prompt .call-dock .tb-call');
+    await waitFor(G, () => document.querySelector('.m-call.open .btn-go'), { label: 'call sheet again' });
+    await sleep(300);
+    await press(G, '.m-call .btn-go');
+    await waitFor(G, () => window.__mic.readyState === 'live', { label: 'guest microphone, the camera still asked for' });
+    await permit('microphone', 'denied');
+    await waitFor(G, () => window.__mic.readyState === 'ended', { label: 'guest microphone ended while joining' });
+    if (!(await G.page.$('.prompt .call-dock .tb-call:disabled'))) throw new Error('the guest joined before the camera was answered');
+    await G.page.evaluate(() => window.__camGo());
+    await waitFor(G, () => document.querySelector('.prompt .call-dock .tb-mic[aria-pressed="false"]'), { label: 'guest joined with the microphone off' });
+    await marked(H, 'guest joined with the microphone off on the host page', 'Gast:off,Host:mic');
+    await sends(G, 'no microphone that ended while joining on the connection', 'none/300000');
+    await permit('microphone', 'granted');
+    await cdp.detach();
+    await tapCall(G, '.prompt .call-dock .tb-mic');
+    await marked(H, 'guest microphone on after joining', 'Gast:mic,Host:mic');
+    await G.page.evaluate(() => { window.__camOk = true; });
+    await tapCall(G, '.prompt .call-dock .tb-cam');
+    await shows(H, 'guest video on the host page again', 'Gast,Host');
 
     // The host's microphone off: one tap, marked on the guest page, remembered.
     await tapCall(H, '.prompt .call-dock .tb-mic');

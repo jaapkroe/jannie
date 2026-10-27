@@ -1656,11 +1656,13 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   refuses to play the sound before a tap gets "Tik ergens om de anderen te
   horen". Leaving the room hangs up. `app-checks.mjs --only call` plays it through with the
   fake devices of `scripts/chrome`, with a camera and a microphone whose
-  permission is withdrawn and given back, and checks the video ceiling on
-  both sides and that a muted microphone is off the connection and back on
-  it with one tap, and, with a fake `navigator.audioSession` on the host,
-  that the devices are asked under `play-and-record` and that hanging up
-  and a join called off give `ambient` back once the tracks have stopped.
+  permission is withdrawn and given back, the microphone's permission also
+  while the call is joining, with the camera still asked for, and checks the
+  video ceiling on both sides and that a muted microphone is off the
+  connection and back on it with one tap, and, with a fake
+  `navigator.audioSession` on the host, that the devices are asked under
+  `play-and-record` and that hanging up and a join called off give `ambient`
+  back once the tracks have stopped.
 - **Training**: tip bubble with the hint text and a glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it); ✕ closes a hint until the next one; tips after
