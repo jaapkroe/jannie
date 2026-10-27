@@ -316,12 +316,12 @@ function enqueue(m) {
 }
 
 // A chat line waits its turn behind the table's animations, so a bubble
-// comes with the move it is about; our own shows at once. Ours still waits
-// behind a queued chat log (a rejoin), which was sent before it and
-// replaces the lines shown, and behind a line of ours queued there, to
-// keep the order.
+// comes with the move it is about; one we typed shows at once (a bot line
+// at our seat, after a takeover, still waits). Ours still waits behind a
+// queued chat log (a rejoin), which was sent before it and replaces the
+// lines shown, and behind a line of ours queued there, to keep the order.
 function queueChat(m) {
-  const ours = x => x.t === 'chat' && x.msg && x.msg.seat === app.s?.you && !x.msg.sys;
+  const ours = x => x.t === 'chat' && x.msg && x.msg.seat === app.s?.you && !x.msg.sys && !x.msg.bot;
   if (ours(m) && !queue.some(x => x.t === 'chatlog' || ours(x))) onChat(m.msg);
   else enqueue(m);
 }
