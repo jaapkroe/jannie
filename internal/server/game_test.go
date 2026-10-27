@@ -1136,8 +1136,16 @@ func TestTrainingMissedHint(t *testing.T) {
 		}
 		hinted := *s.Hint.Card
 		play := hinted
-		if !missed && len(s.Legal) > 1 {
-			play = s.Legal[len(s.Legal)-1] // fakeAI advises the first
+		if !missed {
+			// fakeAI advises the first legal card in the dealt order, which
+			// can be any of s.Legal (in the shown order): play another one,
+			// if there is one.
+			for _, l := range s.Legal {
+				if l != hinted {
+					play = l
+					break
+				}
+			}
 		}
 		c.send(map[string]any{"t": "play", "card": play.String()})
 		tip := c.waitType("tip") // the trick completes before my next turn
