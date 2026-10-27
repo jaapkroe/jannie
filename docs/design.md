@@ -1021,8 +1021,12 @@ IP; then joins from that IP get `limiet` for 5 minutes, except a `join` with a
 valid seat token (room codes cannot be guessed). Chat over the limit: error
 `limiet`; over the message rate: error `limiet`, then the server closes the
 connection (status 1008). WebSocket `Origin` must match
-the Host (coder/websocket default) or an `-origin` pattern. Server pings every
-25 s (nginx and NPM time out idle proxied connections at 60 s).
+the Host (coder/websocket default) or an `-origin` pattern. The server pings a
+connection that it has heard nothing from, or sent nothing to, for 25 s
+(checked every 5 s; nginx and NPM time out idle proxied connections at 60 s),
+and closes it when the pong does not come within 20 s. The browser pings every
+20 s itself and gets a `pong`, so a page that runs gets no server pings, and a
+phone's radio wakes for one keepalive rather than two on clocks of their own.
 
 ## 7. Wire protocol
 
@@ -1380,6 +1384,11 @@ export const sound = {
   setMuted(bool), isMuted(), setVolume(0..1), getVolume()   // persisted in localStorage kj.sound
   setCall(bool),       // call.js: a call holds the iOS audio session ('play-and-record', else 'ambient')
 };
+// The context sleeps (suspend) 30 s after the last sound, or 0.4 s after muting, so the device can
+//   stop its audio output; the next play() wakes it without a gesture, a tap or a key does not.
+//   It does not fall asleep during a call (setCall(true) until setCall(false)), which keeps the
+//   audio output busy anyway; one already asleep wakes at the next sound, as outside a call.
+//   setCall(false) starts the wait again.
 
 // web/js/manual.js — the in-game handleiding (Dutch content + renderer)
 export const SECTIONS = [ {id:'bediening',title:'Bediening'}, {id:'regels',title:'Spelregels'},
@@ -1552,7 +1561,10 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   its landscape layout. `app-checks.mjs --only keyboard` emulates it.
 - **Connection**: a `play`, `trump`, `bid`, `auction`, `discard` or `vote`
   (sent only when it changes the answer) without any answer within 4 s means
-  a dead socket: the client reconnects. Every rejoin drops what was sent
+  a dead socket: the client reconnects. So does the client's keepalive
+  `ping` (every 20 s) with nothing at all received by the next one; that
+  counts from the ping, not the clock, since Chrome may fire the timers of a
+  tab hidden for 5 minutes or more only once a minute. Every rejoin drops what was sent
   but unanswered and renders purely from the resync. A tab in the background still sounds
   the turn (and the takeover question) and shows "● Jouw beurt" in its
   title on your turn, and "● Vraag aan tafel" while the question waits for
