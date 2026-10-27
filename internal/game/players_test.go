@@ -535,6 +535,10 @@ func TestResumeSmall(t *testing.T) {
 			t.Fatalf("deal %d (%d players): Resume: %v", i, players, err)
 		}
 		checkMasks(t, r, r.Legal())
+		into := *d // ResumeInto overwrites whatever is there
+		if err := ResumeInto(&into, &v, hidden); err != nil || into != *r {
+			t.Fatalf("deal %d (%d players): ResumeInto differs from Resume (%v)", i, players, err)
+		}
 		for s := range Seat(players) {
 			if !slices.Equal(r.Hand(s), d.Hand(s)) || r.HandLen(s) != d.HandLen(s) || r.Piles(s) != d.Piles(s) {
 				t.Fatalf("deal %d: seat %v resumed with %v (%d), want %v (%d)", i, s, r.Hand(s), r.HandLen(s), d.Hand(s), d.HandLen(s))

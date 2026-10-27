@@ -102,33 +102,32 @@ func countPlayed(v *game.View, seat game.Seat) int {
 	return n
 }
 
-// world draws one deal of the hidden cards for v.
-func (sp *sampler) world(v *game.View, rng *rand.Rand) smallWorld {
+// world draws one deal of the hidden cards for v into w, reusing its
+// slices.
+func (sp *sampler) world(v *game.View, rng *rand.Rand, w *smallWorld) {
 	var h [4]cardSet
 	sp.sample(rng, &h)
-	var w smallWorld
 	if v.Players == 2 {
 		// Face-down cards go to their places in pile order, at random.
 		for s := range 2 {
-			cs := h[s].appendCards(make([]game.Card, 0, 16))
+			cs := h[s].appendCards(w.hidden[s][:0])
 			rng.Shuffle(len(cs), func(i, j int) { cs[i], cs[j] = cs[j], cs[i] })
 			w.hidden[s] = cs
 		}
-		return w
+		return
 	}
 	for s := range game.Seat(3) {
 		if s == v.Seat {
-			w.hidden[s] = slices.Clone(v.Hand)
+			w.hidden[s] = append(w.hidden[s][:0], v.Hand...)
 		} else {
-			w.hidden[s] = h[s].appendCards(make([]game.Card, 0, 12))
+			w.hidden[s] = h[s].appendCards(w.hidden[s][:0])
 		}
 	}
 	if v.Seat == v.Bidder {
-		w.discards = v.Discards
+		w.discards = append(w.discards[:0], v.Discards...)
 	} else {
-		w.discards = h[talonSeat].appendCards(nil)
+		w.discards = h[talonSeat].appendCards(w.discards[:0])
 	}
-	return w
 }
 
 // smallSim is a hand at a small table being played out by the rules of
@@ -189,16 +188,17 @@ func smallSearchPlay(v *game.View, cfg searchConfig, seed uint64, aggr float64) 
 	cfg.runChunks(func(ch int) {
 		n := perChunk(smallWorlds*cfg.playWorlds, ch)
 		rng := chunkRNG(seed, ch)
+		var w smallWorld
+		var base game.Deal
+		vv := *v
 		for range n {
-			w := sp.world(v, rng)
-			vv := *v
+			sp.world(v, rng, &w)
 			vv.Discards = w.discards
-			base, err := game.Resume(vv, w.hidden)
-			if err != nil {
+			if err := game.ResumeInto(&base, &vv, w.hidden); err != nil {
 				panic("bot: resume: " + err.Error())
 			}
 			for i, c := range v.Legal {
-				s := smallSim{d: *base, t: t}
+				s := smallSim{d: base, t: t}
 				s.play(c)
 				s.run()
 				sums[ch][i] += int64(s.value(side, aggr))
@@ -404,15 +404,16 @@ func estimateSolo(v *game.View, n int, seed uint64) []soloDeal {
 	sp := smallSampler(holders, need, allCards&^hand, nil)
 	rng := rand.New(rand.NewPCG(seed, 3))
 	out := make([]soloDeal, 0, n)
+	var buf [4][12]game.Card
 	for range n {
 		var h [4]cardSet
 		sp.sample(rng, &h)
 		h[me] = hand
 		var hands [4][]game.Card
 		for s := range 3 {
-			hands[s] = h[s].appendCards(nil)
+			hands[s] = h[s].appendCards(buf[s][:0])
 		}
-		d := game.NewDealFor(3, v.Dealer, hands, h[talonSeat].appendCards(nil), v.Mode, v.Rules, 0)
+		d := game.NewDealFor(3, v.Dealer, hands, h[talonSeat].appendCards(buf[talonSeat][:0]), v.Mode, v.Rules, 0)
 		for d.Phase() == game.PhaseAuction {
 			bid := 0
 			if d.Turn() == me {
@@ -488,29 +489,31 @@ func soloSearch(v *game.View, cfg searchConfig, seed uint64, try func(game.Suit)
 	var stats [chunks][game.NumSuits]optionStats
 	cfg.runChunks(func(ch int) {
 		rng := chunkRNG(seed, ch)
+		var buf [3][12]game.Card
+		var s smallSim
+		vv := *v
+		vv.Phase, vv.TrumpKnown, vv.TrumpBy = game.PhasePlay, true, me
+		vv.Tricks, vv.Current = nil, game.Trick{Leader: v.Voorhand, Winner: game.NoSeat}
 		for range perChunk(cfg.trumpWorlds, ch) {
 			var h [4]cardSet
 			sp.sample(rng, &h)
 			var hands [4][]game.Card
-			for s := range game.Seat(3) {
-				if s == me {
-					hands[s] = slices.Clone(v.Hand)
+			for seat := range game.Seat(3) {
+				if seat == me {
+					hands[seat] = append(buf[seat][:0], v.Hand...)
 				} else {
-					hands[s] = h[s].appendCards(nil)
+					hands[seat] = h[seat].appendCards(buf[seat][:0])
 				}
 			}
 			for su := game.Suit(0); su < game.NumSuits; su++ {
 				if !try(su) {
 					continue
 				}
-				vv := *v
-				vv.Phase, vv.Trump, vv.TrumpKnown, vv.TrumpBy = game.PhasePlay, su, true, me
-				vv.Tricks, vv.Current = nil, game.Trick{Leader: v.Voorhand, Winner: game.NoSeat}
-				d, err := game.Resume(vv, hands)
-				if err != nil {
+				vv.Trump = su
+				if err := game.ResumeInto(&s.d, &vv, hands); err != nil {
 					panic("bot: resume: " + err.Error())
 				}
-				s := smallSim{d: *d, t: newPubTable(3, v.Voorhand, su, me, me, v.Rules)}
+				s.t = newPubTable(3, v.Voorhand, su, me, me, v.Rules)
 				s.run()
 				r := s.d.Result()
 				st := &stats[ch][su]
@@ -554,12 +557,13 @@ func twoSearch(v *game.View, cfg searchConfig, seed uint64, aggr float64) [game.
 	cfg.runChunks(func(ch int) {
 		rng := chunkRNG(seed, ch)
 		deck := slices.Clone(cards)
+		var buf [2][16]game.Card
 		for range perChunk(cfg.trumpWorlds, ch) {
 			rng.Shuffle(len(deck), func(i, j int) { deck[i], deck[j] = deck[j], deck[i] })
 			var hands [4][]game.Card
 			k := 0
 			for s := range 2 {
-				hands[s] = make([]game.Card, 16)
+				hands[s] = buf[s][:]
 				for i := range 16 {
 					if isUp[s]&(1<<i) != 0 {
 						hands[s][i] = known[s][i]
@@ -568,11 +572,13 @@ func twoSearch(v *game.View, cfg searchConfig, seed uint64, aggr float64) [game.
 					}
 				}
 			}
+			deal := game.NewDealFor(2, v.Dealer, hands, nil, game.Utrechts, v.Rules, 0)
 			for su := game.Suit(0); su < game.NumSuits; su++ {
 				if v.Forced && su == v.Turned {
 					continue
 				}
-				d := game.NewDealFor(2, v.Dealer, hands, nil, game.Utrechts, v.Rules, 0)
+				s := smallSim{d: *deal}
+				d := &s.d
 				if d.Turn() != me {
 					// Utrechts gives voorhand the choice: let the opponent
 					// say it in our place, the outcome is the same.
@@ -582,7 +588,7 @@ func twoSearch(v *game.View, cfg searchConfig, seed uint64, aggr float64) [game.
 				} else if err := d.ChooseTrump(me, su); err != nil {
 					panic("bot: trump: " + err.Error())
 				}
-				s := smallSim{d: *d, t: newPubTable(2, d.Voorhand(), su, me, game.NoSeat, v.Rules)}
+				s.t = newPubTable(2, d.Voorhand(), su, me, game.NoSeat, v.Rules)
 				s.run()
 				st := &stats[ch][su]
 				st.total += int64(s.valueAsMaker(me, aggr))

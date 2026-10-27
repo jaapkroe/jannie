@@ -340,7 +340,9 @@ var handSize = [5]int{2: 16, 3: 10, 4: 8}
 // for gedraaid and ignored for utrechts. It panics on hands of unequal
 // length or longer than 8.
 func NewDeal(dealer Seat, hands [4][]Card, mode TrumpMode, rules Rules, turned Suit) *Deal {
-	return NewDealFor(4, dealer, hands, nil, mode, rules, turned)
+	d := new(Deal) // inlined, as NewDealFor
+	d.start(4, dealer, hands, nil, mode, rules, turned)
+	return d
 }
 
 // NewDealFor starts a hand for 2, 3 or 4 players (design §2), with the
@@ -350,10 +352,19 @@ func NewDeal(dealer Seat, hands [4][]Card, mode TrumpMode, rules Rules, turned S
 // players the two cards of the talon. With three players the mode is
 // ignored: the auction decides. It panics on a bad layout.
 func NewDealFor(players int, dealer Seat, hands [4][]Card, talon []Card, mode TrumpMode, rules Rules, turned Suit) *Deal {
+	// Small enough to be inlined, so that a deal which does not outlive
+	// its caller (a simulation's) stays off the heap.
+	d := new(Deal)
+	d.start(players, dealer, hands, talon, mode, rules, turned)
+	return d
+}
+
+// start sets d up as NewDealFor describes.
+func (d *Deal) start(players int, dealer Seat, hands [4][]Card, talon []Card, mode TrumpMode, rules Rules, turned Suit) {
 	if players < 2 || players > 4 {
 		panic(fmt.Sprintf("game: NewDealFor: %d players", players))
 	}
-	d := &Deal{
+	*d = Deal{
 		n:       uint8(players),
 		dealer:  dealer,
 		mode:    mode,
@@ -405,7 +416,6 @@ func NewDealFor(players int, dealer Seat, hands [4][]Card, talon []Card, mode Tr
 	for s := range Seat(players) {
 		d.sync(s)
 	}
-	return d
 }
 
 // Shuffle shuffles a deck and deals it 3-2-3 to seats 0..3. A nil rng uses
@@ -1070,21 +1080,32 @@ func (d *Deal) View(seat Seat) View {
 // face down on seat s's piles, pile by pile (a pile's top card before the
 // one under it); the face-up cards come from v.Piles.
 func Resume(v View, hands [4][]Card) (*Deal, error) {
+	d := new(Deal)
+	if err := ResumeInto(d, &v, hands); err != nil {
+		return nil, err
+	}
+	return d, nil
+}
+
+// ResumeInto is Resume into d, which it overwrites (on an error with
+// something unusable): a simulation can resume many sampled deals into
+// one Deal without allocating.
+func ResumeInto(d *Deal, v *View, hands [4][]Card) error {
 	n := v.Players
 	if n == 0 {
 		n = 4
 	}
 	if n < 2 || n > 4 {
-		return nil, fmt.Errorf("game: Resume: %d players", n)
+		return fmt.Errorf("game: Resume: %d players", n)
 	}
 	if v.Phase != PhasePlay || !v.TrumpKnown {
-		return nil, errors.New("game: Resume needs a view in phase play")
+		return errors.New("game: Resume needs a view in phase play")
 	}
 	size := handSize[n]
 	if len(v.Tricks) > size || len(v.Current.Cards) > n {
-		return nil, errors.New("game: Resume: too many tricks or cards")
+		return errors.New("game: Resume: too many tricks or cards")
 	}
-	d := &Deal{
+	*d = Deal{
 		n:          uint8(n),
 		dealer:     v.Dealer % Seat(n),
 		mode:       v.Mode,
@@ -1101,7 +1122,7 @@ func Resume(v View, hands [4][]Card) (*Deal, error) {
 	}
 	if n == 3 {
 		if len(v.Discards) != 2 {
-			return nil, errors.New("game: Resume: three players need the discards")
+			return errors.New("game: Resume: three players need the discards")
 		}
 		copy(d.discards[:], v.Discards)
 	}
@@ -1115,7 +1136,7 @@ func Resume(v View, hands [4][]Card) (*Deal, error) {
 	var played [4]int
 	for i, t := range v.Tricks {
 		if len(t.Cards) != n {
-			return nil, fmt.Errorf("game: Resume: trick %d has %d cards", i+1, len(t.Cards))
+			return fmt.Errorf("game: Resume: trick %d has %d cards", i+1, len(t.Cards))
 		}
 		r := &d.tricks[i]
 		*r = newTrick(t.Leader % Seat(n))
@@ -1141,7 +1162,7 @@ func Resume(v View, hands [4][]Card) (*Deal, error) {
 	switch {
 	case len(v.Current.Cards) > 0 && len(v.Current.Cards) < n:
 		if k == size {
-			return nil, errors.New("game: Resume: trick after the last")
+			return errors.New("game: Resume: trick after the last")
 		}
 		r := &d.tricks[k]
 		*r = newTrick(v.Current.Leader % Seat(n))
@@ -1162,11 +1183,11 @@ func Resume(v View, hands [4][]Card) (*Deal, error) {
 	for s := range Seat(n) {
 		if n == 2 {
 			if err := d.resumePiles(s, v.Piles[s], hands[s], played[s]); err != nil {
-				return nil, err
+				return err
 			}
 		} else {
 			if len(hands[s])+played[s] != size {
-				return nil, fmt.Errorf("game: Resume: seat %d has %d cards, want %d", s, len(hands[s]), size-played[s])
+				return fmt.Errorf("game: Resume: seat %d has %d cards, want %d", s, len(hands[s]), size-played[s])
 			}
 			d.nCards[s] = uint8(copy(d.hands[s][:], hands[s]))
 			d.up[s] = 1<<d.nCards[s] - 1
@@ -1176,7 +1197,7 @@ func Resume(v View, hands [4][]Card) (*Deal, error) {
 	if k == size {
 		d.finish()
 	}
-	return d, nil
+	return nil
 }
 
 // resumePiles lays seat s's piles out again (two players): the face-up

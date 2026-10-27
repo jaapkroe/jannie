@@ -406,6 +406,10 @@ Semantics and additions (implemented in `internal/game`):
   from a view plus every seat's remaining cards (e.g. sampled hidden hands);
   with three players `v.Discards` must hold the (sampled) discards, with two
   `hands[s]` holds only seat s's face-down cards, pile by pile.
+  `ResumeInto(d *Deal, v *View, hands) error` is `Resume` into an existing
+  Deal, which it overwrites (after an error d is unusable), so a search
+  reuses one Deal per worker; `NewDeal`/`NewDealFor` are small enough to be
+  inlined, so a deal that does not outlive its caller stays off the heap.
 - A Deal holds every seat's cards at the places they were dealt (16 places
   per seat) with masks for played and face-up cards, so copying it stays a
   full copy for every table size. It also keeps each seat's playable cards
@@ -424,9 +428,10 @@ nat, pit, pit by defenders), deal state machine (both trump modes, forced
 choice, turn order, last-trick bonus, 162 total); for three and two players
 the auction, discards, piles, open roem, random deals against the reference
 rules, and Resume. The random deals also check the bitmask fast paths
-(`HandMask` for every seat, `LegalMask`) against the reference. Benchmarks:
-`BenchmarkPlayout` (a hand of random legal cards played out on a copy of a
-Deal), `BenchmarkLegalMoves`, `BenchmarkRoemPoints`.
+(`HandMask` for every seat, `LegalMask`) against the reference, and
+`ResumeInto` against `Resume`. Benchmarks: `BenchmarkPlayout` (a hand of
+random legal cards played out on a copy of a Deal), `BenchmarkLegalMoves`,
+`BenchmarkRoemPoints`.
 
 ### 4.2 `internal/bot`
 

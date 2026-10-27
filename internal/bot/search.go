@@ -289,17 +289,17 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 			hands[s] = make([]game.Card, 0, 8)
 		}
 		var vals [8]int64
+		var base game.Deal
 		for _, w := range k.worlds(sp, rng, n) {
 			for s := range hands {
 				hands[s] = w[s].appendCards(hands[s][:0])
 			}
-			base, err := game.Resume(*v, hands)
-			if err != nil {
+			if err := game.ResumeInto(&base, v, hands); err != nil {
 				panic("bot: resume: " + err.Error())
 			}
 			start := [2][2]int{base.HandPoints(), base.HandRoem()}
 			for i, c := range legal {
-				s := sim{d: *base, t: *tab}
+				s := sim{d: base, t: *tab}
 				s.play(c)
 				var mid [2][2]int
 				if cfg.points {
