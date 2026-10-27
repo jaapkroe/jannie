@@ -1572,7 +1572,10 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   advice keep the two ends of their pulse on two layers (`::before`,
   `::after`) that crossfade. With `prefers-reduced-motion` or *Minder
   animaties* (`body.reduced`) these glows, and the lesson spot, are steady.
-  A countdown ring stops once it is hidden or its dialog is gone.
+  A countdown ring stops once it is hidden or its dialog is gone. On a phone
+  the manual is an opaque sheet over all but a strip of the top bar: the
+  pulses and glows, the home logo and the waiting dots under it hold still
+  while it is open (not a lesson spot in the top bar).
 - **Score sheet**: per hand: trump suit, who played (marker; with three
   players the bid too), points+roem per team (with three or two players a
   column per player, the gains; roem under the soloist only, as the other

@@ -6394,6 +6394,21 @@ body.reduced .hand > .card {
   transition-duration: 0.12s;
 }
 
+/* On a phone the manual is an opaque sheet over all but a strip of the top
+   bar: what pulses under it holds still until it closes, and goes on from
+   there. Not a lesson spot in the top bar, which shows in that strip. */
+@media (max-width: 600px) {
+  body:has(.m-manual.open) :is(.logo-suits span, .dots i, .seat-id.spot, .rule.spot),
+  body:has(.m-manual.open) .seat .ring::before,
+  body:has(.m-manual.open) .seat .ring::after,
+  body:has(.m-manual.open) .advised::before,
+  body:has(.m-manual.open) .advised::after,
+  body:has(.m-manual.open) .trick.spot::before,
+  body:has(.m-manual.open) .hand .card::after {
+    animation-play-state: paused;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
