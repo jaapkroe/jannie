@@ -6396,8 +6396,10 @@ body.reduced .hand > .card {
 
 /* On a phone the manual is an opaque sheet over all but a strip of the top
    bar: what pulses under it holds still until it closes, and goes on from
-   there. Not a lesson spot in the top bar, which shows in that strip. */
-@media (max-width: 600px) {
+   there. Not a lesson spot in the top bar, which shows in that strip. The
+   sheet is at most 900 px high, so a window over 932 px tall shows the top
+   seat's glow above it. */
+@media (max-width: 600px) and (max-height: 932px) {
   body:has(.m-manual.open) :is(.logo-suits span, .dots i, .seat-id.spot, .rule.spot),
   body:has(.m-manual.open) .seat .ring::before,
   body:has(.m-manual.open) .seat .ring::after,
