@@ -624,3 +624,41 @@ test('a context that cannot sleep never throws', async () => {
     assert.ok(sources(ctx).length > before, 'still plays');
   }
 });
+
+test('the context stays awake during a call, and sleeps once silent after it', async () => {
+  const nav = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const audioSession = { type: 'auto' };
+  setGlobal('navigator', { audioSession });
+  try {
+    const sound = await freshSound();
+    await sound.unlock();
+    const ctx = FakeAudioContext.instances[0];
+    sound.setCall(true);
+    sound.play('click');
+    await wait(400);
+    assert.equal(sound._voiceCount(), 0);
+    assert.equal(ctx.state, 'running', 'awake in the call, silent past the wait');
+    sound.setMuted(true);
+    await wait(100);
+    assert.equal(ctx.state, 'running', 'also when muted');
+    sound.setMuted(false);
+    sound.setCall(false);
+    assert.equal(audioSession.type, 'ambient');
+    await wait(100);
+    assert.equal(ctx.state, 'suspended', 'asleep once the call is over');
+
+    const resumes = ctx.resumes;
+    sound.setCall(true);
+    assert.equal(audioSession.type, 'play-and-record', 'the session changes while the context sleeps');
+    assert.equal(ctx.state, 'suspended', 'the call alone does not wake it');
+    assert.equal(ctx.resumes, resumes);
+    sound.play('join');
+    assert.equal(ctx.state, 'running', 'the next sound does');
+    await wait(150);
+    assert.equal(ctx.state, 'running', 'and it stays awake in the call');
+    sound.setCall(false);
+    assert.equal(audioSession.type, 'ambient');
+  } finally {
+    Object.defineProperty(globalThis, 'navigator', nav);
+  }
+});

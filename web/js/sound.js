@@ -501,7 +501,8 @@ function steal(v, now) {
 // audio hardware and its IO thread, in Chrome a render callback some 100
 // times a second (after 30 s silent into a fake sink). So it sleeps once
 // nothing has sounded for a while; the next sound wakes it, a tap or a key
-// typed in the chat does not.
+// typed in the chat does not. Not during a call (setCall), which keeps the
+// audio hardware busy anyway; after the call the wait starts again.
 function napLater() {
   clearTimeout(napTimer);
   napTimer = setTimeout(nap, settings.muted ? NAP_MS.muted : NAP_MS.idle);
@@ -509,7 +510,7 @@ function napLater() {
 
 function nap() {
   try {
-    if (!ctx || ctx.state !== 'running' || typeof ctx.suspend !== 'function') return;
+    if (calling || !ctx || ctx.state !== 'running' || typeof ctx.suspend !== 'function') return;
     if (voices.length) { napLater(); return; } // they would freeze, and play on at the next wake
     napping = true;
     Promise.resolve(ctx.suspend()).catch(() => { napping = false; });
@@ -603,6 +604,7 @@ function setCall(on) {
   if (calling === Boolean(on)) return;
   calling = Boolean(on);
   session();
+  if (!calling && ctx) napLater(); // the context may sleep again (nap)
 }
 
 // Unlock on any real user gesture too, and resume after iOS interruptions
