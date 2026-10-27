@@ -273,28 +273,17 @@ func (sp *sampler) counts() [8]int {
 }
 
 // feasible checks Hall's condition: for every set of seats, the cards that
-// only those seats may hold fit in their remaining capacity.
+// only those seats may hold fit in their remaining capacity. It runs for
+// every card of every sampled deal, so the seven sets are written out:
+// cnt[m] counts the cards that exactly the seats in m may hold.
 func (sp *sampler) feasible(cnt [8]int, capa [3]int) bool {
 	if cnt[0] > 0 {
 		return false
 	}
-	for set := 1; set < 8; set++ {
-		n, c := 0, 0
-		for m := 1; m < 8; m++ {
-			if m&^set == 0 {
-				n += cnt[m]
-			}
-		}
-		for j := range 3 {
-			if set&(1<<j) != 0 {
-				c += capa[j]
-			}
-		}
-		if n > c {
-			return false
-		}
-	}
-	return true
+	c01, c02, c12 := cnt[1]+cnt[2]+cnt[3], cnt[1]+cnt[4]+cnt[5], cnt[2]+cnt[4]+cnt[6]
+	return cnt[1] <= capa[0] && cnt[2] <= capa[1] && cnt[4] <= capa[2] &&
+		c01 <= capa[0]+capa[1] && c02 <= capa[0]+capa[2] && c12 <= capa[1]+capa[2] &&
+		c01+cnt[4]+cnt[5]+cnt[6]+cnt[7] <= capa[0]+capa[1]+capa[2]
 }
 
 // sample deals the unknown cards into h (the other seats' entries are
