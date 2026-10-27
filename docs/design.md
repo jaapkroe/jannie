@@ -1658,7 +1658,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   fake devices of `scripts/chrome`, with a camera and a microphone whose
   permission is withdrawn and given back, and checks the video ceiling on
   both sides and that a muted microphone is off the connection and back on
-  it with one tap.
+  it with one tap, and, with a fake `navigator.audioSession` on the host,
+  that the devices are asked under `play-and-record` and that hanging up
+  and a join called off give `ambient` back once the tracks have stopped.
 - **Training**: tip bubble with the hint text and a glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it); ✕ closes a hint until the next one; tips after
