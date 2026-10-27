@@ -189,7 +189,7 @@ function onMessage(m) {
     case 'joined': onJoined(m); break;
     case 'update': if (inRoom) { toCall(m.s); enqueue(m); } break;
     case 'chat': if (inRoom) enqueue(m); break;
-    case 'chatlog': if (inRoom) panels.chatSet(m.msgs); break;
+    case 'chatlog': if (inRoom) enqueue(m); break;
     case 'tip': if (inRoom) enqueue(m); break;
     case 'refused': if (inRoom) onRefused(m.name); break;
     case 'error': onError(m); break;
@@ -328,6 +328,7 @@ async function pump() {
       try {
         if (m.t === 'update') await applyUpdate(m);
         else if (m.t === 'chat') onChat(m.msg);
+        else if (m.t === 'chatlog') panels.chatSet(m.msgs);
         else if (m.t === 'tip') table.setTip(m.text);
         else if (m.t === 'rejoin') table.resync();
       } catch (e) {
