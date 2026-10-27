@@ -395,7 +395,9 @@ Semantics and additions (implemented in `internal/game`):
   `cards`/`roem` as `[]`.
 - Fast paths for simulation (no allocations): `AppendLegalMoves(dst, hand, trick,
   seat, trump, rules)`, `IsLegal(card, hand, trick, seat, trump, rules)`,
-  `AppendTrickRoem(dst, cards, trump)`, `RoemPoints(cards, trump)`;
+  `AppendTrickRoem(dst, cards, trump)`, `RoemPoints(cards, trump)`,
+  `RoemAdded(cards, c, trump)` (the roem card c adds to at most three cards:
+  `RoemPoints` with c less without);
   on card sets as bitmasks (`uint32`, bit `Card.Index` per card):
   `d.HandMask(seat)` (as `d.AppendHand`) and `d.LegalMask()` (as
   `d.AppendLegal`; 0 outside phase play);
@@ -416,7 +418,9 @@ Semantics and additions (implemented in `internal/game`):
   as a mask (with the place of each), and the current trick's winning card
   and highest trump as cards are played, so the rules need no loop over the
   hand, and `Play` judges only a card that neither leads nor follows a side
-  suit led (those are always allowed).
+  suit led (those are always allowed). Its tricks are compact (seats as
+  int8, roem as indexes), so a Deal is about 700 bytes: every playout
+  starts from a copy.
 - Deal accessors for the server: `Dealer()`, `Voorhand()`, `Mode()`, `Rules()`,
   `TricksWon() [2]int`, `HandPoints() [2]int` (incl. last trick),
   `HandRoem() [2]int`.
@@ -429,9 +433,10 @@ choice, turn order, last-trick bonus, 162 total); for three and two players
 the auction, discards, piles, open roem, random deals against the reference
 rules, and Resume. The random deals also check the bitmask fast paths
 (`HandMask` for every seat, `LegalMask`) against the reference, and
-`ResumeInto` against `Resume`. Benchmarks: `BenchmarkPlayout` (a hand of
-random legal cards played out on a copy of a Deal), `BenchmarkLegalMoves`,
-`BenchmarkRoemPoints`.
+`ResumeInto` against `Resume`; `RoemAdded` is checked against `RoemPoints`
+for every set of up to three cards, every card added and every trump.
+Benchmarks: `BenchmarkPlayout` (a hand of random legal cards played out on
+a copy of a Deal), `BenchmarkLegalMoves`, `BenchmarkRoemPoints`.
 
 ### 4.2 `internal/bot`
 

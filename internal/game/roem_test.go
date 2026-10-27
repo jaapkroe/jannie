@@ -140,6 +140,32 @@ func TestRoemAllTricks(t *testing.T) {
 	}
 }
 
+// TestRoemAdded checks RoemAdded against RoemPoints for every set of up to
+// three cards and every card added, with each trump and without one.
+func TestRoemAdded(t *testing.T) {
+	deck := NewDeck()
+	var check func(cs []Card, from int)
+	check = func(cs []Card, from int) {
+		for _, c := range deck {
+			if slices.Contains(cs, c) {
+				continue
+			}
+			for trump := Suit(0); trump <= NumSuits; trump++ {
+				want := RoemPoints(append(slices.Clone(cs), c), trump) - RoemPoints(cs, trump)
+				if got := RoemAdded(cs, c, trump); got != want {
+					t.Fatalf("RoemAdded(%v, %v, %v) = %d, want %d", cs, c, trump, got, want)
+				}
+			}
+		}
+		if len(cs) < 3 {
+			for i := from; i < len(deck); i++ {
+				check(append(cs, deck[i]), i+1)
+			}
+		}
+	}
+	check(nil, 0)
+}
+
 func TestRoemDoesNotAllocate(t *testing.T) {
 	cs := cards("TH JH QH KH")
 	buf := make([]RoemItem, 0, 2)

@@ -242,8 +242,8 @@ type View struct {
 }
 
 // trickRec is the compact, copyable form of a trick inside Deal. It is
-// kept small (seats as int8): simulations copy a whole Deal for every
-// playout.
+// kept small (seats as int8, roem as indexes into roemItems): simulations
+// copy a whole Deal for every playout.
 type trickRec struct {
 	cards  [4]Card
 	n      uint8
@@ -253,8 +253,8 @@ type trickRec struct {
 	win    int8 // the seat that played it
 	lead   int8 // the seat that led
 	won    int8 // the seat that won the trick, NoSeat until it is complete
-	points int
-	roem   [2]RoemItem
+	points int16
+	roem   [2]uint8
 }
 
 // newTrick starts the trick that leader leads.
@@ -286,6 +286,19 @@ func (r *trickRec) info(n uint8) trickInfo {
 		return trickInfo{high: -1, winner: NoSeat}
 	}
 	return trickInfo{n: int(r.n), led: r.cards[0].Suit, winner: Seat(r.win), best: r.best, high: r.high}
+}
+
+// score fills in the points (with bonus added) and the roem of the
+// complete trick and returns its points and roem.
+func (r *trickRec) score(trump Suit, bonus int) (points, roem int) {
+	points = CardPoints(r.cards[:r.n], trump) + bonus
+	r.points = int16(points)
+	items, k := trickRoem(r.cards[:r.n], trump)
+	r.nRoem = uint8(copy(r.roem[:], items[:k])) // at most two in a trick
+	for _, it := range r.roem[:r.nRoem] {
+		roem += roemItems[it].Points
+	}
+	return points, roem
 }
 
 // Deal is one hand ("potje") for 2, 3 or 4 players as a pure state
@@ -690,9 +703,11 @@ func (r *trickRec) trick(n uint8) Trick {
 		t.Cards[i] = Played{Seat: (r.leader() + Seat(i)) % Seat(n), Card: r.cards[i]}
 	}
 	if r.n == n {
-		t.Points = r.points
+		t.Points = int(r.points)
 		t.Roem = make([]RoemItem, r.nRoem)
-		copy(t.Roem, r.roem[:r.nRoem])
+		for i, it := range r.roem[:r.nRoem] {
+			t.Roem[i] = roemItems[it]
+		}
 	}
 	return t
 }
@@ -896,21 +911,19 @@ func (d *Deal) Play(seat Seat, c Card) error {
 
 func (d *Deal) completeTrick(t *trickRec) {
 	t.won = t.win
-	t.points = CardPoints(t.cards[:t.n], d.trump)
 	last := true
 	for s := range Seat(d.n) {
 		last = last && d.left(s) == 0
 	}
+	bonus := 0
 	if last {
-		t.points += LastTrickBonus
+		bonus = LastTrickBonus
 	}
-	t.nRoem = uint8(len(AppendTrickRoem(t.roem[:0], t.cards[:t.n], d.trump)))
+	points, roem := t.score(d.trump, bonus)
 	side := d.Side(t.winner())
 	d.won[side]++
-	d.points[side] += t.points
-	for _, r := range t.roem[:t.nRoem] {
-		d.roem[side] += r.Points
-	}
+	d.points[side] += points
+	d.roem[side] += roem
 	if d.n == 2 {
 		d.turnOver()
 	}
@@ -1146,17 +1159,15 @@ func ResumeInto(d *Deal, v *View, hands [4][]Card) error {
 			played[seat]++
 		}
 		r.won = r.win
-		r.points = CardPoints(r.cards[:n], d.trump)
+		bonus := 0
 		if i == size-1 {
-			r.points += LastTrickBonus
+			bonus = LastTrickBonus
 		}
-		r.nRoem = uint8(len(AppendTrickRoem(r.roem[:0], r.cards[:n], d.trump)))
+		points, roem := r.score(d.trump, bonus)
 		side := d.Side(r.winner())
 		d.won[side]++
-		d.points[side] += r.points
-		for _, it := range r.roem[:r.nRoem] {
-			d.roem[side] += it.Points
-		}
+		d.points[side] += points
+		d.roem[side] += roem
 	}
 	k := len(v.Tricks)
 	switch {
