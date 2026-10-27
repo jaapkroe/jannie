@@ -188,7 +188,7 @@ function onMessage(m) {
   switch (m.t) {
     case 'joined': onJoined(m); break;
     case 'update': if (inRoom) { toCall(m.s); enqueue(m); } break;
-    case 'chat': if (inRoom) enqueue(m); break;
+    case 'chat': if (inRoom) queueChat(m); break;
     case 'chatlog': if (inRoom) enqueue(m); break;
     case 'tip': if (inRoom) enqueue(m); break;
     case 'refused': if (inRoom) onRefused(m.name); break;
@@ -313,6 +313,17 @@ function toCall(s) {
 function enqueue(m) {
   queue.push(m);
   pump();
+}
+
+// A chat line waits its turn behind the table's animations, so a bubble
+// comes with the move it is about; our own shows at once. Ours still waits
+// behind a queued chat log (a rejoin), which was sent before it and
+// replaces the lines shown, and behind a line of ours queued there, to
+// keep the order.
+function queueChat(m) {
+  const ours = x => x.t === 'chat' && x.msg && x.msg.seat === app.s?.you && !x.msg.sys;
+  if (ours(m) && !queue.some(x => x.t === 'chatlog' || ours(x))) onChat(m.msg);
+  else enqueue(m);
 }
 
 async function pump() {

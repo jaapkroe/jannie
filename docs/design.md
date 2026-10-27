@@ -1600,11 +1600,13 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   Speech bubbles stay behind the cards of the trick and never overlap each
   other: a chat line in the way of another bubble waits for room (dropped
   after 6 s; it is in the chat log), while a bid (*Ik speel!*, *Pas*) shows at
-  once and ends a chat bubble in its way. Chat lines wait in the update
-  queue behind the table's animations, so a line and its bubble come with
-  the move they are about. The `chatlog` after `joined` takes its turn in
-  the queue as well, so a line still queued from before a reconnect is not
-  shown twice.
+  once and ends a chat bubble in its way. The others' lines wait in the
+  update queue behind the table's animations, so a line and its bubble come
+  with the move they are about; your own line shows as soon as the server
+  echoes it. The `chatlog` after `joined` takes its turn in the queue as
+  well, so a line still queued from before a reconnect is not shown twice,
+  and your own line waits behind a chat log still queued, which was sent
+  before it.
 - **Calling** (issue #43, `call.js`, loaded once another person is at the
   table, in a browser with WebRTC and a camera API): at the start of a game
   with another person (the first update of a match, or the first at a table
