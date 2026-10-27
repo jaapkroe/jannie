@@ -214,28 +214,11 @@ func smallBenchView(n int, seed uint64, stop func(d *game.Deal, v *game.View) bo
 		players[s] = newPlayer(roster[s], Normaal, uint64(s), defaultSearch)
 	}
 	for {
-		s := d.Turn()
-		v := d.View(s)
+		v := d.View(d.Turn())
 		if stop(d, &v) {
 			return v
 		}
-		var err error
-		switch d.Phase() {
-		case game.PhaseAuction:
-			err = d.Auction(s, players[s].Auction(v))
-		case game.PhaseDiscard:
-			ds := players[s].Discard(v)
-			err = d.Discard(s, ds[:])
-		case game.PhaseBid:
-			err = d.Bid(s, players[s].Bid(v))
-		case game.PhaseTrump:
-			err = d.ChooseTrump(s, players[s].ChooseTrump(v))
-		case game.PhasePlay:
-			err = d.Play(s, players[s].Play(v))
-		}
-		if err != nil {
-			panic(err)
-		}
+		smallStep(d, players, v)
 	}
 }
 

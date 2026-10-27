@@ -246,25 +246,29 @@ var arenaDefend = flag.Float64("arena.defend", 0, "arena: defendValue to try (0 
 // runSmallDeal plays d to the end with players.
 func runSmallDeal(d *game.Deal, players [4]Player) {
 	for d.Phase() != game.PhaseDone {
-		s := d.Turn()
-		v := d.View(s)
-		var err error
-		switch d.Phase() {
-		case game.PhaseAuction:
-			err = d.Auction(s, players[s].Auction(v))
-		case game.PhaseDiscard:
-			ds := players[s].Discard(v)
-			err = d.Discard(s, ds[:])
-		case game.PhaseBid:
-			err = d.Bid(s, players[s].Bid(v))
-		case game.PhaseTrump:
-			err = d.ChooseTrump(s, players[s].ChooseTrump(v))
-		case game.PhasePlay:
-			err = d.Play(s, players[s].Play(v))
-		}
-		if err != nil {
-			panic(err)
-		}
+		smallStep(d, players, d.View(d.Turn()))
+	}
+}
+
+// smallStep makes the move of the seat on turn, whose view is v.
+func smallStep(d *game.Deal, players [4]Player, v game.View) {
+	s := v.Seat
+	var err error
+	switch d.Phase() {
+	case game.PhaseAuction:
+		err = d.Auction(s, players[s].Auction(v))
+	case game.PhaseDiscard:
+		ds := players[s].Discard(v)
+		err = d.Discard(s, ds[:])
+	case game.PhaseBid:
+		err = d.Bid(s, players[s].Bid(v))
+	case game.PhaseTrump:
+		err = d.ChooseTrump(s, players[s].ChooseTrump(v))
+	case game.PhasePlay:
+		err = d.Play(s, players[s].Play(v))
+	}
+	if err != nil {
+		panic(err)
 	}
 }
 
