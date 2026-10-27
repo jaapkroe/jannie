@@ -1570,9 +1570,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   compositor runs: a `box-shadow` animation would restyle and repaint the
   page every frame (`test/ui/app-perf.mjs` measures it). The turn and the
   advice keep the two ends of their pulse on two layers (`::before`,
-  `::after`) that crossfade. With `prefers-reduced-motion` these glows, and
-  the lesson spot, are steady; *Minder animaties* (`body.reduced`) holds
-  the turn and the spot steady.
+  `::after`) that crossfade. With `prefers-reduced-motion` or *Minder
+  animaties* (`body.reduced`) these glows, and the lesson spot, are steady.
 - **Score sheet**: per hand: trump suit, who played (marker; with three
   players the bid too), points+roem per team (with three or two players a
   column per player, the gains; roem under the soloist only, as the other

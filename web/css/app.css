@@ -6365,7 +6365,10 @@ body.reduced .over-emoji,
 body.reduced .spot,
 body.reduced .trick.spot::before,
 body.reduced .hand.spot > .card::after,
-body.reduced .hand > .card.spot::after {
+body.reduced .hand > .card.spot::after,
+body.reduced .card.hint::after,
+body.reduced .advised::before,
+body.reduced .advised::after {
   animation: none;
 }
 
