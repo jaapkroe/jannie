@@ -2293,8 +2293,34 @@ CHECKS.takeover = async browser => {
 // session; the phone's menu hangs up; a reload proposes the call again.
 // A camera or microphone that goes by itself is switched off; video goes
 // under a ceiling, and a muted microphone sends nothing until it is on.
+// The iOS audio session records from before the devices are asked until
+// they have stopped: after a hang-up and after a join called off.
 CHECKS.call = async browser => {
-  const H = await page(browser, VP.phone, 'call-host', { call: true });
+  // The host's browser has an iOS audio session (Chromium has none): each
+  // type set goes in __session with the number of live tracks then, and
+  // each request for the devices with the type it was made under. With
+  // window.__hold the devices wait for it.
+  const H = await page(browser, VP.phone, 'call-host', {
+    call: true,
+    init: () => {
+      const log = (window.__session = []);
+      const tracks = (window.__tracks = []);
+      const live = () => tracks.filter(t => t.readyState === 'live').length;
+      let type = 'auto';
+      const as = { get type() { return type; }, set type(v) { type = v; log.push(`${v}/${live()}`); } };
+      Object.defineProperty(Navigator.prototype, 'audioSession', { get: () => as, configurable: true });
+      window.__live = live;
+      const md = navigator.mediaDevices;
+      const real = md.getUserMedia.bind(md);
+      md.getUserMedia = async c => {
+        log.push(`ask/${type}`);
+        await window.__hold;
+        const st = await real(c);
+        tracks.push(...st.getTracks());
+        return st;
+      };
+    },
+  });
   // The guest's browser refuses the camera until window.__camOk (the fake
   // devices of scripts/chrome are always allowed).
   const G = await page(browser, VP.desktop, 'call-guest', {
@@ -2383,6 +2409,8 @@ CHECKS.call = async browser => {
     await press(G, '.m-call .btn-ghost');
     await waitFor(G, () => !document.querySelector('.m-call') && document.querySelector('.prompt .call-dock:not([hidden]) .tb-call'), { label: 'guest call button' });
     await shows(H, 'own video', 'Host');
+    const asked = await H.page.evaluate(() => window.__session.filter(e => e.startsWith('ask/')));
+    if (String(asked) !== 'ask/play-and-record') throw new Error(`the host asked for the devices under ${asked}`);
     await marked(G, 'host in the call on the guest page', 'Host:mic');
     if (await videos(G)) throw new Error(`video outside the call: ${await videos(G)}`);
 
@@ -2462,6 +2490,9 @@ CHECKS.call = async browser => {
     await marked(G, 'host gone from the call', 'Gast:mic');
     await shows(G, 'only the own video after the hang-up', 'Gast');
     await waitFor(H, () => document.querySelector('.prompt .call-dock:not([hidden]) .tb-call'), { label: 'host call button again' });
+    // The game's session again, set once the microphone and camera had stopped.
+    const hung = await H.page.evaluate(() => window.__session);
+    if (hung.at(-1) !== 'ambient/0' || hung.some(e => /^ambient\/[1-9]/.test(e))) throw new Error(`the host's audio session: ${hung.join(' ')}`);
 
     // A reload proposes the call again, with the microphone and camera as last chosen.
     await G.page.reload({ waitUntil: 'networkidle0' });
@@ -2470,6 +2501,28 @@ CHECKS.call = async browser => {
     if (JSON.stringify(toggles) !== '[true,true]') throw new Error(`guest's toggles after the reload ${toggles}`);
     await press(G, '.m-call .btn-ghost');
     await marked(H, 'nobody in the call', '');
+
+    // The host joins again, the devices slow to come, and leaves the table
+    // meanwhile: the join is called off, the session is the game's again,
+    // and the tracks that come late are stopped.
+    await H.page.evaluate(() => { window.__hold = new Promise(r => { window.__release = r; }); });
+    await tapCall(H, '.prompt .call-dock .tb-call');
+    await waitFor(H, () => document.querySelector('.m-call.open .btn-go'), { label: 'host call sheet' });
+    await sleep(300);
+    await press(H, '.m-call .btn-go');
+    await waitFor(H, () => window.__session.at(-1) === 'ask/play-and-record', { label: 'host asks for the devices again' });
+    await press(H, '.topbar .tb-menu');
+    await waitFor(H, () => document.querySelector('.m-menu.open'), { label: 'menu' });
+    await sleep(250);
+    await press(H, '.m-menu .menu-item.danger');
+    await waitFor(H, () => document.querySelector('.m-confirm.open .btn-danger'), { label: 'leave dialog' });
+    await sleep(250);
+    await press(H, '.m-confirm .btn-danger');
+    await waitFor(H, () => document.body.dataset.screen === 'home', { label: 'host left the table' });
+    await H.page.evaluate(() => window.__release());
+    await waitFor(H, () => window.__tracks.length === 4 && window.__live() === 0, { label: 'late tracks stopped' });
+    const left = await H.page.evaluate(() => ({ log: window.__session, type: navigator.audioSession.type }));
+    if (left.log.at(-1) !== 'ambient/0' || left.type !== 'ambient') throw new Error(`the host's audio session after the join called off: ${left.log.join(' ')}`);
   });
   await G.ctx.close().catch(() => {});
 };
