@@ -1531,7 +1531,11 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   takeover` plays it through, also on the mock.
 - **Back button**: every closable overlay (dialog, chat drawer) has a history
   entry, so back (the Android gesture) closes the top one; at a table one more
-  entry makes back ask *Spel verlaten?* instead of leaving the page.
+  entry makes back ask *Spel verlaten?* instead of leaving the page. An
+  update still animating when the page leaves the room (or goes to another)
+  is dropped after its animation, so no hand summary of the table left
+  opens over the home screen or the next table (`app-checks.mjs --only
+  queue` leaves during the hand end).
 - **On-screen keyboard**: `index.html` sets `interactive-widget=resizes-content`,
   so an open keyboard shrinks the viewport, and an upright phone turns short
   and wide. The keyboard counts as open while a text field (not read-only)
@@ -1611,7 +1615,15 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   Speech bubbles stay behind the cards of the trick and never overlap each
   other: a chat line in the way of another bubble waits for room (dropped
   after 6 s; it is in the chat log), while a bid (*Ik speel!*, *Pas*) shows at
-  once and ends a chat bubble in its way.
+  once and ends a chat bubble in its way. The others' lines wait in the
+  update queue behind the table's animations, so a line and its bubble come
+  with the move they are about; a line you typed shows as soon as the
+  server echoes it (a bot line at your seat waits like the others). The
+  `chatlog` after `joined` takes its turn in the queue as well, so a line
+  still queued from before a reconnect is not shown twice, and your own
+  line waits behind a chat log still queued, which was sent before it.
+  `app-checks.mjs --only queue` sends lines during the trump banner and
+  drops the socket there.
 - **Calling** (issue #43, `call.js`, loaded once another person is at the
   table, in a browser with WebRTC and a camera API): at the start of a game
   with another person (the first update of a match, or the first at a table

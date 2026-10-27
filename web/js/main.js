@@ -27,6 +27,7 @@ let startTimer = 0;
 let leaveLater = null; // {code, token, name}: a leave that could not go out yet
 let callLoad = null;   // call.js on its way
 let callState = null;  // the latest state received, for call.js once it is there
+let roomGen = 0;       // bumped by enterRoom: an update still animating belongs to a room left
 
 const net = createNet({ onMessage, onOpen, onClose });
 app.send = send;
@@ -128,6 +129,7 @@ function sendLeaveLater() {
 
 // Clears all per-room state before entering a (new) room.
 function enterRoom(code) {
+  roomGen++;
   app.code = code;
   app.s = null;
   inRoom = false;
@@ -186,8 +188,8 @@ function onMessage(m) {
   switch (m.t) {
     case 'joined': onJoined(m); break;
     case 'update': if (inRoom) { toCall(m.s); enqueue(m); } break;
-    case 'chat': if (inRoom) enqueue(m); break;
-    case 'chatlog': if (inRoom) panels.chatSet(m.msgs); break;
+    case 'chat': if (inRoom) queueChat(m); break;
+    case 'chatlog': if (inRoom) enqueue(m); break;
     case 'tip': if (inRoom) enqueue(m); break;
     case 'refused': if (inRoom) onRefused(m.name); break;
     case 'error': onError(m); break;
@@ -313,6 +315,17 @@ function enqueue(m) {
   pump();
 }
 
+// A chat line waits its turn behind the table's animations, so a bubble
+// comes with the move it is about; one we typed shows at once (a bot line
+// at our seat, after a takeover, still waits). Ours still waits behind a
+// queued chat log (a rejoin), which was sent before it and replaces the
+// lines shown, and behind a line of ours queued there, to keep the order.
+function queueChat(m) {
+  const ours = x => x.t === 'chat' && x.msg && x.msg.seat === app.s?.you && !x.msg.sys && !x.msg.bot;
+  if (ours(m) && !queue.some(x => x.t === 'chatlog' || ours(x))) onChat(m.msg);
+  else enqueue(m);
+}
+
 async function pump() {
   if (busy) return;
   busy = true;
@@ -326,6 +339,7 @@ async function pump() {
       try {
         if (m.t === 'update') await applyUpdate(m);
         else if (m.t === 'chat') onChat(m.msg);
+        else if (m.t === 'chatlog') panels.chatSet(m.msgs);
         else if (m.t === 'tip') table.setTip(m.text);
         else if (m.t === 'rejoin') table.resync();
       } catch (e) {
@@ -371,7 +385,9 @@ async function applyUpdate(u) {
     home.setBusy(false);
   }
   screen('game');
+  const gen = roomGen;
   if (ev && prev) await table.animate(ev, prev, next);
+  if (gen !== roomGen) return; // left the table, or went to another, while it animated
   app.s = next;
   table.settle(next, ev);
   table.render(next);

@@ -14,6 +14,8 @@ const seats = {};         // pos → seat parts
 const slots = {};         // pos → trick slot
 const handEls = new Map(); // card code → element in the hand
 let handOrder = [];       // codes in display order
+let handW = 0;            // the hand's width and a card's as last laid out
+let cardW = 0;            //   (measureHand); 0: measure at the next layout
 let selected = '';        // lifted card (touch, keyboard)
 let selectedBy = '';      // 'tap' or 'key': how it was lifted
 let pending = null;       // {card, flight, placed, at} our play awaiting the server
@@ -93,8 +95,10 @@ export function init() {
   root.append(E.top, E.table);
   bindHand();
   root.addEventListener('click', tapAside);
-  new ResizeObserver(() => layoutHand()).observe(E.hand);
-  addEventListener('resize', fitCoach);
+  // The widths are read here, after layout, and kept: a render then fans
+  // the hand without forcing a layout of its own.
+  new ResizeObserver(() => { measureHand(); layoutHand(); }).observe(E.hand);
+  addEventListener('resize', () => { handW = cardW = 0; fitCoach(); });
   onKeyboard(fitCoach); // the landscape layout comes or goes without a resize
   document.addEventListener('keydown', onKey);
 }
@@ -863,13 +867,19 @@ function renderMyPiles(s, o) {
   E.table.classList.toggle('my-turn', s.turn === s.you && PLAYING.has(s.phase));
 }
 
+function measureHand() {
+  handW = E.hand.clientWidth;
+  cardW = handEls.get(handOrder[0])?.offsetWidth || 0; // no card: measured with the next one
+}
+
 // Fans the hand so it always fits the available width.
 function layoutHand() {
   const n = handOrder.length;
   if (!n || E.hand.classList.contains('tableau')) return;
   const els = handOrder.map(c => handEls.get(c));
-  const W = E.hand.clientWidth;
-  const cw = els[0].offsetWidth || 64;
+  if (!handW || !cardW) measureHand();
+  const W = handW;
+  const cw = cardW || 64;
   const ch = cw * 1.4;
   const fan = Math.min(2.6, 16 / n);
   // Rotated edge cards stick out by about ch·sin(edge angle).
@@ -1666,4 +1676,7 @@ export function resetRoom() {
   handOrder = [];
 }
 
-export function relayout() { layoutHand(); }
+export function relayout() {
+  measureHand();
+  layoutHand();
+}

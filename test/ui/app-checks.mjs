@@ -954,6 +954,84 @@ CHECKS.lost = async browser => {
   });
 };
 
+// The update queue while the table animates, here the trump banner: a
+// line we type shows at once, a bot line at our seat and another player's
+// line wait for the animation, a line still queued when the socket closes
+// is in the log once after the rejoin, and so is one we type while the
+// rejoin's chat log waits. Leaving while the hand end animates opens no
+// hand summary over the home screen.
+CHECKS.queue = async browser => {
+  const P = await page(browser, VP.phone, 'queue', {
+    hooks: true,
+    init: () => localStorage.setItem('kj.opts', JSON.stringify({ hands: 4, tempo: 'snel' })),
+  });
+  await run(P, async () => {
+    await home(P);
+    await quick(P);
+    await P.page.evaluate(async () => {
+      const { sound } = await import('/js/sound.js');
+      const { app } = await import('/js/util.js');
+      const K = window.__kj;
+      const id = Math.floor(Math.random() * 1e6);
+      const T = (window.__q = { mine: `eigen-${id}`, bot: `bot-${id}`, other: `ander-${id}`, late: `later-${id}` });
+      const copies = t => [...document.querySelectorAll('.chat-list .msg-text')].filter(e => e.textContent === t).length;
+      T.copies = () => ({ mine: copies(T.mine), bot: copies(T.bot), other: copies(T.other), late: copies(T.late) });
+      const banner = () => !!document.querySelector('.fx .banner');
+      K.rewrite = data => {
+        const m = JSON.parse(data);
+        if (m.t === 'chat' && m.msg.text === T.bot) {
+          m.msg.bot = true; // the AI that played at our seat
+        } else if (m.t === 'chat' && m.msg.text === T.other) {
+          Object.assign(m.msg, { seat: m.msg.seat ? 0 : 1, name: 'Ander' });
+          // The three echoes are in: what shows during the banner. Then the socket drops.
+          setTimeout(() => { T.atOnce = T.copies(); T.echoEarly = banner(); K.last().close(); });
+        } else {
+          if (m.t === 'chatlog' && T.atOnce) {
+            T.logEarly = banner();
+            setTimeout(() => app.send({ t: 'chat', text: T.late })); // typed while the log waits its turn
+          }
+          if (m.t === 'chat' && m.msg.text === T.late) T.lateEarly = banner();
+          return data;
+        }
+        return JSON.stringify(m);
+      };
+      const play = sound.play.bind(sound);
+      sound.play = n => {
+        if (n === 'trump' && !T.sent) {
+          T.sent = true;
+          for (const text of [T.mine, T.bot, T.other]) app.send({ t: 'chat', text });
+        }
+        if (T.leave && ['handWon', 'handLost', 'nat', 'pit'].includes(n)) {
+          T.leave = false;
+          setTimeout(() => app.leave(), 50); // a tap on Verlaten while the hand end animates
+        }
+        return play(n);
+      };
+    });
+    await playUntil(P, () => !!window.__q.atOnce, { label: 'the lines during the trump banner' });
+    await waitFor(P, () => !document.querySelector('.fx .banner') && window.__q.logEarly !== undefined, { label: 'the banner gone and the rejoin', timeout: 10000 });
+    await sleep(1000);
+    const st = await P.page.evaluate(() => {
+      const T = window.__q;
+      return { atOnce: T.atOnce, echoEarly: T.echoEarly, logEarly: T.logEarly, lateEarly: T.lateEarly, after: T.copies() };
+    });
+    if (!st.echoEarly || !st.logEarly || !st.lateEarly) throw new Error(`the echoes or the rejoin came after the banner, nothing queued to check: ${JSON.stringify(st)}`);
+    if (JSON.stringify(st.atOnce) !== '{"mine":1,"bot":0,"other":0,"late":0}' || JSON.stringify(st.after) !== '{"mine":1,"bot":1,"other":1,"late":1}') {
+      throw new Error(`chat lines during the banner and after the rejoin: ${JSON.stringify(st)}`);
+    }
+
+    await P.page.evaluate(() => { window.__q.leave = true; });
+    await playUntil(P, () => document.body.dataset.screen === 'home', { label: 'leaving at the hand end' });
+    await sleep(2500); // the hand end's animation is long over
+    const left = await P.page.evaluate(async () => ({
+      screen: document.body.dataset.screen,
+      modals: [...document.querySelectorAll('#modals .modal.open')].map(m => m.className),
+      s: !!(await import('/js/util.js')).app.s,
+    }));
+    if (left.screen !== 'home' || left.modals.length || left.s) throw new Error(`after leaving during the hand end: ${JSON.stringify(left)}`);
+  });
+};
+
 // localStorage blocked: the seat survives a reconnect and the typed name is used.
 CHECKS.nostorage = async browser => {
   const block = () => Object.defineProperty(window, 'localStorage', { get() { throw new DOMException('blocked', 'SecurityError'); } });
