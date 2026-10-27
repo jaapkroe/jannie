@@ -23,6 +23,7 @@ const lastPlayed = new Map();        // sound name → clock() of last start
 const voices = [];                   // sounding voices, oldest first
 let ctx = null;                      // the live AudioContext, made by unlock()
 let resumeUntil = 0;                 // a pending resume() may still start queued sounds
+let calling = false;                 // a call holds the audio session (setCall)
 
 // ---- settings --------------------------------------------------------------
 
@@ -528,8 +529,7 @@ function unlock() {
     if (fresh) {
       const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
       if (!AC) return Promise.resolve();
-      // Game effects mix with the user's own music instead of stopping it.
-      try { if (globalThis.navigator?.audioSession) globalThis.navigator.audioSession.type = 'ambient'; } catch { /* unsupported */ }
+      session();
       ctx = new AC({ latencyHint: 'interactive' });
       voices.length = 0;
       chainFor(ctx, masterGain(settings.volume, settings.muted));
@@ -542,6 +542,22 @@ function unlock() {
   } catch {
     return Promise.resolve();
   }
+}
+
+// iOS (navigator.audioSession): game effects mix with the user's own music
+// instead of stopping it. That session records nothing and goes quiet with
+// the silent switch, so a call plays and records instead.
+function session() {
+  try {
+    if (globalThis.navigator?.audioSession) globalThis.navigator.audioSession.type = calling ? 'play-and-record' : 'ambient';
+  } catch { /* unsupported */ }
+}
+
+// call.js: on before it asks for the microphone, off on every way out.
+function setCall(on) {
+  if (calling === Boolean(on)) return;
+  calling = Boolean(on);
+  session();
 }
 
 // Unlock on any real user gesture too, and resume after iOS interruptions
@@ -589,6 +605,7 @@ export const sound = {
   isMuted: () => settings.muted,
   setVolume,                       // 0..1
   getVolume: () => settings.volume,
+  setCall,                         // setCall(bool): a call holds the iOS audio session
   _renderTo: renderTo,             // test-only
   _names: Object.freeze(Object.keys(SOUNDS)),   // test-only
   _voiceCount: () => voices.length,             // test-only

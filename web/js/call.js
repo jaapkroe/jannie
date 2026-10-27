@@ -19,6 +19,11 @@ const RESEND_MS = 4000;   // the server shows us otherwise this long after we sa
 const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 // Small: the picture fills a seat's circle, and goes to every other player.
 const VIDEO = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 20 }, facingMode: 'user' };
+// The circle shows the picture at most about 160 device pixels wide: there
+// 300 kbit/s looks nearly the same as the 600 a browser allows 320x240
+// (0.6 dB less PSNR at 124 px), at half the data to and from every other
+// player, and less encoding and decoding.
+const VIDEO_BITRATE = 300000;
 
 let s = null;        // the latest state received (the table may still animate an older one)
 let me = null;       // our session while in the call: {id, sentAt}
@@ -125,16 +130,22 @@ async function join(wantMic, wantCam) {
   const g = ++gen;
   joining = true;
   refresh();
+  // iOS: an audio session that records (sound.js), before the microphone is asked.
+  sound.setCall(true);
   const got = await acquire(wantMic, wantCam);
-  if (g !== gen) { // hung up, or left the table, meanwhile
+  if (g !== gen) { // hung up, or left the table, meanwhile (hangup gave the session back)
     stopTracks(got);
     return;
   }
   joining = false;
-  mic = got.mic;
-  cam = got.cam;
+  // A track that ended while the other was still asked for fired its
+  // `ended` before watchEnd: it joins switched off.
+  mic = got.mic?.readyState === 'live' ? got.mic : null;
+  cam = got.cam?.readyState === 'live' ? got.cam : null;
   micOn = !!mic;
   camOn = !!cam;
+  watchEnd(mic);
+  watchEnd(cam);
   remember({ mic: wantMic && !got.missing.mic, cam: wantCam && !got.missing.cam });
   me = { id: newId(), sentAt: 0 };
   attachAll();
@@ -146,17 +157,18 @@ async function join(wantMic, wantCam) {
 export function hangup(tell = true) {
   gen++;
   joining = false;
-  if (!me) {
-    refresh();
-    return;
+  if (me) {
+    for (const p of [...peers.values()]) closePeer(p);
+    stopTracks({ mic, cam });
+    mic = cam = null;
+    micOn = camOn = false;
+    self.srcObject = null;
+    me = null;
+    if (tell) app.send({ t: 'call', id: '' });
   }
-  for (const p of [...peers.values()]) closePeer(p);
-  stopTracks({ mic, cam });
-  mic = cam = null;
-  micOn = camOn = false;
-  self.srcObject = null;
-  me = null;
-  if (tell) app.send({ t: 'call', id: '' });
+  // iOS: the game's audio session again, once the microphone has stopped
+  // (also for a join called off while it waited for the devices).
+  sound.setCall(false);
   refresh();
 }
 
@@ -172,9 +184,9 @@ async function setMic(on) {
   if (!cur || busy) return;
   busy = true;
   refresh();
-  if (on && !mic) {
+  if (on && mic?.readyState !== 'live') {
     const got = await acquire(true, false);
-    if (me === cur) mic = got.mic;
+    if (me === cur) watchEnd(mic = got.mic);
     else stopTracks(got);
   }
   busy = false;
@@ -192,9 +204,9 @@ async function setCam(on) {
   if (!cur || busy) return;
   busy = true;
   refresh();
-  if (on && !cam) {
+  if (on && cam?.readyState !== 'live') {
     const got = await acquire(false, true);
-    if (me === cur) cam = got.cam;
+    if (me === cur) watchEnd(cam = got.cam);
     else stopTracks(got);
   } else if (!on && cam) {
     cam.stop(); // the camera's light goes off
@@ -257,6 +269,25 @@ function mediaError({ mic: m, cam: c }) {
   toast(text, { sub, kind: 'error', ms: 5000 });
 }
 
+// A track that ends by itself (the device unplugged or taken by another
+// app, the permission withdrawn) is switched off as with its button: the
+// others see the face again, and a tap asks for the device anew.
+function watchEnd(track) {
+  track?.addEventListener('ended', () => {
+    if (!me || (track !== mic && track !== cam)) return;
+    if (track === mic) {
+      mic = null;
+      micOn = false;
+    } else {
+      cam = null;
+      camOn = false;
+    }
+    attachAll();
+    sendCall();
+    refresh();
+  });
+}
+
 function stopTracks({ mic: m, cam: c }) {
   m?.stop();
   c?.stop();
@@ -315,7 +346,7 @@ function wait(p, pc) {
 async function offer(p) {
   const pc = newPC(p);
   pc.addTransceiver('audio', { direction: 'sendrecv' });
-  pc.addTransceiver('video', { direction: 'sendrecv' });
+  pc.addTransceiver('video', { direction: 'sendrecv', sendEncodings: [{ maxBitrate: VIDEO_BITRATE }] });
   attach(p);
   try {
     await pc.setLocalDescription(await pc.createOffer());
@@ -337,6 +368,7 @@ export async function onRTC(m) {
       for (const t of pc.getTransceivers()) t.direction = 'sendrecv';
       attach(p);
       await pc.setLocalDescription(await pc.createAnswer());
+      capVideo(pc);
       await gathered(pc);
       if (p.pc === pc) signal(p, pc.localDescription);
     } catch {
@@ -349,6 +381,18 @@ export async function onRTC(m) {
     } catch {
       failed(p, pc);
     }
+  }
+}
+
+// The one who answers gets its transceivers from the offer, so its video
+// ceiling is set once they are negotiated. It holds when the track changes.
+function capVideo(pc) {
+  for (const t of pc.getTransceivers()) {
+    if (t.receiver.track?.kind !== 'video') continue;
+    const prm = t.sender.getParameters();
+    if (!prm.encodings?.length) continue;
+    prm.encodings[0].maxBitrate = VIDEO_BITRATE;
+    t.sender.setParameters(prm).catch(() => {});
   }
 }
 
@@ -421,12 +465,12 @@ function onTrack(p, track) {
   play(p.video);
 }
 
-// Our tracks on a connection: the microphone always (muted it sends
-// silence), the camera while it is on.
+// Our tracks on a connection: the microphone and the camera while they are
+// on. Muted, the microphone is taken off too: no packets of silence.
 function attach(p) {
   for (const t of p.pc?.getTransceivers() || []) {
     const kind = t.receiver.track?.kind;
-    const track = kind === 'audio' ? mic : kind === 'video' ? cam : null;
+    const track = kind === 'audio' ? (micOn ? mic : null) : kind === 'video' ? cam : null;
     if (t.sender.track !== track) t.sender.replaceTrack(track).catch(() => {});
   }
 }

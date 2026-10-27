@@ -1378,6 +1378,7 @@ export const sound = {
   play(name),          // 'card','deal','shuffle','trick','trickWon','roem','trump','turn','chat',
                        // 'nat','pit','handWon','handLost','win','lose','click','error','join'
   setMuted(bool), isMuted(), setVolume(0..1), getVolume()   // persisted in localStorage kj.sound
+  setCall(bool),       // call.js: a call holds the iOS audio session ('play-and-record', else 'ambient')
 };
 
 // web/js/manual.js — the in-game handleiding (Dutch content + renderer)
@@ -1633,15 +1634,31 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   chosen, a line that sound and picture go from device to device, not
   through the server, and *Niet nu* / *Meebellen*. Not in the lobby, where
   the call is offered but not proposed, and not in training or alone with
-  bots. *Meebellen* asks the browser for microphone and camera together;
+  bots. On iOS (`navigator.audioSession`) sound.js plays the game's sounds
+  in an `ambient` session, mixed with the user's own music; as that
+  records nothing and goes quiet with the silent switch, the session is
+  `play-and-record` from the tap on *Meebellen*, before the microphone is
+  asked, until the call ends and the microphone has stopped (hanging up,
+  leaving the room, a join called off), also for a sound context made
+  meanwhile.
+  *Meebellen* asks the browser for microphone and camera together;
   refused, for each on its own, so the microphone may still come when the
   camera is blocked. What cannot be had is a toast ("Geen toegang tot de
   camera", "Geen microfoon gevonden", "De camera is in gebruik"), and the
-  player joins without it, still hearing and seeing the others. Then the
+  player joins without it, still hearing and seeing the others. A
+  microphone or camera that ends by itself later (unplugged, taken by
+  another app, its permission withdrawn), or already while the other was
+  still being asked for, is switched off as with its button, but not
+  remembered; a tap asks for it again. Then the
   page sends `call`; every two pages in the call connect, the lower session
   id offering, with one audio and one video transceiver from the start, so
   switching later only swaps tracks (the camera's track is stopped, its
-  light goes off; the microphone's is muted). One description each way,
+  light goes off; the microphone's is muted and taken off the connections,
+  so nothing is sent until it is on again). Video goes at most 300 kbit/s
+  to each other page (the browser would send 600 for 320x240; the circle
+  shows it at most about 160 device pixels wide): the offerer sets it on
+  its transceiver, the answerer once the answer is made, and it holds as
+  the camera's track changes. One description each way,
   with the addresses found within 2.5 s (no trickling, for the message
   limit); STUN from Google and Cloudflare, no TURN. A connection not up
   within 20 s, or lost for 8 s, failed: the offerer tries again three
@@ -1664,7 +1681,14 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   ("Bij een spel met andere spelers vragen of je meebelt"). A browser that
   refuses to play the sound before a tap gets "Tik ergens om de anderen te
   horen". Leaving the room hangs up. `app-checks.mjs --only call` plays it through with the
-  fake devices of `scripts/chrome`.
+  fake devices of `scripts/chrome`, with a camera and a microphone whose
+  permission is withdrawn and given back, the microphone's permission also
+  while the call is joining, with the camera still asked for, and checks the
+  video ceiling on both sides and that a muted microphone is off the
+  connection and back on it with one tap, and, with a fake
+  `navigator.audioSession` on the host, that the devices are asked under
+  `play-and-record` and that hanging up and a join called off give `ambient`
+  back once the tracks have stopped.
 - **Training**: tip bubble with the hint text and a glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it) and the advised suit or *Spelen*/*Passen*
