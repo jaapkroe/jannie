@@ -621,6 +621,17 @@ smaller tables.
 `internal/server` does **not** import `internal/bot`: it defines the interface
 it needs, and `cmd/klaverjas/ai.go` adapts package `bot` to it. Server tests
 use a fake AI (first legal card), so the two packages build independently.
+`perf_test.go` measures the server's own cost: fake humans, connections
+without a socket, play whole matches in process with random legal
+decisions. `go test -run '^$' -bench . ./internal/server` runs
+`BenchmarkGame` (a match of 16 hands: solo, gedraaid, four humans, training
+with lessons, expert, three and two players), `BenchmarkMarshalState`
+(every update of a solo match encoded again), `BenchmarkStateGameOver` (the
+state after 24 hands) and `BenchmarkWSGame` (a solo match over a real
+websocket, with and without permessage-deflate, with the bytes on the
+wire); `go test -run PerfWire -v ./internal/server -args -perf.wire` lists
+what one connection receives in a match, per kind of message and per key
+of the state (skipped without the flag).
 
 ```go
 type Persona struct{ ID, Name, Emoji, Color, Bio string; Chattiness, Speed float64 }

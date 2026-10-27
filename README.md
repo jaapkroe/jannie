@@ -80,6 +80,11 @@ make test-all   # also the bot arena: sterk must beat normaal must beat makkelij
 make e2e        # full games over the websocket against the server from source
 ```
 
+The server's own cost per match, and what a connection receives, are
+measured by `scripts/go test -run '^$' -bench . ./internal/server` and
+`scripts/go test -run PerfWire -v ./internal/server -args -perf.wire`
+(`docs/design.md` §4.3).
+
 Browser checks with Puppeteer live in `test/ui` and run against a server
 (`scripts/dev-server PORT`) and a headless Chromium (`scripts/chrome PORT`):
 
