@@ -2291,6 +2291,7 @@ CHECKS.takeover = async browser => {
 // seat; microphone and camera switch with one tap, are remembered, and a
 // refused camera leaves the microphone; a new connection starts a new call
 // session; the phone's menu hangs up; a reload proposes the call again.
+// A camera that goes by itself is switched off.
 CHECKS.call = async browser => {
   const H = await page(browser, VP.phone, 'call-host', { call: true });
   // The guest's browser refuses the camera until window.__camOk (the fake
@@ -2386,6 +2387,19 @@ CHECKS.call = async browser => {
     await shot(G, 'videos');
     await checkOverflow(H, 'in the call');
     await checkOverflow(G, 'in the call');
+
+    // The guest's camera goes by itself (its permission withdrawn, as when
+    // it is unplugged or another app takes it): off as with its button.
+    // Allowed again, one tap brings it back.
+    const cdp = await browser.target().createCDPSession();
+    const camera = setting => cdp.send('Browser.setPermission', { permission: { name: 'camera' }, setting, origin: BASE, browserContextId: G.ctx.id });
+    await camera('denied');
+    await waitFor(G, () => document.querySelector('.prompt .call-dock .tb-cam[aria-pressed="false"]'), { label: 'guest camera off by itself' });
+    await shows(G, 'the guest without its own video', 'Host');
+    await camera('granted');
+    await cdp.detach();
+    await tapCall(G, '.prompt .call-dock .tb-cam');
+    await shows(H, 'guest video back on the host page', 'Gast,Host');
 
     // The host's microphone off: one tap, marked on the guest page, remembered.
     await tapCall(H, '.prompt .call-dock .tb-mic');

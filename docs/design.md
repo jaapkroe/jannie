@@ -1618,7 +1618,10 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   refused, for each on its own, so the microphone may still come when the
   camera is blocked. What cannot be had is a toast ("Geen toegang tot de
   camera", "Geen microfoon gevonden", "De camera is in gebruik"), and the
-  player joins without it, still hearing and seeing the others. Then the
+  player joins without it, still hearing and seeing the others. A
+  microphone or camera that ends by itself later (unplugged, taken by
+  another app, its permission withdrawn) is switched off as with its
+  button, but not remembered; a tap asks for it again. Then the
   page sends `call`; every two pages in the call connect, the lower session
   id offering, with one audio and one video transceiver from the start, so
   switching later only swaps tracks (the camera's track is stopped, its
@@ -1645,7 +1648,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   ("Bij een spel met andere spelers vragen of je meebelt"). A browser that
   refuses to play the sound before a tap gets "Tik ergens om de anderen te
   horen". Leaving the room hangs up. `app-checks.mjs --only call` plays it through with the
-  fake devices of `scripts/chrome`.
+  fake devices of `scripts/chrome`, with a camera whose permission is
+  withdrawn and given back.
 - **Training**: tip bubble with the hint text and a glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it); ✕ closes a hint until the next one; tips after

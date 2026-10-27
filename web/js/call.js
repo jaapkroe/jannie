@@ -137,6 +137,8 @@ async function join(wantMic, wantCam) {
   cam = got.cam;
   micOn = !!mic;
   camOn = !!cam;
+  watchEnd(mic);
+  watchEnd(cam);
   remember({ mic: wantMic && !got.missing.mic, cam: wantCam && !got.missing.cam });
   me = { id: newId(), sentAt: 0 };
   attachAll();
@@ -175,9 +177,9 @@ async function setMic(on) {
   if (!cur || busy) return;
   busy = true;
   refresh();
-  if (on && !mic) {
+  if (on && mic?.readyState !== 'live') {
     const got = await acquire(true, false);
-    if (me === cur) mic = got.mic;
+    if (me === cur) watchEnd(mic = got.mic);
     else stopTracks(got);
   }
   busy = false;
@@ -195,9 +197,9 @@ async function setCam(on) {
   if (!cur || busy) return;
   busy = true;
   refresh();
-  if (on && !cam) {
+  if (on && cam?.readyState !== 'live') {
     const got = await acquire(false, true);
-    if (me === cur) cam = got.cam;
+    if (me === cur) watchEnd(cam = got.cam);
     else stopTracks(got);
   } else if (!on && cam) {
     cam.stop(); // the camera's light goes off
@@ -258,6 +260,25 @@ function mediaError({ mic: m, cam: c }) {
   }
   sound.play('error');
   toast(text, { sub, kind: 'error', ms: 5000 });
+}
+
+// A track that ends by itself (the device unplugged or taken by another
+// app, the permission withdrawn) is switched off as with its button: the
+// others see the face again, and a tap asks for the device anew.
+function watchEnd(track) {
+  track?.addEventListener('ended', () => {
+    if (!me || (track !== mic && track !== cam)) return;
+    if (track === mic) {
+      mic = null;
+      micOn = false;
+    } else {
+      cam = null;
+      camOn = false;
+    }
+    attachAll();
+    sendCall();
+    refresh();
+  });
 }
 
 function stopTracks({ mic: m, cam: c }) {
