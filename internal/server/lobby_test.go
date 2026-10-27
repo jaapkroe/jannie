@@ -391,6 +391,65 @@ func TestHostHandover(t *testing.T) {
 	}
 }
 
+// TestHostStaysWhileNobodyConnected: when the host's grace is up while
+// nobody else is connected, the role stays. Here Anna (host) dropped
+// first, Bert 20 s later; at Anna's 30 s Bert does not get it, so Anna,
+// back first, can start.
+func TestHostStaysWhileNobodyConnected(t *testing.T) {
+	s, _, _ := newTestServer(t, func(s *Server) { s.scale = 1 })
+	r := newRoom(s, "HOST")
+	a, b := newClient(s, nil, "10.0.0.1", ""), newClient(s, nil, "10.0.0.2", "")
+	r.seats[0], r.seats[1] = newHuman("Anna"), newHuman("Bert")
+	r.setClient(0, a)
+	r.setClient(1, b)
+	r.host = 0
+	r.setClient(0, nil)
+	r.setClient(1, nil)
+	r.seats[0].leftAt = time.Now().Add(-31 * time.Second)
+	r.seats[1].leftAt = time.Now().Add(-11 * time.Second)
+	r.checkHost() // Anna's grace timer
+	if r.host != 0 {
+		t.Errorf("with nobody connected the role went to %s", r.seats[r.host].name)
+	}
+	r.setClient(0, a)
+	r.checkHost()
+	if !r.lobbyHost(a, 0) {
+		t.Errorf("Anna, back first, is no host")
+	}
+}
+
+// TestHostAfterLeave: the host leaves the lobby while the two others are
+// disconnected, so the role goes to Bert, gone a moment. Carl is back
+// first: he gets it when Bert's grace is up, with no host command of his
+// own (the client shows him none).
+func TestHostAfterLeave(t *testing.T) {
+	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.02 }) // grace 600 ms
+	a := dial(t, ts)
+	a.create("Anna", nil, false, false)
+	b := dial(t, ts)
+	b.join(a.code, "Bert", "")
+	c := dial(t, ts)
+	c.join(a.code, "Carl", "")
+	r := roomOf(t, s, a.code)
+	b.conn.CloseNow()
+	a.waitSeat("away", 1)
+	c.conn.CloseNow()
+	a.waitSeat("away", 2)
+	a.send(map[string]any{"t": "leave"})
+	var host game.Seat
+	waitFor(t, "Anna gone", func() bool {
+		var kind seatKind
+		call(r, func() { kind, host = r.seats[0].kind, r.host })
+		return kind == seatEmpty
+	})
+	if host != 1 {
+		t.Fatalf("host %d after Anna left, want Bert's seat 1", host)
+	}
+	c2 := dial(t, ts)
+	c2.join(a.code, "Carl", c.token)
+	c2.waitState("Carl host", func(s *state) bool { return s.Host == s.You })
+}
+
 func TestChat(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)

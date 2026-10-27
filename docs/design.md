@@ -656,6 +656,17 @@ smaller tables.
 `internal/server` does **not** import `internal/bot`: it defines the interface
 it needs, and `cmd/klaverjas/ai.go` adapts package `bot` to it. Server tests
 use a fake AI (first legal card), so the two packages build independently.
+`perf_test.go` measures the server's own cost: fake humans, connections
+without a socket, play whole matches in process with random legal
+decisions. `go test -run '^$' -bench . ./internal/server` runs
+`BenchmarkGame` (a match of 16 hands: solo, gedraaid, four humans, training
+with lessons, expert, three and two players), `BenchmarkMarshalState`
+(every update of a solo match encoded again), `BenchmarkStateGameOver` (the
+state after 24 hands) and `BenchmarkWSGame` (a solo match over a real
+websocket, with and without permessage-deflate, with the bytes on the
+wire); `go test -run PerfWire -v ./internal/server -args -perf.wire` lists
+what one connection receives in a match, per kind of message and per key
+of the state (skipped without the flag).
 
 ```go
 type Persona struct{ ID, Name, Emoji, Color, Bio string; Chattiness, Speed float64 }
@@ -753,10 +764,15 @@ reply attempt.
 
 - Code: 4 letters from `ABCDEFGHJKLMNPQRSTUVWXYZ` (no I, O), unique among live
   rooms, case-insensitive on input. Join link: `https://klaverjas.kroes.dev/ABCD`.
-- Creator sits at seat 0 and is host. If the host leaves, or stays disconnected
-  for 30 s while another human is connected, the next human becomes host
-  (checked when the 30 s are up, and again when someone else gives a host
-  command such as `rematch` or `lobby`). A room is removed 30 min after game over (players
+- Creator sits at seat 0 and is host. If the host leaves, the next human
+  becomes host (a connected one first); if the host stays disconnected for
+  30 s while another human is connected, the next connected human does. With
+  nobody else connected the role stays, so a host who comes back first keeps
+  it. This is checked when the host's 30 s are up, when a human joins or
+  comes back, and when someone else gives a host command such as `rematch`
+  or `lobby`; a check that finds the host gone for less than 30 s while
+  someone else is connected (a leave may hand the role to a human gone a
+  moment) runs again when the 30 s are up. A room is removed 30 min after game over (players
   still connected get `onbekend`) and at once when the last human leaves its
   lobby. With no human connected it is removed after 30 min while a game runs
   that still has a human seat, and after 5 min in the lobby, after game over,
@@ -883,8 +899,9 @@ reply attempt.
   bid) and works out a `why`: `AI.Explain` on the view of that seat then,
   match fields filled in as for the bots. A `why` names a decision made, or
   the one awaited now in the hand in play; it runs in the background, one
-  at a time per room (another meanwhile: error `limiet`), and the answer
-  goes to the asker alone. At most 500 marks and 200 feedback lines per
+  at a time per room (another meanwhile: error `limiet`) and one at a time
+  over all rooms (the search takes every core; others wait their turn), and
+  the answer goes to the asker alone. At most 500 marks and 200 feedback lines per
   match.
 - Bot chat (limits in §5): a bot does not repeat one of its last two lines for
   the same kind of event (numbers aside: "20 roem" and "50 roem" are one line);
@@ -977,11 +994,12 @@ Juf Jannie teaches the game a step at a time, and a little more each time
 the learner alone; `spot` names the part of the screen it is about (§9),
 `card` the card in the hand for spot `card`. The game waits for it without a timer: the pause
 it comes in (`turn` -1, `nextAt` 0) ends only when the learner has read every
-step of it, each with `tipRead` and its `n` (a `tipRead` for another `n` came
-late and changes nothing). On the learner's own turn a step needs no pause:
-the turn is open, the hint follows once it is read, and playing a card reads
-it too. Every step is a line of Juf Jannie in the chat (`coach`), after the first
-update that shows it. What is taught, per room (the hands counted from the
+step of it, each with `tipRead` and its `n` (a `tipRead` for another `n`,
+or with an `n` when no step is on screen, came late and changes nothing).
+On the learner's own turn a step needs no pause: the turn is open, the hint
+follows once it is read, and playing a card reads it too. Every step is a
+line of Juf Jannie in the chat (`coach`), after the first update that shows
+it. What is taught, per room (the hands counted from the
 first one dealt with lessons):
 
 - **Intro**, after the deal of the room's first hand, before the first turn:
@@ -1085,7 +1103,7 @@ client rotates so `you` is at the bottom.
 | `discard` | `cards` [2] | Three players: you play alone, phase `discard` |
 | `play` | `card` | Your turn, phase `play` |
 | `ready` | | Phase `handEnd`: continue now (ignored once the next hand is dealt: a late tap on the summary) |
-| `tipRead` | `n` (optional) | Training, a lesson step on screen (`lesson`, §6 Lessons): read, on to the next (ignored when `n` is another step's: a late tap); else the last trick of a hand waiting for its tip (`nextAt` set in phase `play`): on to the summary now (ignored once it is up: a late tap) |
+| `tipRead` | `n` (optional) | Training, a lesson step on screen (`lesson`, §6 Lessons): read, on to the next (ignored when `n` is another step's, or no step is on screen: a late tap); else, without `n`, the last trick of a hand waiting for its tip (`nextAt` set in phase `play`): on to the summary now (ignored once it is up: a late tap) |
 | `vote` | `seat`, `ai` bool, `left` bool (optional) | While state `takeover` is set, every connected human: may an AI play that seat (`true`), or wait (`false`)? `seat`, and `left` when sent, as in `takeover`: the question it answers (the client sends `left`, so a yes for a stand-in never counts for a seat given away). Can change while the question is open (§6); the same answer again changes nothing, so no `update` follows |
 | `chat` | `text` | Any time |
 | `call` | `id` (8–32 letters and digits; "" hangs up), `mic` bool, `cam` bool | Any time: join the call, switch the microphone or camera, hang up (§6 Calls). The same again changes nothing |

@@ -302,6 +302,22 @@ func TestLessonResync(t *testing.T) {
 	}
 }
 
+// TestLateLessonTap: a tap for a lesson step that came once the step was
+// gone (the learner's card ended the turn's lesson) is no tip read: the
+// last trick of the hand still waits for its tip.
+func TestLateLessonTap(t *testing.T) {
+	r := lessonRoom(t)
+	r.phase = phasePlay
+	r.lessonN = 7 // steps 1 to 7 were shown; none is on screen now
+	r.pause(stepCollect, time.Hour)
+	r.nextAt = r.pendingAt // the last trick waits for its tip
+	n := 7
+	r.cmdTipRead(&n)
+	if r.pending != stepCollect {
+		t.Errorf("the late tap for step %d ended the wait for the tip: pending %d", n, r.pending)
+	}
+}
+
 // TestLessonsOnlyInTraining: the option means nothing outside training,
 // and training without it has no lessons.
 func TestLessonsOnlyInTraining(t *testing.T) {

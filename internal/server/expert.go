@@ -221,7 +221,8 @@ func decisionArgs(i game.Seat, m *inMsg) (h, t int, seat game.Seat, ok bool) {
 
 // cmdWhy works out the engine's reasoning for a decision of the match
 // (design §7 why), made or awaited now, of any seat. It runs in the
-// background, one at a time per room, and the answer goes to the asker.
+// background, one at a time per room and over all rooms (the search takes
+// every core), and the answer goes to the asker.
 func (r *room) cmdWhy(c *client, i game.Seat, m *inMsg) {
 	if !r.expert || r.phase == phaseLobby {
 		c.sendError(errInvalid, "De redenering van de AI vraag je op in de expertmodus.")
@@ -249,7 +250,9 @@ func (r *room) cmdWhy(c *client, i game.Seat, m *inMsg) {
 		msg.Played = &played
 	}
 	go func() {
+		r.srv.explains <- struct{}{}
 		e := r.explain(v)
+		<-r.srv.explains
 		r.post(func() {
 			r.explaining = false
 			msg.fill(e)

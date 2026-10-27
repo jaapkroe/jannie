@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"path/filepath"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -275,5 +276,69 @@ func TestExpertMarkBid(t *testing.T) {
 	remarshal(t, recs[0], &m)
 	if m.Seat != 0 || m.By != 3 || m.Played == nil || m.Played.Play == nil || !*m.Played.Play || m.Mark.Play == nil || *m.Mark.Play {
 		t.Errorf("mark record %+v (played %+v)", m, m.Played)
+	}
+}
+
+// gateAI is the fake AI whose explanations wait for the gate; it counts
+// the most that ran at once.
+type gateAI struct {
+	fakeAI
+	gate          chan struct{}
+	mu            sync.Mutex
+	running, most int
+}
+
+func (a *gateAI) Explain(v game.View) Explanation {
+	a.mu.Lock()
+	a.running++
+	a.most = max(a.most, a.running)
+	a.mu.Unlock()
+	<-a.gate
+	a.mu.Lock()
+	a.running--
+	a.mu.Unlock()
+	return a.fakeAI.Explain(v)
+}
+
+// TestWhyOneAtATime: the expert's why runs one search at a time over all
+// rooms, as each takes every core, and a room that asks again meanwhile
+// gets limiet.
+func TestWhyOneAtATime(t *testing.T) {
+	ai := &gateAI{gate: make(chan struct{})}
+	s, _ := newTestServerWith(t, ai)
+	c := newClient(s, nil, "1.2.3.4", "test")
+	hand, trick, seat := 1, 0, 3
+	ask := func(r *room) { r.cmdWhy(c, 0, &inMsg{Hand: &hand, Trick: &trick, Seat: &seat}) }
+	var rooms []*room
+	for _, code := range []string{"WHYA", "WHYB"} {
+		r := newRoom(s, code)
+		defer r.stop()
+		r.expert, r.phase = true, phaseGameOver
+		r.seats[0] = newHuman("A")
+		r.opts.TrumpMode = game.Gedraaid
+		r.firstHand = 1
+		r.handDealt = []dealtCards{{dealer: 0, hands: game.Shuffle(rand.New(rand.NewPCG(3, 4))), turned: game.Hearts}}
+		r.handActs = []string{"1b0 2b0 3b1"}
+		ask(r) // why seat 3 played
+		rooms = append(rooms, r)
+	}
+	running := func() int {
+		ai.mu.Lock()
+		defer ai.mu.Unlock()
+		return ai.running
+	}
+	waitFor(t, "a search", func() bool { return running() > 0 })
+	time.Sleep(20 * time.Millisecond) // time for a second one to start, were it let in
+	ask(rooms[0])
+	var m struct{ T, Code string }
+	if err := json.Unmarshal(<-c.out, &m); err != nil || m.Code != errLimit {
+		t.Errorf("a second why in the room: %+v %v", m, err)
+	}
+	close(ai.gate)
+	waitFor(t, "both explanations", func() bool { return ai.reasoned.Load() == 2 })
+	ai.mu.Lock()
+	defer ai.mu.Unlock()
+	if ai.most != 1 {
+		t.Errorf("%d searches at once", ai.most)
 	}
 }
