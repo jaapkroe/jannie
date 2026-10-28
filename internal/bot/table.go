@@ -105,8 +105,8 @@ func (t *table) signalsBoer(seat game.Seat, c game.Card) bool {
 // left.
 const signalTricks = 6 // a discard signals in the first six tricks
 
-// aceSignal reports whether discarding c says "ik heb de 10 ook" (aas
-// vraagt 10, design §8), when the table agreed on it: c is the ace of a
+// aceSignal reports whether discarding c says "ik heb de 10 ook" (met de
+// aas seinen, design §8), when the table agreed on it: c is the ace of a
 // side suit that nobody has led yet, given to the partner's trick while
 // its 10 is still out, in time for the partner to come back to the suit.
 // It returns that 10, the highest card of the suit once the ace is gone.
@@ -117,15 +117,15 @@ func (t *table) aceSignal(c game.Card) (game.Card, bool) {
 }
 
 // partnersTrick reports whether the partner of the seat to play holds the
-// current trick: only then does a discard signal (hoog/laag bijspelen);
+// current trick: only then does a discard signal (op- of afseinen);
 // into a trick the opponents hold it is just a card thrown away.
 func (t *table) partnersTrick() bool {
 	return t.n > 0 && t.win == t.next().Partner()
 }
 
 // lowSignal reports whether playing c into the current trick says "speel
-// deze kleur, daar heb ik de hoogste van" (laag bijspelen, design §8), when
-// the table agreed on hoog/laag: c is a 7, 8 or 9 of a side suit that was
+// deze kleur, daar heb ik de hoogste van" (opseinen, design §8), when the
+// table agreed on op- of afseinen: c is a 7, 8 or 9 of a side suit that was
 // not led, so a discard, on the partner's trick, and a card of that suit is
 // still out besides c. It returns the highest such card.
 func (t *table) lowSignal(c game.Card) (game.Card, bool) {

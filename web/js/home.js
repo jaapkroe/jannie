@@ -27,12 +27,13 @@ const OPTS = [
   { key: 'tempo', label: 'Tempo', choices: [['rustig', 'Rustig'], ['normaal', 'Normaal'], ['snel', 'Snel']],
     info: 'Hoe snel de AI-spelers spelen en hoe lang de pauzes tussen de slagen duren.' },
   { key: 'signals', label: 'Seinen', players: [4], multi: true,
-    choices: [['aas', 'Aas vraagt 10'], ['kleintjeBoer', 'Kleintje boer'], ['hoogLaag', 'Hoog/laag'], ['boerOverBoer', 'Boer over boer']],
-    info: ['De afspraken aan deze tafel: welke kaarten je maat iets vertellen. De AI-spelers en de tips houden zich eraan.',
-      'Aas vraagt 10: gooi je op een slag van je maat een aas bij van een bijkleur die nog niet gespeeld is, dan heb je de 10 van die kleur ook.',
+    choices: [['aas', 'Met de aas seinen'], ['hoogLaag', 'Op- of afseinen'], ['kleintjeBoer', 'Kleintje boer'], ['boerOverBoer', 'Boer over boer']],
+    info: ['De afspraken aan deze tafel: welke kaarten je maat iets vertellen. De AI-spelers en de tips houden zich eraan. Bij de start van een spel staan ze in de chat.',
+      'Met de aas seinen: gooi je op een slag van je maat een aas bij van een bijkleur die nog niet gespeeld is, dan heb je de 10 van die kleur ook.',
+      'Op- of afseinen: kun je niet bekennen op een slag van je maat, dan zegt een 7, 8 of 9 “speel deze kleur, daar heb ik de hoogste van” (opseinen) en een 10, boer, vrouw of heer “de hoogste van deze kleur heb ik niet” (afseinen). Op een slag van de tegenpartij zegt je bijkaart niets.',
       'Kleintje boer: komt de spelende partij voor het eerst uit met een 7, 8 of 9 van een bijkleur, dan heeft die de troefboer.',
-      'Hoog/laag: kun je niet bekennen op een slag van je maat, dan zegt een klein kaartje “speel deze kleur, daar heb ik de hoogste van” en een 10 of plaatje “ik heb weinig in deze kleur”. Op een slag van de tegenpartij zegt je bijkaart niets.',
-      'Boer over boer: komt de spelende partij voor het eerst uit met een boer van een bijkleur, dan heeft die de troefboer.'] },
+      'Boer over boer: komt de spelende partij voor het eerst uit met een boer van een bijkleur, dan heeft die de troefboer.',
+      'Tegenkleur seinen staat hier niet bij: dat sein gebruiken de AI-spelers en de tips niet.'] },
   { key: 'seed', label: 'Seed', input: true, choices: [],
     info: ['Leeg: elke partij krijgt nieuwe kaarten.',
       'Met een getal (1 tot 999999999) krijg je bij dezelfde spelregels dezelfde kaarten, ook bij Nog een partij. Zo speel je een partij nog eens, of dezelfde kaarten als iemand anders.',
@@ -99,7 +100,7 @@ function optsSummary(o) {
   return out;
 }
 
-// "seinen: aas vraagt 10, kleintje boer, hoog/laag", or "geen seinen".
+// "seinen: met de aas seinen, op- of afseinen, kleintje boer", or "geen seinen".
 function signalsText(sig) {
   const on = OPTS.find(x => x.key === 'signals').choices.filter(([k]) => signalsOf(sig)[k]).map(([, label]) => label.toLowerCase());
   return on.length ? `seinen: ${on.join(', ')}` : 'geen seinen';

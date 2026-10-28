@@ -378,26 +378,36 @@ var roemSteps = []lessonStep{
 		"Vier gelijke kaarten zijn 100, vier boeren 200. De eerste keren wijs ik het je aan."},
 }
 
+// signalRules explain the agreements of sig, one text each, in the order
+// of the manual: in Juf Jannie's lesson on signals and in the chat at the
+// start of a match.
+func signalRules(sig game.Signals) []string {
+	var each []string
+	if sig.Aas {
+		each = append(each, "Met de aas seinen: heeft je maat de slag en gooi je een aas bij van een kleur die nog niet gespeeld is, "+
+			"dan zeg je: ik heb de 10 ook. Je maat speelt die kleur dan later naar je toe.")
+	}
+	if sig.HoogLaag {
+		each = append(each, "Op- of afseinen: heeft je maat de slag en kun je niet bekennen, dan zeg je met een 7, 8 of 9: speel deze kleur, daar heb ik de hoogste van (opseinen). "+
+			"Met een 10, boer, vrouw of heer zeg je: de hoogste van deze kleur heb ik niet (afseinen).")
+	}
+	if sig.KleintjeBoer {
+		each = append(each, "Kleintje boer: kom je van het koppel dat troef koos voor het eerst uit met een 7, 8 of 9 van een andere kleur, "+
+			"dan zeg je: ik heb de troefboer. Je maat speelt dan troef terug.")
+	}
+	if sig.BoerOverBoer {
+		each = append(each, "Boer over boer: kom je van het koppel dat troef koos voor het eerst uit met de boer van een andere kleur, "+
+			"dan zeg je ook: ik heb de troefboer.")
+	}
+	return each
+}
+
 // signalSteps introduce the table's signals, at the deal of hand
 // signalHand: what a signal is, then each agreement.
 func (r *room) signalSteps() []lessonStep {
-	sig := r.opts.Signals
 	var each []lessonStep
-	if sig.Aas {
-		each = append(each, lessonStep{Text: "Aas vraagt 10: heeft je maat de slag en gooi je een aas bij van een kleur die nog niet gespeeld is, " +
-			"dan zeg je: ik heb de 10 ook. Je maat speelt die kleur dan later naar je toe."})
-	}
-	if sig.KleintjeBoer {
-		each = append(each, lessonStep{Text: "Kleintje boer: kom je van het koppel dat troef koos voor het eerst uit met een 7, 8 of 9 van een andere kleur, " +
-			"dan zeg je: ik heb de troefboer. Je maat speelt dan troef terug."})
-	}
-	if sig.BoerOverBoer {
-		each = append(each, lessonStep{Text: "Boer over boer: kom je van het koppel dat troef koos voor het eerst uit met de boer van een andere kleur, " +
-			"dan zeg je ook: ik heb de troefboer."})
-	}
-	if sig.HoogLaag {
-		each = append(each, lessonStep{Text: "Hoog/laag: heeft je maat de slag en gooi je een laag kaartje bij, dan zeg je: speel deze kleur, daar heb ik de hoogste van. " +
-			"Een hoge kaart zegt: daar heb ik weinig van."})
+	for _, text := range signalRules(r.opts.Signals) {
+		each = append(each, lessonStep{Text: text})
 	}
 	count := numberNL(len(each))
 	if len(each) == 1 {
@@ -462,10 +472,10 @@ func chanceStep(sig Signal, hinted *game.Card) lessonStep {
 	switch sig.Kind {
 	case "aas":
 		text = "Hier kun je seinen: gooi je " + card + " bij op mijn slag, dan weet ik dat je " + game.CardShortNL(sig.Means) +
-			" ook hebt (aas vraagt 10). Dan speel ik later " + suit + " naar je toe."
+			" ook hebt (met de aas seinen). Dan speel ik later " + suit + " naar je toe."
 	case "hoogLaag":
 		text = "Hier kun je seinen: gooi je " + card + " bij op mijn slag, een laag kaartje, dan weet ik dat je de hoogste " + suit +
-			" hebt (hoog/laag bijspelen). Dan speel ik later " + suit + " naar je toe."
+			" hebt (opseinen). Dan speel ik later " + suit + " naar je toe."
 	default: // kleintjeBoer, boerOverBoer
 		what, name := "een kleintje van een bijkleur", "kleintje boer"
 		if sig.Kind == "boerOverBoer" {
@@ -718,11 +728,11 @@ func (r *room) signalStep(sig Signal) lessonStep {
 	switch sig.Kind {
 	case "aas":
 		said = who + " gooide " + card + " bij op " + r.whose(sig.Seat.Partner()) +
-			", en aan deze tafel betekent dat: “ik heb " + means + " ook” (aas vraagt 10)."
+			", en aan deze tafel betekent dat: “ik heb " + means + " ook” (met de aas seinen)."
 		then = "Speel later " + suit + ", dan kan mijn " + means + " de slag halen."
 	case "hoogLaag":
 		said = who + " gooide " + card + " bij op " + r.whose(sig.Seat.Partner()) +
-			", een laag kaartje, en aan deze tafel betekent dat: “speel " + suit + ", daar heb ik de hoogste van” (hoog/laag bijspelen)."
+			", een laag kaartje, en aan deze tafel betekent dat: “speel " + suit + ", daar heb ik de hoogste van” (opseinen)."
 		then = "Speel later " + suit + ", dan haal ik die slag."
 	default: // kleintjeBoer, boerOverBoer
 		what, name := "een kleintje van een bijkleur", "kleintje boer"

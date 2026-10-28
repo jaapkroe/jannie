@@ -387,8 +387,8 @@ type Signal struct {
 	// "boerOverBoer" (a lead), "aas" and "hoogLaag" (a low discard).
 	Kind string
 	// Means is the card the signal says Seat holds: the trump boer, the
-	// 10 (aas vraagt 10), or the highest card left in the suit (laag
-	// bijspelen).
+	// 10 (met de aas seinen), or the highest card left in the suit
+	// (opseinen).
 	Means game.Card
 }
 

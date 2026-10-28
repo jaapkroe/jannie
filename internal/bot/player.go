@@ -132,13 +132,13 @@ func (b *player) Play(v game.View) (c game.Card) {
 // them only for a clear gain.
 const (
 	fakeSignalGain  = 10 // points a false kleintje boer must gain over the best honest card
-	fakeLowGain     = 20 // the same for a false laag bijspelen or aas vraagt 10
+	fakeLowGain     = 20 // the same for a false opseinen or met de aas seinen
 	signalTolerance = 6  // points a genuine kleintje boer may cost
 )
 
 // lieGain returns how much more than the best honest card c must bring in
-// when playing it would signal something untrue (kleintje boer, aas
-// vraagt 10 or laag bijspelen), or 0 when c is honest.
+// when playing it would signal something untrue (kleintje boer, met de
+// aas seinen or opseinen), or 0 when c is honest.
 func (m *mover) lieGain(c game.Card) float64 {
 	switch {
 	case m.falseAce(c):

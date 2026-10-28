@@ -292,10 +292,11 @@ func TestLessons(t *testing.T) {
 		}
 	}
 	// Signals: introduced at the deal of the ninth hand, each agreement of
-	// the table (by default three) a step of its own.
+	// the table (by default three) a step of its own, in the manual's order.
 	intro = all(with("Vanaf dit potje let ik op seinen"))
 	if len(intro) != 1 || intro[0].hand != signalHand || intro[0].turn != -1 ||
-		!strings.Contains(intro[0].Text, "spreken we er drie af") || !strings.HasPrefix(seen[intro[0].N].Text, "Aas vraagt 10: ") {
+		!strings.Contains(intro[0].Text, "spreken we er drie af") || !strings.HasPrefix(seen[intro[0].N].Text, "Met de aas seinen: ") ||
+		!strings.HasPrefix(seen[intro[0].N+1].Text, "Op- of afseinen: ") {
 		t.Errorf("signals introduced %+v", intro)
 	}
 	// The fake reads every lead as kleintje boer: the first three tricks
@@ -529,10 +530,10 @@ func TestSignalStep(t *testing.T) {
 		want string
 	}{
 		{Signal{Seat: 2, Card: game.Card{Rank: game.Ace, Suit: game.Spades}, Kind: "aas", Means: game.Card{Rank: game.Ten, Suit: game.Spades}},
-			"Dat was een sein. Ik gooide ♠A bij op jouw slag, en aan deze tafel betekent dat: “ik heb ♠10 ook” (aas vraagt 10). " +
+			"Dat was een sein. Ik gooide ♠A bij op jouw slag, en aan deze tafel betekent dat: “ik heb ♠10 ook” (met de aas seinen). " +
 				"Speel later schoppen, dan kan mijn ♠10 de slag halen."},
 		{Signal{Seat: 2, Card: game.Card{Rank: game.Seven, Suit: game.Clubs}, Kind: "hoogLaag", Means: game.Card{Rank: game.Ace, Suit: game.Clubs}},
-			"Dat was een sein. Ik gooide ♣7 bij op jouw slag, een laag kaartje, en aan deze tafel betekent dat: “speel klaveren, daar heb ik de hoogste van” (hoog/laag bijspelen). " +
+			"Dat was een sein. Ik gooide ♣7 bij op jouw slag, een laag kaartje, en aan deze tafel betekent dat: “speel klaveren, daar heb ik de hoogste van” (opseinen). " +
 				"Speel later klaveren, dan haal ik die slag."},
 		{Signal{Seat: 3, Card: game.Card{Rank: game.Seven, Suit: game.Clubs}, Kind: "kleintjeBoer", Means: game.Card{Rank: game.Jack, Suit: game.Hearts}},
 			"Dat was een sein. " + r.displayName(3) + " kwam voor het eerst uit, met ♣7: een kleintje van een bijkleur. Van het koppel dat troef koos, betekent dat aan deze tafel: “ik heb de troefboer” (kleintje boer)."},
@@ -556,9 +557,9 @@ func TestChanceStep(t *testing.T) {
 		want   string
 	}{
 		{Signal{Seat: 0, Card: as, Kind: "aas", Means: game.Card{Rank: game.Ten, Suit: game.Spades}}, &as,
-			"Hier kun je seinen: gooi je ♠A bij op mijn slag, dan weet ik dat je ♠10 ook hebt (aas vraagt 10). Dan speel ik later schoppen naar je toe."},
+			"Hier kun je seinen: gooi je ♠A bij op mijn slag, dan weet ik dat je ♠10 ook hebt (met de aas seinen). Dan speel ik later schoppen naar je toe."},
 		{Signal{Seat: 0, Card: game.Card{Rank: game.Eight, Suit: game.Spades}, Kind: "hoogLaag", Means: as}, &tc,
-			"Hier kun je seinen: gooi je ♠8 bij op mijn slag, een laag kaartje, dan weet ik dat je de hoogste schoppen hebt (hoog/laag bijspelen). " +
+			"Hier kun je seinen: gooi je ♠8 bij op mijn slag, een laag kaartje, dan weet ik dat je de hoogste schoppen hebt (opseinen). " +
 				"Dan speel ik later schoppen naar je toe. Mijn tip is een andere kaart."},
 		{Signal{Seat: 0, Card: game.Card{Rank: game.Seven, Suit: game.Diamonds}, Kind: "kleintjeBoer", Means: game.Card{Rank: game.Jack, Suit: game.Hearts}}, nil,
 			"Hier kun je seinen: kom je uit met ♦7, een kleintje van een bijkleur, dan weet ik dat je de troefboer hebt (kleintje boer). Dan speel ik troef terug als ik aan slag kom."},
@@ -574,12 +575,70 @@ func TestChanceStep(t *testing.T) {
 func TestSignalSteps(t *testing.T) {
 	r := lessonRoom(t)
 	steps := r.signalSteps()
-	if len(steps) != 4 || !strings.Contains(steps[0].Text, "spreken we er drie af") || !strings.HasPrefix(steps[2].Text, "Kleintje boer: ") {
+	if len(steps) != 4 || !strings.Contains(steps[0].Text, "spreken we er drie af") || !strings.HasPrefix(steps[1].Text, "Met de aas seinen: ") ||
+		!strings.HasPrefix(steps[2].Text, "Op- of afseinen: ") || !strings.HasPrefix(steps[3].Text, "Kleintje boer: ") {
 		t.Errorf("default signals: %+v", steps)
 	}
 	r.opts.Signals = game.Signals{BoerOverBoer: true}
 	if steps := r.signalSteps(); len(steps) != 2 || !strings.Contains(steps[0].Text, "spreken we er één af") || !strings.HasPrefix(steps[1].Text, "Boer over boer: ") {
 		t.Errorf("boer over boer alone: %+v", steps)
+	}
+}
+
+// TestSignalChat: a match of four starts with the table's agreements on
+// signals in the chat, each with what it says, or a line that there are
+// none; with lessons they wait for Juf Jannie's lesson, and with two or
+// three players signals play no part.
+func TestSignalChat(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	lines := func(set func(r *room)) []string {
+		r := newRoom(s, "SEIN")
+		defer r.stop()
+		set(r)
+		r.signalChat()
+		var out []string
+		for _, m := range r.chat {
+			if !m.Sys || m.Seat != -1 {
+				t.Errorf("not a system line: %+v", m)
+			}
+			out = append(out, m.Text)
+		}
+		return out
+	}
+	got := lines(func(*room) {})
+	if len(got) != 4 || got[0] != "Seinen aan deze tafel:" || !strings.HasPrefix(got[1], "Met de aas seinen: ") ||
+		got[2] != "Op- of afseinen: heeft je maat de slag en kun je niet bekennen, dan zeg je met een 7, 8 of 9: speel deze kleur, daar heb ik de hoogste van (opseinen). "+
+			"Met een 10, boer, vrouw of heer zeg je: de hoogste van deze kleur heb ik niet (afseinen)." || !strings.HasPrefix(got[3], "Kleintje boer: ") {
+		t.Errorf("default signals: %q", got)
+	}
+	if got := lines(func(r *room) { r.opts.Signals = game.Signals{} }); !slices.Equal(got, []string{"Aan deze tafel spreken we geen seinen af."}) {
+		t.Errorf("no signals: %q", got)
+	}
+	if got := lines(func(r *room) { r.opts.Players = 3 }); got != nil {
+		t.Errorf("three players: %q", got)
+	}
+	for _, sig := range []game.Signals{game.DefaultSignals, {}} {
+		if got := lines(func(r *room) { r.training, r.opts.Lessons, r.opts.Signals = true, true, sig }); got != nil {
+			t.Errorf("%+v before the lesson on signals: %q", sig, got)
+		}
+	}
+	if got := lines(func(r *room) {
+		r.training, r.opts.Lessons = true, true
+		r.taught = map[string]int{lessonSignals: 1}
+	}); len(got) != 4 {
+		t.Errorf("after the lesson on signals: %q", got)
+	}
+	// A match, rematches too, puts them right after its start line.
+	r := newRoom(s, "SEIN")
+	defer r.stop()
+	r.seats[0] = newHuman("A")
+	r.opts.Seed = 55
+	for range 2 {
+		r.chat = nil
+		r.startMatch()
+		if len(r.chat) < 2 || r.chat[0].Text != "Spel (55) begint: 16 potjes, Utrechts/Amsterdams. Veel plezier!" || r.chat[1].Text != "Seinen aan deze tafel:" {
+			t.Errorf("start of a match: %+v", r.chat)
+		}
 	}
 }
 

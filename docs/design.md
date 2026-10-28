@@ -590,9 +590,9 @@ Strength levels:
   wins just as surely, can still bring roem (the ace only with heer and
   vrouw), and leaves the ace on top (in self-play +1.2 points per hand over
   ace first). It never leads under its own ace, gives the ace with its 10
-  to the partner's trick (aas vraagt 10, §8) but avoids an ace without it,
-  avoids a low discard that would falsely claim the highest card of its
-  suit (laag bijspelen), and leads into a suit whose highest card the
+  to the partner's trick (met de aas seinen, §8) but avoids an ace without
+  it, avoids a low discard that would falsely claim the highest card of its
+  suit (opseinen), and leads into a suit whose highest card the
   partner signalled. Leading, it weighs roem: every side card is a
   candidate, and each run of three through it whose two other cards are
   still out with two other players counts 8 points for the team that
@@ -608,10 +608,10 @@ Strength levels:
   trump obligations), determinised Monte Carlo: sample hidden hands consistent
   with everything known, evaluate each legal move by playouts with the normaal
   policy, ~150–400 samples within ~150 ms; trump choice by simulation; reads the
-  signals of §8 (aas vraagt 10, kleintje boer, laag bijspelen) as soft
+  signals of §8 (met de aas seinen, opseinen, kleintje boer) as soft
   evidence. It gives kleintje boer when that costs at most a few points, and
   fakes it (a small side card without the boer) only when that gains clearly
-  (≥ 10 points), a false laag bijspelen or aas vraagt 10 only for ≥ 20
+  (≥ 10 points), a false opseinen or met de aas seinen only for ≥ 20
   points, since partners and humans read the signals as promises. Between
   cards that win and lose alike (no card still out lies between them, as
   ♥A and ♥10 in one hand), it plays the normaal card unless the search
@@ -919,7 +919,11 @@ reply attempt.
 - System chat lines (`sys`, seat -1): the start of every match, rematches
   included, with its seed, so nobody has to play to the end to see it
   ("Spel (482913) begint: 16 potjes, Utrechts/Amsterdams. Veel plezier!";
-  with `from` "… begint: potje 5, …"), joining, a join refused because
+  with `from` "… begint: potje 5, …"); right after it, with four players,
+  the table's signals (§8): "Seinen aan deze tafel:" and a line for each
+  agreement with what it says, the texts of Juf Jannie's lesson on signals
+  (`signalRules`), or "Aan deze tafel spreken we geen seinen af."; with
+  lessons none of these before her lesson on signals; joining, a join refused because
   the table is full, leaving, an AI taking a seat with everyone's consent, a
   player back from a substitute ("… is terug."), a seat taken back on another
   device, host changes, rematch, back to the lobby (and a gone player's seat
@@ -1377,14 +1381,18 @@ Every key above is always present, except `roster` (lobby only) and `legal` and
 The manual's section is titled *Seinen*; its text and the glossary also give
 the other name, *voorkaarten*.
 
-Which signals hold is agreed per table (option `signals`, §3): aas vraagt
-10, kleintje boer and hoog/laag are on by default, boer over boer is off.
-The server puts the table's agreements in every view (`game.View.Signals`;
-a view without them means the defaults), and the bots, the hints, the
-search's playouts and the Spelanalyse give, read and explain only the
-signals agreed. Tegenkleur is described in the manual but never agreed.
+Which signals hold is agreed per table (option `signals`, §3): met de
+aas seinen, op- of afseinen and kleintje boer are on by default, boer over
+boer is off. The manual, the options, the lessons and the chat at the
+start of a match name them in this order: met de aas seinen, op- of
+afseinen, kleintje boer, boer over boer. The server puts the table's
+agreements in every view (`game.View.Signals`; a view without them means
+the defaults), and the bots, the hints, the search's playouts and the
+Spelanalyse give, read and explain only the signals agreed. Tegenkleur is
+described in the manual, which says plainly that it is not used here: no
+option, and the bots and the hints do nothing with it.
 
-- **Aas vraagt 10** (`aas`): on the **partner's trick**, discarding the ace
+- **Met de aas seinen** (`aas`): on the **partner's trick**, discarding the ace
   of a side suit that nobody has led yet says "ik heb ook de 10 van deze
   kleur". The ace's 11 points go to the partner's trick, and after the ace
   that 10 is the highest card of the suit, so it can still win a trick: the
@@ -1394,6 +1402,17 @@ signals agreed. Tegenkleur is described in the manual but never agreed.
   six tricks, and lead the suit with a low card; they give the ace with its
   10 rather than keep it, and avoid an ace without it (sterk only for ≥ 20
   points).
+- **Op- of afseinen** (`hoogLaag`): on the **partner's trick** (the
+  partner holds it when the card is played), discarding a small card (7, 8
+  or 9: cards without points) says "speel deze kleur, daar heb ik de
+  hoogste van" (**opseinen**); discarding a middle card (10, boer, vrouw or
+  heer) says the opposite, "de hoogste van deze kleur heb ik niet"
+  (**afseinen**). Bots give and read opseinen in the first six tricks (the
+  discarder holds the highest card of that suit still out; sterk fakes it
+  only for ≥ 20 points), not afseinen; a hint names afseinen for a discard
+  that tells the truth and leaves at most one other card of the suit in
+  hand (that card is not the highest still out). A discard into a trick
+  the opponents hold says nothing: there the cheapest card goes.
 - **Kleintje boer** (`kleintjeBoer`): leading a small card (7, 8, 9) of a side suit signals "ik heb de
   troefboer"; partner wins and returns trump. It is given by the trump maker
   on its first lead (in utrechts the opening lead of the hand; bots as maker
@@ -1406,18 +1425,9 @@ signals agreed. Tegenkleur is described in the manual but never agreed.
   boer. When agreed, bots read it like kleintje boer, avoid it without the
   boer, and hints name it (and warn when a side-boer lead could be read as
   one). Not agreed, a side boer says nothing.
-- **Hoog/laag bijspelen** (`hoogLaag`): on the **partner's trick** (the
-  partner holds it when the card is played), discarding a small card (7, 8
-  or 9: cards without points) says "speel deze kleur, daar heb ik de
-  hoogste van"; discarding a 10 or picture card says the opposite, "ik heb
-  weinig in deze kleur". Bots give and read the low one in the first six
-  tricks (the discarder holds the highest card of that suit still out;
-  sterk fakes it only for ≥ 20 points), not the high one; a hint names the
-  high one for a discard that tells the truth (at most one other card of
-  the suit left, not its ace). A discard into a trick the opponents hold
-  says nothing: there the cheapest card goes.
-- **Tegenkleur seinen**: discarding a suit to ask for the suit of the other colour of
-  the same shade (harten ↔ ruiten, klaveren ↔ schoppen).
+- **Tegenkleur seinen** (not used here: no option, bots and hints ignore
+  it): discarding a suit to ask for the suit of the other colour of the
+  same shade (harten ↔ ruiten, klaveren ↔ schoppen).
 - **Spekken (ook wel smeren)**: give points (10, aas) to a trick your partner
   is sure to win (*je maat spekken*).
 - **Maat heeft de slag** (Amsterdams): no need to trump; give points
@@ -1522,8 +1532,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   at its hyphen), *Nieuw spel*
   (options sheet with defaults → *Maak spel*; rows that do not apply to the
   number of players hide: *Troef* with three, *Regels* with two, *Seinen*
-  (four toggles, two per line: *Aas vraagt 10*, *Kleintje boer*, *Hoog/laag*,
-  *Boer over boer*) with three or two), *Meedoen* (4-letter code field;
+  (four toggles, two per line: *Met de aas seinen*, *Op- of afseinen*,
+  *Kleintje boer*, *Boer over boer*) with three or two), *Meedoen* (4-letter code field;
   joins as soon as 4 letters are typed), *Oefenen* (training), *Handleiding*.
   Snel spelen and Oefenen (bots only) never ask for a name: without one the
   player is "Speler", which is not stored as their name. Under the footer,

@@ -224,8 +224,8 @@ func TestKleintjeBoerEvidence(t *testing.T) {
 	}
 }
 
-// TestSignalReading: which plays the table reads as aas vraagt 10 and
-// laag bijspelen, and what they say.
+// TestSignalReading: which plays the table reads as met de aas seinen and
+// opseinen, and what they say.
 func TestSignalReading(t *testing.T) {
 	play := func(tab *table, cards string) {
 		for _, c := range game.MustParseCards(cards) {
@@ -247,9 +247,9 @@ func TestSignalReading(t *testing.T) {
 	noHoogLaag := newTable(0, game.Hearts, 1, game.Amsterdams, game.Signals{Aas: true, KleintjeBoer: true})
 	play(&noHoogLaag, "7D 8D 9C 7C")
 	if noHoogLaag.said[3] != 0 {
-		t.Errorf("a table without hoog/laag reads ♣7 as %v", noHoogLaag.said[3].appendCards(nil))
+		t.Errorf("a table without op- of afseinen reads ♣7 as %v", noHoogLaag.said[3].appendCards(nil))
 	}
-	// Seat 0 leads ♦A, seat 2 gives ♠A to it: aas vraagt 10, ♠10 is out.
+	// Seat 0 leads ♦A, seat 2 gives ♠A to it: met de aas seinen, ♠10 is out.
 	aas := newTable(0, game.Hearts, 1, game.Amsterdams, game.DefaultSignals)
 	play(&aas, "AD 7D AS 8D")
 	if aas.said[2] != bit(card("TS")) || aas.sigBy[2] != bit(card("AS")) {
@@ -258,7 +258,7 @@ func TestSignalReading(t *testing.T) {
 	noAas := newTable(0, game.Hearts, 1, game.Amsterdams, game.Signals{KleintjeBoer: true, HoogLaag: true})
 	play(&noAas, "AD 7D AS 8D")
 	if noAas.said[2] != 0 {
-		t.Errorf("a table without aas vraagt 10 reads ♠A as %v", noAas.said[2].appendCards(nil))
+		t.Errorf("a table without met de aas seinen reads ♠A as %v", noAas.said[2].appendCards(nil))
 	}
 	for _, c := range []struct {
 		name  string
@@ -291,7 +291,7 @@ func TestSignalReading(t *testing.T) {
 		_, ace := tab.aceSignal(x)
 		_, low := tab.lowSignal(x)
 		if ace != c.ace || low != c.low {
-			t.Errorf("%s: aas vraagt 10 %v, laag bijspelen %v; want %v, %v", c.name, ace, low, c.ace, c.low)
+			t.Errorf("%s: met de aas seinen %v, opseinen %v; want %v, %v", c.name, ace, low, c.ace, c.low)
 		}
 	}
 }
@@ -319,8 +319,8 @@ func TestBoerSignals(t *testing.T) {
 	}
 }
 
-// TestSignalEvidence: after aas vraagt 10, the other seats' samples
-// mostly give the discarder the 10; after laag bijspelen, the discarder
+// TestSignalEvidence: after met de aas seinen, the other seats' samples
+// mostly give the discarder the 10; after opseinen, the discarder
 // holds the highest card of the suit more often than without the signal.
 func TestSignalEvidence(t *testing.T) {
 	rng := rand.New(rand.NewPCG(29, 30))
@@ -353,7 +353,7 @@ func TestSignalEvidence(t *testing.T) {
 	without := share(build(t, 3, spec, game.Hearts, game.Amsterdams, "AD 7D QC"), 3, 1, card("AS"))
 	t.Logf("the discarder holds ♠A in %.2f of samples after ♠7, %.2f after ♣V", with, without)
 	if with < without+0.1 {
-		t.Errorf("laag bijspelen is not read: ♠A with the discarder in %.2f of samples, %.2f without the signal", with, without)
+		t.Errorf("opseinen is not read: ♠A with the discarder in %.2f of samples, %.2f without the signal", with, without)
 	}
 }
 

@@ -528,12 +528,11 @@ test('card value headers keep "(hier ♠)" together when they wrap', () => {
   assert.deepEqual(th.map((h) => h.textContent), ['#', 'Troef (hier ♥)', 'Geen troef (hier ♠)']);
 });
 
-test('seinen covers every signal from design section 8', () => {
+test('seinen covers every signal from design section 8, op- of afseinen second', () => {
   const el = renderManual('seinen');
   const heads = byTag(el, 'h3').map((h) => h.textContent.toLowerCase());
-  for (const w of ['aas vraagt 10', 'kleintje boer', 'boer over boer', 'hoog of laag', 'tegenkleur', 'spekken (ook wel smeren)', 'maat heeft de slag']) {
-    assert.ok(heads.some((h) => h.includes(w)), w);
-  }
+  const order = ['met de aas seinen', 'op- of afseinen', 'kleintje boer', 'boer over boer', 'tegenkleur', 'spekken (ook wel smeren)', 'maat heeft de slag'];
+  assert.deepEqual(order.map((w) => heads.findIndex((h) => h.includes(w))), order.map((_, i) => i));
   assert.match(el.textContent, /geen valsspelen/);
 });
 
@@ -566,13 +565,22 @@ test('seinen keeps its short title and names voorkaarten in the text', () => {
   assert.ok(blocksOf('glossary')[0].some(([t]) => t === 'Seinen (voorkaarten)'));
 });
 
-test('seinen explains aas vraagt 10 and hoog of laag as the house agrees them', () => {
+test('seinen explains met de aas seinen and op- of afseinen as the house agrees them', () => {
   const text = renderManual('seinen').textContent;
   assert.match(text, /Heeft je maat de slag, .*gooi dan een aas bij van een bijkleur .*“ik heb ook de 10 van deze kleur”/);
   assert.match(text, /Je maat speelt die kleur later naar je toe, en dan pak jij de slag met je 10\./);
   assert.match(text, /Uitkomen met een aas zegt niets\./);
-  assert.match(text, /klein kaartje \(7, 8 of 9: kaarten zonder punten\) bijspelen zegt: “speel deze kleur, daar heb ik de hoogste van”/);
-  assert.match(text, /10 of een plaatje .*“ik heb weinig in deze kleur/);
+  assert.match(text, /Opseinen: een laag kaartje \(7, 8 of 9: kaarten zonder punten\) bijspelen zegt: “speel deze kleur, daar heb ik de hoogste van”/);
+  assert.match(text, /Afseinen: een middenkaart \(10, boer, vrouw of heer\) bijspelen zegt juist: “de hoogste van deze kleur heb ik niet”/);
+  assert.match(text, /Bij de start van een spel staan de afspraken van de tafel in de chat\./);
+  assert.doesNotMatch(text, /aas vraagt|hoog\/laag|weinig in deze kleur/i);
+});
+
+test('seinen says plainly that tegenkleur is not used here', () => {
+  const el = renderManual('seinen');
+  const heads = byTag(el, 'h3').map((h) => h.textContent);
+  assert.ok(heads.includes('Tegenkleur seinen (gebruiken wij niet)'), heads.join(' | '));
+  assert.match(el.textContent, /Dit sein gebruiken wij niet\. De AI-spelers en de tips doen er niets mee, en bij Seinen kun je het niet aanzetten\./);
 });
 
 test('juf jannie names the search sizes and mistake rate of the bots', () => {

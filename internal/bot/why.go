@@ -243,9 +243,9 @@ func (m *mover) keptWhy(p, c game.Card, toOpp bool) string {
 	case p.Suit != t.trump && m.isBoss(p) && m.unk.inSuit(p.Suit) != 0:
 		return ps + " is de hoogste " + suit + " en kan zelf nog een slag halen"
 	case m.falseLow(p):
-		return ps + " zou je maat lezen als “speel " + suit + ", daar heb ik de hoogste van” (hoog/laag bijspelen), maar die heb je niet"
+		return ps + " zou je maat lezen als “speel " + suit + ", daar heb ik de hoogste van” (opseinen), maar die heb je niet"
 	case m.falseAce(p):
-		return ps + " zou je maat lezen als aas vraagt 10 (“ik heb " + game.CardShortNL(tenOf(p.Suit)) + " ook”), maar die heb je niet"
+		return ps + " zou je maat lezen als “ik heb " + game.CardShortNL(tenOf(p.Suit)) + " ook” (met de aas seinen), maar die heb je niet"
 	case m.guardPenalty(p) > 0:
 		return ps + " houd je als dekking van je " + game.CardShortNL(tenOf(p.Suit))
 	}
@@ -300,24 +300,24 @@ func (m *mover) signalNote(c game.Card) string {
 	if ten, ok := t.aceSignal(c); ok {
 		switch {
 		case m.hand.has(ten):
-			return " Je hebt ook " + game.CardShortNL(ten) + ", en dat weet je maat nu (aas vraagt 10): zonder de aas is je 10 de hoogste " +
+			return " Je hebt ook " + game.CardShortNL(ten) + ", en dat weet je maat nu (met de aas seinen): zonder de aas is je 10 de hoogste " +
 				suit + " en kan die nog een slag halen."
 		case m.falseAce(c):
-			return " Let op: je maat kan dit lezen als aas vraagt 10 (“ik heb " + game.CardShortNL(ten) + " ook”), maar die heb je niet."
+			return " Let op: je maat kan dit lezen als “ik heb " + game.CardShortNL(ten) + " ook” (met de aas seinen), maar die heb je niet."
 		}
 		return ""
 	}
 	if hi, ok := t.lowSignal(c); ok {
 		switch {
 		case m.hand.has(hi):
-			return " Zo zeg je ook tegen je maat: “speel " + suit + ", daar heb ik de hoogste van” (hoog/laag bijspelen)."
+			return " Zo zeg je ook tegen je maat: “speel " + suit + ", daar heb ik de hoogste van” (opseinen)."
 		case m.falseLow(c):
-			return " Let op: je maat kan dit lezen als “speel " + suit + ", daar heb ik de hoogste van” (hoog/laag bijspelen), maar die heb je niet."
+			return " Let op: je maat kan dit lezen als “speel " + suit + ", daar heb ik de hoogste van” (opseinen), maar die heb je niet."
 		}
 		return ""
 	}
 	if m.highDiscard(c) {
-		return " Met deze hoge bijkaart zeg je ook dat je weinig " + suit + " hebt (hoog/laag bijspelen)."
+		return " Met deze bijkaart zeg je ook dat je de hoogste " + suit + " niet hebt (afseinen)."
 	}
 	return ""
 }
@@ -389,28 +389,29 @@ func (m *mover) noRuns(c game.Card) bool {
 // partnerSaid says how the partner told that it holds hi, the highest card
 // of its suit (see partnerHigh), and so why a lead in that suit goes to
 // the partner: "je maat gooide ♠A bij en zei daarmee “ik heb ♠10 ook”
-// (aas vraagt 10), dus zo speel je schoppen naar je maat toe".
+// (met de aas seinen), dus zo speel je schoppen naar je maat toe".
 func (m *mover) partnerSaid(hi game.Card) string {
 	s := hi.Suit
 	name := game.SuitNameNL(s)
 	by := m.t.sigBy[m.partner()].inSuit(s)
 	if a := aceOf(s); hi == tenOf(s) && by.has(a) {
 		return "je maat gooide " + game.CardShortNL(a) + " bij en zei daarmee “ik heb " + game.CardShortNL(hi) +
-			" ook” (aas vraagt 10), dus zo speel je " + name + " naar je maat toe"
+			" ook” (met de aas seinen), dus zo speel je " + name + " naar je maat toe"
 	}
 	low, _ := by.bottom(s, m.t.trump)
 	return "je maat gooide " + game.CardShortNL(low) + " bij en zei daarmee “speel " + name +
-		", daar heb ik de hoogste van” (hoog/laag bijspelen), dus zo speel je " + name + " naar je maat toe"
+		", daar heb ik de hoogste van” (opseinen), dus zo speel je " + name + " naar je maat toe"
 }
 
 // highDiscard reports whether discarding c says truthfully what
-// hoog/laag bijspelen reads in it (design §8), at a table that agreed on
-// it: c is a 10 or plaatje of a side suit that was not led, on the
-// partner's trick, and at most one other card of that suit stays, not its
-// ace: "ik heb weinig in deze kleur".
+// afseinen reads in it (design §8), at a table that agreed on op- of
+// afseinen: c is a 10 or plaatje of a side suit that was not led, on the
+// partner's trick, and at most one other card of that suit stays, not the
+// highest card of the suit still out: "de hoogste van deze kleur heb ik
+// niet".
 func (m *mover) highDiscard(c game.Card) bool {
 	t := m.t
-	if !t.sig.HoogLaag || !t.partnersTrick() {
+	if !t.sig.HoogLaag || !t.partnersTrick() || c.Suit == t.trump || c.Suit == t.led() {
 		return false
 	}
 	switch c.Rank {
@@ -419,7 +420,8 @@ func (m *mover) highDiscard(c game.Card) bool {
 		return false
 	}
 	rest := m.hand.inSuit(c.Suit) &^ bit(c)
-	return c.Suit != t.trump && c.Suit != t.led() && rest.count() <= 1 && !rest.has(aceOf(c.Suit))
+	hi, ok := (suitSet(c.Suit) &^ t.played &^ bit(c)).top(c.Suit, t.trump)
+	return ok && rest.count() <= 1 && !rest.has(hi)
 }
 
 // roemNames names the roem that c adds to the trick ("driekaart en stuk").
