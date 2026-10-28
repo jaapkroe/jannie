@@ -86,7 +86,7 @@ try {
     await page.click('#btn-help');
     await page.waitForSelector('.man', { visible: true, timeout: 5000 });
     const tabs = await page.$$eval('[role="tab"][data-id]', (els) => els.map((e) => e.dataset.id));
-    if (tabs.length !== 7) problems.push(`${vp.width}: expected 7 tabs, found ${tabs.length}`);
+    if (tabs.length !== 9) problems.push(`${vp.width}: expected 9 tabs, found ${tabs.length}`);
 
     for (const id of tabs) {
       await page.click(`[role="tab"][data-id="${id}"]`);

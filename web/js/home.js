@@ -23,7 +23,7 @@ const OPTS = [
   { key: 'rules', label: 'Regels', choices: [['amsterdams', 'Amsterdams'], ['rotterdams', 'Rotterdams']], players: [3, 4],
     info: ['Amsterdams: kun je niet bekennen en heeft je maat de slag, dan hoef je niet te troeven.', 'Rotterdams: kun je niet bekennen, dan moet je altijd troeven (en overtroeven als het kan).', 'Met z\'n drieën zijn de twee tegenspelers van wie alleen speelt elkaars maat. Met z\'n tweeën heb je geen maat.'] },
   { key: 'ai', label: 'AI-sterkte', choices: [['makkelijk', 'Makkelijk'], ['normaal', 'Normaal'], ['sterk', 'Sterk']],
-    info: ['Makkelijk: speelt los en maakt fouten.', 'Normaal: speelt degelijk volgens de vuistregels.', 'Sterk: telt kaarten, rekent kansen door en kent de seinen.'] },
+    info: ['Makkelijk: speelt los en maakt fouten.', 'Normaal: speelt degelijk volgens de vuistregels en telt kaarten. Met z’n vieren geeft en leest Normaal ook de seinen van de tafel.', 'Sterk: speelt bij elke keuze het potje honderden keren uit, kiest wat gemiddeld het meest oplevert en kent ook de seinen.'] },
   { key: 'tempo', label: 'Tempo', choices: [['rustig', 'Rustig'], ['normaal', 'Normaal'], ['snel', 'Snel']],
     info: 'Hoe snel de AI-spelers spelen en hoe lang de pauzes tussen de slagen duren.' },
   { key: 'signals', label: 'Seinen', players: [4], multi: true,

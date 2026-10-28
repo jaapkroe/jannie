@@ -215,6 +215,7 @@ test('sections match the section 9 contract', () => {
     { id: 'twee-drie', title: 'Met 2 of 3' },
     { id: 'punten', title: 'Kaartwaarden' }, { id: 'roem', title: 'Roem' },
     { id: 'seinen', title: 'Seinen' }, { id: 'tips', title: 'Tips' },
+    { id: 'jannie', title: 'Juf Jannie' },
     { id: 'woorden', title: 'Woordenlijst' },
   ]);
   assert.deepEqual(Object.keys(CONTENT), SECTIONS.map((s) => s.id));
@@ -572,6 +573,22 @@ test('seinen explains aas vraagt 10 and hoog of laag as the house agrees them', 
   assert.match(text, /Uitkomen met een aas zegt niets\./);
   assert.match(text, /klein kaartje \(7, 8 of 9: kaarten zonder punten\) bijspelen zegt: “speel deze kleur, daar heb ik de hoogste van”/);
   assert.match(text, /10 of een plaatje .*“ik heb weinig in deze kleur/);
+});
+
+test('juf jannie names the search sizes and mistake rate of the bots', () => {
+  const text = renderManual('jannie').textContent;
+  const search = readFileSync(`${root}internal/bot/search.go`, 'utf8');
+  const [, play, trump] = search.match(/defaultSearch = searchConfig\{playWorlds: (\d+), trumpWorlds: (\d+)\}/);
+  assert.match(text, new RegExp(`kan zien op ${play} manieren`));
+  assert.match(text, new RegExp(`spelen of passen doet ze hetzelfde met ${trump} verdelingen`));
+  const player = readFileSync(`${root}internal/bot/player.go`, 'utf8');
+  assert.equal(player.match(/const makkelijkMistakes = ([\d.]+)/)[1], '0.3');
+  assert.match(text, /ongeveer 1 op de 3 keer een willekeurige kaart/);
+  const small = readFileSync(`${root}internal/bot/smallsearch.go`, 'utf8');
+  const per = Number(small.match(/const smallWorlds = (\d+)/)[1]) * Number(play);
+  assert.match(text, new RegExp(`Op Sterk speelt ze dan bij elke beurt ${per.toLocaleString('nl-NL')} verdelingen uit`));
+  const [, mk, nm, st] = small.match(/worlds := map\[Level\]int\{Makkelijk: (\d+), Normaal: (\d+), Sterk: (\d+)\}/);
+  assert.match(text, new RegExp(`${mk} op Makkelijk, ${nm} op Normaal en ${st} op Sterk`));
 });
 
 test('the words of the house: spekken, boom and doormars', () => {

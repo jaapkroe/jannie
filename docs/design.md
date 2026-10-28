@@ -634,6 +634,16 @@ level, the hints, grades and explanations and the raw search statistics to
 FILE: a change that must keep every decision (a speed-up) leaves it byte for
 byte the same.
 
+Measured strength (issue #57, 2026-10-28; the harness was kept out of the
+repo): duplicate deals, sterk choosing trump for both teams, signals off,
+Utrechts. Sterk beat seven klaverjas engines with public source code by 6 to
+34 points per hand (400 to 1,000 duplicate deals per engine and setting),
+normaal by 27 and makkelijk by 57; 3,200 deals per card did not measurably
+beat 400. With the default signals at all seats, sterk's margin against each
+engine moved by about 2 points per hand at most, and sterk with signals did
+not beat sterk without (+0.7 ± 0.9 over 3,000 deals). The manual's
+*Juf Jannie* page quotes these numbers.
+
 At a table of three or two (`internal/bot/small.go`, `smallsearch.go`) the
 levels keep their meaning with their own policy; the signals of §8 play no
 part. Normaal plays by rules of thumb: the side that made trump draws trumps
@@ -1445,7 +1455,8 @@ export const sound = {
 // web/js/manual.js — the in-game handleiding (Dutch content + renderer)
 export const SECTIONS = [ {id:'bediening',title:'Bediening'}, {id:'regels',title:'Spelregels'},
   {id:'twee-drie',title:'Met 2 of 3'}, {id:'punten',title:'Kaartwaarden'}, {id:'roem',title:'Roem'},
-  {id:'seinen',title:'Seinen'}, {id:'tips',title:'Tips'}, {id:'woorden',title:'Woordenlijst'} ];
+  {id:'seinen',title:'Seinen'}, {id:'tips',title:'Tips'}, {id:'jannie',title:'Juf Jannie'},
+  {id:'woorden',title:'Woordenlijst'} ];
 export function renderManual(sectionId, opts = {}) // → HTMLElement with that section's content (uses cards.js for illustrations);
                                                   // opts.icon(name) (util.icon) puts the buttons' pictograms in the Bediening chips
 // Styles for the manual content live in web/css/manual.css (classes prefixed man-).

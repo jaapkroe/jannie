@@ -48,8 +48,8 @@ interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
   give your own choice and a comment, kept in the game log to improve the
   bots.
 - **Handleiding**: the controls, the rules (also for two and three players),
-  card values, roem, signals (*seinen*, also called *voorkaarten*), tips and a
-  glossary.
+  card values, roem, signals (*seinen*, also called *voorkaarten*), tips, how
+  the game engine Juf Jannie plays and how strong it is, and a glossary.
 - **Oefenen**: a training game with Juf Jannie as partner, hints on every turn,
   an explanation after every trick (also in the chat, to read back), and
   optionally all cards face up. With *Speluitleg* she teaches the game step by
