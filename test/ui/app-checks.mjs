@@ -2546,6 +2546,18 @@ CHECKS.call = async browser => {
     await tapCall(G, '.prompt .call-dock .tb-cam');
     await shows(H, 'guest video on the host page', 'Gast,Host');
     await shows(G, 'both videos on the guest page', 'Gast,Host');
+    // The marks (dealer, trump, call) lie outside a ring with a video (issue #53).
+    for (const P of [H, G]) {
+      const over = await P.page.evaluate(() => [...document.querySelectorAll('.seat:not([hidden]) .ring.cam')].flatMap(r => {
+        const b = r.getBoundingClientRect();
+        return [...r.querySelectorAll(':scope > :is(.dealer-chip, .trump-tag, .call-tag):not([hidden])')].flatMap(m => {
+          const mb = m.getBoundingClientRect();
+          const gap = Math.hypot(mb.left + mb.width / 2 - b.left - b.width / 2, mb.top + mb.height / 2 - b.top - b.height / 2) - (b.width + mb.width) / 2;
+          return gap < 0 ? [`${r.closest('.seat').querySelector('.nm').textContent} ${m.className} ${gap.toFixed(1)}px`] : [];
+        });
+      }));
+      if (over.length) throw new Error(`[${P.name}] marks over a video: ${over.join(', ')}`);
+    }
     await shot(H, 'videos');
     await shot(G, 'videos');
     await checkOverflow(H, 'in the call');

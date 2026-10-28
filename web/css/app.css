@@ -1569,6 +1569,7 @@ body.busy::after {
   --trick-w: clamp(46px, min(20.5vw, 10.4dvh), 98px);
   --back-w: clamp(16px, 4.8vw, 28px);
   --av: clamp(38px, 10.5vw, 58px);
+  --av-own: clamp(34px, 9vw, 46px);
   --hand-h: calc(var(--hand-w) * 1.4);
   --hand-row: calc(var(--hand-h) * 0.84 + 16px + var(--sab));
   --rim: clamp(7px, 1.7vmin, 13px);
@@ -1678,11 +1679,12 @@ body.busy::after {
 }
 
 .ring {
+  --ring: var(--av);
   position: relative;
   display: grid;
   place-items: center;
-  width: var(--av);
-  height: var(--av);
+  width: var(--ring);
+  height: var(--ring);
   flex: none;
   padding: 3px;
   border-radius: 50%;
@@ -1868,6 +1870,83 @@ body.busy::after {
   left: 3px;
   width: calc(100% - 6px);
   height: calc(100% - 6px);
+}
+
+/* A ring with a video is larger, and its marks (dealer, trump, call) sit
+   just outside it on the diagonals, so they hide none of the face. --d is
+   how far a mark's centre lies from the ring's on each axis, --out how far
+   a mark (14px from its centre to the edge of its shadow) reaches past the
+   ring's box. A margin keeps that room free on the left, by the call mark;
+   on the right the marks pass above and below the name. */
+.ring.cam {
+  --ring: calc(var(--av) * var(--cam-zoom, 1.6));
+  --d: calc((var(--ring) / 2 + 12px) * 0.7071);
+  --out: calc(var(--d) + 14px - var(--ring) / 2);
+  margin-left: var(--out);
+}
+
+/* A side seat keeps the room at the screen's edge and under the ring, where
+   the name is. Ring and room fit the seat (ring + --out <= --side-w - 4px). */
+.seat-left .ring.cam,
+.seat-right .ring.cam {
+  --ring: min(calc(var(--av) * var(--cam-zoom, 1.6)), calc((var(--side-w) - 27px) * 1.17));
+  margin: 0 0 var(--out);
+}
+
+.seat-left .ring.cam {
+  margin-left: var(--out);
+}
+
+.seat-right .ring.cam {
+  margin-right: var(--out);
+}
+
+.ring.cam > :is(.dealer-chip, .trump-tag, .call-tag) {
+  top: 50%;
+  left: 50%;
+  right: auto;
+  bottom: auto;
+  translate: calc(-50% + var(--dx) * var(--d)) calc(-50% + var(--dy) * var(--d));
+}
+
+.ring.cam > .trump-tag { --dx: 1; --dy: -1; }
+.ring.cam > .dealer-chip { --dx: 1; --dy: 1; }
+.ring.cam > .call-tag { --dx: -1; --dy: 1; }
+
+/* The bubbles keep clear of the marks. */
+.seat:has(.ring.cam) > .bubble {
+  margin-block: 10px;
+}
+
+/* Short landscape: the side seats' cards lie beside the ring, so the room
+   is kept on both sides. */
+@media (orientation: landscape) and (max-height: 520px) {
+  :where(html:not(.kb)) :is(.seat-left, .seat-right) .ring.cam {
+    margin-inline: var(--out);
+  }
+}
+
+/* On a phone our own ring keeps its size beside the rule, and a long rule
+   wraps sooner to leave room for the marks on both sides of it (--out as
+   above; the insets pad both the table and the prompt). The two-player
+   top row keeps the opponent's open cards on the felt. */
+@media (max-width: 599px) {
+  .seat-bottom .ring.cam {
+    --cam-zoom: 1;
+  }
+
+  .prompt:has(.ring.cam) .rule {
+    --out: calc((var(--av-own) / 2 + 12px) * 0.7071 + 14px - var(--av-own) / 2);
+    max-width: min(66vw, calc(100vw - 2 * (var(--sal) + var(--sar)) - 2 * (var(--av-own) + 2 * var(--out) + 18px)));
+  }
+
+  .table[data-players="2"] .seat-top .ring.cam {
+    --cam-zoom: 1.3;
+  }
+
+  .table[data-players="2"] .seat-top:has(.ring.cam) .nm {
+    max-width: max(70px, calc(100vw - var(--opp-pile-w) * 4.5 - 118px));
+  }
 }
 
 .lseat .avatar {
@@ -2839,7 +2918,8 @@ body.busy::after {
   grid-column: 1;
   justify-self: start;
   flex-direction: row;
-  --av: clamp(34px, 9vw, 46px);
+  max-width: 100%;
+  --av: var(--av-own);
 }
 
 .seat-bottom .seat-id {
@@ -5663,6 +5743,7 @@ body.chat-open .chat-scrim {
     --trick-w: clamp(40px, 12.4dvh, 70px);
     --back-w: clamp(13px, 4.6dvh, 22px);
     --av: clamp(32px, 10dvh, 44px);
+    --cam-zoom: 1.3;
     --hand-row: calc(var(--hand-h) * 0.78 + 10px + var(--sab));
   }
 
