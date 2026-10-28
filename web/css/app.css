@@ -1369,6 +1369,7 @@ body.busy::after {
 }
 
 .trump-badge {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
@@ -1395,6 +1396,26 @@ body.busy::after {
 
 .four-color .trump-badge[data-suit="C"] .tb-sym { color: #13813b; }
 .four-color .trump-badge[data-suit="D"] .tb-sym { color: #1557c0; }
+
+/* Training with lessons, the counting hand: the trumps the others still
+   hold, on the badge's corner. */
+.tb-cnt {
+  position: absolute;
+  top: -3px; /* in phone landscape the bar has only 3 px above the badge */
+  right: -6px;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #17171c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 0 0 2px #fffdf6;
+}
 
 .tb-lbl {
   font-size: 12px;
@@ -2930,6 +2951,39 @@ body.busy::after {
   content: "";
   position: absolute;
   inset: -15px;
+}
+
+/* A lesson step's link to a section of the manual. */
+.coach-man {
+  position: relative;
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  margin: 5px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8a5a00;
+  font-size: 12.5px;
+  font-weight: 900;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.coach-man .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* A larger target around the short link, but not over the text above it
+   (a tap there reads the step). */
+.coach-man::before {
+  content: "";
+  position: absolute;
+  inset: -3px -8px -10px;
 }
 
 .coach-x {

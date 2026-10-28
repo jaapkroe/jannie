@@ -188,6 +188,7 @@ func (r *room) startMatch() {
 	r.firstHand = max(1, r.opts.From)
 	r.handNo = r.firstHand - 1
 	r.handActs, r.handDealt, r.marks = nil, nil, nil
+	delete(r.taught, lessonSolo) // the last hands of every match are without tips: each says so
 	// The seed from the start, so nobody has to play to the end to see it.
 	if r.opts.From > 0 {
 		r.sysChat("Spel (%d) begint: potje %d, %s. Veel plezier!", r.seed, r.firstHand, r.opts.variantNL())
@@ -622,7 +623,7 @@ type missedHint struct {
 // the advised one, else nil.
 func (r *room) missedHintFor(i game.Seat, a action) *missedHint {
 	h := r.hintVal
-	if !r.training || r.hintStep != r.step || h == nil || r.deal == nil || r.deal.Turn() != i {
+	if !r.tipsOn() || r.hintStep != r.step || h == nil || r.deal == nil || r.deal.Turn() != i {
 		return nil
 	}
 	switch {
@@ -641,7 +642,7 @@ func (r *room) missedHintFor(i game.Seat, a action) *missedHint {
 func (r *room) trickTips(t game.Trick) (tips [4]string) {
 	missed, choices := r.missed, r.misses
 	r.missed, r.misses = nil, nil
-	if !r.training {
+	if !r.tipsOn() {
 		return tips
 	}
 	trump, _ := r.deal.Trump()

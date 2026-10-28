@@ -247,12 +247,13 @@ CHECKS.coach = async browser => {
   });
 };
 
-// Training with Speluitleg (issue #41): Juf Jannie's steps wait for Verder,
-// a tap on the table or Enter, without a countdown, and light up what they
-// are about; a double tap reads one step; every trick of the first hand
-// stays until its explanation is read; on the player's turn the hint
-// follows the step; every step is a line of Juf Jannie in the chat, without
-// a speech bubble at her seat.
+// Training with Speluitleg (issues #41 and #45): Juf Jannie's steps wait for
+// Verder, a tap on the table or Enter, without a countdown, and light up
+// what they are about; a double tap reads one step; the trump step's link
+// opens the manual at Kaartwaarden and reads nothing; every trick of the
+// first hand stays until its explanation is read; on the player's turn the
+// hint follows the step; every step is a line of Juf Jannie in the chat,
+// without a speech bubble at her seat.
 CHECKS.lessons = async browser => {
   for (const vp of ['iphone', 'desktop']) {
     const P = await page(browser, VP[vp], `lessons-${vp}`);
@@ -274,9 +275,10 @@ CHECKS.lessons = async browser => {
         await sleep(600); // past the moment in which a tap does not count yet
         return step();
       };
+      // Beside the trick and the seats: the bare table.
+      const feltAt = () => P.page.$eval('.table', e => { const b = e.getBoundingClientRect(); return { x: b.left + b.width * 0.5, y: b.top + b.height * 0.25 }; });
       const felt = async () => {
-        // Beside the trick and the seats: the bare table.
-        const at = await P.page.$eval('.table', e => { const b = e.getBoundingClientRect(); return { x: b.left + b.width * 0.5, y: b.top + b.height * 0.25 }; });
+        const at = await feltAt();
         if (P.touch) await P.page.touchscreen.tap(at.x, at.y); else await P.page.mouse.click(at.x, at.y);
       };
       const texts = new Set(); // every step seen
@@ -288,10 +290,16 @@ CHECKS.lessons = async browser => {
       st = await next(st.text, 'step 2 by a tap on the table');
       texts.add(st.text);
       if (st.spot !== 'hand') throw new Error(`step 2 ${JSON.stringify(st)}`);
-      // A double tap reads one step.
-      await felt();
-      await sleep(80);
-      await felt();
+      // A double tap reads one step. The two taps go in the page, 80 ms
+      // apart: through the DevTools protocol the second waits until the
+      // page has drawn the next step, which can take longer than the
+      // moment in which a tap does not count.
+      const at = await feltAt();
+      await P.page.evaluate(({ x, y }) => new Promise(done => {
+        const el = document.elementFromPoint(x, y);
+        el.click();
+        setTimeout(() => { el.click(); done(); }, 80);
+      }), at);
       st = await next(st.text, 'step 3');
       texts.add(st.text);
       await sleep(800);
@@ -304,6 +312,7 @@ CHECKS.lessons = async browser => {
       }
       // On through the first hand: Verder, the advised trump, a legal card.
       let held = 0;
+      let manual = false;
       let turnLesson = false;
       let read = '';
       for (let t0 = Date.now(); !(await P.page.$('.m-summary.open')); ) {
@@ -324,6 +333,22 @@ CHECKS.lessons = async browser => {
             if (await P.page.$$eval('.trick .slot .card', els => els.length) !== 4) throw new Error('the trick went before its explanation was read');
             held++;
           }
+          const link = await P.page.evaluate(() => {
+            const b = document.querySelector('.coach-man');
+            return b && !b.hidden ? b.textContent : '';
+          });
+          if (link !== (now.text.includes('handleiding') ? 'Handleiding: Kaartwaarden' : '')) throw new Error(`step ${JSON.stringify(now)} with link "${link}"`);
+          if (link) {
+            manual = true;
+            await shot(P, 'lesson-manual');
+            await press(P, '.coach-man');
+            await waitFor(P, () => document.querySelector('.m-manual.open .tab[aria-selected="true"]')?.textContent === 'Kaartwaarden', { label: 'the manual at Kaartwaarden' });
+            await sleep(500); // the sheet slides in: a tap before it stands would miss ✕
+            await press(P, '.m-manual .dlg-x');
+            await waitFor(P, () => !document.querySelector('.m-manual.open'), { label: 'the manual closed' });
+            if ((await step())?.text !== now.text) throw new Error('the manual link read the step');
+            await sleep(500);
+          }
           if (ui.mine && !turnLesson) {
             turnLesson = true;
             if (ui.glow || now.spot !== 'rule') throw new Error(`turn lesson ${JSON.stringify({ ...now, ...ui })}`);
@@ -340,7 +365,9 @@ CHECKS.lessons = async browser => {
         else if (ui.play && !now) await playLegal(P);
         await sleep(150);
       }
-      if (held < 2 || !turnLesson || texts.size < 6 + 2 + 8 + 1) throw new Error(`first hand: ${texts.size} steps, ${held} tricks held, turn lesson ${turnLesson}`);
+      if (held < 2 || !turnLesson || !manual || texts.size < 6 + 1 + 8 + 1) {
+        throw new Error(`first hand: ${texts.size} steps, ${held} tricks held, turn lesson ${turnLesson}, manual ${manual}`);
+      }
       const chat = await P.page.evaluate(() => ({
         coach: [...document.querySelectorAll('.chat-list .msg.coach-msg .msg-text')].map(e => e.textContent),
         bubbles: [...document.querySelectorAll('.seat .bubble')].map(e => e.textContent).filter(t => t.includes('Klaverjassen speel je')),

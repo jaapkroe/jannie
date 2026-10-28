@@ -17,7 +17,7 @@ var baseKeys = []string{
 	"dealer", "voorhand", "turned", "bids", "forced", "bid", "bidder", "soloist", "talon",
 	"discards", "piles", "openRoem", "trump", "trumpBy", "playingTeam",
 	"turn", "takeover", "hand", "trick", "lastTrick", "tricksWon", "handPoints", "handRoem", "scores",
-	"total", "prevHand", "nextAt", "hint", "lesson", "hands4", "winner", "review",
+	"total", "prevHand", "nextAt", "hint", "lesson", "trumpsLeft", "hands4", "winner", "review",
 }
 
 func keysOf(t *testing.T, raw json.RawMessage) []string {

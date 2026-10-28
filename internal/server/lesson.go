@@ -12,27 +12,41 @@ import (
 	"klaverjas/internal/game"
 )
 
-// Lessons (issue #41, design §6): with option lessons Juf Jannie teaches
-// the game in training, a step at a time and a little more each time.
-// After the first deal she says who sits where and what the screen shows;
-// after the first trump how the cards rank and what they are worth; on the
-// player's turn, the first time they lead, must follow suit, must trump or
-// may play anything, which cards may be played. In the first hand every
-// trick waits for its explanation, and the last one also says how the hand
-// was scored. At the deal of the third hand she introduces roem and points
-// it out the first few times it falls; at the deal of the fifth the
-// table's signals, and points out the first few chances to give one and
-// the first few the bots give (until then the table plays without them).
-// Every step is a line of Juf Jannie in the chat too.
+// Lessons (issues #41 and #45, design §6): with option lessons Juf Jannie
+// teaches the game in training, a step at a time, with two hands at least
+// to practise each new lesson. After the first deal she says who sits
+// where and what the screen shows; after the first trump how the cards
+// rank, with the manual for the rest; on the player's turn, the first time
+// they lead, must follow suit, must trump or may play anything, which
+// cards may be played. In the first hand every trick waits for its
+// explanation, and the last one also says how the hand was scored. At the
+// deal of the third hand she introduces the card points, and points out
+// the last trick's 10 the first few times; in the fifth the learner counts
+// the trumps, with a counter. At the deal of the seventh hand she
+// introduces roem and points it out the first few times it falls (roem
+// before that: once, that it can be ignored for now); at the deal of the
+// ninth the table's signals, and points out the first few chances to give
+// one and the first few the bots give (until then the table plays without
+// them). After the twelfth hand the last soloHands of a match have no
+// tips. Along the way she says what the learner can do by now as each new
+// lesson starts, and praises their first trick and a hand won (once per
+// two hands). Every step is a line of Juf Jannie in the chat too.
 //
 // A step stays on screen until the player reads it (tipRead), without a
 // timer: during a pause the game waits for it, on the player's own turn
 // only the hint does.
 
+// The lesson plan: the hands, counted from the first one dealt with
+// lessons, in which each lesson starts.
 const (
-	roemHand    = 3 // the hand at whose deal roem is introduced
-	signalHand  = 5 // the hand at whose deal the table's signals are introduced
+	pointsHand  = 3  // the hand at whose deal the card points are introduced
+	countHand   = 5  // the hand in which the learner counts the trumps, with a counter
+	roemHand    = 7  // the hand at whose deal roem is introduced
+	signalHand  = 9  // the hand at whose deal the table's signals are introduced
+	lessonsEnd  = 12 // the last hand of the plan; after it the last soloHands of a match have no tips
+	soloHands   = 4
 	lessonShows = 3 // times roem, a chance to signal and a signal by a bot are pointed out
+	lastShows   = 2 // times the last trick's 10 points are pointed out
 )
 
 // The lessons of a room (room.taught counts them), besides the turns of
@@ -41,6 +55,14 @@ const (
 	lessonIntro   = "intro"
 	lessonTrump   = "trump"
 	lessonScore   = "score"
+	lessonPoints  = "points"       // the card points introduced
+	lessonLast    = "lastTrick"    // the last trick's 10 pointed out
+	lessonCount   = "count"        // counting the trumps introduced
+	lessonNoTrump = "noTrump"      // the others hold no trump any more (counting hand)
+	lessonEarly   = "roemEarly"    // roem fell before it was introduced
+	lessonSolo    = "solo"         // the hands without tips announced, once per match (startMatch forgets it)
+	lessonWon     = "firstTrick"   // the learner's first trick praised
+	lessonPraise  = "praise"       // a hand won praised, once per two hands (praise1, praise2, …)
 	lessonRoem    = "roem"         // introduced
 	lessonRoemAt  = "roemAt"       // pointed out in a trick
 	lessonSignals = "signals"      // introduced
@@ -52,13 +74,47 @@ const (
 // so a late tap cannot skip the step after the one it was meant for; Spot
 // names the part of the screen it is about (design §9).
 type lessonStep struct {
-	N    int        `json:"n"`
-	Text string     `json:"text"`
-	Spot string     `json:"spot,omitempty"`
-	Card *game.Card `json:"card,omitempty"` // spot "card": the card in the hand
+	N      int        `json:"n"`
+	Text   string     `json:"text"`
+	Spot   string     `json:"spot,omitempty"`
+	Card   *game.Card `json:"card,omitempty"`   // spot "card": the card in the hand
+	Manual string     `json:"manual,omitempty"` // a section of the manual to open from the step
 }
 
 func (r *room) lessonsOn() bool { return r.training && r.opts.Lessons }
+
+// solo reports whether the learner plays this hand on their own, without
+// hints or explanations: one of the last soloHands of the match, once the
+// lesson plan is through.
+func (r *room) solo() bool {
+	return r.lessonsOn() && r.lessonHands > lessonsEnd && r.handNo > r.lastHand()-soloHands
+}
+
+// tipsOn reports whether the humans get training hints and the
+// explanations of tricks.
+func (r *room) tipsOn() bool { return r.training && !r.solo() }
+
+// trumpsLeft is how many trumps the others still hold, as the learner can
+// count them from their own hand and the cards played; ok only during play
+// in the counting hand (countHand), for its counter.
+func (r *room) trumpsLeft() (n int, ok bool) {
+	if !r.lessonsOn() || r.lessonHands != countHand || r.deal == nil || r.deal.Phase() != game.PhasePlay {
+		return 0, false
+	}
+	v := r.deal.View(r.learner())
+	if !v.TrumpKnown {
+		return 0, false
+	}
+	n = game.NumRanks - trumpsIn(v.Hand, v.Trump)
+	for _, t := range append(slices.Clone(v.Tricks), v.Current) {
+		for _, p := range t.Cards {
+			if p.Card.Suit == v.Trump {
+				n--
+			}
+		}
+	}
+	return n, true
+}
 
 // learner is the seat of the person in training.
 func (r *room) learner() game.Seat {
@@ -96,8 +152,10 @@ func (r *room) signals() game.Signals {
 	return r.opts.Signals
 }
 
-// startLesson numbers steps and shows the first one.
+// startLesson numbers steps and shows the first one. It numbers a copy:
+// steps may be a list every room shares (roemSteps).
 func (r *room) startLesson(steps []lessonStep) {
+	steps = slices.Clone(steps)
 	for k := range steps {
 		r.lessonN++
 		steps[k].N = r.lessonN
@@ -124,9 +182,11 @@ func (r *room) clearLesson() {
 }
 
 // teach starts the lesson due as the current pause ends: the intro after
-// the first deal, roem and the signals after the deal of their hand, the
-// trump lesson after the first announcement. The pause then waits for it
-// to be read (readLesson). It reports whether it did.
+// the first deal, the points, roem, the signals and the hands without tips
+// after the deal of their hand, the trump lesson after the first
+// announcement, counting the trumps after the announcement in its hand.
+// The pause then waits for it to be read (readLesson). It reports whether
+// it did.
 func (r *room) teach() bool {
 	if !r.lessonsOn() || r.lesson != nil {
 		return false
@@ -135,12 +195,18 @@ func (r *room) teach() bool {
 	switch dealt := r.pending == stepDealt; {
 	case dealt && r.once(lessonIntro):
 		steps = r.introSteps()
+	case dealt && r.lessonHands >= pointsHand && r.once(lessonPoints):
+		steps = pointsSteps
 	case dealt && r.lessonHands >= roemHand && r.once(lessonRoem):
 		steps = roemSteps
 	case dealt && r.lessonHands >= signalHand && r.opts.Signals != (game.Signals{}) && r.once(lessonSignals):
 		steps = r.signalSteps()
+	case dealt && r.solo() && r.once(lessonSolo):
+		steps = soloSteps
 	case r.pending == stepAnnounced && r.once(lessonTrump):
 		steps = r.trumpSteps()
+	case r.pending == stepAnnounced && r.lessonHands == countHand && r.once(lessonCount):
+		steps = r.countSteps()
 	default:
 		return false
 	}
@@ -228,6 +294,7 @@ func (r *room) introSteps() []lessonStep {
 		r.trumpIntro(),
 		{Spot: "score", Text: "Elke slag levert punten op. Bovenaan staat de stand: Wij, dat zijn jij en ik, en Zij, de andere twee."},
 		{Spot: "chat", Text: "Ben je aan de beurt, dan geef ik je een tip, en na elke slag leg ik uit wat er gebeurde. " +
+			"Mijn tip hoef je niet te volgen: je kunt elke kaart spelen die volgens de regels mag, en na de slag zie je wat er gebeurde. " +
 			"Wat ik zeg, kun je teruglezen in de chat."},
 	}
 }
@@ -250,19 +317,62 @@ func (r *room) trumpIntro() lessonStep {
 	return lessonStep{Spot: "trump", Text: text}
 }
 
+// trumpSteps say how the cards rank, after the first announcement; the
+// manual has the whole order.
 func (r *room) trumpSteps() []lessonStep {
 	trump, _ := r.deal.Trump()
 	return []lessonStep{
-		{Spot: "trump", Text: trump.Symbol() + " is troef. In troef is de boer de hoogste kaart, dan de 9, de aas en de 10. " +
-			"In de andere kleuren is de aas de hoogste, dan de 10, de heer en de vrouw."},
-		{Spot: "trump", Text: "De punten: troefboer 20, troefnegen 14, aas 11, tien 10, heer 4, vrouw 3 en een gewone boer 2. " +
-			"De 7, de 8 en een gewone 9 zijn niets waard. De laatste slag levert 10 punten extra op."},
+		{Spot: "trump", Manual: "punten", Text: trump.Symbol() + " is troef. In troef zijn de boer en de 9 de hoogste kaarten, " +
+			"in de andere kleuren de aas. De hele volgorde staat in de handleiding, bij Kaartwaarden."},
 	}
+}
+
+// pointsSteps introduce the card points, at the deal of hand pointsHand;
+// the manual has what each card is worth.
+var pointsSteps = []lessonStep{
+	{Spot: "score", Manual: "punten", Text: "Je kent nu de regels voor bekennen en troeven. Vanaf dit potje let je ook op de punten: de kaarten in je slagen zijn punten waard. " +
+		"De troefboer, de troefnegen, de azen en de tienen zijn het meest waard. Wat elke kaart waard is, staat in de handleiding, bij Kaartwaarden."},
+	{Spot: "score", Text: "Alle kaarten samen zijn 152 punten, en de laatste slag levert 10 punten extra op: samen 162. " +
+		"Wie troef koos, moet samen met de maat meer halen dan de andere twee. Lukt dat niet, dan gaan ze nat."},
+}
+
+// countSteps introduce counting the trumps, after the announcement in hand
+// countHand: how many the others hold now, and the counter.
+func (r *room) countSteps() []lessonStep {
+	trump, _ := r.deal.Trump()
+	mine := trumpsIn(r.deal.Hand(r.learner()), trump)
+	have := "jij hebt er " + numberNL(mine)
+	if mine == 0 {
+		have = "jij hebt er geen"
+	}
+	return []lessonStep{
+		{Spot: "trump", Text: "Je weet nu wat de kaarten waard zijn. Tel in dit potje de troeven. Er zijn 8 troeven; " + have + ", dus de anderen hebben er " +
+			numberNL(game.NumRanks-mine) + ". Elke troef die een ander speelt, tel je af."},
+		{Spot: "trump", Text: "Het getal bij de troef bovenaan is hoeveel troeven de anderen nog hebben. Dat telt alleen in dit potje mee; " +
+			"daarna tel je zelf. Hebben de anderen geen troef meer, dan kan niemand meer troeven als jij een andere kleur speelt."},
+	}
+}
+
+// trumpsIn counts the trumps in cards.
+func trumpsIn(cards []game.Card, trump game.Suit) int {
+	n := 0
+	for _, c := range cards {
+		if c.Suit == trump {
+			n++
+		}
+	}
+	return n
+}
+
+// soloSteps announce the hands without tips, at the deal of the first one.
+var soloSteps = []lessonStep{
+	{Text: "Je hebt nu alles gehad wat ik wil uitleggen. De laatste " + numberNL(soloHands) +
+		" potjes speel je zonder mijn tips en zonder uitleg na de slag. Succes."},
 }
 
 // roemSteps introduce roem, at the deal of hand roemHand.
 var roemSteps = []lessonStep{
-	{Spot: "trick", Text: "Vanaf dit potje let ik op roem: extra punten voor kaarten die samen in één slag liggen. " +
+	{Spot: "trick", Text: "Troeven tellen kun je nu ook. Vanaf dit potje let ik op roem: extra punten voor kaarten die samen in één slag liggen. " +
 		"Wie de slag wint, krijgt de roem, ook voor de kaarten van de anderen."},
 	{Spot: "trick", Text: "Drie op een rij van één kleur (zoals 9, 10 en boer) is 20 roem, vier op een rij 50, en vrouw en heer van troef (stuk) 20. " +
 		"Vier gelijke kaarten zijn 100, vier boeren 200. De eerste keren wijs ik het je aan."},
@@ -295,7 +405,7 @@ func (r *room) signalSteps() []lessonStep {
 	} else {
 		count = "er " + count
 	}
-	return append([]lessonStep{{Text: "Vanaf dit potje let ik op seinen: met de kaart die je speelt, vertel je je maat iets over je hand. " +
+	return append([]lessonStep{{Text: "Roem herken je nu ook. Vanaf dit potje let ik op seinen: met de kaart die je speelt, vertel je je maat iets over je hand. " +
 		"Aan deze tafel spreken we " + count + " af; de eerste keren wijs ik ze je aan."}}, each...)
 }
 
@@ -304,7 +414,7 @@ func (r *room) signalSteps() []lessonStep {
 // introduced the first few chances to give one. Only the hint waits for
 // it.
 func (r *room) turnLesson(i game.Seat) {
-	if !r.lessonsOn() || r.lesson != nil || r.pending != stepNone || i != r.learner() || r.deal.Phase() != game.PhasePlay {
+	if !r.lessonsOn() || r.solo() || r.lesson != nil || r.pending != stepNone || i != r.learner() || r.deal.Phase() != game.PhasePlay {
 		return
 	}
 	var steps []lessonStep
@@ -418,16 +528,28 @@ func winning(cards []game.Played, trump game.Suit) game.Seat {
 }
 
 // trickLessons returns the steps that come with trick t, just completed:
-// once introduced, roem and a signal by a bot the first few times, and
-// after the last trick of the first hand how it was scored. In the first
-// hand, and before another step, the explanation of the trick (tips) comes
-// first. The trick waits until all are read; nil: it goes as usual.
+// the learner's first trick won, roem before it is introduced once, once introduced roem and a signal by
+// a bot the first few times, once the points are introduced the last
+// trick's 10 the first few times, in the counting hand that the others
+// have no trump left, after the last trick of the first hand how it was
+// scored, and after the last trick of a hand our side won, praise (once
+// per two hands of the plan). In the first hand, and before another step, the explanation
+// of the trick (tips) comes first. The trick waits until all are read;
+// nil: it goes as usual.
 func (r *room) trickLessons(t game.Trick, tips [4]string) []lessonStep {
-	if !r.lessonsOn() {
+	if !r.lessonsOn() || r.solo() {
 		return nil
 	}
 	var steps []lessonStep
-	if t.RoemTotal() > 0 && r.taught[lessonRoem] > 0 && r.upTo(lessonRoemAt, lessonShows) {
+	if t.Winner == r.learner() && r.once(lessonWon) {
+		steps = append(steps, lessonStep{Spot: "trick", Text: "Je eerste slag is binnen. Mooi zo."})
+	}
+	switch {
+	case t.RoemTotal() == 0:
+	case r.taught[lessonRoem] == 0 && r.once(lessonEarly):
+		steps = append(steps, lessonStep{Spot: "trick", Text: "In deze slag zit roem: extra punten voor bepaalde kaarten samen in één slag. " +
+			"Dat leg ik later uit; tot dan kun je het negeren."})
+	case r.taught[lessonRoem] > 0 && r.upTo(lessonRoemAt, lessonShows):
 		steps = append(steps, r.roemStep(t))
 	}
 	if r.taught[lessonSignals] > 0 && r.taught[lessonSignal] < lessonShows {
@@ -438,9 +560,26 @@ func (r *room) trickLessons(t game.Trick, tips [4]string) []lessonStep {
 			}
 		}
 	}
+	if n, ok := r.trumpsLeft(); ok && n == 0 && r.taught[lessonCount] > 0 && r.once(lessonNoTrump) {
+		steps = append(steps, lessonStep{Spot: "trump", Text: "De anderen hebben geen troef meer. Speel je nu een andere kleur, " +
+			"dan kan niemand die nog troeven: de hoogste kaart van die kleur haalt de slag."})
+	}
+	last := r.deal.Phase() == game.PhaseDone
+	if last && r.taught[lessonPoints] > 0 && r.upTo(lessonLast, lastShows) {
+		steps = append(steps, r.lastStep(t))
+	}
 	first := r.lessonHands == 1
-	if first && r.deal.Phase() == game.PhaseDone && r.once(lessonScore) {
-		steps = append(steps, r.scoreStep())
+	var praised, compliment string
+	if last && r.lessonHands <= lessonsEnd {
+		if what, well := r.praise(); well != "" && r.once(lessonPraise+strconv.Itoa((r.lessonHands+1)/2)) {
+			praised, compliment = what+" "+well, well
+		}
+	}
+	switch {
+	case first && last && r.once(lessonScore):
+		steps = append(steps, r.scoreStep(compliment)) // it says what happened already
+	case praised != "":
+		steps = append(steps, lessonStep{Spot: "score", Text: praised})
 	}
 	if len(steps) == 0 && !first {
 		return nil
@@ -459,6 +598,33 @@ func (r *room) trickSignals() (s []Signal) {
 		}
 	}()
 	return r.srv.cfg.AI.TrickSignals(r.viewFor(r.learner()))
+}
+
+// praise is what Juf Jannie says of the hand just over when our side won
+// it, made the contract or the opponents went nat: what happened, and the
+// compliment; "" otherwise.
+func (r *room) praise() (what, well string) {
+	res := r.deal.Result()
+	we := r.learner().Team()
+	switch {
+	case res.Pit && res.PitTeam == we:
+		return "Pit: alle acht slagen voor ons.", "Heel goed gespeeld."
+	case res.PlayingTeam == we && !res.Nat:
+		return "We hebben het gehaald.", "Goed gespeeld."
+	case res.PlayingTeam != we && res.Nat:
+		return "Zij gaan nat.", "Goed verdedigd."
+	}
+	return "", ""
+}
+
+// lastStep points out the 10 points of the last trick t, and who gets them.
+func (r *room) lastStep(t game.Trick) lessonStep {
+	team := "ons"
+	if t.Winner.Team() != r.learner().Team() {
+		team = "hen"
+	}
+	return lessonStep{Spot: "trick", Text: "Dit was de laatste slag: die levert 10 punten extra op. " + capital(r.who(t.Winner)) +
+		" won hem, dus de " + strconv.Itoa(t.Points) + " punten van deze slag zijn voor " + team + "."}
 }
 
 // roemStep points out the roem in trick t: the cards it is made of, and
@@ -575,8 +741,9 @@ func (r *room) signalStep(sig Signal) lessonStep {
 	return lessonStep{Spot: "trick", Text: strings.Join(slices.DeleteFunc(parts, func(s string) bool { return s == "" }), " ")}
 }
 
-// scoreStep says how the first hand was scored, after its last trick.
-func (r *room) scoreStep() lessonStep {
+// scoreStep says how the first hand was scored, after its last trick, with
+// compliment (or "") after the result.
+func (r *room) scoreStep(compliment string) lessonStep {
 	res := r.deal.Result()
 	we := r.learner().Team()
 	they := 1 - we
@@ -607,6 +774,9 @@ func (r *room) scoreStep() lessonStep {
 		parts = append(parts, "Dat is niet gelukt: wij gaan nat, en zij krijgen alle "+strconv.Itoa(res.Score[they])+" punten.")
 	default:
 		parts = append(parts, "Dat is niet gelukt: zij gaan nat, en wij krijgen alle "+strconv.Itoa(res.Score[we])+" punten.")
+	}
+	if compliment != "" {
+		parts = append(parts, compliment)
 	}
 	parts = append(parts, "Na "+strconv.Itoa(r.opts.Hands)+" potjes wint het koppel met de meeste punten.")
 	return lessonStep{Spot: "score", Text: strings.Join(parts, " ")}

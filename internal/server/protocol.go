@@ -288,6 +288,7 @@ type state struct {
 	NextAt      int64               `json:"nextAt"`
 	Hint        *hint               `json:"hint"`
 	Lesson      *lessonStep         `json:"lesson"`
+	TrumpsLeft  *int                `json:"trumpsLeft"`
 	Hands4      *[4][]game.Card     `json:"hands4"`
 	Winner      int                 `json:"winner"`
 	Review      *reviewState        `json:"review"`
