@@ -641,11 +641,8 @@ Utrechts. Sterk beat seven klaverjas engines with public source code by 6 to
 normaal by 27 and makkelijk by 57; 3,200 deals per card did not measurably
 beat 400. With the default signals at all seats, sterk's margin against each
 engine moved by about 2 points per hand at most, and sterk with signals did
-not beat sterk without (+0.7 ± 0.9 over 3,000 deals). The version at the end
-of the first day (c788083, which always gives and reads its three built-in
-signals) scored 1.3 ± 1.7 points per hand less than the current one with
-signals off over 1,000 duplicate deals, no measurable difference. The
-manual's *Juf Jannie* page quotes these numbers.
+not beat sterk without (+0.7 ± 0.9 over 3,000 deals). The manual's
+*Juf Jannie* page quotes these numbers.
 
 At a table of three or two (`internal/bot/small.go`, `smallsearch.go`) the
 levels keep their meaning with their own policy; the signals of §8 play no

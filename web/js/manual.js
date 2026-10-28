@@ -570,7 +570,6 @@ export const CONTENT = {
 
     { h: 'Hoe ze gemaakt is' },
     { p: 'De code en de tests van Juf Jannie en de rest van dit spel zijn geschreven door het taalmodel **Claude Opus 5.5** van Anthropic. Een mens bepaalde wat er gebouwd werd en welke afspraken aan tafel gelden, controleerde het werk en stuurde bij.' },
-    { p: 'Het spel was binnen een dag nadat het ontwerp was uitgeschreven speelbaar, met Juf Jannie op Sterk erin. De versie van het eind van die eerste dag speelt bijna even sterk als de huidige: in een directe vergelijking over 1.000 dubbele potjes was het verschil ongeveer 1 punt per potje, binnen de meetonzekerheid.' },
 
     { h: 'Grenzen' },
     { p: 'Elke keuze blijft een schatting. De verdelingen worden uitgespeeld met eenvoudige vuistregels, dus Juf Jannie kan een zet verkeerd inschatten. Daarom staat bij Jouw spelanalyse ook dat het slechts de mening van Juf Jannie is.' },
