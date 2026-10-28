@@ -8,6 +8,7 @@ import {
   suitify, cap, playerName, shortLandscape, onKeyboard,
 } from './util.js';
 import * as panels from './panels.js';
+import { SECTIONS } from './manual.js';
 
 const E = {};             // fixed elements
 const seats = {};         // pos → seat parts
@@ -82,6 +83,8 @@ export function init() {
     h('div', { class: 'coach-body' },
       E.coachTxt = h('div', { class: 'coach-txt' }, E.coachLbl = h('b', { class: 'coach-lbl' }), E.coachText = h('span')),
       E.coachMore = h('button', { class: 'coach-more', type: 'button', hidden: true, 'aria-expanded': 'false', onclick: toggleCoach }),
+      E.coachMan = h('button', { class: 'coach-man', type: 'button', hidden: true, onclick: openCoachManual },
+        icon('book'), E.coachManLbl = h('span')),
       E.coachGo = h('button', { class: 'coach-go', type: 'button', hidden: true, onclick: closeCoach },
         (E.coachRing = panels.countdownRing()).el, h('span', { text: 'Verder' }))),
     h('button', { class: 'coach-x', type: 'button', 'aria-label': 'Sluiten', onclick: closeCoach }, icon('close')));
@@ -112,7 +115,8 @@ function buildTopbar(bar) {
     h('span', { class: 'potje-lbl', text: 'Potje' }), h('span', { class: 'potje-n' }, E.potjeN = h('b', { text: '1' }), '/', E.potjeT = h('span', { text: '16' })));
   E.badge = h('button', { class: 'trump-badge', type: 'button', title: 'Troef: tik voor details over troef en spelvariant', onclick: () => panels.openTrumpInfo() },
     E.badgeSym = h('span', { class: 'tb-sym', text: '?' }),
-    E.badgeLbl = h('span', { class: 'tb-lbl', text: 'Troef' }));
+    E.badgeLbl = h('span', { class: 'tb-lbl', text: 'Troef' }),
+    E.badgeCnt = h('span', { class: 'tb-cnt', hidden: true }));
   bar.append(E.pill, E.potje, E.badge, h('span', { class: 'spacer' }),
     ...panels.toolButtons(['expert', 'last', 'score', 'chat', 'help', 'settings', 'sound', 'menu']));
   E.expert = bar.querySelector('.tb-expert');
@@ -217,8 +221,14 @@ function renderTop(s) {
   E.badgeSym.textContent = sym ? suitSym(sym) : '?';
   E.badgeLbl.textContent = !known ? (s.turned ? '?' : 'Troef') : s.trumpBy === s.you ? 'Jij'
     : seatCount(s) === 4 ? teamName(s, s.playingTeam) : scoreLabel(s, s.trumpBy);
+  // Training with lessons, the hand in which the learner counts trumps:
+  // how many the others still hold.
+  const left = known ? s.trumpsLeft ?? null : null;
+  E.badgeCnt.hidden = left === null;
+  E.badgeCnt.textContent = left ?? '';
   E.badge.title = known
-    ? `Troef is ${suitName(s.trump)}, gekozen door ${nameOf(s, s.trumpBy, false)}. Tik voor details.`
+    ? `Troef is ${suitName(s.trump)}, gekozen door ${nameOf(s, s.trumpBy, false)}.` +
+      (left === null ? '' : ` De anderen hebben nog ${left} ${left === 1 ? 'troef' : 'troeven'}.`) + ' Tik voor details.'
     : 'Er is nog geen troef gekozen. Tik voor details over de spelvariant.';
   panels.setLastEnabled(!!s.lastTrick?.cards?.length);
 }
@@ -689,6 +699,13 @@ function renderPrompt(s) {
       if (lesson) anim(E.coachTxt, [{ opacity: 0.2 }, { opacity: 1 }], 220); // the next step, not the same one
     }
   }
+  // A lesson step may point to a section of the manual.
+  const man = lesson ? SECTIONS.find(x => x.id === s.lesson.manual) : null;
+  E.coachMan.hidden = !man;
+  if (man) {
+    E.coachMan.dataset.id = man.id;
+    E.coachManLbl.textContent = 'Handleiding: ' + man.title;
+  }
   fitCoach();
   spotlight(s);
 }
@@ -769,6 +786,14 @@ function coachBottom() {
   const par = E.coach.offsetParent;
   if (!par) return E.coach.getBoundingClientRect().bottom;
   return par.getBoundingClientRect().top + par.clientTop + E.coach.offsetTop + E.coach.offsetHeight;
+}
+
+// The manual from a lesson step. The link gives up focus first: closing
+// the manual would give it back, and Enter would open it again instead of
+// going on.
+function openCoachManual() {
+  E.coachMan.blur();
+  panels.openManual(E.coachMan.dataset.id);
 }
 
 function toggleCoach() {

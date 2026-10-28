@@ -20,22 +20,36 @@ type seenStep struct {
 	ev                string // the update's event
 }
 
+// lessonRun is what the learner saw in a training match with lessons.
+type lessonRun struct {
+	seen  []seenStep
+	said  []string    // the texts of the steps and tips, in the order they came
+	roem  []int       // the hand of every trick with roem
+	tips  map[int]int // tips per hand
+	hints map[int]int // turns with a hint per hand
+	left  map[int][]int
+	// left: per hand the trump counter of every update during play, with
+	// the trumps the learner held then (as trumpsLeft+held: the trumps not
+	// yet played, which only goes down)
+}
+
 // readLessons plays c's training match: it reads every lesson step once
-// (tipRead with its n, after hook), follows the hint on c's turn and goes
-// on from every summary, until done. It returns the steps seen, the texts
-// of the steps and tips in the order they came, and the hand of every
-// trick with roem.
-func readLessons(t *testing.T, c *tclient, done func() bool, hook func(seenStep)) (seen []seenStep, said []string, roem []int) {
+// (tipRead with its n, after hook), follows the hint on c's turn (without
+// one a random legal choice) and goes on from every summary, until done.
+func readLessons(t *testing.T, c *tclient, done func() bool, hook func(seenStep)) (run lessonRun) {
 	t.Helper()
+	run.tips, run.hints, run.left = map[int]int{}, map[int]int{}, map[int][]int{}
+	rng := rand.New(rand.NewPCG(1, 2))
 	read, acted, readied := 0, 0, 0
-	deadline := time.Now().Add(30 * time.Second)
+	deadline := time.Now().Add(60 * time.Second)
 	for !done() {
 		if time.Now().After(deadline) {
 			t.Fatalf("readLessons: not done in phase %s, hand %d", c.phase(), c.s.HandNo)
 		}
 		m := c.next(5 * time.Second)
 		if m.T == "tip" {
-			said = append(said, m.Text)
+			run.said = append(run.said, m.Text)
+			run.tips[c.s.HandNo]++
 			if c.s.HandNo == 1 {
 				t.Errorf("tip in the first hand: %q", m.Text)
 			}
@@ -47,7 +61,19 @@ func readLessons(t *testing.T, c *tclient, done func() bool, hook func(seenStep)
 		checkUpdate(t, c, m)
 		s := c.s
 		if r, _ := m.ev["roem"].([]any); m.evType() == "trick" && len(r) > 0 {
-			roem = append(roem, s.HandNo)
+			run.roem = append(run.roem, s.HandNo)
+		}
+		if n := s.TrumpsLeft; n != nil {
+			held := 0
+			for _, k := range s.Hand {
+				if s.Trump != nil && k.Suit == *s.Trump {
+					held++
+				}
+			}
+			run.left[s.HandNo] = append(run.left[s.HandNo], *n+held)
+			if s.Phase != phasePlay || *n < 0 {
+				t.Errorf("hand %d: trump counter %d in phase %s", s.HandNo, *n, s.Phase)
+			}
 		}
 		if l := s.Lesson; l != nil && l.N > read {
 			read = l.N
@@ -55,8 +81,8 @@ func readLessons(t *testing.T, c *tclient, done func() bool, hook func(seenStep)
 			if s.Trick != nil {
 				st.cards = len(s.Trick.Cards)
 			}
-			seen = append(seen, st)
-			said = append(said, l.Text)
+			run.seen = append(run.seen, st)
+			run.said = append(run.said, l.Text)
 			if hook != nil {
 				hook(st)
 			}
@@ -66,33 +92,43 @@ func readLessons(t *testing.T, c *tclient, done func() bool, hook func(seenStep)
 		switch {
 		case s.Lesson == nil && c.myTurn() && c.seq > acted:
 			acted = c.seq
+			if s.Hint == nil {
+				c.actRandom(rng)
+				break
+			}
+			run.hints[s.HandNo]++
 			c.actHint()
 		case s.Phase == phaseHandEnd && readied < s.HandNo:
 			readied = s.HandNo
 			c.send(map[string]any{"t": "ready"})
 		}
 	}
-	return seen, said, roem
+	return run
 }
 
-// TestLessons: training with lessons, a whole match of eight hands. The
+// TestLessons: training with lessons, a whole match of sixteen hands. The
 // intro after the first deal and the trump lesson hold the game until
 // read, step by step; every trick of the first hand waits for its
 // explanation, the last one also for the score; the learner's first turns
-// get a lesson with the hint. Roem is introduced at the deal of the third
-// hand and pointed out the first three times, the signals at the deal of
-// the fifth (before it the table plays without them), with the first three
-// chances for the learner and the first three signals of the bots. Every
-// step and tip is a line of Juf Jannie in the chat as well.
+// get a lesson with the hint. The card points are introduced at the deal
+// of the third hand, with the last trick's 10 the first two times; in the
+// fifth the learner counts the trumps, with a counter. Roem before it is
+// introduced is pointed out once; it is introduced at the deal of the
+// seventh hand and pointed out the first three times, the signals at the
+// deal of the ninth (before it the table plays without them), with the
+// first three chances for the learner and the first three signals of the
+// bots. Along the way she praises the learner's first trick and a hand
+// won, once per two hands. The last four hands have no hints and no tips.
+// Every step and tip is a line of Juf Jannie in the chat as well.
 func TestLessons(t *testing.T) {
 	_, ts, ai := newTestServer(t)
 	c := dial(t, ts)
-	c.create("Leerling", map[string]any{"lessons": true, "hands": 8, "seed": 7}, true, true)
+	c.create("Leerling", map[string]any{"lessons": true, "hands": 16, "seed": 7}, true, true)
 	if !c.s.Opts.Lessons {
 		t.Fatal("training without lessons")
 	}
 	collects := 0
-	seen, said, roemTricks := readLessons(t, c, func() bool { return c.phase() == phaseGameOver }, func(st seenStep) {
+	run := readLessons(t, c, func() bool { return c.phase() == phaseGameOver }, func(st seenStep) {
 		switch {
 		case st.N == 1:
 			// A double tap: the second tipRead for step 1 must not skip
@@ -109,6 +145,7 @@ func TestLessons(t *testing.T) {
 			}
 		}
 	})
+	seen := run.seen
 	for k, st := range seen {
 		if st.N != k+1 {
 			t.Fatalf("step %d has n %d: %+v", k, st.N, seen)
@@ -129,6 +166,9 @@ func TestLessons(t *testing.T) {
 	if text := seen[0].Text; !strings.Contains(text, "Juf Jannie") || !strings.Contains(text, "Verder") {
 		t.Errorf("first step %q", text)
 	}
+	if !strings.Contains(seen[5].Text, "Mijn tip hoef je niet te volgen") {
+		t.Errorf("the intro does not say the hint is free to ignore: %q", seen[5].Text)
+	}
 	byHand := func(hand int, pred func(seenStep) bool) (out []seenStep) {
 		for _, st := range seen {
 			if st.hand == hand && pred(st) {
@@ -137,8 +177,8 @@ func TestLessons(t *testing.T) {
 		}
 		return out
 	}
-	with := func(prefix string) func(seenStep) bool {
-		return func(st seenStep) bool { return strings.HasPrefix(st.Text, prefix) }
+	with := func(part string) func(seenStep) bool {
+		return func(st seenStep) bool { return strings.Contains(st.Text, part) }
 	}
 	all := func(pred func(seenStep) bool) (out []seenStep) {
 		for _, st := range seen {
@@ -148,9 +188,10 @@ func TestLessons(t *testing.T) {
 		}
 		return out
 	}
-	// The trump lesson: two steps once trump is known, while play waits.
+	// The trump lesson: one step once trump is known, while play waits,
+	// with the manual for the order.
 	trumps := byHand(1, func(st seenStep) bool { return st.trump && st.Spot == "trump" })
-	if len(trumps) != 2 || trumps[0].turn != -1 || !strings.HasPrefix(trumps[1].Text, "De punten:") {
+	if len(trumps) != 1 || trumps[0].turn != -1 || trumps[0].Manual != "punten" || !strings.Contains(trumps[0].Text, "handleiding") {
 		t.Errorf("trump steps %+v", trumps)
 	}
 	// Every trick of the first hand: its explanation on the full trick,
@@ -159,8 +200,9 @@ func TestLessons(t *testing.T) {
 	if len(explained) != 8 {
 		t.Errorf("%d explained tricks in the first hand, want 8", len(explained))
 	}
-	score := byHand(1, func(st seenStep) bool { return st.Spot == "score" && st.cards == 4 })
-	if len(score) != 1 || !strings.HasPrefix(score[0].Text, "Het potje is uit: wij hebben ") || score[0].N != explained[len(explained)-1].N+1 {
+	score := all(func(st seenStep) bool { return strings.HasPrefix(st.Text, "Het potje is uit: ") })
+	if len(score) != 1 || score[0].hand != 1 || score[0].Spot != "score" || score[0].cards != 4 || !strings.HasPrefix(score[0].Text, "Het potje is uit: wij hebben ") ||
+		score[0].N != explained[len(explained)-1].N+1 {
 		t.Errorf("score steps %+v", score)
 	}
 	// The learner's turns: a lesson with the hint, each situation once.
@@ -179,28 +221,77 @@ func TestLessons(t *testing.T) {
 			t.Errorf("turn lesson %s %d times", k, n)
 		}
 	}
-	// Roem: introduced at the deal of the third hand, then pointed out
+	// The points: introduced at the deal of the third hand, with the
+	// manual; then the last trick of the first two hands that follow
+	// says what it brings, after its explanation.
+	points := all(with("Vanaf dit potje let je ook op de punten"))
+	if len(points) != 1 || points[0].hand != pointsHand || points[0].turn != -1 || points[0].cards != 0 || points[0].Manual != "punten" ||
+		!strings.HasPrefix(seen[points[0].N].Text, "Alle kaarten samen zijn 152 punten") {
+		t.Errorf("points introduced %+v", points)
+	}
+	last := all(with("Dit was de laatste slag: "))
+	if len(last) != lastShows || last[0].hand != pointsHand || last[1].hand != pointsHand+1 {
+		t.Errorf("last tricks pointed out %+v", last)
+	}
+	for _, st := range last {
+		if prev := seen[st.N-2]; prev.cards != 4 || !strings.HasSuffix(prev.Text, "wint de slag.") {
+			t.Errorf("last trick step %+v after %+v", st, prev)
+		}
+	}
+	// Counting the trumps: in the fifth hand once trump is known, before
+	// the first card; the counter only during play of that hand, and the
+	// trumps not yet played (the counter and the learner's own) only go
+	// down from 8.
+	count := all(with("Tel in dit potje de troeven."))
+	if len(count) != 1 || count[0].hand != countHand || count[0].turn != -1 || !count[0].trump || count[0].cards != 0 ||
+		!strings.HasPrefix(seen[count[0].N].Text, "Het getal bij de troef") {
+		t.Errorf("counting introduced %+v", count)
+	}
+	for h, out := range run.left {
+		if h != countHand {
+			t.Errorf("trump counter in hand %d", h)
+		}
+		if len(out) == 0 || out[0] != 8 || !slices.IsSortedFunc(out, func(a, b int) int { return b - a }) {
+			t.Errorf("trumps not played, by the counter: %v", out)
+		}
+	}
+	if len(run.left[countHand]) == 0 {
+		t.Error("no trump counter in the counting hand")
+	}
+	for _, st := range all(with("De anderen hebben geen troef meer.")) {
+		if st.hand != countHand || seen[st.N-2].cards != 4 {
+			t.Errorf("no trump left %+v", st)
+		}
+	}
+	// Roem: before it is introduced, the first trick with it says it can
+	// wait. Introduced at the deal of the seventh hand, then pointed out
 	// with the first three tricks that have it, after their explanation.
+	early, later := 0, 0
+	for _, h := range run.roem {
+		if h < roemHand {
+			early++
+		} else {
+			later++
+		}
+	}
+	waits := all(with("In deze slag zit roem: "))
+	if len(waits) != min(early, 1) || early == 0 || waits[0].hand >= roemHand || seen[waits[0].N-2].cards != 4 {
+		t.Errorf("roem before its lesson pointed out %+v, with %d tricks with roem before hand %d", waits, early, roemHand)
+	}
 	intro := all(with("Vanaf dit potje let ik op roem"))
 	if len(intro) != 1 || intro[0].hand != roemHand || intro[0].turn != -1 || intro[0].cards != 0 || !strings.Contains(seen[intro[0].N].Text, "Drie op een rij") {
 		t.Errorf("roem introduced %+v", intro)
 	}
-	later := 0
-	for _, h := range roemTricks {
-		if h >= roemHand {
-			later++
-		}
-	}
 	pointed := all(with("Roem in deze slag: "))
-	if len(pointed) != min(later, lessonShows) || len(roemTricks) == 0 {
-		t.Errorf("roem pointed out %d times, with %d tricks with roem from hand %d (all: %v)", len(pointed), later, roemHand, roemTricks)
+	if len(pointed) != min(later, lessonShows) || later == 0 {
+		t.Errorf("roem pointed out %d times, with %d tricks with roem from hand %d (all: %v)", len(pointed), later, roemHand, run.roem)
 	}
 	for _, st := range pointed {
 		if st.hand < roemHand || seen[st.N-2].cards != 4 || !strings.Contains(seen[st.N-2].Text, "wint de slag") {
 			t.Errorf("roem step %+v after %+v", st, seen[st.N-2])
 		}
 	}
-	// Signals: introduced at the deal of the fifth hand, each agreement of
+	// Signals: introduced at the deal of the ninth hand, each agreement of
 	// the table (by default three) a step of its own.
 	intro = all(with("Vanaf dit potje let ik op seinen"))
 	if len(intro) != 1 || intro[0].hand != signalHand || intro[0].turn != -1 ||
@@ -209,7 +300,7 @@ func TestLessons(t *testing.T) {
 	}
 	// The fake reads every lead as kleintje boer: the first three tricks
 	// a bot led explain it.
-	bySignal := all(with("Dat was een sein. "))
+	bySignal := all(func(st seenStep) bool { return strings.HasPrefix(st.Text, "Dat was een sein. ") })
 	if len(bySignal) != lessonShows || ai.signalled.Load() == 0 {
 		t.Errorf("%d signals by bots pointed out (asked %d times)", len(bySignal), ai.signalled.Load())
 	}
@@ -230,18 +321,61 @@ func TestLessons(t *testing.T) {
 		}
 	}
 	// Until the signals are introduced the table plays without them: the
-	// hints see no agreements.
-	for h := 1; h <= 8; h++ {
+	// hints see no agreements. The hands without hints ask for none.
+	for h := 1; h <= lessonsEnd; h++ {
 		if on, ok := ai.signalsIn.Load(h); !ok || on.(bool) != (h >= signalHand) {
 			t.Errorf("hand %d: hints with signals %v (seen %v)", h, on, ok)
 		}
 	}
-	// After the first hand a trick waits only for roem or a signal.
+	// Praise: the learner's first trick, after its explanation, and the
+	// last trick of a hand our side won, at most once per two hands of
+	// the plan.
+	won := all(with("Je eerste slag is binnen."))
+	if len(won) != 1 || seen[won[0].N-2].cards != 4 || !strings.HasPrefix(seen[won[0].N-2].Text, "Jij wint de slag") {
+		t.Errorf("first trick praised %+v", won)
+	}
+	praised := all(func(st seenStep) bool {
+		return slices.Contains([]string{"Pit: alle acht slagen voor ons. Heel goed gespeeld.", "We hebben het gehaald. Goed gespeeld.",
+			"Zij gaan nat. Goed verdedigd."}, st.Text)
+	})
+	blocks := map[int]bool{}
+	for _, st := range praised {
+		if st.hand > lessonsEnd || st.cards != 4 || blocks[(st.hand+1)/2] {
+			t.Errorf("praise %+v (blocks so far %v)", st, blocks)
+		}
+		blocks[(st.hand+1)/2] = true
+	}
+	if len(praised) == 0 {
+		t.Error("no hand praised")
+	}
+	// In the first hand the score already says what happened: the
+	// compliment follows the result.
+	s := score[0].Text
+	good := strings.Contains(s, "wij moesten") && strings.Contains(s, "Dat is gelukt.") || strings.Contains(s, "zij gaan nat")
+	if good != slices.ContainsFunc([]string{"gelukt. Goed gespeeld. Na ", "punten. Goed verdedigd. Na ", "gelukt. Heel goed gespeeld. Na "},
+		func(p string) bool { return strings.Contains(s, p) }) {
+		t.Errorf("the score of the first hand %q", s)
+	}
+	// After the first hand a trick waits only for one of its lessons.
 	for _, st := range all(func(st seenStep) bool {
 		return st.hand > 1 && st.cards == 4 && strings.HasSuffix(st.Text, "wint de slag.")
 	}) {
-		if next := seen[st.N].Text; !strings.HasPrefix(next, "Roem in deze slag: ") && !strings.HasPrefix(next, "Dat was een sein. ") {
+		next := seen[st.N].Text
+		if !slices.ContainsFunc([]string{"Roem in deze slag: ", "In deze slag zit roem: ", "Dat was een sein. ", "Dit was de laatste slag: ",
+			"De anderen hebben geen troef meer.", "Je eerste slag is binnen.", "Pit: ", "We hebben het gehaald.", "Zij gaan nat."},
+			func(p string) bool { return strings.HasPrefix(next, p) }) {
 			t.Errorf("hand %d: a trick waits for %q", st.hand, next)
+		}
+	}
+	// The last four hands: announced at the deal of the first, then no
+	// hint, no tip and no other step.
+	solo := all(with("De laatste vier potjes speel je zonder"))
+	if len(solo) != 1 || solo[0].hand != 16-soloHands+1 || solo[0].turn != -1 || solo[0].N != len(seen) {
+		t.Errorf("hands without tips announced %+v (of %d steps)", solo, len(seen))
+	}
+	for h := 2; h <= 16; h++ {
+		if on := h <= 16-soloHands; on != (run.hints[h] > 0) || on != (run.tips[h] > 0) {
+			t.Errorf("hand %d: %d hints, %d tips", h, run.hints[h], run.tips[h])
 		}
 	}
 	// The chat: every step and tip once, in order, as Juf Jannie.
@@ -254,8 +388,8 @@ func TestLessons(t *testing.T) {
 			}
 		}
 	}
-	if !slices.Equal(coach, said) {
-		t.Errorf("coach lines in the chat:\n%q\nsaid:\n%q", coach, said)
+	if !slices.Equal(coach, run.said) {
+		t.Errorf("coach lines in the chat:\n%q\nsaid:\n%q", coach, run.said)
 	}
 }
 
@@ -495,7 +629,7 @@ func TestScoreStep(t *testing.T) {
 		}
 	}
 	res := d.Result()
-	text := r.scoreStep().Text
+	text := r.scoreStep("").Text
 	who := capital(r.who(res.TrumpBy))
 	for _, part := range []string{
 		"Het potje is uit: wij hebben ",
@@ -508,5 +642,23 @@ func TestScoreStep(t *testing.T) {
 	}
 	if res.Nat != strings.Contains(text, "Dat is niet gelukt") || res.Pit != strings.Contains(text, "pit") {
 		t.Errorf("%q for %+v", text, res)
+	}
+	// A compliment goes after the result, before the rule of the match.
+	if text := r.scoreStep("Goed gespeeld.").Text; !strings.Contains(text, ". Goed gespeeld. Na 16 potjes") {
+		t.Errorf("with a compliment: %q", text)
+	}
+}
+
+// TestSharedSteps: the step lists every room shares stay unnumbered when a
+// room starts them, so one room's numbers never show up in another's.
+func TestSharedSteps(t *testing.T) {
+	r := lessonRoom(t)
+	r.lessonN = 40
+	for _, steps := range [][]lessonStep{pointsSteps, roemSteps, soloSteps} {
+		r.startLesson(steps)
+		if steps[0].N != 0 || r.lesson == nil || r.lesson.N != r.lessonN-len(steps)+1 {
+			t.Errorf("startLesson numbered the shared list: %+v, on screen %+v", steps[0], r.lesson)
+		}
+		r.clearLesson()
 	}
 }

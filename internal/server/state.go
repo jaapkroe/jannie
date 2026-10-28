@@ -41,6 +41,9 @@ func (r *room) stateFor(i game.Seat) *state {
 	}
 	if r.training && i == r.learner() {
 		s.Lesson = r.lesson
+		if n, ok := r.trumpsLeft(); ok {
+			s.TrumpsLeft = &n
+		}
 	}
 	if s.Total == nil {
 		s.Total = make([]int, game.Scorers(r.players()))
@@ -127,7 +130,7 @@ func (r *room) stateFor(i game.Seat) *state {
 			}
 			s.Rule = d.Constraint()
 		}
-		if r.training {
+		if r.tipsOn() {
 			s.Hint = r.hintFor(i)
 		}
 	}
