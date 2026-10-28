@@ -98,6 +98,7 @@ export function init() {
   // The widths are read here, after layout, and kept: a render then fans
   // the hand without forcing a layout of its own.
   new ResizeObserver(() => { measureHand(); layoutHand(); }).observe(E.hand);
+  new ResizeObserver(() => fitCoach()).observe(seats.left.ring); // larger with a video (call.js)
   addEventListener('resize', () => { handW = cardW = 0; fitCoach(); });
   onKeyboard(fitCoach); // the landscape layout comes or goes without a resize
   document.addEventListener('keydown', onKey);
@@ -750,7 +751,7 @@ function fitCoach() {
   if (shortLandscape() && !E.coach.hidden && !open && E.coachGo.hidden) {
     E.coach.classList.remove('clamped');
     E.coachMore.hidden = true; // measured without it: it goes over the last line
-    const over = coachBottom() - (seats.left.ring.getBoundingClientRect().top - COACH_GAP);
+    const over = coachBottom() - (ringTop(seats.left.ring) - COACH_GAP);
     if (over > 0) {
       const lh = parseFloat(getComputedStyle(E.coachTxt).lineHeight) || 16;
       E.coach.style.setProperty('--coach-lines', Math.max(2, Math.floor((E.coachTxt.clientHeight - over) / lh)));
@@ -763,6 +764,14 @@ function fitCoach() {
   E.coachMore.setAttribute('aria-expanded', String(open));
 }
 const COACH_GAP = 8; // px kept free above the left seat's ring
+
+// The top of a ring, or of a mark above it (a ring with a video has its
+// marks outside it). A hidden ring (two players: no left seat) gives 0,
+// which keeps the coach to two lines.
+function ringTop(ring) {
+  const tops = [ring, ...ring.children].filter(e => e.getClientRects().length).map(e => e.getBoundingClientRect().top);
+  return tops.length ? Math.min(...tops) : 0;
+}
 
 // The coach's bottom edge as laid out, without its rise-in animation.
 function coachBottom() {
