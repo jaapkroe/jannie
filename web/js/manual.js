@@ -9,6 +9,7 @@ export const SECTIONS = [
   { id: 'roem', title: 'Roem' },
   { id: 'seinen', title: 'Seinen' },
   { id: 'tips', title: 'Tips' },
+  { id: 'jannie', title: 'Juf Jannie' },
   { id: 'woorden', title: 'Woordenlijst' },
 ];
 
@@ -548,6 +549,31 @@ export const CONTENT = {
       ],
     },
     { tip: 'Geen haast: je hebt alle tijd om na te denken. Niemand aan tafel heeft een klok.' },
+  ],
+
+  jannie: [
+    { lead: '**Juf Jannie** is de game engine van dit spel. Ze laat de AI-spelers spelen, geeft de tips bij **Oefenen** en maakt **Jouw spelanalyse**. Hier lees je hoe ze een kaart kiest, hoe sterk ze is en hoe ze gemaakt is.' },
+
+    { h: 'Wat ze weet' },
+    { p: 'Juf Jannie kijkt nooit in de kaarten van anderen. Ze weet wat jij aan tafel ook weet: haar eigen hand, de kaarten die gespeeld zijn en wie een kleur niet kon bekennen of niet kon troeven of overtroeven. Daaruit leidt ze af welke kaarten nog bij wie kunnen zitten. Met z’n vieren leest ze op Normaal en Sterk ook de seinen. Op Sterk, en bij de tips en Jouw spelanalyse, let ze daarnaast op wie troef koos, wie speelde of paste en met welke kaart iemand uitkwam.' },
+
+    { h: 'Hoe ze een kaart kiest' },
+    { p: 'Met z’n vieren verdeelt ze op **Sterk** bij elke beurt de kaarten die ze niet kan zien op **400** manieren. Elke verdeling klopt met de gespeelde kaarten en met wie welke kleur niet kon bekennen of niet kon troeven. Verdelingen die goed passen bij de troefkeuze, bij wie speelde of paste en bij de seinen, komen vaker voor. Voor elke kaart die ze mag spelen, speelt ze al die verdelingen tot het eind van het potje uit, met de vuistregels van Normaal voor alle vier de spelers. Ze speelt de kaart die gemiddeld het meest oplevert. Elke AI-speler heeft daarbij een eigen karakter: de een gaat eerder voor pit of speelt eerder dan de ander. Voor troef kiezen en spelen of passen doet ze hetzelfde met **320** verdelingen.' },
+    { p: 'Op **Normaal** rekent ze met z’n vieren niets door: ze speelt volgens vaste vuistregels, houdt bij welke kaarten gevallen zijn en geeft en leest de seinen van de tafel. Op **Makkelijk** telt ze met z’n vieren geen kaarten. Ze kiest de langste kleur als troef en speelt ongeveer 1 op de 3 keer een willekeurige kaart.' },
+    { note: 'Met z’n tweeën of drieën is een potje sneller uitgespeeld. Op Sterk speelt ze dan bij elke beurt **1.200** verdelingen uit, en seinen spelen geen rol. Op Makkelijk speelt ze haar kaarten dan volgens de vuistregels van Normaal, maar ongeveer 1 op de 3 keer speelt ze een willekeurige kaart. Troef kiest ze ook dan op de langste kleur. Bij het bieden met z’n drieën speelt ze op elk niveau verdelingen uit: 24 op Makkelijk, 96 op Normaal en 320 op Sterk. Op Makkelijk biedt ze daarbij vaker en hoger dan verstandig is.' },
+    { note: 'Op Sterk geeft Juf Jannie een sein alleen als het haar weinig kost. Een vals sein speelt ze alleen als dat duidelijk meer oplevert, of als ze geen andere keus heeft. Op haar aas vraagt 10 en haar kleintje boer kun je bijna altijd rekenen. Een klein kaartje dat ze bijspeelt, is minder zeker: soms moet ze dat gewoon kwijt.' },
+
+    { h: 'Hoe sterk ze is' },
+    { p: 'Juf Jannie op Sterk speelde tegen **7** klaverjasprogramma’s van anderen. Hun broncode staat openbaar op internet: sommige komen uit onderzoek, andere zijn hobbyprojecten. Elk potje werd twee keer gespeeld met dezelfde kaarten: de tweede keer kregen de teams elkaars kaarten. Zo valt het geluk met de kaarten grotendeels weg. Per programma en instelling ging het om 400 tot 1.000 van zulke dubbele potjes. Juf Jannie koos daarbij voor beide teams troef en de seinen stonden uit, zodat alleen het spelen van de kaarten verschilde.' },
+    { p: 'Tegen elk van die programma’s haalde Juf Jannie per potje **6 tot 34** punten meer dan de tegenpartij. Bij de programma’s die zetten vooruitrekenen, bepaalden we zelf hoeveel rekentijd ze kregen. Met meer rekentijd kwamen ze dichterbij, bijvoorbeeld van 23 naar 9 punten verschil, maar Juf Jannie bleef in elke vergelijking voor. Op dezelfde manier gemeten haalt Sterk per potje **27** punten meer dan Normaal en **57** meer dan Makkelijk.' },
+    { p: 'Meer rekenen helpt haar zelf nauwelijks: met 3.200 verdelingen in plaats van 400 speelde ze niet meetbaar beter. Ook de seinen maakten voor haar weinig uit: Sterk met seinen speelde tegen Sterk zonder seinen niet meetbaar beter, en tegen de andere programma’s veranderde het verschil met de seinen aan hooguit ongeveer 2 punten per potje.' },
+
+    { h: 'Hoe ze gemaakt is' },
+    { p: 'De code en de tests van Juf Jannie en de rest van dit spel zijn geschreven door het taalmodel **Claude Opus 5.5** van Anthropic. Een mens bepaalde wat er gebouwd werd en welke afspraken aan tafel gelden, controleerde het werk en stuurde bij.' },
+    { p: 'Het spel was binnen een dag nadat het ontwerp was uitgeschreven speelbaar, met Juf Jannie op Sterk erin. De versie van het eind van die eerste dag speelt bijna even sterk als de huidige: in een directe vergelijking over 1.000 dubbele potjes was het verschil ongeveer 1 punt per potje, binnen de meetonzekerheid.' },
+
+    { h: 'Grenzen' },
+    { p: 'Elke keuze blijft een schatting. De verdelingen worden uitgespeeld met eenvoudige vuistregels, dus Juf Jannie kan een zet verkeerd inschatten. Daarom staat bij Jouw spelanalyse ook dat het slechts de mening van Juf Jannie is.' },
   ],
 
   woorden: [
