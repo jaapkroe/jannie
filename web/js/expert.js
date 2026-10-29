@@ -78,11 +78,13 @@ export function onError() {
 }
 
 // The connection is back, the join just sent and what was queued while
-// offline not yet: the answer to a question sent over the old connection
-// goes there, so its button comes back; a question queued meanwhile goes
-// out next and is answered.
+// offline not yet (panels.onReconnect): the answer to a question sent over
+// the old connection goes there, so its button comes back; a question
+// queued meanwhile goes out next, over this connection, and is answered.
 export function onReconnect() {
-  if (wait?.sent) onError();
+  if (!wait) return;
+  if (wait.sent) onError();
+  else wait.sent = true;
 }
 
 // A new deal (panels.sync): the answers about the hands before are

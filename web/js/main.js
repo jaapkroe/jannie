@@ -169,7 +169,6 @@ function onOpen() {
     // Requests that went out over the old connection, before the queued
     // ones go out over this one.
     panels.onReconnect();
-    if (app.s?.expert) import('./expert.js').then(x => x.onReconnect());
   }
 }
 

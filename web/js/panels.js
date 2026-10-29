@@ -1275,7 +1275,8 @@ export function onHandReview(msg) {
 }
 
 // The expert's sheet Redenering van de AI (expert.js, loaded when first
-// needed); sync tells it about every new deal.
+// needed); sync tells it about every new deal, onReconnect about a new
+// connection.
 let expertJs = null;
 function openWhy() {
   import('./expert.js').then(x => { expertJs = x; x.openWhy(); })
@@ -1323,17 +1324,23 @@ export function onError() {
 }
 
 // The connection is back, the join just sent and what was queued while
-// offline not yet: that goes out next and is answered. Feedback sent over
-// the old connection may never have arrived, or its "saved" went there: the
-// button works again. A hand asked over the old connection is asked again,
-// while its trick view is open (a second answer only refreshes the replay).
+// offline not yet: that goes out next, over this connection, and is
+// answered. Feedback sent over the old connection may never have arrived,
+// or its "saved" went there: the button works again. A hand asked over the
+// old connection is asked again, while its trick view is open (a second
+// answer only refreshes the replay). The expert's question likewise.
 export function onReconnect() {
   if (feedbackWait?.sent) {
     feedbackWait.failed();
     feedbackWait = null;
-  }
+  } else if (feedbackWait) feedbackWait.sent = true;
+  expertJs?.onReconnect();
   const w = handWait;
-  if (!w?.sent) return;
+  if (!w) return;
+  if (!w.sent) {
+    w.sent = true;
+    return;
+  }
   if (w.btn.closest('.modal.open')) {
     app.send({ t: 'handReview', hand: w.hand });
     return;
