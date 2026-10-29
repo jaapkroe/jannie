@@ -69,7 +69,7 @@ export const CONTENT = {
         ['Regels', '**Amsterdams** (standaard) of **Rotterdams**: wanneer je moet troeven. De standaardvariant is dus Utrechts/Amsterdams. Met z’n tweeën heb je geen maat; dan staat deze keus er niet.'],
         ['AI-sterkte', '**Makkelijk**, **Normaal** (standaard) of **Sterk**: hoe goed de AI-spelers spelen.'],
         ['Tempo', '**Rustig**, **Normaal** (standaard) of **Snel**: hoe vlot de AI-spelers spelen en hoe lang een slag blijft liggen.'],
-        ['Seinen', 'Met z’n vieren: welke seinen aan tafel gelden. Tik een afspraak aan of uit: **Aas vraagt 10**, **Kleintje boer** en **Hoog/laag** staan standaard aan, **Boer over boer** uit. De AI-spelers en de tips houden zich eraan, zie Seinen.'],
+        ['Seinen', 'Met z’n vieren: welke seinen aan tafel gelden. Tik een afspraak aan of uit: **Met de aas seinen**, **Op- en afseinen** en **Kleintje boer** staan standaard aan, **Boer over boer** uit. De AI-spelers en de tips houden zich eraan, zie Seinen. Bij de start van een spel staan de afspraken in de chat.'],
         ['Seed', 'Leeg laten (standaard) geeft elke partij nieuwe kaarten. Met een getal krijg je bij dezelfde spelregels dezelfde kaarten, ook bij [Nog een partij]: zo speel je een partij nog eens. De seed van een partij staat bij de start in de chat en in de spelanalyse.'],
       ],
     },
@@ -452,13 +452,24 @@ export const CONTENT = {
   seinen: [
     { lead: 'Met **seinen** (ook wel **voorkaarten**) vertel je je maat iets over je hand, alleen met de kaart die je speelt.' },
     { note: 'Seinen is een afspraak tussen maten, geen valsspelen: de kaart zelf is het signaal en iedereen aan tafel mag de afspraken kennen. Praten over je kaarten, knipogen of zuchten bij een slag hoort er niet bij.' },
-    { p: 'Welke seinen gelden, spreek je per tafel af: bij **Nieuw spel** en in de lobby, onder **Seinen**. Standaard staan **aas vraagt 10**, **kleintje boer** en **hoog/laag** aan en **boer over boer** uit. De AI-spelers op Normaal en Sterk en de tips houden zich aan de afspraken van de tafel. Komt een AI-speler van de spelende partij voor het eerst uit met een kleintje, dan heeft die (bijna altijd) de troefboer. Let dus goed op wat zij uitspelen en bijspelen.' },
+    { p: 'Welke seinen gelden, spreek je per tafel af: bij **Nieuw spel** en in de lobby, onder **Seinen**. Standaard staan **met de aas seinen**, **op- en afseinen** en **kleintje boer** aan en **boer over boer** uit. Bij de start van een spel staan de afspraken van de tafel in de chat. De AI-spelers op Normaal en Sterk en de tips houden zich eraan. Komt een AI-speler van de spelende partij voor het eerst uit met een kleintje, dan heeft die (bijna altijd) de troefboer. Let dus goed op wat zij uitspelen en bijspelen.' },
 
-    { h: 'Aas vraagt 10' },
+    { h: 'Met de aas seinen' },
     { p: 'Heeft je **maat de slag**, en kun je niet bekennen en hoef je niet te troeven, gooi dan een **aas** bij van een **bijkleur** (geen troef) die nog niet gespeeld is. Daarmee zeg je: “ik heb ook de **10** van deze kleur”. De 11 punten van het aas zijn binnen, en zonder het aas is jouw 10 de hoogste kaart van de kleur. Je maat speelt die kleur later naar je toe, en dan pak jij de slag met je 10.' },
     { cards: [['AS', 'Bijgegooid'], ['TS', 'In je hand']], caption: 'Troef {D}: je maat heeft de slag in harten en jij hebt geen harten. Je gooit {AS} bij en hebt {TS} nog.' },
     { warn: 'Heb je de 10 er niet bij, dan klopt het sein niet. Je maat speelt de kleur dan naar je toe, terwijl de tegenpartij de slag met de 10 kan pakken.' },
     { p: 'Uitkomen met een aas zegt niets. Op een slag van de tegenpartij zegt een bijgegooid aas ook niets.' },
+
+    { h: 'Op- en afseinen' },
+    { p: 'Heeft je **maat de slag**, en kun je niet bekennen en hoef je niet te troeven, dan vertelt de kaart die je bijspeelt je maat iets:' },
+    {
+      ul: [
+        '**Opseinen**: een **laag kaartje** (7, 8 of 9: kaarten zonder punten) bijspelen zegt: “speel deze kleur, daar heb ik de hoogste van”.',
+        '**Afseinen**: een **middenkaart** (10, boer, vrouw of heer) bijspelen zegt juist: “de hoogste van deze kleur heb ik niet”.',
+      ],
+    },
+    { cards: [['7C', 'Opseinen'], ['QS', 'Afseinen']], caption: 'Troef {H}: je maat heeft de slag in ruiten en jij hebt geen ruiten. Met {7C} zeg je: “speel klaveren, daar heb ik de hoogste van”. Met {QS} zeg je: “de hoogste schoppen heb ik niet”.' },
+    { p: 'Op een slag van de **tegenpartij** zegt je bijkaart niets. Gooi daar je goedkoopste kaart weg, dan geef je de tegenpartij geen punten.' },
 
     { h: 'Kleintje boer' },
     { p: 'Ben je de troefmaker of zijn maat, en kom je voor het eerst uit met een **klein kaartje** (7, 8 of 9) van een bijkleur terwijl de troefboer nog niet gevallen is, dan zeg je: “ik heb de troefboer”. Je maat probeert de slag te winnen en speelt daarna **troef terug**. Zo kun jij met je boer de troeven ophalen.' },
@@ -469,21 +480,11 @@ export const CONTENT = {
     { p: 'Kom je uit met de **boer van een bijkleur** terwijl je de troefboer hebt, dan zeg je hetzelfde: “speel troef terug, ik heb de boer”. Deze afspraak staat standaard uit; zet hem aan bij **Seinen** als jullie hem spelen.' },
     { cards: [['JD', 'Uitkomst'], ['JH', 'In je hand']], caption: 'Troef {H}: je komt uit met {JD} en hebt {JH}.' },
 
-    { h: 'Hoog of laag bijspelen' },
-    { p: 'Heeft je **maat de slag**, en kun je niet bekennen en hoef je niet te troeven, dan vertelt de kaart die je bijspeelt je maat iets:' },
-    {
-      ul: [
-        'Een **klein kaartje** (7, 8 of 9: kaarten zonder punten) bijspelen zegt: “speel deze kleur, daar heb ik de hoogste van”.',
-        'Een **10 of een plaatje** (boer, vrouw, heer) bijspelen zegt juist: “ik heb weinig in deze kleur, speel die niet voor mij”.',
-      ],
-    },
-    { cards: [['7C', 'Speel klaveren!'], ['QS', 'Weinig schoppen']] },
-    { p: 'Op een slag van de **tegenpartij** zegt je bijkaart niets. Gooi daar je goedkoopste kaart weg, dan geef je de tegenpartij geen punten.' },
-
-    { h: 'Tegenkleur seinen' },
-    { p: 'Een andere afspraak: met je bijkaart vraag je om de **tegenkleur**, de andere kleur met dezelfde inktkleur: harten ↔ ruiten (rood) en klaveren ↔ schoppen (zwart). De AI-spelers kennen deze afspraak niet.' },
+    { h: 'Tegenkleur seinen (gebruiken wij niet)' },
+    { warn: 'Dit sein gebruiken wij niet. De AI-spelers en de tips doen er niets mee, en bij **Seinen** kun je het niet aanzetten.' },
+    { p: 'Aan andere tafels kom je het wel tegen: met je bijkaart vraag je om de **tegenkleur**, de andere kleur met dezelfde inktkleur: harten ↔ ruiten (rood) en klaveren ↔ schoppen (zwart).' },
     { cards: [['7H', 'Speel ruiten!'], ['8C', 'Speel schoppen!']] },
-    { warn: 'Hoog/laag en tegenkleur spreken elkaar tegen. Spreek met je maat af welke van de twee jullie gebruiken.' },
+    { p: 'Tegenkleur seinen en op- en afseinen spreken elkaar tegen: aan een tafel geldt hooguit één van de twee.' },
 
     { h: 'Spekken (ook wel smeren)' },
     { p: 'Weet je zeker dat je maat de slag wint, leg er dan punten bij: een **10** of een **aas**. Dat heet je maat **spekken**.' },
@@ -561,7 +562,7 @@ export const CONTENT = {
     { p: 'Met z’n vieren verdeelt ze op **Sterk** bij elke beurt de kaarten die ze niet kan zien op **400** manieren. Elke verdeling klopt met de gespeelde kaarten en met wie welke kleur niet kon bekennen of niet kon troeven. Verdelingen die goed passen bij de troefkeuze, bij wie speelde of paste en bij de seinen, komen vaker voor. Voor elke kaart die ze mag spelen, speelt ze al die verdelingen tot het eind van het potje uit, met de vuistregels van Normaal voor alle vier de spelers. Ze speelt de kaart die gemiddeld het meest oplevert. Elke AI-speler heeft daarbij een eigen karakter: de een gaat eerder voor pit of speelt eerder dan de ander. Voor troef kiezen en spelen of passen doet ze hetzelfde met **320** verdelingen.' },
     { p: 'Op **Normaal** rekent ze met z’n vieren niets door: ze speelt volgens vaste vuistregels, houdt bij welke kaarten gevallen zijn en geeft en leest de seinen van de tafel. Op **Makkelijk** telt ze met z’n vieren geen kaarten. Ze kiest de langste kleur als troef en speelt ongeveer 1 op de 3 keer een willekeurige kaart.' },
     { note: 'Met z’n tweeën of drieën is een potje sneller uitgespeeld. Op Sterk speelt ze dan bij elke beurt **1.200** verdelingen uit, en seinen spelen geen rol. Op Makkelijk speelt ze haar kaarten dan volgens de vuistregels van Normaal, maar ongeveer 1 op de 3 keer speelt ze een willekeurige kaart. Troef kiest ze ook dan op de langste kleur. Bij het bieden met z’n drieën speelt ze op elk niveau verdelingen uit: 24 op Makkelijk, 96 op Normaal en 320 op Sterk. Op Makkelijk biedt ze daarbij vaker en hoger dan verstandig is.' },
-    { note: 'Op Sterk geeft Juf Jannie een sein alleen als het haar weinig kost. Een vals sein speelt ze alleen als dat duidelijk meer oplevert, of als ze geen andere keus heeft. Op haar aas vraagt 10 en haar kleintje boer kun je bijna altijd rekenen. Een klein kaartje dat ze bijspeelt, is minder zeker: soms moet ze dat gewoon kwijt.' },
+    { note: 'Op Sterk geeft Juf Jannie een sein alleen als het haar weinig kost. Een vals sein speelt ze alleen als dat duidelijk meer oplevert, of als ze geen andere keus heeft. Op haar seinen met de aas en op haar kleintje boer kun je bijna altijd rekenen. Een klein kaartje dat ze bijspeelt (opseinen), is minder zeker: soms moet ze dat gewoon kwijt.' },
 
     { h: 'Hoe sterk ze is' },
     { p: 'Juf Jannie op Sterk speelde tegen **7** klaverjasprogramma’s van anderen. Hun broncode staat openbaar op internet: sommige komen uit onderzoek, andere zijn hobbyprojecten. Elk potje werd twee keer gespeeld met dezelfde kaarten: de tweede keer kregen de teams elkaars kaarten. Zo valt het geluk met de kaarten grotendeels weg. Per programma en instelling ging het om 400 tot 1.000 van zulke dubbele potjes. Juf Jannie koos daarbij voor beide teams troef en de seinen stonden uit, zodat alleen het spelen van de kaarten verschilde.' },

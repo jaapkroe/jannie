@@ -195,12 +195,31 @@ func (r *room) startMatch() {
 	} else {
 		r.sysChat("Spel (%d) begint: %d potjes, %s. Veel plezier!", r.seed, r.opts.Hands, r.opts.variantNL())
 	}
+	r.signalChat()
 	r.logMatch()
 	r.log.Info("match started", "players", r.players(), "humans", r.humanCount(), "hands", r.opts.Hands,
 		"trumpMode", r.opts.TrumpMode.String(), "rules", r.opts.Rules.String(), "ai", r.opts.AI, "training", r.training,
 		"expert", r.expert)
 	r.startHand()
 	r.greet()
+}
+
+// signalChat puts the table's agreements on signals in the chat at the
+// start of a match with four players (design §8), each with what it says.
+// With lessons they wait for Juf Jannie's lesson on signals.
+func (r *room) signalChat() {
+	if r.players() != 4 || r.lessonsOn() && r.taught[lessonSignals] == 0 {
+		return
+	}
+	rules := signalRules(r.opts.Signals)
+	if len(rules) == 0 {
+		r.sysChat("Aan deze tafel spreken we geen seinen af.")
+		return
+	}
+	r.sysChat("Seinen aan deze tafel:")
+	for _, text := range rules {
+		r.sysChat("%s", text)
+	}
 }
 
 // startHand shuffles and deals the next hand from the match's seed; the

@@ -111,7 +111,7 @@ func knowledgeFromView(v *game.View, tab *table) knowledge {
 	return k
 }
 
-// Aas vraagt 10 and laag bijspelen (table.aceSignal, table.lowSignal) as
+// Met de aas seinen and opseinen (table.aceSignal, table.lowSignal) as
 // soft evidence that the signaller holds the card it said. Measured in
 // self-play (TestSignalsHonest): every ace discard that the table reads
 // comes with the 10, but only about three in four small discards come

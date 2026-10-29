@@ -148,25 +148,25 @@ func TestNormaalScenarios(t *testing.T) {
 			want:  "AD",
 		},
 		{
-			name: "aas vraagt 10: give the ace with its 10 to partner's trick", voorhand: 3, trump: game.Hearts,
+			name: "met de aas seinen: give the ace with its 10 to partner's trick", voorhand: 3, trump: game.Hearts,
 			spec:  [4]string{"AD 8S QS 7C 8C 9C KD QD", "8D", "AS TS 7H 8H 9H JC QC KC", "7D"},
 			plays: "7D AD 8D",
 			want:  "AS",
 		},
 		{
-			name: "come back to the suit of partner's aas vraagt 10", voorhand: 3, trump: game.Hearts,
+			name: "come back to the suit of partner's met de aas seinen", voorhand: 3, trump: game.Hearts,
 			spec:  [4]string{"AD 8S QS 7C 8C 9C KD QD", "8D", "AS TS 7H 8H 9H JC QC KC", "7D"},
 			plays: "7D AD 8D AS",
 			want:  "8S",
 		},
 		{
-			name: "laag bijspelen on partner's trick: discard low where you hold the highest card", voorhand: 2, trump: game.Hearts,
+			name: "opseinen on partner's trick: discard low where you hold the highest card", voorhand: 2, trump: game.Hearts,
 			spec:  [4]string{"8D", "7C 8C 9C AS 7S 8S 9S 7H", "7D", "AD JS TC QD 8H KH"},
 			plays: "7D AD 8D",
 			want:  "7S",
 		},
 		{
-			name: "play to partner's laag bijspelen", voorhand: 2, trump: game.Hearts,
+			name: "play to partner's opseinen", voorhand: 2, trump: game.Hearts,
 			spec:  [4]string{"8D", "7C 8C 9C AS 7S 8S 9S 7H", "7D", "AD JS TC QD 8H KH"},
 			plays: "7D AD 8D 7S",
 			want:  "JS",
@@ -281,18 +281,18 @@ func TestRuleTexts(t *testing.T) {
 			text: "Speel ♠10: je hebt ♠A zelf, dus de 10 wint net zo goed. Daarna is je ♠A de hoogste schoppen.",
 		},
 		{
-			name: "laag bijspelen on partner's sure trick", voorhand: 2, trump: game.Hearts,
+			name: "opseinen on partner's sure trick", voorhand: 2, trump: game.Hearts,
 			spec:  [4]string{"8D", "7C 8C 9C AS 7S 8S 9S 7H", "7D", "AD JS TC QD 8H KH"},
 			plays: "7D AD 8D",
 			want:  "7S",
-			text:  "Speel ♠7: je maat heeft de slag zeker, maar ♠A is de hoogste schoppen en kan zelf nog een slag halen. ♣7 zou je maat lezen als “speel klaveren, daar heb ik de hoogste van” (hoog/laag bijspelen), maar die heb je niet. Zo zeg je ook tegen je maat: “speel schoppen, daar heb ik de hoogste van” (hoog/laag bijspelen).",
+			text:  "Speel ♠7: je maat heeft de slag zeker, maar ♠A is de hoogste schoppen en kan zelf nog een slag halen. ♣7 zou je maat lezen als “speel klaveren, daar heb ik de hoogste van” (opseinen), maar die heb je niet. Zo zeg je ook tegen je maat: “speel schoppen, daar heb ik de hoogste van” (opseinen).",
 		},
 		{
-			name: "lead to partner's laag bijspelen", voorhand: 2, trump: game.Hearts,
+			name: "lead to partner's opseinen", voorhand: 2, trump: game.Hearts,
 			spec:  [4]string{"8D", "7C 8C 9C AS 7S 8S 9S 7H", "7D", "AD JS TC QD 8H KH"},
 			plays: "7D AD 8D 7S",
 			want:  "JS",
-			text:  "Speel ♠B: je maat gooide ♠7 bij en zei daarmee “speel schoppen, daar heb ik de hoogste van” (hoog/laag bijspelen), dus zo speel je schoppen naar je maat toe.",
+			text:  "Speel ♠B: je maat gooide ♠7 bij en zei daarmee “speel schoppen, daar heb ik de hoogste van” (opseinen), dus zo speel je schoppen naar je maat toe.",
 		},
 		{
 			name: "pull trump with the highest trump", voorhand: 0, trump: game.Hearts,
@@ -424,18 +424,18 @@ func TestRuleTexts(t *testing.T) {
 			text:  "Speel ♠H: je maat heeft de slag (alleen een troef kan er nog overheen), dus spek hem: 4 punten erbij; ♠A is de hoogste schoppen en kan zelf nog een slag halen.",
 		},
 		{
-			name: "aas vraagt 10 on partner's trick", voorhand: 3, trump: game.Hearts,
+			name: "met de aas seinen on partner's trick", voorhand: 3, trump: game.Hearts,
 			spec:  [4]string{"AD 8S QS 7C 8C 9C KD QD", "8D", "AS TS 7H 8H 9H JC QC KC", "7D"},
 			plays: "7D AD 8D",
 			want:  "AS",
-			text:  "Speel ♠A: je maat heeft de slag zeker, dus spek hem: 11 punten erbij. Je hebt ook ♠10, en dat weet je maat nu (aas vraagt 10): zonder de aas is je 10 de hoogste schoppen en kan die nog een slag halen.",
+			text:  "Speel ♠A: je maat heeft de slag zeker, dus spek hem: 11 punten erbij. Je hebt ook ♠10, en dat weet je maat nu (met de aas seinen): zonder de aas is je 10 de hoogste schoppen en kan die nog een slag halen.",
 		},
 		{
-			name: "lead to partner's aas vraagt 10", voorhand: 3, trump: game.Hearts,
+			name: "lead to partner's met de aas seinen", voorhand: 3, trump: game.Hearts,
 			spec:  [4]string{"AD 8S QS 7C 8C 9C KD QD", "8D", "AS TS 7H 8H 9H JC QC KC", "7D"},
 			plays: "7D AD 8D AS",
 			want:  "8S",
-			text:  "Speel ♠8: je maat gooide ♠A bij en zei daarmee “ik heb ♠10 ook” (aas vraagt 10), dus zo speel je schoppen naar je maat toe.",
+			text:  "Speel ♠8: je maat gooide ♠A bij en zei daarmee “ik heb ♠10 ook” (met de aas seinen), dus zo speel je schoppen naar je maat toe.",
 		},
 		{
 			name: "trump rather than a false kleintje boer", voorhand: 0, trump: game.Clubs,
@@ -495,7 +495,7 @@ func TestRuleTexts(t *testing.T) {
 			spec:  [4]string{"KS 7S 7C 8C 9C QC JC 7H", "7D", "AD", "8D"},
 			plays: "7D AD 8D",
 			want:  "KS",
-			text:  "Speel ♠H: je maat heeft de slag zeker, dus spek hem: 4 punten erbij. Met deze hoge bijkaart zeg je ook dat je weinig schoppen hebt (hoog/laag bijspelen).",
+			text:  "Speel ♠H: je maat heeft de slag zeker, dus spek hem: 4 punten erbij. Met deze bijkaart zeg je ook dat je de hoogste schoppen niet hebt (afseinen).",
 		},
 		{
 			name: "take the trick, nobody after can beat it", voorhand: 3, trump: game.Hearts,
@@ -516,7 +516,7 @@ func TestRuleTexts(t *testing.T) {
 			spec:  [4]string{"AC 7C TC 8D 9D QD JD KD", "", "QS", "8S"},
 			plays: "QS 8S",
 			want:  "7C",
-			text:  "Speel ♣7: je maat heeft de slag nog niet zeker, dus geef er geen punten bij. ♣7 is niets waard. Zo zeg je ook tegen je maat: “speel klaveren, daar heb ik de hoogste van” (hoog/laag bijspelen).",
+			text:  "Speel ♣7: je maat heeft de slag nog niet zeker, dus geef er geen punten bij. ♣7 is niets waard. Zo zeg je ook tegen je maat: “speel klaveren, daar heb ik de hoogste van” (opseinen).",
 		},
 	}
 	for _, c := range cases {
@@ -531,6 +531,30 @@ func TestRuleTexts(t *testing.T) {
 				t.Errorf("got %v %q\nwant %v %q", got, text, c.want, c.text)
 			}
 		})
+	}
+}
+
+// TestHighDiscard: a 10 or plaatje discarded on the partner's trick is
+// named as afseinen ("de hoogste van deze kleur heb ik niet") only when
+// that is true: not with the 10 in hand once the ace fell.
+func TestHighDiscard(t *testing.T) {
+	for _, c := range []struct {
+		name        string
+		spec        [4]string
+		plays, card string
+		want        string
+	}{
+		{"the ace is out", [4]string{"KS QS 7C 8C 9C JC 8H 7H", "7D", "AD", "8D"}, "7D AD 8D", "KS",
+			" Met deze bijkaart zeg je ook dat je de hoogste schoppen niet hebt (afseinen)."},
+		{"the 10 in hand is the highest", [4]string{"KS TS 7S 7C 8C 9C 8H 7H", "AS 7D", "9S AD", "8S 8D"}, "AS 9S 8S 7S 7D AD 8D", "KS", ""},
+	} {
+		d := build(t, 1, c.spec, game.Hearts, game.Amsterdams, c.plays)
+		v := turnView(d)
+		tab := tableFromView(&v)
+		m := newMover(&tab, v.Seat, setOf(v.Hand), setOf(legalCards(v)), 0.5)
+		if got := m.signalNote(card(c.card)); got != c.want {
+			t.Errorf("%s: %q, want %q", c.name, got, c.want)
+		}
 	}
 }
 
@@ -711,7 +735,7 @@ func notClearlyBelow(k, n int, p float64) bool {
 }
 
 // TestSignalsHonest: in self-play the aces and small discards that the
-// table reads as signals (aas vraagt 10, laag bijspelen) mostly tell the
+// table reads as signals (met de aas seinen, opseinen) mostly tell the
 // truth, at normaal and at sterk: nine in ten and seven in ten, or not
 // clearly fewer (two standard errors; there are a few dozen per level).
 // The rates back the sampling weights (aceSigHeld, lowSigHeld).
@@ -781,7 +805,7 @@ func TestSignalsHonest(t *testing.T) {
 		}
 		t.Logf("%s: %d of %d ace discards with the 10, %d of %d small discards with the highest card", lvl, aceTrue, aces, lowTrue, lows)
 		if !notClearlyBelow(aceTrue, aces, 0.9) || !notClearlyBelow(lowTrue, lows, 0.7) {
-			t.Errorf("%s: aas vraagt 10 %d/%d true, laag bijspelen %d/%d true; want honest signals", lvl, aceTrue, aces, lowTrue, lows)
+			t.Errorf("%s: met de aas seinen %d/%d true, opseinen %d/%d true; want honest signals", lvl, aceTrue, aces, lowTrue, lows)
 		}
 		allAces += aces
 		allLows += lows

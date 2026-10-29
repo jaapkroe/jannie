@@ -63,8 +63,10 @@ func TestExpertFrom(t *testing.T) {
 	one.opts.Seed, one.opts.From, one.opts.Hands = 77, 3, 4
 	one.opts.TrumpMode = game.Gedraaid
 	one.startMatch()
-	if last := one.chat[len(one.chat)-1]; !last.Sys || last.Text != "Spel (77) begint: potje 3, Gedraaid/Amsterdams. Veel plezier!" {
-		t.Errorf("start line %+v", last)
+	if !slices.ContainsFunc(one.chat, func(m chatMsg) bool {
+		return m.Sys && m.Text == "Spel (77) begint: potje 3, Gedraaid/Amsterdams. Veel plezier!"
+	}) {
+		t.Errorf("no start line in %+v", one.chat)
 	}
 	if one.handNo != 3 || one.lastHand() != 3 || whole.handNo != 3 || whole.lastHand() != 16 {
 		t.Errorf("hand %d of %d, whole match: hand %d of %d", one.handNo, one.lastHand(), whole.handNo, whole.lastHand())

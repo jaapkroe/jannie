@@ -145,7 +145,7 @@ func (a *fakeAI) TrickSignals(v game.View) []Signal {
 	return []Signal{{Seat: lead.Seat, Card: lead.Card, Kind: "kleintjeBoer", Means: game.Card{Rank: game.Jack, Suit: v.Trump}}}
 }
 
-// SignalChance offers prefer as aas vraagt 10 on every turn that follows
+// SignalChance offers prefer as met de aas seinen on every turn that follows
 // a lead, at a table that agreed on signals.
 func (a *fakeAI) SignalChance(v game.View, prefer game.Card) (Signal, bool) {
 	if *v.Signals == (game.Signals{}) || len(v.Current.Cards) == 0 {
