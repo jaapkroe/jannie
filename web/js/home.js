@@ -27,10 +27,10 @@ const OPTS = [
   { key: 'tempo', label: 'Tempo', choices: [['rustig', 'Rustig'], ['normaal', 'Normaal'], ['snel', 'Snel']],
     info: 'Hoe snel de AI-spelers spelen en hoe lang de pauzes tussen de slagen duren.' },
   { key: 'signals', label: 'Seinen', players: [4], multi: true,
-    choices: [['aas', 'Met de aas seinen'], ['hoogLaag', 'Op- of afseinen'], ['kleintjeBoer', 'Kleintje boer'], ['boerOverBoer', 'Boer over boer']],
+    choices: [['aas', 'Met de aas seinen'], ['hoogLaag', 'Op- en afseinen'], ['kleintjeBoer', 'Kleintje boer'], ['boerOverBoer', 'Boer over boer']],
     info: ['De afspraken aan deze tafel: welke kaarten je maat iets vertellen. De AI-spelers en de tips houden zich eraan. Bij de start van een spel staan ze in de chat.',
       'Met de aas seinen: gooi je op een slag van je maat een aas bij van een bijkleur die nog niet gespeeld is, dan heb je de 10 van die kleur ook.',
-      'Op- of afseinen: kun je niet bekennen op een slag van je maat, dan zegt een 7, 8 of 9 “speel deze kleur, daar heb ik de hoogste van” (opseinen) en een 10, boer, vrouw of heer “de hoogste van deze kleur heb ik niet” (afseinen). Op een slag van de tegenpartij zegt je bijkaart niets.',
+      'Op- en afseinen: kun je niet bekennen op een slag van je maat, dan zegt een 7, 8 of 9 “speel deze kleur, daar heb ik de hoogste van” (opseinen) en een 10, boer, vrouw of heer “de hoogste van deze kleur heb ik niet” (afseinen). Op een slag van de tegenpartij zegt je bijkaart niets.',
       'Kleintje boer: komt de spelende partij voor het eerst uit met een 7, 8 of 9 van een bijkleur, dan heeft die de troefboer.',
       'Boer over boer: komt de spelende partij voor het eerst uit met een boer van een bijkleur, dan heeft die de troefboer.',
       'Tegenkleur seinen staat hier niet bij: dat sein gebruiken de AI-spelers en de tips niet.'] },
@@ -100,7 +100,7 @@ function optsSummary(o) {
   return out;
 }
 
-// "seinen: met de aas seinen, op- of afseinen, kleintje boer", or "geen seinen".
+// "seinen: met de aas seinen, op- en afseinen, kleintje boer", or "geen seinen".
 function signalsText(sig) {
   const on = OPTS.find(x => x.key === 'signals').choices.filter(([k]) => signalsOf(sig)[k]).map(([, label]) => label.toLowerCase());
   return on.length ? `seinen: ${on.join(', ')}` : 'geen seinen';

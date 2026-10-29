@@ -1382,9 +1382,9 @@ The manual's section is titled *Seinen*; its text and the glossary also give
 the other name, *voorkaarten*.
 
 Which signals hold is agreed per table (option `signals`, §3): met de
-aas seinen, op- of afseinen and kleintje boer are on by default, boer over
+aas seinen, op- en afseinen and kleintje boer are on by default, boer over
 boer is off. The manual, the options, the lessons and the chat at the
-start of a match name them in this order: met de aas seinen, op- of
+start of a match name them in this order: met de aas seinen, op- en
 afseinen, kleintje boer, boer over boer. The server puts the table's
 agreements in every view (`game.View.Signals`; a view without them means
 the defaults), and the bots, the hints, the search's playouts and the
@@ -1402,7 +1402,7 @@ option, and the bots and the hints do nothing with it.
   six tricks, and lead the suit with a low card; they give the ace with its
   10 rather than keep it, and avoid an ace without it (sterk only for ≥ 20
   points).
-- **Op- of afseinen** (`hoogLaag`): on the **partner's trick** (the
+- **Op- en afseinen** (`hoogLaag`): on the **partner's trick** (the
   partner holds it when the card is played), discarding a small card (7, 8
   or 9: cards without points) says "speel deze kleur, daar heb ik de
   hoogste van" (**opseinen**); discarding a middle card (10, boer, vrouw or
@@ -1532,7 +1532,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   at its hyphen), *Nieuw spel*
   (options sheet with defaults → *Maak spel*; rows that do not apply to the
   number of players hide: *Troef* with three, *Regels* with two, *Seinen*
-  (four toggles, two per line: *Met de aas seinen*, *Op- of afseinen*,
+  (four toggles, two per line: *Met de aas seinen*, *Op- en afseinen*,
   *Kleintje boer*, *Boer over boer*) with three or two), *Meedoen* (4-letter code field;
   joins as soon as 4 letters are typed), *Oefenen* (training), *Handleiding*.
   Snel spelen and Oefenen (bots only) never ask for a name: without one the

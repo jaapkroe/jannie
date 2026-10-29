@@ -69,7 +69,7 @@ export const CONTENT = {
         ['Regels', '**Amsterdams** (standaard) of **Rotterdams**: wanneer je moet troeven. De standaardvariant is dus Utrechts/Amsterdams. Met z’n tweeën heb je geen maat; dan staat deze keus er niet.'],
         ['AI-sterkte', '**Makkelijk**, **Normaal** (standaard) of **Sterk**: hoe goed de AI-spelers spelen.'],
         ['Tempo', '**Rustig**, **Normaal** (standaard) of **Snel**: hoe vlot de AI-spelers spelen en hoe lang een slag blijft liggen.'],
-        ['Seinen', 'Met z’n vieren: welke seinen aan tafel gelden. Tik een afspraak aan of uit: **Met de aas seinen**, **Op- of afseinen** en **Kleintje boer** staan standaard aan, **Boer over boer** uit. De AI-spelers en de tips houden zich eraan, zie Seinen. Bij de start van een spel staan de afspraken in de chat.'],
+        ['Seinen', 'Met z’n vieren: welke seinen aan tafel gelden. Tik een afspraak aan of uit: **Met de aas seinen**, **Op- en afseinen** en **Kleintje boer** staan standaard aan, **Boer over boer** uit. De AI-spelers en de tips houden zich eraan, zie Seinen. Bij de start van een spel staan de afspraken in de chat.'],
         ['Seed', 'Leeg laten (standaard) geeft elke partij nieuwe kaarten. Met een getal krijg je bij dezelfde spelregels dezelfde kaarten, ook bij [Nog een partij]: zo speel je een partij nog eens. De seed van een partij staat bij de start in de chat en in de spelanalyse.'],
       ],
     },
@@ -452,7 +452,7 @@ export const CONTENT = {
   seinen: [
     { lead: 'Met **seinen** (ook wel **voorkaarten**) vertel je je maat iets over je hand, alleen met de kaart die je speelt.' },
     { note: 'Seinen is een afspraak tussen maten, geen valsspelen: de kaart zelf is het signaal en iedereen aan tafel mag de afspraken kennen. Praten over je kaarten, knipogen of zuchten bij een slag hoort er niet bij.' },
-    { p: 'Welke seinen gelden, spreek je per tafel af: bij **Nieuw spel** en in de lobby, onder **Seinen**. Standaard staan **met de aas seinen**, **op- of afseinen** en **kleintje boer** aan en **boer over boer** uit. Bij de start van een spel staan de afspraken van de tafel in de chat. De AI-spelers op Normaal en Sterk en de tips houden zich eraan. Komt een AI-speler van de spelende partij voor het eerst uit met een kleintje, dan heeft die (bijna altijd) de troefboer. Let dus goed op wat zij uitspelen en bijspelen.' },
+    { p: 'Welke seinen gelden, spreek je per tafel af: bij **Nieuw spel** en in de lobby, onder **Seinen**. Standaard staan **met de aas seinen**, **op- en afseinen** en **kleintje boer** aan en **boer over boer** uit. Bij de start van een spel staan de afspraken van de tafel in de chat. De AI-spelers op Normaal en Sterk en de tips houden zich eraan. Komt een AI-speler van de spelende partij voor het eerst uit met een kleintje, dan heeft die (bijna altijd) de troefboer. Let dus goed op wat zij uitspelen en bijspelen.' },
 
     { h: 'Met de aas seinen' },
     { p: 'Heeft je **maat de slag**, en kun je niet bekennen en hoef je niet te troeven, gooi dan een **aas** bij van een **bijkleur** (geen troef) die nog niet gespeeld is. Daarmee zeg je: “ik heb ook de **10** van deze kleur”. De 11 punten van het aas zijn binnen, en zonder het aas is jouw 10 de hoogste kaart van de kleur. Je maat speelt die kleur later naar je toe, en dan pak jij de slag met je 10.' },
@@ -460,7 +460,7 @@ export const CONTENT = {
     { warn: 'Heb je de 10 er niet bij, dan klopt het sein niet. Je maat speelt de kleur dan naar je toe, terwijl de tegenpartij de slag met de 10 kan pakken.' },
     { p: 'Uitkomen met een aas zegt niets. Op een slag van de tegenpartij zegt een bijgegooid aas ook niets.' },
 
-    { h: 'Op- of afseinen' },
+    { h: 'Op- en afseinen' },
     { p: 'Heeft je **maat de slag**, en kun je niet bekennen en hoef je niet te troeven, dan vertelt de kaart die je bijspeelt je maat iets:' },
     {
       ul: [
@@ -484,7 +484,7 @@ export const CONTENT = {
     { warn: 'Dit sein gebruiken wij niet. De AI-spelers en de tips doen er niets mee, en bij **Seinen** kun je het niet aanzetten.' },
     { p: 'Aan andere tafels kom je het wel tegen: met je bijkaart vraag je om de **tegenkleur**, de andere kleur met dezelfde inktkleur: harten ↔ ruiten (rood) en klaveren ↔ schoppen (zwart).' },
     { cards: [['7H', 'Speel ruiten!'], ['8C', 'Speel schoppen!']] },
-    { p: 'Tegenkleur seinen en op- of afseinen spreken elkaar tegen: aan een tafel geldt hooguit één van de twee.' },
+    { p: 'Tegenkleur seinen en op- en afseinen spreken elkaar tegen: aan een tafel geldt hooguit één van de twee.' },
 
     { h: 'Spekken (ook wel smeren)' },
     { p: 'Weet je zeker dat je maat de slag wint, leg er dan punten bij: een **10** of een **aas**. Dat heet je maat **spekken**.' },

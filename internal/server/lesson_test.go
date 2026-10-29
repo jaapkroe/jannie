@@ -296,7 +296,7 @@ func TestLessons(t *testing.T) {
 	intro = all(with("Vanaf dit potje let ik op seinen"))
 	if len(intro) != 1 || intro[0].hand != signalHand || intro[0].turn != -1 ||
 		!strings.Contains(intro[0].Text, "spreken we er drie af") || !strings.HasPrefix(seen[intro[0].N].Text, "Met de aas seinen: ") ||
-		!strings.HasPrefix(seen[intro[0].N+1].Text, "Op- of afseinen: ") {
+		!strings.HasPrefix(seen[intro[0].N+1].Text, "Op- en afseinen: ") {
 		t.Errorf("signals introduced %+v", intro)
 	}
 	// The fake reads every lead as kleintje boer: the first three tricks
@@ -576,7 +576,7 @@ func TestSignalSteps(t *testing.T) {
 	r := lessonRoom(t)
 	steps := r.signalSteps()
 	if len(steps) != 4 || !strings.Contains(steps[0].Text, "spreken we er drie af") || !strings.HasPrefix(steps[1].Text, "Met de aas seinen: ") ||
-		!strings.HasPrefix(steps[2].Text, "Op- of afseinen: ") || !strings.HasPrefix(steps[3].Text, "Kleintje boer: ") {
+		!strings.HasPrefix(steps[2].Text, "Op- en afseinen: ") || !strings.HasPrefix(steps[3].Text, "Kleintje boer: ") {
 		t.Errorf("default signals: %+v", steps)
 	}
 	r.opts.Signals = game.Signals{BoerOverBoer: true}
@@ -607,7 +607,7 @@ func TestSignalChat(t *testing.T) {
 	}
 	got := lines(func(*room) {})
 	if len(got) != 4 || got[0] != "Seinen aan deze tafel:" || !strings.HasPrefix(got[1], "Met de aas seinen: ") ||
-		got[2] != "Op- of afseinen: heeft je maat de slag en kun je niet bekennen, dan zeg je met een 7, 8 of 9: speel deze kleur, daar heb ik de hoogste van (opseinen). "+
+		got[2] != "Op- en afseinen: heeft je maat de slag en kun je niet bekennen, dan zeg je met een 7, 8 of 9: speel deze kleur, daar heb ik de hoogste van (opseinen). "+
 			"Met een 10, boer, vrouw of heer zeg je: de hoogste van deze kleur heb ik niet (afseinen)." || !strings.HasPrefix(got[3], "Kleintje boer: ") {
 		t.Errorf("default signals: %q", got)
 	}

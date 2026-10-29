@@ -247,7 +247,7 @@ func TestSignalReading(t *testing.T) {
 	noHoogLaag := newTable(0, game.Hearts, 1, game.Amsterdams, game.Signals{Aas: true, KleintjeBoer: true})
 	play(&noHoogLaag, "7D 8D 9C 7C")
 	if noHoogLaag.said[3] != 0 {
-		t.Errorf("a table without op- of afseinen reads ♣7 as %v", noHoogLaag.said[3].appendCards(nil))
+		t.Errorf("a table without op- en afseinen reads ♣7 as %v", noHoogLaag.said[3].appendCards(nil))
 	}
 	// Seat 0 leads ♦A, seat 2 gives ♠A to it: met de aas seinen, ♠10 is out.
 	aas := newTable(0, game.Hearts, 1, game.Amsterdams, game.DefaultSignals)

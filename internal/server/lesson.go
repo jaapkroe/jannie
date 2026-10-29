@@ -388,7 +388,7 @@ func signalRules(sig game.Signals) []string {
 			"dan zeg je: ik heb de 10 ook. Je maat speelt die kleur dan later naar je toe.")
 	}
 	if sig.HoogLaag {
-		each = append(each, "Op- of afseinen: heeft je maat de slag en kun je niet bekennen, dan zeg je met een 7, 8 of 9: speel deze kleur, daar heb ik de hoogste van (opseinen). "+
+		each = append(each, "Op- en afseinen: heeft je maat de slag en kun je niet bekennen, dan zeg je met een 7, 8 of 9: speel deze kleur, daar heb ik de hoogste van (opseinen). "+
 			"Met een 10, boer, vrouw of heer zeg je: de hoogste van deze kleur heb ik niet (afseinen).")
 	}
 	if sig.KleintjeBoer {

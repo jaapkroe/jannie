@@ -404,7 +404,7 @@ func (m *mover) partnerSaid(hi game.Card) string {
 }
 
 // highDiscard reports whether discarding c says truthfully what
-// afseinen reads in it (design §8), at a table that agreed on op- of
+// afseinen reads in it (design §8), at a table that agreed on op- en
 // afseinen: c is a 10 or plaatje of a side suit that was not led, on the
 // partner's trick, and at most one other card of that suit stays, not the
 // highest card of the suit still out: "de hoogste van deze kleur heb ik

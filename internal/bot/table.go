@@ -117,7 +117,7 @@ func (t *table) aceSignal(c game.Card) (game.Card, bool) {
 }
 
 // partnersTrick reports whether the partner of the seat to play holds the
-// current trick: only then does a discard signal (op- of afseinen);
+// current trick: only then does a discard signal (op- en afseinen);
 // into a trick the opponents hold it is just a card thrown away.
 func (t *table) partnersTrick() bool {
 	return t.n > 0 && t.win == t.next().Partner()
@@ -125,7 +125,7 @@ func (t *table) partnersTrick() bool {
 
 // lowSignal reports whether playing c into the current trick says "speel
 // deze kleur, daar heb ik de hoogste van" (opseinen, design §8), when the
-// table agreed on op- of afseinen: c is a 7, 8 or 9 of a side suit that was
+// table agreed on op- en afseinen: c is a 7, 8 or 9 of a side suit that was
 // not led, so a discard, on the partner's trick, and a card of that suit is
 // still out besides c. It returns the highest such card.
 func (t *table) lowSignal(c game.Card) (game.Card, bool) {

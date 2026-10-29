@@ -394,7 +394,7 @@ func TestTrickSignals(t *testing.T) {
 		{"a small lead of the other team", view(1, sig, "7S 8S AS 9S"), none},
 		{"met de aas seinen", view(1, sig, "KD 7D AS 8D"), Signal{Seat: 2, Card: card("AS"), Kind: "aas", Means: card("TS")}},
 		{"opseinen", view(1, sig, "KD 7D 8C 8D"), Signal{Seat: 2, Card: card("8C"), Kind: "hoogLaag", Means: card("AC")}},
-		{"op- of afseinen not agreed", view(1, game.Signals{Aas: true}, "KD 7D 8C 8D"), none},
+		{"op- en afseinen not agreed", view(1, game.Signals{Aas: true}, "KD 7D 8C 8D"), none},
 		{"in the second trick", view(1, sig, "7S 8S 9S AS", "KD 7D 8C 9D"), Signal{Seat: 1, Card: card("8C"), Kind: "hoogLaag", Means: card("AC")}},
 		{"only in an earlier trick", view(0, sig, "7S 8S AS 9S", "KD 7D 8D 9D"), none},
 	} {
