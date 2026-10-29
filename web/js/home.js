@@ -356,8 +356,8 @@ function versionTap() {
 }
 
 // A game alone against three bots with the cards of a seed: the whole
-// match, or one hand of it (from). The choices stay on the device
-// (kj.expert), the seed too.
+// match, or one hand of it (from), at a seat of choice. The choices stay
+// on the device (kj.expert), the seed too.
 function openExpert() {
   sound.unlock();
   sound.play('click');
@@ -374,17 +374,25 @@ function openExpert() {
       'De seed staat bij de start van elk spel in de chat, het nummer van een potje op het scorebord.',
     ])),
     numberField(opts.from, v => { opts.from = v; save(); showHands(); }, { max: 24, placeholder: 'Hele spel', label: 'Potje' })));
+  form.querySelector('[data-key="from"]').after(h('div', { class: 'opt-row', dataset: { key: 'seat' } },
+    h('div', { class: 'opt-lbl' }, h('span', { text: 'Plaats' }), panels.infoBtn('Plaats', [
+      'Waar je aan tafel zit. In een gewoon spel zit wie het spel maakte op plaats 1; plaats 2 zit links van 1, plaats 3 tegenover 1 en plaats 4 rechts van 1.',
+      'Met dezelfde seed krijgt elke plaats dezelfde kaarten en dezelfde gever als in dat spel.',
+      'In het spellog heet plaats 1 seat 0, plaats 4 seat 3.',
+    ])),
+    panels.segmented([[0, '1'], [1, '2'], [2, '3'], [3, '4']], opts.seat ?? 0, v => { opts.seat = v; save(); }, 'Plaats')));
   showHands();
   const m = panels.openModal({
     id: 'expert', title: 'Expert', cls: 'm-sheet m-train', body: [
-      h('p', { class: 'sheet-note', text: 'Speel een spel opnieuw met de seed, of één potje ervan, tegen drie AI-spelers. Tijdens en na het spel kijk je elk potje kaart voor kaart terug: bij elke kaart, troefkeuze of elk bod zie je de redenering van de AI, geef je je eigen keuze en schrijf je commentaar.' }),
+      h('p', { class: 'sheet-note', text: 'Speel een spel opnieuw met de seed, of één potje ervan, op een plaats naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op het vergrootglas voor de redenering van de AI, en geef je commentaar. Na elk potje tik je op een slag en dan op Dit potje terugkijken.' }),
       h('label', { class: 'set-row' },
         h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
         h('span', { class: 'switch' }, open, h('i'))),
       form,
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-expert-go', onclick: () => {
         m.close(true);
-        app.create({ opts: { ...opts, players: 4 }, expert: true, start: true, name: soloName() });
+        const { seat, ...rest } = opts; // the seat goes beside the options
+        app.create({ opts: { ...rest, players: 4 }, expert: true, seat: seat ?? 0, start: true, name: soloName() });
       } }, 'Start expertspel')),
     ],
   });

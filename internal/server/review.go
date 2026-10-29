@@ -16,8 +16,10 @@ import (
 
 // The review (design §9 Spelanalyse) grades every decision a human makes
 // with a choice, in the background, and shows the result to that player
-// alone when the match is over. It grades with the search of the hints,
-// which plays four players: at a table of three or two there is none.
+// alone when the match is over; each finished hand with the player's
+// graded decisions in it on request (handReview). It grades with the
+// search of the hints, which plays four players: at a table of three or
+// two there is none.
 
 const (
 	riskyNat     = 0.4 // a bid to play with a higher chance of nat is listed as risky
@@ -66,6 +68,10 @@ type review struct {
 	risky          []int // hands with a bid to play at more than riskyNat chance of nat
 	missed, strong []moment
 
+	graded    map[int][]gradedJSON // every decision analysed, by hand number, in order (keep)
+	gradingIn map[int]int          // grades still out, by hand number
+	watch     int                  // the hand asked for last (cmdHandReview); 0: none
+
 	thinks []think // how long each decision took (see timeChoice)
 	logged bool    // the complete review is in the game log
 
@@ -99,6 +105,24 @@ type moment struct {
 	Text    string      `json:"text"`            // the whole hint
 	Cards   []game.Card `json:"cards,omitempty"` // a trump choice or bid: the player's hand
 	Table   *game.Trick `json:"table,omitempty"` // a card: the trick it went into
+}
+
+// gradedJSON is a graded decision in the replay of its hand (design §7):
+// the choice, and as in a moment the better option or the obvious one it
+// beat, with the points and outcomes, when it lost or gained points. A
+// decision without either has only its trick and the choice.
+type gradedJSON struct {
+	Trick   int         `json:"trick"` // 1–8; 0 for a trump choice or bid
+	Played  choiceJSON  `json:"played"`
+	Better  *choiceJSON `json:"better,omitempty"`
+	Alt     *choiceJSON `json:"alt,omitempty"`
+	Points  int         `json:"points,omitempty"`
+	Us      int         `json:"us,omitempty"`
+	Them    int         `json:"them,omitempty"`
+	Nat     *[2]int     `json:"nat,omitempty"`
+	NatThem *[2]int     `json:"natThem,omitempty"`
+	Why     string      `json:"why,omitempty"`
+	Text    string      `json:"text,omitempty"`
 }
 
 type choiceJSON struct {
@@ -148,15 +172,13 @@ type speedSum struct {
 }
 
 // replayHand is a hand as the replay shows it (handReplay): its number,
-// the cards dealt to each seat, sorted as in a hand under its trump, and
-// the tricks. An expert match adds the decisions before the first card
-// and, per card played, the cards its player could play (for a mark).
+// the cards dealt to each seat, sorted as in a hand under its trump, the
+// tricks, and the viewer's graded decisions in it.
 type replayHand struct {
-	Hand   int            `json:"hand"`
-	Cards  [4][]game.Card `json:"cards"`
-	Tricks []game.Trick   `json:"tricks"`
-	Pre    []preJSON      `json:"pre,omitempty"`
-	Legal  [][]game.Card  `json:"legal,omitempty"`
+	Hand    int            `json:"hand"`
+	Cards   [4][]game.Card `json:"cards"`
+	Tricks  []game.Trick   `json:"tricks"`
+	Choices []gradedJSON   `json:"choices"`
 }
 
 // reviewOf returns the review of human seat i, started when needed (a
@@ -261,14 +283,26 @@ func (r *room) gradeChoice(i game.Seat, v game.View, a action) {
 	rv := r.reviewOf(i)
 	rv.pending++
 	rv.grading++
+	if rv.gradingIn == nil {
+		rv.gradingIn = make(map[int]int)
+	}
+	rv.gradingIn[v.HandNo]++
 	go func() {
 		var g Grade
-		r.srv.analyse(rv.staleIn(r), func() { g = r.srv.cfg.AI.Grade(v, c) })
+		ok := false // analysed: not skipped as stale, no panic
+		r.srv.analyse(rv.staleIn(r), func() { g, ok = r.srv.cfg.AI.Grade(v, c), true })
 		r.post(func() {
 			rv.pending--
 			rv.grading--
+			rv.gradingIn[v.HandNo]--
 			rv.add(&v, c, g)
+			if ok && g.Stake != 0 { // a failed search grades nothing
+				rv.keep(&v, c, g)
+			}
 			r.reviewDone(i, rv)
+			if st := &r.seats[i]; st.review == rv && st.client != nil && rv.watch == v.HandNo && r.phase != phaseLobby {
+				r.sendHandReview(st.client, i, v.HandNo)
+			}
 		})
 	}()
 }
@@ -335,9 +369,7 @@ func (rv *review) add(v *game.View, c Choice, g Grade) {
 	rv.choices++
 	rv.stake += g.Stake
 	rv.lost += g.Lost
-	m := moment{Hand: v.HandNo, Played: choiceJSON(c)}
 	if c.Card != nil {
-		m.Trick = len(v.Tricks) + 1
 		if len(v.Current.Cards) == 0 {
 			rv.leads++
 			if g.Lost == 0 {
@@ -345,7 +377,6 @@ func (rv *review) add(v *game.View, c Choice, g Grade) {
 			}
 		}
 	} else {
-		m.Cards = game.SortHand(v.Hand, v.Trump, v.TrumpKnown)
 		rv.trumps++
 		if g.Lost == 0 {
 			rv.trumpsBest++
@@ -353,6 +384,25 @@ func (rv *review) add(v *game.View, c Choice, g Grade) {
 		if c.Play != nil && *c.Play && g.Nat > riskyNat {
 			rv.risky = append(rv.risky, v.HandNo)
 		}
+	}
+	m, _ := momentOf(v, c, g)
+	switch {
+	case g.Lost > 0:
+		rv.missed = append(rv.missed, m)
+	case g.Gain > 0:
+		rv.strong = append(rv.strong, m)
+	}
+}
+
+// momentOf is grade g of choice c, decided in view v, as a moment; rated
+// when the choice lost or gained points, else it has no better option,
+// points or outcomes.
+func momentOf(v *game.View, c Choice, g Grade) (m moment, rated bool) {
+	m = moment{Hand: v.HandNo, Played: choiceJSON(c)}
+	if c.Card != nil {
+		m.Trick = len(v.Tricks) + 1
+	} else {
+		m.Cards = game.SortHand(v.Hand, v.Trump, v.TrumpKnown)
 	}
 	h := hint{Card: c.Card, Suit: c.Suit, Play: c.Play, Text: g.Text}
 	var weak, strong Outcome
@@ -371,7 +421,7 @@ func (rv *review) add(v *game.View, c Choice, g Grade) {
 		m.Points = int(math.Round(g.Gain))
 		weak, strong = g.Other, g.Played
 	default:
-		return
+		return m, false
 	}
 	// Rounded apart, the two teams' shares still add up to the points.
 	m.Us = int(math.Round(strong.Us - weak.Us))
@@ -383,11 +433,40 @@ func (rv *review) add(v *game.View, c Choice, g Grade) {
 		m.Why = why
 	}
 	m.Text = g.Text
-	if g.Lost > 0 {
-		rv.missed = append(rv.missed, m)
-	} else {
-		rv.strong = append(rv.strong, m)
+	return m, true
+}
+
+// keep books grade g of choice c, decided in view v, with the decisions of
+// its hand: by trick, and before the first card a bid before a trump
+// choice (gedraaid: a pass, then trump once everyone passed).
+func (rv *review) keep(v *game.View, c Choice, g Grade) {
+	m, rated := momentOf(v, c, g)
+	d := gradedJSON{Trick: m.Trick, Played: m.Played}
+	if rated {
+		d.Better, d.Alt, d.Points, d.Us, d.Them = m.Better, m.Alt, m.Points, m.Us, m.Them
+		d.Nat, d.NatThem, d.Why, d.Text = &m.Nat, &m.NatThem, m.Why, m.Text
 	}
+	if rv.graded == nil {
+		rv.graded = make(map[int][]gradedJSON)
+	}
+	pre := func(d gradedJSON) int { // a bid before a trump choice
+		if d.Played.Play != nil {
+			return 0
+		}
+		return 1
+	}
+	ds := append(rv.graded[v.HandNo], d)
+	slices.SortStableFunc(ds, func(a, b gradedJSON) int { return cmp.Or(cmp.Compare(a.Trick, b.Trick), cmp.Compare(pre(a), pre(b))) })
+	rv.graded[v.HandNo] = ds
+}
+
+// choicesIn is the decisions of hand h kept by keep, never nil ([] on the
+// wire); none without a review.
+func (rv *review) choicesIn(h int) []gradedJSON {
+	if rv == nil || rv.graded[h] == nil {
+		return []gradedJSON{}
+	}
+	return rv.graded[h]
 }
 
 // reviewFor is the review for the player at seat i once the match is over,
@@ -423,7 +502,7 @@ func (r *room) reviewFor(i game.Seat) *reviewState {
 	}
 	out.Strong, out.Missed = r.listed(rv.strong), r.listed(rv.missed)
 	out.Speed = r.speedOf(i)
-	out.Replay = r.replay()
+	out.Replay = r.replay(rv)
 	out.Seed = r.seed
 	return out
 }
@@ -467,13 +546,49 @@ func (r *room) speedOf(i game.Seat) *speedState {
 }
 
 // replay is every finished hand of the match, for the replay of the
-// review (and the expert's).
-func (r *room) replay() []replayHand {
+// review, with the graded decisions of rv's player.
+func (r *room) replay(rv *review) []replayHand {
 	out := make([]replayHand, len(r.handDealt))
 	for k := range out {
-		out[k] = r.handReplay(r.firstHand + k)
+		out[k] = r.handReplay(r.firstHand+k, rv)
 	}
 	return out
+}
+
+// finished reports whether hand h (its number) of the match is over.
+func (r *room) finished(h int) bool {
+	k := h - r.firstHand
+	return k >= 0 && k < len(r.handDealt)
+}
+
+// cmdHandReview sends the asker a finished hand of the match as the replay
+// shows it, with their graded decisions in it (design §7 handReview), and
+// again each time a grade of that hand comes in, until they ask for
+// another (watch).
+func (r *room) cmdHandReview(c *client, i game.Seat, m *inMsg) {
+	if !r.reviewing() {
+		c.sendError(errInvalid, "Terugkijken kan alleen met z'n vieren.")
+		return
+	}
+	if r.phase == phaseLobby || m.Hand == nil || !r.finished(*m.Hand) {
+		c.sendError(errInvalid, "Dat potje is er (nog) niet.")
+		return
+	}
+	if rv := r.seats[i].review; rv != nil {
+		rv.watch = *m.Hand
+	}
+	r.sendHandReview(c, i, *m.Hand)
+}
+
+// sendHandReview sends c, the client of seat i, finished hand h with the
+// seat's graded decisions in it and how many are still being graded.
+func (r *room) sendHandReview(c *client, i game.Seat, h int) {
+	rv := r.seats[i].review
+	msg := handReviewMsg{T: "handReview", Hand: h, Replay: r.handReplay(h, rv)}
+	if rv != nil {
+		msg.Pending = rv.gradingIn[h]
+	}
+	c.send(mustJSON(msg))
 }
 
 // Limits on the feedback of a player.
@@ -484,8 +599,8 @@ const (
 
 // cmdFeedback keeps a player's free text about the game in the game log
 // (design §7 feedback), at game over with a review. The expert gives it
-// while the match runs too, also about one decision of it (hand, trick
-// and seat).
+// while the match runs too, also about one of their own decisions (hand
+// and trick).
 func (r *room) cmdFeedback(c *client, i game.Seat, m *inMsg) {
 	rv := r.seats[i].review
 	limit := maxFeedback
@@ -508,9 +623,9 @@ func (r *room) cmdFeedback(c *client, i game.Seat, m *inMsg) {
 	rv.feedbackN++
 	rec := logFeedback{T: "feedback", Match: r.matchID, At: time.Now().UTC(), Seat: int(i), Name: r.displayName(i),
 		IP: c.ip, Device: c.device, Text: text}
-	if h, t, seat, ok := decisionArgs(i, m); r.expert && ok && seat.ValidFor(r.players()) && t >= 0 && t <= 8 {
+	if h, t, ok := decisionArgs(m); r.expert && ok && t >= 0 && t <= 8 {
 		if _, _, found := r.handData(h); found {
-			by := int(seat)
+			by := int(i)
 			rec.Hand, rec.Trick, rec.By = h, t, &by
 		}
 	}

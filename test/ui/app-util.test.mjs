@@ -25,7 +25,7 @@ globalThis.document = { createElement: tag => new FakeNode(tag) };
 const {
   store, roemText, cap, playerName, keyboardOpen, textField, handHeadline, DEFAULT_NAME,
   posOf, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText, countWord,
-  reviewVerdict, luckText, momentWhere, strongLine, missedLine, outcomeLine, timeText, reviewHistory,
+  reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
   versionText,
 } = await import('../../web/js/util.js');
 
@@ -260,6 +260,30 @@ test('a review moment names the choice, the better one and the reason', () => {
   assert.deepEqual(strongLine({ played: { card: 'AS' }, why: 'de aas is hoog.' }), { what: '♠A', rest: ': de aas is hoog.' });
   assert.deepEqual(strongLine({ played: { suit: 'C' }, why: '', text: 'Kies dit.' }), { what: '♣ als troef', rest: '. Kies dit.' });
   assert.deepEqual(strongLine({ played: { play: true }, why: 'x.' }), { what: 'Gespeeld', rest: ': x.' });
+});
+
+test('a choice that lost and gained nothing says so plainly', () => {
+  assert.equal(fineLine({ trick: 3, played: { card: '8S' } }), '♠8 gespeeld: geen duidelijk betere keuze volgens Juf Jannie');
+  assert.equal(fineLine({ trick: 0, played: { suit: 'H' } }), '♥ als troef: geen duidelijk betere keuze volgens Juf Jannie');
+  assert.equal(fineLine({ trick: 0, played: { play: false } }), 'Gepast: geen duidelijk betere keuze volgens Juf Jannie');
+  assert.equal(fineLine({ trick: 0, played: { play: true } }), 'Gespeeld: geen duidelijk betere keuze volgens Juf Jannie');
+});
+
+test('the line over a hand counts its choices, strong moves and points left, and what is still being graded', () => {
+  const fine = { trick: 1, played: { card: '7H' } };
+  const strong = { trick: 2, played: { card: 'AS' }, alt: { card: '8S' }, points: 12, us: 6, them: -6 };
+  const missed = (trick, points) => ({ trick, played: { card: 'TS' }, better: { card: 'AS' }, points, us: points, them: 0 });
+  assert.equal(handSum([fine, fine, strong, missed(4, 18), fine, fine, fine]),
+    'Volgens Juf Jannie: 7\u00a0keuzes · 1\u00a0sterke zet · 18\u00a0punten laten liggen in 1\u00a0zet');
+  assert.equal(handSum([fine, strong, strong, missed(4, 9), missed(6, 7)]),
+    'Volgens Juf Jannie: 5\u00a0keuzes · 2\u00a0sterke zetten · 16\u00a0punten laten liggen in 2\u00a0zetten');
+  // Parts of 0 are left out; the grades still out come last.
+  assert.equal(handSum([fine]), 'Volgens Juf Jannie: 1\u00a0keuze');
+  assert.equal(handSum([fine, fine], 2), 'Volgens Juf Jannie: 2\u00a0keuzes · nog 2\u00a0keuzes in berekening');
+  assert.equal(handSum([], 1), 'Volgens Juf Jannie: nog 1\u00a0keuze in berekening');
+  // Nothing graded and nothing on its way: no line.
+  assert.equal(handSum([], 0), '');
+  assert.equal(handSum(), '');
 });
 
 test('a review moment splits its points over the teams, with the chance of nat where it moved', () => {

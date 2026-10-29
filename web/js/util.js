@@ -483,7 +483,7 @@ function smallHeadline(r, w, s) {
     : { t: `${other} haalt het`, sub: `${other} speelt en haalt meer dan de helft van de punten.`, cls: 'neutral' };
 }
 
-// ---------- spelanalyse (the review at the end of a match) ----------
+// ---------- spelanalyse (the review at the end of a match, and per hand) ----------
 
 // The verdict on the review's percentage. The bounds fit the bots' averages
 // (internal/bot TestGradeLevels): sterk about 99, normaal 87, makkelijk 76.
@@ -523,6 +523,33 @@ export function missedLine(m) {
   else head = c.play ? `Gespeeld, passen ${pts} beter` : `Gepast, spelen ${pts} beter`;
   if (m.why) return `${head}: ${m.why}`;
   return m.text ? `${head}. ${m.text}` : head;
+}
+
+// A choice that lost no points and gained none: "♠8 gespeeld: geen
+// duidelijk betere keuze volgens Juf Jannie", "♥ als troef: …", "Gepast: …",
+// "Gespeeld: …".
+export function fineLine(m) {
+  const c = m.played || {};
+  const what = c.card ? `${cardShort(c.card)} gespeeld` : c.suit ? `${suitSym(c.suit)} als troef` : c.play ? 'Gespeeld' : 'Gepast';
+  return `${what}: geen duidelijk betere keuze volgens Juf Jannie`;
+}
+
+// The line over a hand in the replay, from its graded choices: "Volgens
+// Juf Jannie: 7 keuzes · 1 sterke zet · 18 punten laten liggen in 1 zet",
+// parts of 0 left out, and "nog 2 keuzes in berekening" while pending of
+// them are still being graded; '' with nothing to say.
+export function handSum(choices = [], pending = 0) {
+  const count = (n, one, more) => `${n} ${n === 1 ? one : more}`;
+  const missed = choices.filter(c => c.better);
+  const strong = choices.filter(c => !c.better && c.points > 0).length;
+  const lost = missed.reduce((n, c) => n + (c.points || 0), 0);
+  const parts = [
+    choices.length ? count(choices.length, 'keuze', 'keuzes') : '',
+    strong ? count(strong, 'sterke zet', 'sterke zetten') : '',
+    missed.length ? `${pointsText(lost)} laten liggen in ${count(missed.length, 'zet', 'zetten')}` : '',
+    pending > 0 ? `nog ${count(pending, 'keuze', 'keuzes')} in berekening` : '',
+  ].filter(Boolean);
+  return parts.length ? `Volgens Juf Jannie: ${parts.join(' · ')}` : '';
 }
 
 // What the two options of a review moment brought each team, the stronger

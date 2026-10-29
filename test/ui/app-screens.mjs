@@ -214,6 +214,23 @@ async function mainFlow(P) {
   await press(P, '.m-replay .rp-tn:last-child');
   await waitFor(P, () => /Uitslag/.test(document.querySelector('.m-replay .rp-stand')?.textContent), { label: 'replay at the end of the hand' });
   await snap(P, '14d-replay-end');
+
+  // The score sheet's last potje: a trick of it, and the hand in the
+  // replay (handReview).
+  await closeModal(P);
+  await closeModal(P);
+  await press(P, '.m-over .btn-row .btn:first-child');
+  await waitFor(P, () => document.querySelector('.m-score.open tr.tap'), { label: 'score sheet' });
+  await press(P, '.m-score tr.tap');
+  await waitFor(P, () => document.querySelector('.m-score .review .mt'), { label: 'the last potje' });
+  await press(P, '.m-score .review .mt');
+  await waitFor(P, () => document.querySelector('.m-last.open .last-replay'), { label: 'a trick of the last potje' });
+  await sleep(300);
+  await snap(P, '14e-trick');
+  await press(P, '.m-last.open .last-replay');
+  await waitFor(P, () => document.querySelector('.m-replay.open .rp-sum') && document.querySelector('.m-replay.open .rp-choices .rp-moment'), { label: 'the last potje in the replay' });
+  await sleep(300);
+  await snap(P, '14f-replay-hand');
 }
 
 // Gedraaid: the bidding panel.

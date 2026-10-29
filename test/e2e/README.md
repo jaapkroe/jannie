@@ -104,12 +104,23 @@ team does not get more than half of points plus roem, with 0 for them and
 162 + all roem for the others; otherwise each team scores points + roem; pit
 only with all eight tricks; the eight tricks hold the 32 different cards and
 their points match the result; the last score row is this hand; `nextAt` is
-set (0 in training, where the summary waits for *ready*).
+set (0 in training, where the summary waits for *ready*). At a table of
+four each simulated player then asks to look back at the hand
+(`handReview`): the answer, and every one the server sends again as a grade
+of it comes in, holds the 32 cards dealt and played and the player's graded
+decisions by trick (0 to 8, each card one they played in that trick), with
+never fewer decisions and never more still being graded than before; at a
+table of three or two the first hand's question is refused.
 
 At game over: exactly `--hands` hands were played (and seen), the totals and
-the winner agree, and in training a tip arrived after every trick.
+the winner agree, in training a tip arrived after every trick, and every
+hand before the last that was asked to look back at came back, as did the
+refusal (not checked with `--reconnect`). Once
+the review is complete, its replay has every hand with the player's graded
+decisions, at least as many as the hand's last `handReview` had.
 
 Any `error` message from the server fails the game too (except the answer to
-a vote that crossed the end of its question, see above), as does a closed connection or 30 seconds without any message (a
+a vote that crossed the end of its question, see above, and the refusal of
+`handReview` at a table of three or two), as does a closed connection or 30 seconds without any message (a
 stall). With `--reconnect` the result line counts the reconnects, the
 questions, the votes (and those too late) and the takeovers.

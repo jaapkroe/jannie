@@ -267,7 +267,7 @@ function stateFor(room, seat) {
   const hand = playing ? sortHand(d.hands[seat], d.trump) : [];
   const legal = myTurn && room.phase === 'play' ? sortHand(legalMoves(d.hands[seat], d.trick, seat, d.trump, room.opts.rules), d.trump) : null;
   const s = {
-    code: room.code, phase: room.phase, opts: room.opts, training: room.training, you: seat, host: room.host,
+    code: room.code, phase: room.phase, opts: room.opts, training: room.training, expert: false, you: seat, host: room.host,
     roster: room.phase === 'lobby' ? ROSTER : undefined,
     players: room.players.map((p, i) => p && {
       name: p.name, bot: p.bot, botId: p.botId || '', emoji: p.emoji || '', color: p.color || '',
@@ -293,33 +293,59 @@ function stateFor(room, seat) {
   return s;
 }
 
+// The trump choice of hand 1 as graded (the review's first moment).
+const TRUMP_MISSED = {
+  trick: 0, played: { suit: 'H' }, better: { suit: 'C' }, points: 14, us: 9, them: -5, nat: [31, 18], natThem: [0, 0],
+  why: 'je hebt de boer, de nel en de aas, in totaal vier klaveren. Je haalt het zo naar schatting in 8 van de 10 potjes.',
+};
+
+// The player's graded decisions in finished hand h (design §7 replayHand
+// choices), by trick: in hand 1 the trump choice with points left, in
+// every hand a strong card in trick 2, points left in trick 4 and the
+// cards of tricks 1, 3, 5 and 6 without either.
+function choicesOf(room, h, seat) {
+  const mine = (room.handTricks[h - 1] || []).map(t => t.cards.find(c => c.seat === seat)?.card);
+  if (mine.length < 8 || mine.some(c => !c)) return [];
+  // The other option: another of the player's cards in that trick's suit,
+  // else any other card they still held.
+  const other = k => mine.slice(k + 1).find(c => c[1] === mine[k][1]) || mine[k + 1];
+  const card = (k, m = {}) => ({ trick: k + 1, played: { card: mine[k] }, ...m });
+  const out = [
+    card(0),
+    card(1, { alt: { card: other(1) }, points: 21, us: 11, them: -10, nat: [0, 0], natThem: [0, 0], why: 'de slag is zeker voor jullie, dus zo zijn de 11 punten binnen.' }),
+    card(2),
+    card(3, { better: { card: other(3) }, points: 18, us: 7, them: -11, nat: [0, 0], natThem: [0, 0], why: 'je maat heeft de slag nog niet en de aas is hoog.' }),
+    card(4),
+    card(5),
+  ];
+  return h === 1 ? [TRUMP_MISSED, ...out] : out;
+}
+
+// Finished hand h as the replay shows it, with the graded decisions of the
+// player at seat.
+function replayOf(room, h, seat) {
+  const ts = room.handTricks[h - 1];
+  const cards = [[], [], [], []];
+  for (const t of ts) for (const pc of t.cards) cards[pc.seat].push(pc.card);
+  return { hand: h, cards: cards.map(c => sortHand(c, room.scores[h - 1]?.trump)), tricks: ts, choices: choicesOf(room, h, seat) };
+}
+
 // The review at game over (design §9 Spelanalyse), with its moments taken
-// from the tricks of the last hand, and every hand for the replay.
+// from the graded decisions of the first and the last hand, and every hand
+// for the replay.
 function mockReview(room, seat) {
   const tricks = room.prevHand?.tricks || [];
-  const moment = (k, m) => {
-    const t = tricks[k];
-    const pc = t?.cards.find(c => c.seat === seat);
-    return pc ? { hand: room.handNo, trick: k + 1, played: { card: pc.card }, text: '', table: t, nat: [0, 0], natThem: [0, 0], ...m } : null;
+  const last = choicesOf(room, room.handNo, seat);
+  const moment = trick => {
+    const d = last.find(c => c.trick === trick);
+    return d ? { hand: room.handNo, text: '', table: tricks[trick - 1], ...d } : null;
   };
-  // The better card: another of the player's cards in that trick's suit,
-  // else any other card they still held.
-  const other = k => {
-    const mine = tricks.slice(k).flatMap(t => t.cards.filter(c => c.seat === seat).map(c => c.card));
-    return mine.find((c, i) => i > 0 && c[1] === mine[0][1]) || mine[1] || mine[0];
-  };
-  const strong = [moment(1, { points: 21, us: 11, them: -10, alt: { card: other(1) }, why: 'de slag is zeker voor jullie, dus zo zijn de 11 punten binnen.' })].filter(Boolean);
+  const strong = [moment(2)].filter(Boolean);
   const missed = [
-    { hand: 1, trick: 0, played: { suit: 'H' }, better: { suit: 'C' }, points: 14, us: 9, them: -5, nat: [31, 18], natThem: [0, 0], text: '',
-      cards: ['JC', '9C', 'AC', '7C', 'AH', '8H', 'TS', '7D'],
-      why: 'je hebt de boer, de nel en de aas, in totaal vier klaveren. Je haalt het zo naar schatting in 8 van de 10 potjes.' },
-    moment(3, { better: { card: other(3) }, points: 18, us: 7, them: -11, why: 'je maat heeft de slag nog niet en de aas is hoog.' }),
+    { hand: 1, text: '', cards: ['JC', '9C', 'AC', '7C', 'AH', '8H', 'TS', '7D'], ...TRUMP_MISSED },
+    moment(4),
   ].filter(Boolean);
-  const replay = (room.handTricks || []).map((ts, h) => {
-    const cards = [[], [], [], []];
-    for (const t of ts) for (const pc of t.cards) cards[pc.seat].push(pc.card);
-    return { hand: h + 1, cards: cards.map(c => sortHand(c, room.scores[h]?.trump)), tricks: ts };
-  });
+  const replay = (room.handTricks || []).map((ts, h) => replayOf(room, h + 1, seat));
   return {
     id: room.reviewId, pending: false, pct: 87, hands: room.opts.hands, choices: 31, luck: -6, lost: 41, lostN: 3,
     strongN: 2, leads: [9, 11], trumps: [3, 4], roem: [40, 2], risky: room.opts.trumpMode === 'gedraaid' ? [2, 1] : [0, 0], strong, missed,
@@ -900,6 +926,11 @@ function onMessage(ws, m) {
       if (from && to && to.call.id !== from.id) send(to.ws, { t: 'rtc', from: from.id, seat, desc: { type: d.type, sdp: d.sdp } });
       return;
     }
+    case 'handReview':
+      // As the server: a finished hand of this match, to the asker alone;
+      // the mock's grades are all in at once.
+      if (room.phase === 'lobby' || !Number.isInteger(m.hand) || m.hand < 1 || m.hand > (room.handTricks?.length || 0)) return err('ongeldig', 'Dat potje is er (nog) niet.');
+      return send(ws, { t: 'handReview', hand: m.hand, pending: 0, replay: replayOf(room, m.hand, seat) });
     case 'feedback':
       if (room.phase !== 'gameOver') return err('ongeldig', 'Een opmerking geef je bij de spelanalyse, na het spel.');
       if (!String(m.text || '').trim()) return err('ongeldig', 'Schrijf eerst wat je kwijt wilt.');

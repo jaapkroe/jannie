@@ -61,13 +61,14 @@ function send(m) {
 // ---------- actions ----------
 
 // name: given for a game with bots only (Snel spelen, Oefenen, Expert),
-// which needs none typed; otherwise the home screen asks for it.
-function create({ opts = {}, training = false, expert = false, start = false, name = home.currentName() }) {
+// which needs none typed; otherwise the home screen asks for it. seat: the
+// expert's seat (0–3).
+function create({ opts = {}, training = false, expert = false, seat = 0, start = false, name = home.currentName() }) {
   if (!name) return;
   enterRoom('');
   setStarting(start);
   startJoining();
-  net.send({ t: 'create', name, opts, training, start, ...(expert ? { expert } : {}) });
+  net.send({ t: 'create', name, opts, training, start, ...(expert ? { expert, seat } : {}) });
 }
 
 function join(code) {
@@ -195,6 +196,7 @@ function onMessage(m) {
     case 'error': onError(m); break;
     case 'saved': panels.onSaved(m); break;
     case 'why': if (inRoom) import('./expert.js').then(x => x.onWhy(m)); break;
+    case 'handReview': if (inRoom) panels.onHandReview(m); break;
     case 'rtc': if (inRoom) app.call?.onRTC(m); break;
     default: break;
   }
@@ -209,6 +211,8 @@ function onJoined(m) {
   else {
     enqueue({ t: 'rejoin' });
     app.call?.joined();
+    // An answer of the AI on its way to the old connection is lost.
+    if (app.s?.expert) import('./expert.js').then(x => x.onError());
   }
   inRoom = true;
   joining = false;
@@ -260,6 +264,8 @@ function onError(m) {
   toast(msg, { kind: 'error' });
   table.onError();
   panels.onError();
+  // A question to the AI still out gets its button back.
+  if (app.s?.expert) import('./expert.js').then(x => x.onError());
   // A refused lobby change: show the options as the server has them again.
   if (app.s?.phase === 'lobby') {
     home.resetLobby();

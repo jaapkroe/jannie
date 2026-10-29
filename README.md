@@ -42,14 +42,15 @@ interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
 - **Spelanalyse** at the end of a game of four, for each player alone: a
   percentage for their own choices, judged by the strongest bot from what
   they knew at the time, how good their cards were, and the moves that
-  gained or left the most points, each with its trick.
+  gained or left the most points, each with its trick. After every hand, a
+  tap on a trick and *Dit potje terugkijken* replays that hand card by card
+  with the engine's view of each of the player's choices.
 - **Expert mode**, behind an easter egg (five taps on the version under the
   home screen): replay a game, or one hand of it, from its seed (the chat
-  names it at the start of every game), step through every card of every
-  hand while it is played and after, ask the engine's reasoning for any
-  seat's decision (the rule, the hint and the value of every option), and
-  give your own choice and a comment, kept in the game log to improve the
-  bots.
+  names it at the start of every game), at a seat of choice; ask the
+  engine's reasoning for your move on your turn, or for any of your moves
+  in the hand (the rule, the hint and the value of every option), and leave
+  a comment on it, kept in the game log to improve the bots.
 - **Handleiding**: the controls, the rules (also for two and three players),
   card values, roem, signals (*seinen*, also called *voorkaarten*), tips, how
   the game engine Juf Jannie plays and how strong it is, and a glossary.

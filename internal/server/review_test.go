@@ -1,11 +1,14 @@
 package server
 
 import (
+	"encoding/json"
+	"fmt"
 	"math"
 	"math/rand/v2"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -425,5 +428,211 @@ func TestNoReviewAtSmallTables(t *testing.T) {
 		if c.s.Phase != phaseGameOver || c.s.Review != nil {
 			t.Errorf("%d players: phase %s, review %+v", players, c.s.Phase, c.s.Review)
 		}
+	}
+}
+
+// failAI grades as gradeAI, but its search fails (Grade{}) for a card in
+// trick 2 and panics for a card in trick 3.
+type failAI struct {
+	*gradeAI
+	failed, panicked atomic.Int64
+}
+
+func (a *failAI) Grade(v game.View, c Choice) Grade {
+	switch {
+	case c.Card != nil && len(v.Tricks) == 1:
+		a.failed.Add(1)
+		return Grade{}
+	case c.Card != nil && len(v.Tricks) == 2:
+		a.panicked.Add(1)
+		panic("search")
+	}
+	return a.gradeAI.Grade(v, c)
+}
+
+// TestReviewPerHand: every decision that was analysed lands in the
+// replay of its hand, in order, also one without a loss or a gain (only
+// its trick and choice); one whose search failed or panicked does not,
+// though the review counts it as before.
+func TestReviewPerHand(t *testing.T) {
+	ai := &failAI{gradeAI: newGradeAI(false)}
+	_, ts := newTestServerWith(t, ai)
+	c := dial(t, ts)
+	c.create("Piet", map[string]any{"hands": 8, "seed": 99, "trumpMode": "gedraaid"}, false, true)
+	playGame(t, rand.New(rand.NewPCG(41, 42)), 8, c)
+	s := c.waitState("the review", func(s *state) bool { return s.Review != nil && !s.Review.Pending })
+	ai.mu.Lock()
+	recs := ai.grades[0]
+	ai.mu.Unlock()
+	if n := len(recs) + int(ai.failed.Load()+ai.panicked.Load()); s.Review.Choices != n {
+		t.Errorf("%d choices in the review, %d graded", s.Review.Choices, n)
+	}
+	kinds := map[string]int{}
+	for _, rh := range s.Review.Replay {
+		var want []gradeRec
+		for _, rec := range recs {
+			if rec.v.HandNo == rh.Hand {
+				want = append(want, rec)
+			}
+		}
+		if rh.Choices == nil || len(rh.Choices) != len(want) {
+			t.Errorf("hand %d: %d choices, %d analysed", rh.Hand, len(rh.Choices), len(want))
+			continue
+		}
+		for k, d := range rh.Choices {
+			if k > 0 {
+				prev := rh.Choices[k-1]
+				if d.Trick < prev.Trick || d.Trick == 0 && prev.Trick == 0 && prev.Played.Play == nil {
+					t.Errorf("hand %d: %s after %s", rh.Hand, mustJSON(d), mustJSON(prev))
+				}
+			}
+			i := slices.IndexFunc(want, func(rec gradeRec) bool {
+				trick := 0
+				if rec.c.Card != nil {
+					trick = len(rec.v.Tricks) + 1
+				}
+				return trick == d.Trick && string(mustJSON(choiceJSON(rec.c))) == string(mustJSON(d.Played))
+			})
+			if i < 0 {
+				t.Errorf("hand %d: %s was not graded", rh.Hand, mustJSON(d))
+				continue
+			}
+			g := want[i].g
+			want = slices.Delete(want, i, i+1)
+			switch {
+			case g.Lost > 0:
+				kinds["missed"]++
+				if d.Better == nil || d.Alt != nil || d.Points != 10 || d.Nat == nil || d.NatThem == nil || d.Text == "" {
+					t.Errorf("hand %d: missed %s", rh.Hand, mustJSON(d))
+				}
+			case g.Gain > 0:
+				kinds["strong"]++
+				if d.Better != nil || d.Alt == nil || d.Points != 12 || d.Us != 6 || d.Them != -6 || d.NatThem == nil || *d.NatThem != [2]int{10, 0} || d.Why == "" {
+					t.Errorf("hand %d: strong %s", rh.Hand, mustJSON(d))
+				}
+			default:
+				kinds["fine"]++
+				if b := string(mustJSON(d)); b != `{"trick":`+fmt.Sprint(d.Trick)+`,"played":`+string(mustJSON(d.Played))+`}` {
+					t.Errorf("hand %d: fine %s", rh.Hand, b)
+				}
+			}
+		}
+	}
+	if kinds["missed"] == 0 || kinds["strong"] == 0 || kinds["fine"] == 0 || ai.failed.Load() == 0 || ai.panicked.Load() == 0 {
+		t.Errorf("kinds %v, %d failed, %d panicked: the match did not cover them all", kinds, ai.failed.Load(), ai.panicked.Load())
+	}
+}
+
+// TestGradedOrder: the decisions of a hand go by trick, and before the
+// first card a bid before a trump choice; a choice without a loss or a
+// gain has only its trick and the choice. Another hand, or a player
+// without a review, has none: [] on the wire.
+func TestGradedOrder(t *testing.T) {
+	rv := &review{}
+	clubs, hearts, no := game.Clubs, game.Hearts, false
+	cards := game.MustParseCards("7S AS")
+	before, first, second := &game.View{HandNo: 2}, &game.View{HandNo: 2, Tricks: []game.Trick{}}, &game.View{HandNo: 2, Tricks: make([]game.Trick, 1)}
+	rv.keep(second, Choice{Card: &cards[0]}, Grade{Stake: 20})
+	rv.keep(before, Choice{Suit: &hearts}, Grade{Stake: 20, Lost: 10, Better: Choice{Suit: &clubs},
+		Played: fakeLost[0], Other: fakeLost[1], Text: "Kies ♣ als troef: de eerste kleur die mag."})
+	rv.keep(first, Choice{Card: &cards[1]}, Grade{Stake: 20, Gain: 12, Obvious: Choice{Card: &cards[0]},
+		Played: fakeGain[0], Other: fakeGain[1], Text: "Speel ♠A: de eerste kaart die mag."})
+	rv.keep(before, Choice{Play: &no}, Grade{Stake: 20})
+	want := `[{"trick":0,"played":{"play":false}},` +
+		`{"trick":0,"played":{"suit":"H"},"better":{"suit":"C"},"points":10,"us":6,"them":-4,"nat":[42,25],"natThem":[0,5],"why":"de eerste kleur die mag.","text":"Kies ♣ als troef: de eerste kleur die mag."},` +
+		`{"trick":1,"played":{"card":"AS"},"alt":{"card":"7S"},"points":12,"us":6,"them":-6,"nat":[0,0],"natThem":[10,0],"why":"de eerste kaart die mag.","text":"Speel ♠A: de eerste kaart die mag."},` +
+		`{"trick":2,"played":{"card":"7S"}}]`
+	if got := string(mustJSON(rv.choicesIn(2))); got != want {
+		t.Errorf("hand 2:\n got  %s\n want %s", got, want)
+	}
+	var none *review
+	if a, b := string(mustJSON(rv.choicesIn(3))), string(mustJSON(none.choicesIn(2))); a != "[]" || b != "[]" {
+		t.Errorf("another hand %s, no review %s", a, b)
+	}
+}
+
+// TestHandReview: at a table of four a player asks for a finished hand,
+// also during the next one, and gets its replay with their graded
+// decisions and how many are still out; each grade of it that comes in
+// after sends it again. The hand in play, one not dealt yet or the lobby
+// has none, and a table of three no review at all.
+func TestHandReview(t *testing.T) {
+	ai := newGradeAI(true)
+	_, ts := newTestServerWith(t, ai)
+	c := dial(t, ts)
+	c.create("Piet", map[string]any{"hands": 4, "seed": 4242}, false, false)
+	review := func(hand any) (*msg, handReviewMsg) {
+		t.Helper()
+		c.send(map[string]any{"t": "handReview", "hand": hand})
+		m := c.until(5*time.Second, "handReview", func(m *msg) bool { return m.T == "handReview" || m.T == "error" })
+		var hr handReviewMsg
+		if m.T == "handReview" {
+			if err := json.Unmarshal(m.raw, &hr); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return m, hr
+	}
+	if m, _ := review(1); m.T != "error" || m.Code != errInvalid || m.errMsg() != "Dat potje is er (nog) niet." {
+		t.Errorf("in the lobby: %s", m.raw)
+	}
+	c.send(map[string]any{"t": "start"})
+	drive(t, func() bool { return c.phase() == phaseHandEnd }, c)
+	for _, hand := range []any{2, 0, nil} {
+		if m, _ := review(hand); m.T != "error" || m.Code != errInvalid {
+			t.Errorf("hand %v: %s", hand, m.raw)
+		}
+	}
+	m, hr := review(1)
+	if m.T != "handReview" || hr.Hand != 1 || hr.Pending == 0 || hr.Replay.Hand != 1 || hr.Replay.Choices == nil || len(hr.Replay.Choices) != 0 {
+		t.Fatalf("hand 1, every grade held back: %s", m.raw)
+	}
+	checkReplay(t, c.seat, []replayHand{hr.Replay}, 1)
+	out := hr.Pending
+	close(ai.gate)
+	for left := out; left > 0; {
+		m := c.until(5*time.Second, "a pushed handReview", func(m *msg) bool { return m.T == "handReview" })
+		var got handReviewMsg
+		json.Unmarshal(m.raw, &got)
+		if got.Hand != 1 || got.Pending != left-1 || len(got.Replay.Choices) != out-got.Pending {
+			t.Fatalf("push after %d of %d grades: %s", out-left+1, out, m.raw)
+		}
+		left = got.Pending
+	}
+	c.send(map[string]any{"t": "ready"})
+	c.waitEvent("deal")
+	if m, _ := review(2); m.T != "error" || m.Code != errInvalid {
+		t.Errorf("the hand in play: %s", m.raw)
+	}
+	if m, hr := review(1); m.T != "handReview" || hr.Pending != 0 || len(hr.Replay.Choices) != out {
+		t.Errorf("hand 1 during hand 2: %s", m.raw)
+	}
+
+	three := dial(t, ts)
+	three.create("Piet", map[string]any{"players": 3, "hands": 4}, false, true)
+	drive(t, func() bool { return three.phase() == phaseHandEnd }, three)
+	three.send(map[string]any{"t": "handReview", "hand": 1})
+	if m := three.waitError(errInvalid); m.errMsg() != "Terugkijken kan alleen met z'n vieren." {
+		t.Errorf("three players: %s", m.errMsg())
+	}
+}
+
+// TestHandReviewWithoutReview: a player without a review (no decision of
+// theirs graded yet) gets the replay with no choices.
+func TestHandReviewWithoutReview(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	r := newRoom(s, "TEST")
+	defer r.stop()
+	r.seats[0] = newHuman("A")
+	r.phase = phaseHandEnd
+	r.firstHand, r.handNo = 1, 1
+	r.handDealt = []dealtCards{{dealer: 0, hands: game.Shuffle(rand.New(rand.NewPCG(3, 4))), turned: game.Hearts}}
+	r.handActs = []string{""}
+	c := newClient(s, nil, "1.2.3.4", "test")
+	hand := 1
+	r.cmdHandReview(c, 0, &inMsg{Hand: &hand})
+	b := string(<-c.out)
+	if !strings.HasPrefix(b, `{"t":"handReview","hand":1,"pending":0,"replay":{"hand":1,`) || !strings.HasSuffix(b, `,"choices":[]}}`) {
+		t.Errorf("answer %s", b)
 	}
 }
