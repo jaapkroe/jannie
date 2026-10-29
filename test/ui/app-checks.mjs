@@ -2390,17 +2390,27 @@ CHECKS.takeover = async browser => {
   await L2.ctx.close().catch(() => {});
 };
 
-// Calling (issue #43): the call is proposed at the start of a game with
-// another person, not in the lobby and not alone with bots; who joins sees
-// the others' video in place of their face and their microphone on the
-// seat; microphone and camera switch with one tap, are remembered, and a
-// refused camera leaves the microphone; a new connection starts a new call
-// session; the phone's menu hangs up; a reload proposes the call again.
-// A camera or microphone that goes by itself is switched off, also a
-// microphone that went while joining; video goes under a ceiling, and a
-// muted microphone sends nothing until it is on.
-// The iOS audio session records from before the devices are asked until
-// they have stopped: after a hang-up and after a join called off.
+// Calling (issues #43, #61): the call is offered in the lobby, not
+// proposed, and not at all alone with bots. The first time one calls, the
+// sheet asks whether to come into the call by oneself from then on
+// (Automatisch meebellen, off); Niet nu keeps nothing. A page with that on
+// is in the call by itself, already in the lobby, and asked once for the
+// microphone and camera. One that joins with both off listens, and still
+// hears and sees the other. A page that hung up stays out of the call in
+// that room: neither proposed it nor put in it. A video takes the place of
+// a face, with the dealer's and trump's marks outside it; a muted
+// microphone has a mark in the circle. Microphone and camera switch with
+// one tap and are remembered (a refused one as off), and a refused camera
+// leaves the microphone; a new connection starts a new call session; the
+// phone's menu hangs up; a reload comes back into the call with
+// Automatisch meebellen, with the devices as last chosen, and never
+// answered is proposed it, with the question, its answers in view in
+// short landscape. A camera or microphone that goes by itself is switched
+// off, also a microphone that went while the camera was asked for; video
+// goes under a ceiling, and a muted microphone sends nothing until it is
+// on. The iOS audio session records from before the microphone is asked
+// until it has stopped: after a hang-up and after leaving while the
+// devices were asked for.
 CHECKS.call = async browser => {
   // The host's browser has an iOS audio session (Chromium has none): each
   // type set goes in __session with the number of live tracks then, and
@@ -2466,12 +2476,9 @@ CHECKS.call = async browser => {
   };
   for (const P of [H, G]) await P.page.evaluateOnNewDocument(keepPCs);
   const sends = (P, label, want) => waitFor(P, w => window.__sending() === w, { label }, want);
-  // The seats (by name) that show a playing video, and the call marks (name:mic|off|lost).
-  const videos = P => P.page.evaluate(() => [...document.querySelectorAll('.seat:not([hidden]) .ring')].flatMap(r => {
-    const v = r.querySelector(':scope > video.call-video');
-    return v && v.videoWidth > 0 && !v.paused ? [r.closest('.seat').querySelector('.nm').textContent] : [];
-  }).sort().join(','));
-  const shows = (P, label, want) => waitFor(P, w => [...document.querySelectorAll('.seat:not([hidden]) .ring')].flatMap(r => {
+  // The seats (by name) that show a playing video, and the call marks
+  // (name:off|lost; none while the microphone is on).
+  const shows = (P, label, want) => waitFor(P, w => [...document.querySelectorAll('.seat:not([hidden]) .ring.cam')].flatMap(r => {
     const el = r.querySelector(':scope > video.call-video');
     return el && el.videoWidth > 0 && !el.paused ? [r.closest('.seat').querySelector('.nm').textContent] : [];
   }).sort().join(',') === w, { label, timeout: 30000 }, want);
@@ -2479,7 +2486,10 @@ CHECKS.call = async browser => {
     const t = r.querySelector(':scope > .call-tag');
     return t ? [`${r.closest('.seat').querySelector('.nm').textContent}:${t.dataset.key}`] : [];
   }).sort().join(',') === w, { label, timeout: 30000 }, want);
+  const inCall = (P, label) => waitFor(P, () => !!document.querySelector('.call-dock:not([hidden]) .tb-hangup'), { label });
+  const outCall = (P, label) => waitFor(P, () => !!document.querySelector('.call-dock:not([hidden]) .tb-call'), { label });
   const stored = P => P.page.evaluate(() => JSON.parse(localStorage.getItem('kj.call') || '{}'));
+  const toasted = (P, text) => waitFor(P, t => [...document.querySelectorAll('.toast')].some(e => e.textContent.includes(t)), { label: text }, text);
   // Taps a call button once nothing lies over it: on a phone the trump or
   // bid panel covers it while we choose, so we choose first.
   const tapCall = async (P, sel) => {
@@ -2490,6 +2500,22 @@ CHECKS.call = async browser => {
       return !!hit && b.contains(hit);
     }, { label: `${sel} in reach` }, sel);
     await press(P, sel);
+  };
+  // The switches of the call sheet, by label: whether each is on.
+  const switches = P => P.page.$$eval('.m-call .set-row', rows => rows.map(r => `${r.querySelector('b').textContent}:${r.querySelector('input').checked}`).join(','));
+  const flip = async (P, label) => {
+    for (const r of await P.page.$$('.m-call .set-row')) if (await r.$eval('b', e => e.textContent) === label) return pressEl(P, await r.$('.switch'));
+    throw new Error(`[${P.name}] no switch ${label}`);
+  };
+  // The call marks lie in their circles (issue #61).
+  const tagsIn = async P => {
+    const bad = await P.page.evaluate(() => [...document.querySelectorAll('.seat:not([hidden]) .ring > .call-tag')].flatMap(tag => {
+      const r = tag.parentElement.getBoundingClientRect();
+      const b = tag.getBoundingClientRect();
+      const out = Math.hypot(b.left + b.width / 2 - r.left - r.width / 2, b.top + b.height / 2 - r.top - r.height / 2) + b.width / 2 - r.width / 2;
+      return out > 0.5 ? [`${tag.closest('.seat').querySelector('.nm').textContent} ${out.toFixed(1)}px out`] : [];
+    }));
+    if (bad.length) throw new Error(`[${P.name}] call marks out of their circle: ${bad.join(', ')}`);
   };
   await run(H, async () => {
     // Alone with bots: no call, and call.js is not even fetched.
@@ -2507,38 +2533,82 @@ CHECKS.call = async browser => {
     }
 
     await home(H, 'Host');
+    // The host turned Automatisch meebellen on under Instellingen, before
+    // it ever called.
+    await H.page.evaluate(() => localStorage.setItem('kj.call', JSON.stringify({ auto: true })));
     const code = await newGame(H);
     await home(G, 'Gast', '/' + code);
     await press(G, '.invite .btn-hero');
-    // In the lobby the call is offered, not proposed.
-    await waitFor(H, () => document.querySelector('.lb-call:not([hidden]) .tb-call'), { label: 'call button in the lobby' });
-    await sleep(500);
-    if (await H.page.$('.m-call')) throw new Error('the call was proposed in the lobby');
-
-    await press(H, '#btn-start:not(:disabled)');
-    for (const P of [H, G]) await waitFor(P, () => document.querySelector('.m-call.open .btn-go'), { label: 'call proposed at the start' });
+    // The host comes into the call by itself, already in the lobby, and is
+    // asked for the microphone and camera it never chose. The guest is
+    // offered the call there, not proposed it.
+    await waitFor(H, () => document.querySelector('.m-call.open .btn-go'), { label: 'devices asked in the lobby' });
+    await inCall(H, 'host in the call in the lobby');
     const text = await H.page.$eval('.m-call .dlg-body p', e => e.textContent);
-    if (!text.startsWith('Gast zit ook aan tafel.')) throw new Error(`proposal says "${text}"`);
-    await sleep(300);
-    // The host calls with microphone and camera; the guest not now.
+    if (!text.startsWith('Je zit in het gesprek:')) throw new Error(`the host's sheet says "${text}"`);
+    if (await switches(H) !== 'Microfoon:true,Camera:true') throw new Error(`the host's switches ${await switches(H)}`);
+    await waitFor(G, () => document.querySelector('.lb-call:not([hidden]) .tb-call'), { label: 'call button in the lobby' });
+    await sleep(500);
+    if (await G.page.$('.m-call')) throw new Error('the call was proposed in the lobby');
+    // The host switches them on.
     await press(H, '.m-call .btn-go');
-    await press(G, '.m-call .btn-ghost');
-    await waitFor(G, () => !document.querySelector('.m-call') && document.querySelector('.prompt .call-dock:not([hidden]) .tb-call'), { label: 'guest call button' });
-    await shows(H, 'own video', 'Host');
+    await waitFor(H, () => window.__session.some(e => e.startsWith('ask/')), { label: 'host asks for the devices' });
     const asked = await H.page.evaluate(() => window.__session.filter(e => e.startsWith('ask/')));
     if (String(asked) !== 'ask/play-and-record') throw new Error(`the host asked for the devices under ${asked}`);
-    await marked(G, 'host in the call on the guest page', 'Host:mic');
-    if (await videos(G)) throw new Error(`video outside the call: ${await videos(G)}`);
+    await sleep(300);
 
-    // The guest joins with the button; the camera is refused, the microphone comes.
+    // The guest calls with the lobby's Bellen button, asked the first time
+    // whether to call by itself from then on (off). It switches that on, and
+    // its microphone and camera off: it listens, and hears the host. Hung
+    // up, it stays out of the call in this room, though it would now come
+    // into it by itself: also when the game starts, which proposes nothing.
+    await press(G, '.lb-call .tb-call');
+    await waitFor(G, () => document.querySelector('.m-call.open .btn-go'), { label: 'call sheet in the lobby' });
+    const offered = await G.page.$eval('.m-call .dlg-body p', e => e.textContent);
+    if (!offered.startsWith('Host belt al.')) throw new Error(`the guest's sheet says "${offered}"`);
+    if (await switches(G) !== 'Microfoon:true,Camera:true,Automatisch meebellen:false') throw new Error(`the guest's switches ${await switches(G)}`);
+    await sleep(300);
+    await flip(G, 'Microfoon');
+    await flip(G, 'Camera');
+    await flip(G, 'Automatisch meebellen');
+    await press(G, '.m-call .btn-go');
+    await inCall(G, 'guest in the call in the lobby');
+    const chose = await stored(G);
+    if (chose.mic !== false || chose.cam !== false || chose.auto !== true) throw new Error(`the guest remembers ${JSON.stringify(chose)}`);
+    const heard = () => [...document.querySelectorAll('.call-media audio')].some(a => !a.paused && a.srcObject?.getAudioTracks()[0]?.muted === false);
+    await waitFor(G, heard, { label: 'host heard in the lobby' });
+    await press(G, '.lb-call .tb-hangup');
+    await outCall(G, 'guest hung up in the lobby');
+    await sleep(1500);
+    if (await G.page.$('.call-dock .tb-hangup')) throw new Error('the guest came back into the call after hanging up');
+    await press(H, '#btn-start:not(:disabled)');
+    await waitFor(G, () => document.body.dataset.screen === 'game', { label: 'guest at the table' });
+    await shows(H, 'own video', 'Host');
+    await sleep(1000);
+    if (await G.page.$('.m-call') || await G.page.$('.call-dock .tb-hangup')) throw new Error('the guest was proposed the call or put in it at the start, after hanging up');
+    if (await G.page.$('.seat:not([hidden]) .ring.cam')) throw new Error('video outside the call');
+
+    // The guest calls again with the Bellen button, asked only for its
+    // devices (both off, as last chosen): it listens, and sees and hears the
+    // host. Its seat has the mark of a microphone off, in the circle; the
+    // host's none.
     await tapCall(G, '.prompt .call-dock .tb-call');
     await waitFor(G, () => document.querySelector('.m-call.open .btn-go'), { label: 'call sheet' });
+    if (await switches(G) !== 'Microfoon:false,Camera:false') throw new Error(`the guest's switches with Bellen ${await switches(G)}`);
     await sleep(300);
     await press(G, '.m-call .btn-go');
-    await waitFor(G, () => [...document.querySelectorAll('.toast')].some(t => t.textContent.includes('Geen toegang tot de camera')), { label: 'camera refused' });
-    await shows(G, 'host video on the guest page', 'Host');
-    await marked(H, 'guest with microphone', 'Gast:mic,Host:mic');
-    await shows(H, 'only the own video on the host page', 'Host');
+    await inCall(G, 'guest in the call');
+    await shows(G, 'host video on the page of the guest who listens', 'Host');
+    await waitFor(G, heard, { label: 'host heard on the guest page' });
+    await marked(G, 'guest muted', 'Gast:off');
+    await marked(H, 'guest muted on the host page', 'Gast:off');
+    await tagsIn(H);
+
+    // The guest's camera is refused, its microphone comes: one tap each.
+    await tapCall(G, '.prompt .call-dock .tb-cam');
+    await toasted(G, 'Geen toegang tot de camera');
+    await tapCall(G, '.prompt .call-dock .tb-mic');
+    await marked(H, 'guest with microphone', '');
     if (!(await G.page.$('.prompt .call-dock .tb-cam[aria-pressed="false"]'))) throw new Error('guest camera button not off');
 
     // The camera allowed after all: one tap and the host sees the guest.
@@ -2546,11 +2616,11 @@ CHECKS.call = async browser => {
     await tapCall(G, '.prompt .call-dock .tb-cam');
     await shows(H, 'guest video on the host page', 'Gast,Host');
     await shows(G, 'both videos on the guest page', 'Gast,Host');
-    // The marks (dealer, trump, call) lie outside a ring with a video (issue #53).
+    // The dealer's and trump's marks lie outside a ring with a video (issue #53).
     for (const P of [H, G]) {
       const over = await P.page.evaluate(() => [...document.querySelectorAll('.seat:not([hidden]) .ring.cam')].flatMap(r => {
         const b = r.getBoundingClientRect();
-        return [...r.querySelectorAll(':scope > :is(.dealer-chip, .trump-tag, .call-tag):not([hidden])')].flatMap(m => {
+        return [...r.querySelectorAll(':scope > :is(.dealer-chip, .trump-tag):not([hidden])')].flatMap(m => {
           const mb = m.getBoundingClientRect();
           const gap = Math.hypot(mb.left + mb.width / 2 - b.left - b.width / 2, mb.top + mb.height / 2 - b.top - b.height / 2) - (b.width + mb.width) / 2;
           return gap < 0 ? [`${r.closest('.seat').querySelector('.nm').textContent} ${m.className} ${gap.toFixed(1)}px`] : [];
@@ -2577,55 +2647,61 @@ CHECKS.call = async browser => {
     await shows(G, 'the guest without its own video', 'Host');
     await permit('microphone', 'denied');
     await waitFor(G, () => document.querySelector('.prompt .call-dock .tb-mic[aria-pressed="false"]'), { label: 'guest microphone off by itself' });
-    await marked(H, 'guest microphone off on the host page', 'Gast:off,Host:mic');
+    await marked(H, 'guest microphone off on the host page', 'Gast:off');
     await sends(G, 'no ended microphone on the connection', 'none/300000');
     await permit('camera', 'granted');
     await permit('microphone', 'granted');
     await tapCall(G, '.prompt .call-dock .tb-cam');
     await shows(H, 'guest video back on the host page', 'Gast,Host');
     await tapCall(G, '.prompt .call-dock .tb-mic');
-    await marked(H, 'guest microphone back on the host page', 'Gast:mic,Host:mic');
+    await marked(H, 'guest microphone back on the host page', '');
     await sends(G, 'guest microphone back, video under the ceiling again', 'mic/300000');
 
-    // The same while joining: the guest hangs up and joins again, the camera
-    // refused once more but slowly, and the microphone goes while the camera
-    // is still asked for. The guest joins with it off, nothing on the
+    // The guest hangs up, and joins again with the Bellen button (asked
+    // nothing more than its devices): in the call at once, listening, while
+    // the camera, refused once more but slowly, is still asked for and the
+    // microphone goes meanwhile. The microphone stays off, nothing on the
     // connection; allowed again, one tap brings it back. Then the camera.
     await tapCall(G, '.prompt .call-dock .tb-hangup');
-    await marked(H, 'guest hung up', 'Host:mic');
+    await shows(H, 'guest hung up', 'Host');
+    await outCall(G, 'guest out of the call');
     await G.page.evaluate(() => {
       window.__camOk = false;
       window.__camHold = new Promise(r => { window.__camGo = r; });
     });
     await tapCall(G, '.prompt .call-dock .tb-call');
-    await waitFor(G, () => document.querySelector('.m-call.open .btn-go'), { label: 'call sheet again' });
+    await waitFor(G, () => document.querySelector('.m-call.open .btn-go'), { label: 'call sheet' });
+    if (!(await G.page.$eval('.m-call .dlg-body p', e => e.textContent)).startsWith('Host belt al.')) throw new Error('the Bellen sheet does not say who calls');
+    if (await switches(G) !== 'Microfoon:true,Camera:true') throw new Error(`the guest's switches the second time ${await switches(G)}`);
     await sleep(300);
     await press(G, '.m-call .btn-go');
+    await marked(H, 'guest in the call at once, listening', 'Gast:off');
     await waitFor(G, () => window.__mic.readyState === 'live', { label: 'guest microphone, the camera still asked for' });
+    if (!(await G.page.$('.prompt .call-dock .tb-mic:disabled'))) throw new Error('the guest\'s buttons not waiting for the camera');
     await permit('microphone', 'denied');
-    await waitFor(G, () => window.__mic.readyState === 'ended', { label: 'guest microphone ended while joining' });
-    if (!(await G.page.$('.prompt .call-dock .tb-call:disabled'))) throw new Error('the guest joined before the camera was answered');
+    await waitFor(G, () => window.__mic.readyState === 'ended', { label: 'guest microphone ended while the camera is asked for' });
     await G.page.evaluate(() => window.__camGo());
-    await waitFor(G, () => document.querySelector('.prompt .call-dock .tb-mic[aria-pressed="false"]'), { label: 'guest joined with the microphone off' });
-    await marked(H, 'guest joined with the microphone off on the host page', 'Gast:off,Host:mic');
-    await sends(G, 'no microphone that ended while joining on the connection', 'none/300000');
+    await waitFor(G, () => document.querySelector('.prompt .call-dock .tb-mic[aria-pressed="false"]:not(:disabled)'), { label: 'guest with the microphone off' });
+    await marked(H, 'guest microphone still off on the host page', 'Gast:off');
+    await sends(G, 'no microphone that ended meanwhile on the connection', 'none/300000');
     await permit('microphone', 'granted');
     await cdp.detach();
     await tapCall(G, '.prompt .call-dock .tb-mic');
-    await marked(H, 'guest microphone on after joining', 'Gast:mic,Host:mic');
+    await marked(H, 'guest microphone on', '');
     await G.page.evaluate(() => { window.__camOk = true; });
     await tapCall(G, '.prompt .call-dock .tb-cam');
     await shows(H, 'guest video on the host page again', 'Gast,Host');
 
     // The host's microphone off: one tap, marked on the guest page, remembered.
     await tapCall(H, '.prompt .call-dock .tb-mic');
-    await marked(G, 'host muted', 'Gast:mic,Host:off');
+    await marked(G, 'host muted', 'Host:off');
+    await tagsIn(G);
     await sends(H, 'no microphone on the connection', 'none/300000');
     const kept = await stored(H);
-    if (kept.mic !== false || kept.cam !== true || kept.ask !== true) throw new Error(`host remembers ${JSON.stringify(kept)}`);
+    if (kept.mic !== false || kept.cam !== true || kept.auto !== true) throw new Error(`host remembers ${JSON.stringify(kept)}`);
     // On again: the microphone is back on the connection at once.
     await tapCall(H, '.prompt .call-dock .tb-mic');
-    await marked(G, 'host unmuted', 'Gast:mic,Host:mic');
+    await marked(G, 'host unmuted', '');
     await sends(H, 'microphone back on the connection', 'mic/300000');
 
     // A new connection: the call goes on in a new session.
@@ -2644,30 +2720,106 @@ CHECKS.call = async browser => {
     if (!items.includes('Ophangen')) throw new Error(`menu items ${items}`);
     const hang = (await H.page.$$('.m-menu .menu-item'))[items.indexOf('Ophangen')];
     await pressEl(H, hang);
-    await marked(G, 'host gone from the call', 'Gast:mic');
     await shows(G, 'only the own video after the hang-up', 'Gast');
-    await waitFor(H, () => document.querySelector('.prompt .call-dock:not([hidden]) .tb-call'), { label: 'host call button again' });
+    await outCall(H, 'host call button again');
+    // Though it came into the call by itself, it stays out now.
+    await sleep(1500);
+    if (await H.page.$('.call-dock .tb-hangup')) throw new Error('the host came back into the call after hanging up');
     // The game's session again, set once the microphone and camera had stopped.
     const hung = await H.page.evaluate(() => window.__session);
     if (hung.at(-1) !== 'ambient/0' || hung.some(e => /^ambient\/[1-9]/.test(e))) throw new Error(`the host's audio session: ${hung.join(' ')}`);
 
-    // A reload proposes the call again, with the microphone and camera as last chosen.
+    // With Automatisch meebellen (on since the lobby) a reload comes into
+    // the call by itself, with the microphone and camera as last chosen (the
+    // camera refused again: the microphone alone), and asks nothing.
+    await G.page.reload({ waitUntil: 'networkidle0' });
+    await inCall(G, 'in the call by itself after a reload');
+    await toasted(G, 'Geen toegang tot de camera');
+    await waitFor(G, () => document.querySelector('.call-dock .tb-mic[aria-pressed="true"]'), { label: 'microphone on after the reload' });
+    if (await G.page.$('.m-call')) throw new Error('asked after a reload');
+    const refused = await stored(G);
+    if (refused.mic !== true || refused.cam !== false) throw new Error(`a refused camera not remembered as off: ${JSON.stringify(refused)}`);
+    // Never answered (as before #61), a reload proposes the call: the
+    // switches as last chosen, and the question whether to call by itself,
+    // off. In short landscape it and the answers stay in reach. Niet nu keeps
+    // nothing, and the guest stays out of the call.
+    await G.page.evaluate(() => {
+      const c = JSON.parse(localStorage.getItem('kj.call'));
+      delete c.auto;
+      localStorage.setItem('kj.call', JSON.stringify(c));
+    });
     await G.page.reload({ waitUntil: 'networkidle0' });
     await waitFor(G, () => document.querySelector('.m-call.open .btn-go'), { label: 'proposed after a reload' });
-    const toggles = await G.page.$$eval('.m-call input[type=checkbox]', els => els.map(e => e.checked));
-    if (JSON.stringify(toggles) !== '[true,true]') throw new Error(`guest's toggles after the reload ${toggles}`);
+    if (await switches(G) !== 'Microfoon:true,Camera:false,Automatisch meebellen:false') throw new Error(`guest's switches after the reload ${await switches(G)}`);
+    for (const [w, hh] of [[568, 320], [740, 300]]) {
+      await G.page.setViewport({ ...VP.desktop, width: w, height: hh });
+      await sleep(600);
+      // The question above the answers, and both where a tap reaches them.
+      const bad = await G.page.evaluate(() => {
+        const row = [...document.querySelectorAll('.m-call .set-row')].find(r => r.querySelector('b').textContent === 'Automatisch meebellen');
+        const d = document.querySelector('.m-call .dlg-body').getBoundingClientRect();
+        const out = [];
+        for (const [n, el] of [['question', row.querySelector('.switch')], ['answer', document.querySelector('.m-call .btn-go')]]) {
+          const b = el.getBoundingClientRect();
+          const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+          if (b.top < d.top || b.bottom > d.bottom + 0.5 || b.bottom > innerHeight || !el.contains(hit)) out.push(n);
+        }
+        if (row.getBoundingClientRect().bottom > document.querySelector('.m-call .btn-row').getBoundingClientRect().top + 0.5) out.push('order');
+        return out;
+      });
+      await shot(G, `first-sheet-${w}x${hh}`);
+      if (bad.length) throw new Error(`the first sheet at ${w}x${hh}: ${bad.join(', ')} out of reach`);
+    }
+    await G.page.setViewport(VP.desktop);
+    await sleep(600);
     await press(G, '.m-call .btn-ghost');
+    await waitFor(G, () => !document.querySelector('.m-call'), { label: 'proposal closed' });
+    await sleep(1000);
+    const after = await G.page.evaluate(() => ({ kept: JSON.parse(localStorage.getItem('kj.call')), joined: window.__kj.sent.some(m => m.t === 'call' && m.id) }));
+    if ('auto' in after.kept || after.joined) throw new Error(`after Niet nu: ${JSON.stringify(after)}`);
     await marked(H, 'nobody in the call', '');
 
+    // Refused at the browser's question (slowly, as a person answers): only
+    // the device the browser already allows is asked for again; the other
+    // is remembered as off.
+    const cdp2 = await browser.target().createCDPSession();
+    const permit2 = (name, setting) => cdp2.send('Browser.setPermission', { permission: { name }, setting, origin: BASE, browserContextId: G.ctx.id });
+    await permit2('microphone', 'granted');
+    await permit2('camera', 'denied');
+    await G.page.evaluate(() => {
+      localStorage.setItem('kj.call', JSON.stringify({ mic: true, cam: true, auto: false }));
+      const md = navigator.mediaDevices;
+      const prev = md.getUserMedia;
+      window.__asks = [];
+      md.getUserMedia = async c => {
+        window.__asks.push(`${c.audio ? 'mic' : ''}${c.video ? 'cam' : ''}`);
+        if (c.audio && c.video) {
+          await new Promise(r => setTimeout(r, 1200));
+          throw new DOMException('Permission denied', 'NotAllowedError');
+        }
+        return prev.call(md, c);
+      };
+    });
+    await tapCall(G, '.prompt .call-dock .tb-call');
+    await waitFor(G, () => document.querySelector('.m-call.open .btn-go'), { label: 'call sheet, refused slowly' });
+    await sleep(300);
+    await press(G, '.m-call .btn-go');
+    await toasted(G, 'Geen toegang tot de camera');
+    await waitFor(G, () => document.querySelector('.call-dock .tb-mic[aria-pressed="true"]:not(:disabled)'), { label: 'the allowed microphone after a slow refusal' });
+    const slow = await G.page.evaluate(() => ({ asks: window.__asks.join(','), kept: JSON.parse(localStorage.getItem('kj.call')) }));
+    if (slow.asks !== 'miccam,mic' || slow.kept.mic !== true || slow.kept.cam !== false) throw new Error(`after a slow refusal: asked ${slow.asks}, remembered ${JSON.stringify(slow.kept)}`);
+    await cdp2.detach();
+
     // The host joins again, the devices slow to come, and leaves the table
-    // meanwhile: the join is called off, the session is the game's again,
-    // and the tracks that come late are stopped.
+    // meanwhile: in the call it was at once, the session is the game's
+    // again, and the tracks that come late are stopped.
     await H.page.evaluate(() => { window.__hold = new Promise(r => { window.__release = r; }); });
     await tapCall(H, '.prompt .call-dock .tb-call');
     await waitFor(H, () => document.querySelector('.m-call.open .btn-go'), { label: 'host call sheet' });
     await sleep(300);
     await press(H, '.m-call .btn-go');
     await waitFor(H, () => window.__session.at(-1) === 'ask/play-and-record', { label: 'host asks for the devices again' });
+    await inCall(H, 'host in the call while the devices are asked for');
     await press(H, '.topbar .tb-menu');
     await waitFor(H, () => document.querySelector('.m-menu.open'), { label: 'menu' });
     await sleep(250);
@@ -2679,7 +2831,7 @@ CHECKS.call = async browser => {
     await H.page.evaluate(() => window.__release());
     await waitFor(H, () => window.__tracks.length === 4 && window.__live() === 0, { label: 'late tracks stopped' });
     const left = await H.page.evaluate(() => ({ log: window.__session, type: navigator.audioSession.type }));
-    if (left.log.at(-1) !== 'ambient/0' || left.type !== 'ambient') throw new Error(`the host's audio session after the join called off: ${left.log.join(' ')}`);
+    if (left.log.at(-1) !== 'ambient/0' || left.type !== 'ambient') throw new Error(`the host's audio session after leaving: ${left.log.join(' ')}`);
   });
   await G.ctx.close().catch(() => {});
 };

@@ -2,7 +2,9 @@
 // table, straight from browser to browser (WebRTC, a connection for every
 // two of them). The server keeps who is in the call, with microphone and
 // camera, and passes the session descriptions on (`call`, `rtc`, design
-// §7). Loaded once another person sits at the table, like expert.js.
+// §7). Loaded once another person sits at the table, like expert.js. In
+// the call one hears and sees the others at once; one's own microphone and
+// camera are switched on apart from that (issue #61).
 import { sound } from './sound.js';
 import { app, h, icon, store, toast } from './util.js';
 import * as panels from './panels.js';
@@ -16,6 +18,7 @@ const CONNECT_MS = 20000; // a connection not up by then has failed
 const LOST_MS = 8000;     // a connection that drops may come back within this
 const RETRIES = 3;        // fresh offers after a failure, 2, 4 and 6 s apart
 const RESEND_MS = 4000;   // the server shows us otherwise this long after we said: say it again
+const ANSWERED_MS = 800;  // a refusal later than this was someone's answer to the browser's question
 const AUDIO = { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 // Small: the picture fills a seat's circle, and goes to every other player.
 const VIDEO = { width: { ideal: 320 }, height: { ideal: 240 }, frameRate: { ideal: 15, max: 20 }, facingMode: 'user' };
@@ -27,29 +30,84 @@ const VIDEO_BITRATE = 300000;
 
 let s = null;        // the latest state received (the table may still animate an older one)
 let me = null;       // our session while in the call: {id, sentAt}
-let joining = false; // waiting for the microphone and camera to join
-let busy = false;    // switching the microphone or camera
+let busy = null;     // the session whose microphone or camera is being switched
+let asking = false;  // our microphone is being asked for
+let held = false;    // the call's audio session, once it was needed, until we hang up
+let told = false;    // the others' sound waits for a tap, and we said so
 let mic = null;      // our tracks
 let cam = null;
 let micOn = false;   // what the others get
 let camOn = false;
-let asked = '';      // the room the call was proposed in
-let gen = 0;         // bumped by hangup: a join still waiting for the devices is called off
+let asked = '';      // the room we were in the call in, or it was proposed in: not again there
 let unlocking = false;
-const peers = new Map(); // session id → {id, seat, offerer, pc, audio, video, mic, cam, live, up, failed, tries, timer}
+const peers = new Map(); // session id → {id, seat, offerer, pc, audio, video, el, mic, cam, live, up, failed, tries, timer}
 const seen = new Set();  // sessions told as "belt mee"
 const rings = new Set(); // elements that show a seat: its video, or the call's mark
 const docks = new Set(); // elements that hold the call buttons
+// A tap counts once the finger lifts: Safari does not take a touch's
+// pointerdown for a gesture, and refuses to play from it (as sound.js).
+const GESTURES = ['pointerdown', 'pointerup', 'touchend', 'click', 'keydown'];
 const box = h('div', { class: 'call-media', hidden: true });
 const self = h('video', { class: 'call-video self', autoplay: true, muted: true, playsInline: true });
 document.body.append(box);
 
-// Remembered on the device (kj.call): microphone and camera as last chosen,
-// and whether a game with other people proposes the call (Instellingen).
-const prefs = () => ({ mic: true, cam: true, ask: true, ...store.json('call', {}) });
-const remember = patch => store.setJSON('call', { ...prefs(), ...patch });
+// The others' sound and pictures play in elements made here, one pair for
+// each other seat, and started without anything in them at the first taps
+// (prime): Safari then lets each play later without a tap, also while we
+// capture nothing ourselves, as a listener (else it plays sound only while
+// the page records).
+const pool = Array.from({ length: 3 }, pair);
+for (const type of GESTURES) addEventListener(type, prime, true);
 
-export const supported = () => !!(window.RTCPeerConnection && navigator.mediaDevices?.getUserMedia);
+function pair() {
+  const e = {
+    peer: null, primed: false,
+    audio: h('audio', { autoplay: true }),
+    video: h('video', { class: 'call-video', autoplay: true, muted: true, playsInline: true }),
+  };
+  box.append(e.audio);
+  // Shown once a picture arrives (Safari unmutes the track before that).
+  e.shown = () => {
+    if (!e.peer || !e.video.videoWidth || e.peer.live) return;
+    e.peer.live = true;
+    refresh();
+  };
+  e.video.addEventListener('playing', e.shown);
+  e.video.addEventListener('resize', e.shown);
+  return e;
+}
+
+function prime(ev) {
+  if (ev.type === 'pointerdown' && ev.pointerType !== 'mouse') return;
+  for (const e of pool) {
+    if (e.primed) continue;
+    e.primed = true;
+    for (const el of [e.audio, e.video]) {
+      el.play()?.catch?.(err => {
+        if (err?.name !== 'NotAllowedError') return;
+        e.primed = false; // not a gesture after all (a swipe): the next tap
+        for (const type of GESTURES) addEventListener(type, prime, true);
+      });
+    }
+  }
+  if (pool.every(e => e.primed)) for (const type of GESTURES) removeEventListener(type, prime, true);
+}
+
+// Remembered on the device (kj.call): microphone and camera as last chosen
+// (unset before the first choice), and whether a game with other people
+// proposes the call (Instellingen, Bellen voorstellen) or puts us in it by
+// itself (Automatisch meebellen: off, and unset until the first time we
+// call, which asks).
+function prefs() {
+  const p = store.json('call', {});
+  return { mic: p.mic, cam: p.cam, ask: p.ask !== false, auto: p.auto };
+}
+const remember = patch => store.setJSON('call', { ...store.json('call', {}), ...patch });
+
+// Hearing and seeing the others takes a connection; a microphone or camera
+// of our own also the devices, which some browsers do not offer a page.
+export const supported = () => !!window.RTCPeerConnection;
+const devices = () => !!navigator.mediaDevices?.getUserMedia;
 export const inCall = () => !!me;
 
 // The other people at the table who are there now.
@@ -76,7 +134,7 @@ export function state(next) {
     if (prev?.code === next.code && !prev.players[seat]?.call) toast(`${p.name} belt mee`, { ms: 2200 });
   }
   reconcile();
-  propose();
+  arrive();
   refresh();
 }
 
@@ -108,11 +166,23 @@ function reconcile() {
   }
 }
 
-// At the start of a game with other people, once per room: join the call?
-function propose() {
-  if (me || joining || !s || s.training || s.phase === 'lobby' || asked === s.code || !others().length) return;
-  asked = s.code;
-  if (prefs().ask) openSheet({ proposal: true });
+// At a table with other people, once per room. With Automatisch meebellen
+// in the call by ourselves, already in the lobby, with the microphone and
+// camera as last chosen; never chosen yet, the sheet asks for them, while
+// we already hear and see the others. Without it the call is proposed at
+// the start of a game (Bellen voorstellen). Neither after we were in the
+// call in this room: hung up, we stay out.
+function arrive() {
+  if (me || !s || s.training || asked === s.code || !others().length) return;
+  const p = prefs();
+  if (p.auto) {
+    asked = s.code;
+    join(!!p.mic, !!p.cam);
+    if (p.mic === undefined && p.cam === undefined && devices()) openSheet();
+  } else if (s.phase !== 'lobby') {
+    asked = s.code;
+    if (p.ask) openSheet({ proposal: true });
+  }
 }
 
 // ---------- joining, switching, hanging up ----------
@@ -125,38 +195,19 @@ function sendCall() {
   app.send({ t: 'call', id: me.id, mic: micOn, cam: camOn });
 }
 
-async function join(wantMic, wantCam) {
-  if (me || joining) return;
-  const g = ++gen;
-  joining = true;
-  refresh();
-  // iOS: an audio session that records (sound.js), before the microphone is asked.
-  sound.setCall(true);
-  const got = await acquire(wantMic, wantCam);
-  if (g !== gen) { // hung up, or left the table, meanwhile (hangup gave the session back)
-    stopTracks(got);
-    return;
-  }
-  joining = false;
-  // A track that ended while the other was still asked for fired its
-  // `ended` before watchEnd: it joins switched off.
-  mic = got.mic?.readyState === 'live' ? got.mic : null;
-  cam = got.cam?.readyState === 'live' ? got.cam : null;
-  micOn = !!mic;
-  camOn = !!cam;
-  watchEnd(mic);
-  watchEnd(cam);
-  remember({ mic: wantMic && !got.missing.mic, cam: wantCam && !got.missing.cam });
+// In the call at once, hearing and seeing the others; the microphone and
+// camera wanted follow once the browser gives them.
+function join(wantMic, wantCam) {
+  if (me) return;
+  if (s) asked = s.code;
   me = { id: newId(), sentAt: 0 };
-  attachAll();
   sendCall();
   sound.play('join');
   refresh();
+  if ((wantMic || wantCam) && devices()) setDevices({ mic: wantMic, cam: wantCam });
 }
 
 export function hangup(tell = true) {
-  gen++;
-  joining = false;
   if (me) {
     for (const p of [...peers.values()]) closePeer(p);
     stopTracks({ mic, cam });
@@ -164,69 +215,80 @@ export function hangup(tell = true) {
     micOn = camOn = false;
     self.srcObject = null;
     me = null;
+    asking = false; // a question still open is for the session that ended
     if (tell) app.send({ t: 'call', id: '' });
   }
   // iOS: the game's audio session again, once the microphone has stopped
-  // (also for a join called off while it waited for the devices).
-  sound.setCall(false);
+  // (devices still being asked for are stopped as they come).
   refresh();
 }
 
-// Leaving the room: the server ends the call with the seat.
+// Leaving the room: the server ends the call with the seat. Back at the
+// table, we come into the call by ourselves again, or it is proposed again.
 export function leave() {
   hangup(false);
   s = null;
+  asked = '';
   refresh();
 }
 
-async function setMic(on) {
+// Switches the microphone and the camera (undefined: left as it is). What
+// is switched on and not there yet is asked for, both in one question to
+// the browser. Remembered for the next game; a device that could not be
+// had (but for one in use) as off, also when we hung up meanwhile, so the
+// next table does not ask for it by itself.
+async function setDevices(want) {
   const cur = me;
-  if (!cur || busy) return;
-  busy = true;
-  refresh();
-  if (on && mic?.readyState !== 'live') {
-    const got = await acquire(true, false);
-    if (me === cur) watchEnd(mic = got.mic);
-    else stopTracks(got);
+  if (!cur || busy === cur) return;
+  busy = cur;
+  const askMic = !!want.mic && mic?.readyState !== 'live';
+  const askCam = !!want.cam && cam?.readyState !== 'live';
+  asking = askMic;
+  refresh(); // iOS: the session that records, before the microphone is asked
+  const got = await acquire(askMic, askCam);
+  if (busy === cur) {
+    busy = null;
+    asking = false;
   }
-  busy = false;
-  if (me !== cur) return;
-  if (mic) mic.enabled = on;
-  micOn = on && !!mic;
-  remember({ mic: on });
-  attachAll();
-  sendCall();
-  refresh();
-}
-
-async function setCam(on) {
-  const cur = me;
-  if (!cur || busy) return;
-  busy = true;
-  refresh();
-  if (on && cam?.readyState !== 'live') {
-    const got = await acquire(false, true);
-    if (me === cur) watchEnd(cam = got.cam);
-    else stopTracks(got);
-  } else if (!on && cam) {
+  if (got.without.mic && want.mic) remember({ mic: false });
+  if (got.without.cam && want.cam) remember({ cam: false });
+  if (me !== cur) { // hung up, or left the table, meanwhile
+    stopTracks(got);
+    return;
+  }
+  if (got.errs.mic || got.errs.cam) mediaError(got.errs);
+  // A track that ended while the other was still asked for fired its
+  // `ended` before watchEnd: it stays off.
+  if (askMic) watchEnd(mic = live(got.mic));
+  if (askCam) watchEnd(cam = live(got.cam));
+  if (want.cam === false && cam) {
     cam.stop(); // the camera's light goes off
     cam = null;
   }
-  busy = false;
-  if (me !== cur) return;
+  if (want.mic !== undefined) {
+    micOn = want.mic && !!mic;
+    if (mic) mic.enabled = micOn;
+    if (!got.without.mic) remember({ mic: want.mic });
+  }
   camOn = !!cam;
-  remember({ cam: on });
+  if (want.cam !== undefined && !got.without.cam) remember({ cam: want.cam });
   attachAll();
   sendCall();
   refresh();
 }
 
+const live = track => (track?.readyState === 'live' ? track : null);
+
 // The microphone and camera wanted, in one question to the browser; when
-// that is refused, each on its own, so one of the two may still come (the
-// microphone allowed, the camera blocked). What cannot be had is told;
-// joining goes on without it: the others are still heard and seen.
+// that is refused at once (a setting blocks one of them), each on its own,
+// so one of the two may still come (the microphone allowed, the camera
+// blocked). Refused at the question (Safari asks for both together), only
+// one already allowed is asked for again. What cannot be had comes back
+// (errs, by its error's name; without: anything but a device in use, which
+// may be free next time); the call goes on without it: the others are
+// still heard and seen.
 async function acquire(audio, video) {
-  const out = { mic: null, cam: null, missing: {} };
+  const out = { mic: null, cam: null, errs: {}, without: {} };
   let errs = {};
   const get = async (a, v) => {
     try {
@@ -241,14 +303,33 @@ async function acquire(audio, video) {
     }
   };
   if (!audio && !video) return out;
+  const t0 = performance.now();
   if (!(await get(audio, video)) && audio && video) {
+    const answered = errs.mic === 'NotAllowedError' && performance.now() - t0 > ANSWERED_MS;
+    const again = answered ? await allowed() : { mic: true, cam: true };
+    const was = errs;
     errs = {};
-    await get(true, false);
-    await get(false, true);
+    if (again.mic) await get(true, false);
+    else errs.mic = was.mic;
+    if (again.cam) await get(false, true);
+    else errs.cam = was.cam;
   }
-  if (errs.mic || errs.cam) mediaError(errs);
-  out.missing = { mic: errs.mic === 'NotFoundError', cam: errs.cam === 'NotFoundError' };
+  const gone = name => !!name && name !== 'NotReadableError' && name !== 'AbortError';
+  out.errs = errs;
+  out.without = { mic: gone(errs.mic), cam: gone(errs.cam) };
   return out;
+}
+
+// Which of the two the browser already allows this page, where it says so.
+async function allowed() {
+  const state = async name => {
+    try {
+      return (await navigator.permissions.query({ name })).state === 'granted';
+    } catch {
+      return false; // a browser that does not know the name
+    }
+  };
+  return { mic: await state('microphone'), cam: await state('camera') };
 }
 
 // One toast for what failed: no permission, no device, or a device in use.
@@ -264,6 +345,8 @@ function mediaError({ mic: m, cam: c }) {
   } else if (name === 'NotReadableError' || name === 'AbortError') {
     text = { mic: 'De microfoon is in gebruik', cam: 'De camera is in gebruik', both: 'Microfoon en camera zijn in gebruik' }[kind];
     sub = 'Misschien gebruikt een ander programma ze.';
+  } else if (name !== 'NotAllowedError') {
+    sub = `Fout: ${name}.`; // something else: the name tells what
   }
   sound.play('error');
   toast(text, { sub, kind: 'error', ms: 5000 });
@@ -296,13 +379,16 @@ function stopTracks({ mic: m, cam: c }) {
 // ---------- connections ----------
 
 function addPeer(id, seat) {
+  let e = pool.find(x => !x.peer);
+  if (!e) { // not at a table of four
+    pool.push(e = pair());
+    for (const type of GESTURES) addEventListener(type, prime, true);
+  }
   const p = {
     id, seat, offerer: me.id < id, pc: null, mic: false, cam: false, live: false, up: false, failed: false, tries: 0, timer: 0,
-    audio: h('audio', { autoplay: true }),
-    video: h('video', { class: 'call-video', autoplay: true, muted: true, playsInline: true }),
+    audio: e.audio, video: e.video, el: e,
   };
-  box.append(p.audio);
-  p.video.addEventListener('playing', () => { p.live = true; refresh(); });
+  e.peer = p;
   peers.set(id, p);
   if (p.offerer) offer(p);
   else wait(p, null);
@@ -315,8 +401,8 @@ function closePeer(p) {
   p.pc = null;
   p.audio.srcObject = null;
   p.video.srcObject = null;
-  p.audio.remove();
-  p.video.remove();
+  p.video.remove(); // out of its ring; the pair stays for the next one
+  p.el.peer = null;
   peers.delete(p.id);
 }
 
@@ -345,10 +431,10 @@ function wait(p, pc) {
 // camera later only swaps tracks, without a new offer.
 async function offer(p) {
   const pc = newPC(p);
-  pc.addTransceiver('audio', { direction: 'sendrecv' });
-  pc.addTransceiver('video', { direction: 'sendrecv', sendEncodings: [{ maxBitrate: VIDEO_BITRATE }] });
-  attach(p);
   try {
+    pc.addTransceiver('audio', { direction: 'sendrecv' });
+    pc.addTransceiver('video', { direction: 'sendrecv', sendEncodings: [{ maxBitrate: VIDEO_BITRATE }] });
+    attach(p);
     await pc.setLocalDescription(await pc.createOffer());
     await gathered(pc);
     if (p.pc === pc) signal(p, pc.localDescription);
@@ -461,8 +547,13 @@ function onTrack(p, track) {
   }
   p.video.srcObject = new MediaStream([track]);
   track.addEventListener('mute', () => { p.live = false; refresh(); });
-  track.addEventListener('unmute', () => { p.live = true; refresh(); });
+  // Pictures again: shown with the next one.
+  track.addEventListener('unmute', () => {
+    if (p.video.requestVideoFrameCallback) p.video.requestVideoFrameCallback(p.el.shown);
+    else p.el.shown();
+  });
   play(p.video);
+  refresh(); // into its ring, to wait there for pictures
 }
 
 // Our tracks on a connection: the microphone and the camera while they are
@@ -498,15 +589,23 @@ function play(el) {
 function blocked() {
   if (unlocking) return;
   unlocking = true;
-  toast('Tik ergens om de anderen te horen', { ms: 4000 });
-  const go = () => {
-    removeEventListener('pointerdown', go, true);
-    removeEventListener('keydown', go, true);
+  tellBlocked();
+  const go = e => {
+    if (e.type === 'pointerdown' && e.pointerType !== 'mouse') return;
+    for (const type of GESTURES) removeEventListener(type, go, true);
     unlocking = false;
+    told = false;
     unlockMedia();
   };
-  addEventListener('pointerdown', go, true);
-  addEventListener('keydown', go, true);
+  for (const type of GESTURES) addEventListener(type, go, true);
+}
+
+// Said once someone in the call has the microphone on: in a call where
+// nobody talks there is nothing to hear yet.
+function tellBlocked() {
+  if (!unlocking || told || ![...peers.values()].some(p => p.mic)) return;
+  told = true;
+  toast('Tik ergens om de anderen te horen', { ms: 4000 });
 }
 
 function unlockMedia() {
@@ -518,18 +617,22 @@ function unlockMedia() {
 
 // ---------- on screen ----------
 
-// The video a seat shows: ours while the camera is on, another's while
-// theirs is on and pictures arrive.
+// The video a seat holds, and whether it shows: ours while the camera is
+// on; another's while theirs is on, shown once pictures arrive. Until then
+// it waits in the ring, out of sight: Safari plays a video in the page,
+// not one outside it.
 function videoFor(seat) {
-  if (!s) return null;
-  if (seat === s.you) return me && camOn ? self : null;
-  for (const p of peers.values()) if (p.seat === seat && p.cam && p.live && p.up) return p.video;
-  return null;
+  if (!s) return {};
+  if (seat === s.you) return me && camOn ? { v: self, on: true } : {};
+  for (const p of peers.values()) {
+    if (p.seat === seat && p.cam && p.up && p.video.srcObject) return { v: p.video, on: p.live };
+  }
+  return {};
 }
 
 // Makes el (a seat's ring, a lobby avatar) show seat in the call: its
-// video in place of the face, and a mark with the microphone, or that no
-// connection could be made.
+// video in place of the face, and a mark in it while the microphone is
+// off, or when no connection could be made.
 export function decorate(el, seat) {
   rings.add(el);
   el.dataset.callSeat = seat;
@@ -541,29 +644,29 @@ function paint(el) {
   const screen = el.closest('.screen');
   if (screen && screen.id !== document.body.dataset.screen) return;
   const seat = Number(el.dataset.callSeat);
-  const v = videoFor(seat);
+  const { v, on = false } = videoFor(seat);
   const cur = el.querySelector(':scope > .call-video');
   if (cur && cur !== v) cur.remove();
   if (v && cur !== v) {
     el.prepend(v); // under the marks on the ring (dealer, trump, call)
     play(v);
   }
-  el.classList.toggle('cam', !!v);
+  el.classList.toggle('cam', on);
   const c = s?.players[seat]?.call;
   const peer = seat === s?.you ? null : [...peers.values()].find(p => p.seat === seat);
+  const lost = !!peer?.failed;
   let tag = el.querySelector(':scope > .call-tag');
-  if (!c) {
+  if (!c || (c.mic && !lost)) {
     tag?.remove();
     return;
   }
   if (!tag) el.append(tag = h('span', { class: 'call-tag' }));
-  const lost = !!peer?.failed;
-  const key = lost ? 'lost' : c.mic ? 'mic' : 'off';
+  const key = lost ? 'lost' : 'off';
   if (tag.dataset.key === key) return;
   tag.dataset.key = key;
   tag.className = 'call-tag ' + key;
-  tag.title = lost ? 'Belt mee, maar er is geen verbinding' : c.mic ? 'Belt mee' : 'Belt mee, microfoon uit';
-  tag.replaceChildren(icon(lost ? 'noLink' : c.mic ? 'mic' : 'micOff'));
+  tag.title = lost ? 'Belt mee, maar er is geen verbinding' : 'Belt mee, microfoon uit';
+  tag.replaceChildren(icon(lost ? 'noLink' : 'micOff'));
 }
 
 // Registers el as a place for the call buttons.
@@ -585,7 +688,7 @@ function toolBtn(name, ic, label, title, fn, { pressed = null, disabled = false,
 }
 
 function paintDock(el) {
-  const show = supported() && (possible() || joining);
+  const show = supported() && possible();
   el.hidden = !show;
   // Its row makes room for the buttons (app.css).
   if (show) el.parentElement.dataset.call = me ? 'in' : 'out';
@@ -595,22 +698,30 @@ function paintDock(el) {
     delete el.dataset.key;
     return;
   }
-  const key = JSON.stringify([!!me, joining, busy, micOn, camOn]);
+  const switching = !!me && busy === me;
+  const key = JSON.stringify([!!me, switching, micOn, camOn]);
   if (el.dataset.key === key) return;
   el.dataset.key = key;
   el.classList.toggle('in-call', !!me);
   const text = el.classList.contains('lb-call');
   if (!me) {
-    el.replaceChildren(toolBtn('call', 'phone', 'Bellen', joining ? 'Verbinden…' : 'Bellen met de anderen aan tafel', () => openSheet(), { disabled: joining, text }));
+    el.replaceChildren(toolBtn('call', 'phone', 'Bellen', 'Bellen met de anderen aan tafel', () => openSheet(), { text }));
     return;
   }
-  el.replaceChildren(
-    toolBtn('mic', micOn ? 'mic' : 'micOff', 'Microfoon', micOn ? 'Microfoon aan' : 'Microfoon uit', () => setMic(!micOn), { pressed: micOn, disabled: busy }),
-    toolBtn('cam', camOn ? 'cam' : 'camOff', 'Camera', camOn ? 'Camera aan' : 'Camera uit', () => setCam(!camOn), { pressed: camOn, disabled: busy }),
-    toolBtn('hangup', 'hangup', 'Ophangen', 'Ophangen: het gesprek verlaten', () => hangup(), { text }));
+  // Without the devices (a browser that offers a page none) only hanging up.
+  el.replaceChildren(...(devices() ? [
+    toolBtn('mic', micOn ? 'mic' : 'micOff', 'Microfoon', micOn ? 'Microfoon aan' : 'Microfoon uit', () => setDevices({ mic: !micOn }), { pressed: micOn, disabled: switching }),
+    toolBtn('cam', camOn ? 'cam' : 'camOff', 'Camera', camOn ? 'Camera aan' : 'Camera uit', () => setDevices({ cam: !camOn }), { pressed: camOn, disabled: switching }),
+  ] : []), toolBtn('hangup', 'hangup', 'Ophangen', 'Ophangen: het gesprek verlaten', () => hangup(), { text }));
 }
 
-// Repaints everything of the call on screen.
+// Repaints everything of the call on screen, and sets the iOS audio
+// session (sound.js): one that plays and records from the first time we
+// record or ask for the microphone, or someone else in the call has it on,
+// until we hang up (switching it back and forth as someone mutes would
+// break into the sound, and move a headset between its two modes); before
+// that the game's, mixed with the user's own music and quiet with the
+// silent switch, also while we only listen to a call where nobody talks.
 function refresh() {
   for (const el of [...rings]) {
     if (el.isConnected) paint(el);
@@ -620,29 +731,73 @@ function refresh() {
     if (el.isConnected) paintDock(el);
     else docks.delete(el);
   }
+  const talking = !!s && s.players.some((p, seat) => seat !== s.you && p?.call?.mic && p.connected);
+  held = !!me && (held || !!mic || asking || talking);
+  sound.setCall(held);
+  if (talking) tellBlocked();
 }
 
 // ---------- the sheet ----------
 
 const listNames = names => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} en ${names[names.length - 1]}`);
 
-// Join the call: proposed at the start of a game, or from the Bellen
-// button. In the call the buttons switch and hang up.
+// Not in the call (proposed at the start of a game, or the Bellen button):
+// join it, with the microphone and camera wanted (a browser without them:
+// to listen); the first time also whether to come into the call by
+// ourselves from now on (Automatisch meebellen, off). In the call by
+// ourselves, before any choice of them: switch them on? The choices are
+// remembered. In the call the buttons switch and hang up.
 export function openSheet({ proposal = false } = {}) {
-  if (me || !s) return;
-  const pick = { mic: prefs().mic, cam: prefs().cam };
+  if (!s) return;
+  const p = prefs();
+  const pick = { mic: p.mic ?? true, cam: p.cam ?? true, auto: false };
   const names = others().map(o => o.p.name);
-  const calling = s.players.flatMap((p, seat) => (seat !== s.you && p?.call ? [p.name] : []));
+  const calling = s.players.flatMap((q, seat) => (seat !== s.you && q?.call ? [q.name] : []));
+  const inside = !!me;
+  const own = devices();
+  const first = !inside && p.auto === undefined;
+  // In the call the answer switches on what is chosen, or leaves both off.
+  const answer = () => (!inside ? 'Meebellen' : pick.mic || pick.cam ? 'Aanzetten' : 'Uit laten');
+  const glyph = () => (!inside ? 'phone' : pick.mic ? 'mic' : pick.cam ? 'cam' : 'micOff');
+  let pic = icon(glyph());
+  const word = h('span', { text: answer() });
+  const set = (k, on) => {
+    pick[k] = on;
+    word.textContent = answer();
+    const next = icon(glyph());
+    pic.replaceWith(next);
+    pic = next;
+  };
+  const text = inside ? 'Je zit in het gesprek: je hoort en ziet wie de microfoon of camera aan heeft. Met die van jou aan horen en zien de anderen jou ook.'
+    : (calling.length ? `${listNames(calling)} ${calling.length === 1 ? 'belt' : 'bellen'} al.`
+      : `${listNames(names)} ${names.length === 1 ? 'zit' : 'zitten'} ook aan tafel.`)
+      + (own ? ' Bel mee met geluid, en met beeld als je wilt.' : ' Deze browser deelt geen microfoon of camera: je kunt wel meeluisteren en meekijken.');
   const m = panels.openModal({
-    id: 'call', title: 'Meebellen?', cls: 'm-call', body: [
-      h('p', { text: calling.length ? `${listNames(calling)} ${calling.length === 1 ? 'belt' : 'bellen'} al.` : `${listNames(names)} ${names.length === 1 ? 'zit' : 'zitten'} ook aan tafel. Bel mee met geluid, en met beeld als je wilt.` }),
-      panels.toggleRow('Microfoon', 'De anderen horen je', pick.mic, on => { pick.mic = on; }),
-      panels.toggleRow('Camera', 'Je beeld staat op je plaats aan tafel', pick.cam, on => { pick.cam = on; }),
-      h('p', { class: 'call-note', text: 'Beeld en geluid gaan rechtstreeks van toestel naar toestel, niet via de server.'
-        + (document.body.dataset.screen === 'game' ? ' Tijdens het spel zet je ze aan en uit met de knoppen rechtsonder.' : '') }),
-      h('div', { class: 'btn-row' },
-        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => m.close() }, proposal ? 'Niet nu' : 'Annuleren'),
-        h('button', { class: 'btn btn-go', type: 'button', onclick: () => { m.close(true); join(pick.mic, pick.cam); } }, icon('phone'), 'Meebellen')),
+    id: 'call', title: inside ? 'Microfoon en camera' : 'Meebellen?', cls: 'm-call', body: [
+      // In short landscape this part scrolls, and the answers stay in view
+      // under it, the first time with the question whether to call by
+      // ourselves (app.css).
+      h('div', { class: 'call-scroll' },
+        h('p', { text }),
+        own ? panels.toggleRow('Microfoon', 'De anderen horen je', pick.mic, on => set('mic', on)) : null,
+        own ? panels.toggleRow('Camera', 'Je beeld staat op je plaats aan tafel', pick.cam, on => set('cam', on)) : null,
+        h('p', { class: 'call-note', text: 'Beeld en geluid gaan rechtstreeks van toestel naar toestel, niet via de server.'
+          + (own && document.body.dataset.screen === 'game' ? ' Tijdens het spel zet je ze aan en uit met de knoppen rechtsonder.' : '')
+          + (inside ? ' Automatisch meebellen zet je uit bij Instellingen.' : '') })),
+      h('div', { class: 'call-answer' },
+        first ? panels.toggleRow('Automatisch meebellen', 'Voortaan zit je bij een spel met andere spelers meteen in het gesprek', pick.auto, on => set('auto', on)) : null,
+        h('div', { class: 'btn-row' },
+          h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => m.close() }, inside || proposal ? 'Niet nu' : 'Annuleren'),
+          h('button', {
+            class: 'btn btn-go', type: 'button',
+            onclick: () => {
+              m.close(true);
+              if (own) remember({ mic: pick.mic, cam: pick.cam });
+              if (first) remember({ auto: pick.auto });
+              if (me) setDevices({ mic: pick.mic, cam: pick.cam });
+              else join(pick.mic, pick.cam);
+            },
+          }, pic, word))),
     ],
   });
 }

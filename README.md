@@ -33,9 +33,12 @@ interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
   chat with quick reactions.
 - **Calling the table**: a game with friends starts with the question
   whether to call along, with sound and, if you like, video, which then
-  takes the place of your face at your seat. Microphone and camera switch
-  with one tap during the game and are remembered for the next one. Sound
-  and video go from browser to browser (WebRTC), not through the server.
+  takes the place of your face at your seat; in the call you hear and see
+  the others also with your own microphone and camera off. Microphone and
+  camera switch with one tap during the game and are remembered for the
+  next one. The first time you call you can choose to be in the call
+  straight away at every table with friends from then on. Sound and video
+  go from browser to browser (WebRTC), not through the server.
 - **Spelanalyse** at the end of a game of four, for each player alone: a
   percentage for their own choices, judged by the strongest bot from what
   they knew at the time, how good their cards were, and the moves that
