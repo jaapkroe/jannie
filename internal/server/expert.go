@@ -49,9 +49,9 @@ func (r *room) dealOf(dc dealtCards) *game.Deal {
 	return game.NewDealFor(r.players(), dc.dealer, dc.hands, dc.talon, r.opts.TrumpMode, r.opts.Rules, dc.turned)
 }
 
-// handReplay is hand h as the replay shows it (design §7): the cards as
-// dealt, sorted under its trump, the tricks so far, the one in progress
-// included, and the graded decisions of rv's player in it.
+// handReplay is finished hand h as the replay shows it (design §7): the
+// cards as dealt, sorted under its trump, the tricks, and the graded
+// decisions of rv's player in it.
 func (r *room) handReplay(h int, rv *review) replayHand {
 	dc, acts, _ := r.handData(h)
 	d := r.dealOf(dc)
@@ -67,9 +67,6 @@ func (r *room) handReplay(h int, rv *review) replayHand {
 		out.Cards[s] = game.SortHand(dc.hands[s], trump, known)
 	}
 	out.Tricks = d.Tricks()
-	if cur := d.Current(); len(cur.Cards) > 0 && len(cur.Cards) < r.players() {
-		out.Tricks = append(out.Tricks, cur)
-	}
 	return out
 }
 

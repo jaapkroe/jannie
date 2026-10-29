@@ -580,6 +580,14 @@ func (r *room) cmdHandReview(c *client, i game.Seat, m *inMsg) {
 	r.sendHandReview(c, i, *m.Hand)
 }
 
+// rewatch sends c, back at seat i, the hand it asked for last again, with
+// the grades that came in while it was away.
+func (r *room) rewatch(c *client, i game.Seat) {
+	if rv := r.seats[i].review; rv != nil && rv.watch != 0 && r.phase != phaseLobby && r.finished(rv.watch) {
+		r.sendHandReview(c, i, rv.watch)
+	}
+}
+
 // sendHandReview sends c, the client of seat i, finished hand h with the
 // seat's graded decisions in it and how many are still being graded.
 func (r *room) sendHandReview(c *client, i game.Seat, h int) {

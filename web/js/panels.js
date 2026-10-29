@@ -1076,7 +1076,7 @@ function openReview() {
 // player's card of a moment {hand, trick} (at the deal for a trump choice
 // or bid). A step is the number of cards played: at 4 × n trick n lies
 // complete.
-export function openReplay(s, { hands, moment = null, at = null, owner = 'review' }) {
+export function openReplay(s, { hands, moment = null, owner = 'review' }) {
   if (!hands?.length) return null;
   sound.play('click');
   const seats = [0, 1, 2, 3].map(k => (s.you + k) % 4);
@@ -1089,15 +1089,27 @@ export function openReplay(s, { hands, moment = null, at = null, owner = 'review
     const t = d.trick ? rh?.tricks[d.trick - 1] : null;
     return t ? 4 * (d.trick - 1) + Math.max(0, t.cards.findIndex(pc => pc.seat === s.you)) : 0;
   };
-  let hand = indexOf((moment || at)?.hand);
-  let step = moment ? before(hands[hand], moment) : at?.step || 0;
+  let hand = indexOf(moment?.hand);
+  let step = moment ? before(hands[hand], moment) : 0;
   const m = openModal({ id: 'replay', title: 'Terugkijken', cls: 'm-replay', body: [] });
   m.owner = owner;
-  // A hand looked back at during the next one: your turn at the table.
-  const turn = h('p', { class: 'rp-turn', role: 'status' }, h('span', { text: 'Je bent aan de beurt.' }),
-    h('button', { class: 'btn btn-sm', type: 'button', onclick: () => m.close() }, 'Naar tafel'));
+  // A hand looked back at during the next one: your turn at the table. To
+  // the table closes the views that led here too. The text is set as it
+  // shows, so a screen reader announces it.
+  const turnText = h('span');
+  const turn = h('p', { class: 'rp-turn', role: 'status', hidden: true }, turnText,
+    h('button', {
+      class: 'btn btn-sm', type: 'button', onclick: () => {
+        for (const id of ['trick', 'last', 'score']) byId(id)?.close();
+        m.close();
+      },
+    }, 'Naar tafel'));
   m.body.before(turn);
-  const showTurn = () => { turn.hidden = !(s.turn === s.you && PLAYING.has(s.phase)); };
+  const showTurn = () => {
+    const on = s.turn === s.you && PLAYING.has(s.phase);
+    if (on && turn.hidden) turnText.textContent = 'Aan tafel ben je aan de beurt.';
+    turn.hidden = !on;
+  };
   showTurn();
   // A later state: the turn at the table, and at game over the review's
   // hands again.
@@ -1155,7 +1167,8 @@ export function openReplay(s, { hands, moment = null, at = null, owner = 'review
     const last = now.length ? null : choices.filter(d => before(rh, d) < step).at(-1);
     // The player's card and the option it is measured against, marked in
     // their hand at the decision itself: the stronger of the two in gold.
-    const mo = now.find(d => d.played?.card);
+    // A card that lost and gained nothing is not marked.
+    const mo = now.find(d => d.played?.card && (d.better || d.points > 0));
     const playedCls = mo?.better ? 'rp-played' : 'rp-better';
     const alt = mo && (mo.better || mo.alt);
     const marks = new Map();
@@ -1300,6 +1313,16 @@ export function onSaved() {
 // and so can feedback and a hand to look back at.
 export function onError() {
   byId('over')?.reset?.();
+  freeWaits();
+}
+
+// A rejoin: feedback or a hand asked for over the old connection may never
+// have arrived, so their buttons work again.
+export function onRejoin() {
+  freeWaits();
+}
+
+function freeWaits() {
   feedbackWait?.failed();
   feedbackWait = null;
   handWait?.done();

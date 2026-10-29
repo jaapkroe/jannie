@@ -5,7 +5,7 @@
 // (panels.js openReplay), as in any game.
 import { cardShort } from './cards.js';
 import { sound } from './sound.js';
-import { app, h, icon, nameOf, suitSym, suitify, toast } from './util.js';
+import { app, h, icon, suitSym, suitify, toast } from './util.js';
 import * as panels from './panels.js';
 
 const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
@@ -17,7 +17,8 @@ let formOpen = false;
 let redraw = null;       // shows the open sheet again
 
 // The sheet, on the decision awaited now when it is the player's turn,
-// else on their latest one in this hand.
+// else on their latest one in this hand, short of the last card (there was
+// only one card left to play).
 export function openWhy() {
   const s = app.s;
   if (!s?.expert) return;
@@ -25,6 +26,7 @@ export function openWhy() {
   if (!list.length) { toast('Nog geen zet van jou in dit potje.'); return; }
   sound.play('click');
   let at = list.length - 1; // the decision awaited now comes last
+  if (list[at].trick === 8 && at > 0) at--;
   form ??= panels.feedbackForm(() => ({ hand: shown.hand, trick: shown.trick }), 'Commentaar', 'Wat klopt er volgens jou niet, of wat is beter?');
   const step = k => { at += k; sound.play('click'); draw(); };
   const prev = h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Vorige zet', title: 'Vorige zet', onclick: () => step(-1) }, icon('back'));
@@ -33,7 +35,7 @@ export function openWhy() {
   const out = h('div', { class: 'why-out' });
   const m = panels.openModal({
     id: 'why', title: 'Redenering van de AI', cls: 'm-why', body: [
-      h('div', { class: 'why-head' }, prev, h('p', {}, head), next),
+      h('div', { class: 'why-head' }, prev, h('p', { 'aria-live': 'polite' }, head), next),
       out,
       h('details', { class: 'xp-fb', open: formOpen, ontoggle: e => { formOpen = e.target.open; } },
         h('summary', { text: 'Commentaar bij deze zet' }), form),
@@ -41,6 +43,8 @@ export function openWhy() {
   });
   function draw() {
     const d = list[at];
+    // "Bewaard." was about the decision shown before.
+    if (shown !== d) form.querySelector('.fb-status').textContent = '';
     shown = d;
     prev.disabled = at === 0;
     next.disabled = at === list.length - 1;
@@ -137,9 +141,6 @@ const pct = x => `${Math.round(100 * x)}%`;
 // rule's reason), sterk and the hint, and the value of every option.
 function whyView(s, w) {
   if (!w.options.length) return h('p', { class: 'xp-note', text: 'Voor deze beslissing heeft de AI geen redenering.' });
-  const mine = w.seat === s.you;
-  const name = mine ? 'jij' : nameOf(s, w.seat, false);
-  const team = mine ? 'jij en je maat' : `${name} en maat`;
   const cards = w.options.some(o => o.parts);
   const best = Math.max(...w.options.map(o => o.value));
   const heads = cards
@@ -160,13 +161,13 @@ function whyView(s, w) {
     w.worlds ? h('div', { class: 'xp-scroll' }, h('table', { class: 'xp-table' },
       h('thead', {}, h('tr', {}, heads.map(t => h('th', { text: t })))),
       h('tbody', {}, rows))) : null,
-    h('p', { class: 'legend' }, w.worlds ? `Over ${w.worlds} verdelingen van de kaarten die ${name} niet kon zien. ` : 'Er mocht maar één kaart. ',
+    h('p', { class: 'legend' }, w.worlds ? `Over ${w.worlds} verdelingen van de kaarten die jij niet kon zien. ` : 'Er mocht maar één kaart. ',
       panels.infoBtn('Redenering van de AI', [
         'Normaal: de keuze van de AI-spelers op Normaal, met de regel die hem koos. Sterk: de keuze van de AI-spelers op Sterk, uit deze berekening. Tip: wat Juf Jannie bij Oefenen aanraadt.',
         'De AI speelt elke keuze uit over honderden verdelingen van de kaarten die de speler niet kon zien, telkens met eenvoudige regels tot het eind van het potje.',
-        `Waarde: hoeveel punten ${team} gemiddeld meer halen dan de tegenstanders aan het eind van het potje, roem, nat en pit meegeteld. ±: de standaardfout van het verschil met de beste; een verschil van minder dan twee keer ± kan toeval zijn.`,
+        `Waarde: hoeveel punten jij en je maat gemiddeld meer halen dan de tegenstanders aan het eind van het potje, roem, nat en pit meegeteld. ±: de standaardfout van het verschil met de beste; een verschil van minder dan twee keer ± kan toeval zijn.`,
         ...(cards ? ['Punten slag, punten later, roem slag en roem later: hetzelfde verschil, alleen van de kaartpunten of van de roem, in deze slag en in de latere slagen. Nat, pit: wat nat en pit daar nog aan toevoegen. Samen zijn ze de waarde, min wat er voor deze kaart al gehaald was.'] : []),
-        `Nat wij: de kans dat ${team} spelen en nat gaan. Nat zij: de kans dat de tegenstanders spelen en nat gaan.`,
+        `Nat wij: de kans dat jij en je maat spelen en nat gaan. Nat zij: de kans dat de tegenstanders spelen en nat gaan.`,
         'De AI-spelers op Sterk rekenen met hun eigen verdelingen en, naar karakter, met wat zin in pit: hun keuze kan een enkele keer anders zijn dan hier.',
       ])));
 }

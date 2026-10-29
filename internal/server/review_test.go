@@ -617,6 +617,46 @@ func TestHandReview(t *testing.T) {
 	}
 }
 
+// TestHandReviewAfterReconnect: grades of the watched hand that came in
+// while the player was away reach them when they are back.
+func TestHandReviewAfterReconnect(t *testing.T) {
+	ai := newGradeAI(true)
+	s, ts := newTestServerWith(t, ai)
+	c := dial(t, ts)
+	c.create("Piet", map[string]any{"hands": 4, "seed": 4242}, false, true)
+	drive(t, func() bool { return c.phase() == phaseHandEnd }, c)
+	c.send(map[string]any{"t": "handReview", "hand": 1})
+	m := c.until(5*time.Second, "handReview", func(m *msg) bool { return m.T == "handReview" })
+	var before handReviewMsg
+	json.Unmarshal(m.raw, &before)
+	if before.Pending == 0 {
+		t.Fatalf("every grade held back, yet: %s", m.raw)
+	}
+	s.mu.Lock()
+	r := s.rooms[c.code]
+	s.mu.Unlock()
+	c.conn.CloseNow()
+	waitFor(t, "disconnect seen", func() bool {
+		var n int
+		call(r, func() { n = r.connectedHumans() })
+		return n == 0
+	})
+	close(ai.gate)
+	waitFor(t, "grades in", func() bool {
+		var n int
+		call(r, func() { n = r.seats[0].review.gradingIn[1] })
+		return n == 0
+	})
+	c2 := dial(t, ts)
+	c2.join(c.code, "Piet", c.token)
+	m = c2.until(5*time.Second, "handReview", func(m *msg) bool { return m.T == "handReview" })
+	var after handReviewMsg
+	json.Unmarshal(m.raw, &after)
+	if after.Hand != 1 || after.Pending != 0 || len(after.Replay.Choices) != before.Pending {
+		t.Errorf("back after %d grades: %s", before.Pending, m.raw)
+	}
+}
+
 // TestHandReviewWithoutReview: a player without a review (no decision of
 // theirs graded yet) gets the replay with no choices.
 func TestHandReviewWithoutReview(t *testing.T) {

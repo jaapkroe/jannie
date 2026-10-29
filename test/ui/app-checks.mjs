@@ -530,7 +530,8 @@ function replayAt(rh, you, t, v) {
   const last = now.length ? [] : rh.choices.filter(d => before(d) < step).slice(-1);
   const boxes = [...now.map(d => ({ now: true, d })), ...last.map(d => ({ now: false, d }))]
     .map(({ now: n, d }) => ({ now: n, where: `Potje ${rh.hand}` + (d.trick ? `, slag ${d.trick}` : ''), back: !n }));
-  const card = now.find(d => d.played?.card)?.played.card;
+  // A card that lost and gained nothing is not ringed.
+  const card = now.find(d => d.played?.card && (d.better || d.points > 0))?.played.card;
   const dots = rh.tricks.map((_, k) => {
     const d = rh.choices.find(x => x.trick === k + 1);
     return d?.better ? 'missed' : d?.points > 0 ? 'strong' : '';
@@ -622,7 +623,9 @@ CHECKS.review = async browser => {
     const n = hr.replay.choices.length;
     const bad = replayAt(hr.replay, ended.you, trick, view);
     if (view.title !== 'Potje 1 van 4' || !view.sum.startsWith(`Volgens Juf Jannie: ${n}\u00a0${n === 1 ? 'keuze' : 'keuzes'}`) || view.turn) bad.push(`head ${JSON.stringify(view)}`);
-    if (!view.boxes.length) bad.push('no analysis at the player\'s card');
+    // A box once the player had a graded choice up to this trick (the card
+    // there may have been the only one they could play).
+    if (!view.boxes.length && hr.replay.choices.some(d => d.trick <= trick)) bad.push('no analysis at the player\'s card');
     if (bad.length) throw new Error(`replay of potje 1 at trick ${trick}: ${bad.join('; ')}`);
     const lead = led.includes(trick) && hr.replay.choices.some(d => d.trick === trick);
     if (lead && !view.boxes.some(b => b.now && b.where === `Potje 1, slag ${trick}`)) throw new Error(`the lead in trick ${trick} not at its step: ${JSON.stringify(view)}`);
@@ -772,9 +775,10 @@ CHECKS.expert = async browser => {
     await playUntil(P, () => !!document.querySelector('.m-summary.open'), { ready: false, label: 'the summary' });
     const foot = await P.page.$$eval('.m-summary .sum-foot button', els => els.map(e => e.textContent.trim()));
     if (!foot.includes('Naar de uitslag') || foot.some(t => t.includes('terugkijken'))) throw new Error(`summary buttons ${foot}`);
-    // Over the summary, the sheet on the player's last card.
+    // Over the summary, the sheet on the player's card before the last one
+    // (the last had no choice).
     await press(P, '.tb-expert');
-    await waitFor(P, () => /^Slag 8\b/.test(document.querySelector('.m-why.open .why-head p')?.textContent || ''), { label: 'the sheet over the summary' });
+    await waitFor(P, () => /^Slag 7\b/.test(document.querySelector('.m-why.open .why-head p')?.textContent || ''), { label: 'the sheet over the summary' });
     const top = await P.page.evaluate(() => {
       const b = document.querySelector('.m-why.open .dialog').getBoundingClientRect();
       return document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height / 2, 40))?.closest('.modal')?.className;

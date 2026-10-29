@@ -788,10 +788,12 @@ func (r *room) reconnect(c *client, i game.Seat) {
 		} else {
 			r.resync(c, i)
 		}
+		r.rewatch(c, i)
 		r.checkHost()
 		return
 	}
 	r.emitTo(evSeat{Type: "back", Seat: i}, c)
+	r.rewatch(c, i)
 	r.checkHost()
 	r.drive()
 }

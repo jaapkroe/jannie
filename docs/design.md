@@ -913,7 +913,8 @@ reply attempt.
   still out (`pending`). The review remembers the hand asked last: every
   grade of that hand that comes in later, kept or not, sends that player a
   fresh `handReview` while they are connected, so an open replay fills in
-  as the grades arrive. A new match forgets it. A player without a review
+  as the grades arrive, and coming back after a dropped connection sends
+  it once more, with what came in meanwhile. A new match forgets it. A player without a review
   gets the hand with no decisions. The state carries none of this. At game
   over each human's state carries their own review and nobody else's
   (`review`, §7); while grades are still out it is `{"pending": true, …}`,
@@ -1782,10 +1783,11 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   `handNo`, during the next hand and at game over the score sheet's last
   row (`prevHand`'s hand). *Laatste slag* has the same button in `handEnd`
   and `gameOver`, for the hand just played. A tap sends `handReview` with
-  that hand, read from the state at the tap, and shows *Laden…* on the
-  button, disabled, until the answer; the answer opens the replay of that
-  hand (owner 'hand', §9 Terugkijken) just before the player's card in the
-  tapped trick (*Laatste slag*: trick 8). In short landscape the trick view
+  that hand (the hand of the tricks shown) and shows *Laden…* on the
+  button, disabled, until the answer (an error or a rejoin gives the
+  button back, as it does a feedback form's *Versturen*); the answer opens
+  the replay of that hand (owner 'hand', §9 Terugkijken) just before the
+  player's card in the tapped trick (*Laatste slag*: trick 8). In short landscape the trick view
   puts the cross beside its line and the button, so the button is in view
   without scrolling (640 × 360, 844 × 390). The summary itself gets no
   button: it must fit without scrolling. Tables of three or two have none
@@ -2071,8 +2073,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   `handReview` for the hand on screen refreshes it, at the same step) and
   closes in the lobby and when a new match starts (a `deal` with no score
   rows yet). While it is open and the player is to play at the table, a
-  line on top says *Je bent aan de beurt.* with *Naar tafel*, which closes
-  it. The replay has no feedback per decision (issue #34): the review's
+  line on top says *Aan tafel ben je aan de beurt.* with *Naar tafel*,
+  which closes it and the views that led to it (the trick view, *Laatste
+  slag*, the score sheet). The replay has no feedback per decision (issue #34): the review's
   *Opmerkingen* is about the game as a whole (the expert comments on their
   decisions while playing, §9 Expert).
 - **Expert** (§3 Expert mode; `expert.js`, loaded when first needed): the
@@ -2085,7 +2088,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   − the cards in `hand` during play, 8 at `handEnd` and `gameOver`), and on
   their turn in a playing phase the decision awaited now (trick 0 for a bid
   or trump choice, else k + 1). It opens on the awaited one on their turn,
-  else on the latest; with none, a toast "Nog geen zet van jou in dit
+  else on the latest, short of trick 8 (one card left, no choice); with
+  none, a toast "Nog geen zet van jou in dit
   potje.". In the head ‹ › step through them (disabled at the ends), with
   the decision in bold: awaited, *Slag 3 · Jij bent aan de beurt* or *Voor
   de eerste kaart · Jij bent aan de beurt*; made, *Slag 3* or *Voor de
