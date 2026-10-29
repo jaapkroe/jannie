@@ -77,10 +77,11 @@ export function onError() {
   redraw?.();
 }
 
-// A rejoin: the answer to a question sent over the old connection goes to
-// that connection, so its button comes back; a question queued while
-// offline goes out now and is answered.
-export function onRejoin() {
+// The connection is back, the join just sent and what was queued while
+// offline not yet: the answer to a question sent over the old connection
+// goes there, so its button comes back; a question queued meanwhile goes
+// out next and is answered.
+export function onReconnect() {
   if (wait?.sent) onError();
 }
 

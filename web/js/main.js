@@ -166,6 +166,10 @@ function onOpen() {
     joining = true;
     const token = store.get('token.' + app.code, '');
     net.raw({ t: 'join', code: app.code, name: store.get('name', '') || DEFAULT_NAME, ...(token ? { token } : {}) });
+    // Requests that went out over the old connection, before the queued
+    // ones go out over this one.
+    panels.onReconnect();
+    if (app.s?.expert) import('./expert.js').then(x => x.onReconnect());
   }
 }
 
@@ -211,9 +215,6 @@ function onJoined(m) {
   else {
     enqueue({ t: 'rejoin' });
     app.call?.joined();
-    panels.onRejoin();
-    // An answer of the AI on its way to the old connection is lost.
-    if (app.s?.expert) import('./expert.js').then(x => x.onRejoin());
   }
   inRoom = true;
   joining = false;

@@ -322,7 +322,7 @@ function openTrick(s, t, i, owner, hand) {
 // Under a trick of finished hand `hand`, at a table of four: the button that
 // opens that hand in the replay, just before the player's card in the
 // trick. The server sends the hand (handReview); until then the button
-// says it is loading. A rejoin asks again (onRejoin).
+// says it is loading. A reconnect asks again (onReconnect).
 let handWait = null; // {hand, trick, btn, done}: the tap waiting for its hand
 function replayButton(hand, trick) {
   const s = app.s;
@@ -334,8 +334,8 @@ function replayButton(hand, trick) {
       handWait?.done();
       btn.disabled = true;
       btn.replaceChildren('Laden…');
-      handWait = { hand, trick, btn, done: () => { btn.disabled = false; btn.replaceChildren(...label()); } };
-      app.send({ t: 'handReview', hand });
+      const w = handWait = { hand, trick, btn, done: () => { btn.disabled = false; btn.replaceChildren(...label()); } };
+      w.sent = app.send({ t: 'handReview', hand }); // false: queued until the connection is back
     },
   }, label());
   return btn;
@@ -1322,16 +1322,24 @@ export function onError() {
   handWait = null;
 }
 
-// A rejoin. Feedback sent over the old connection may never have arrived,
-// or its "saved" went to that connection: the button works again. Feedback
-// queued while offline goes out now and is answered. A hand waited for is
-// asked again; a second answer only refreshes the replay.
-export function onRejoin() {
+// The connection is back, the join just sent and what was queued while
+// offline not yet: that goes out next and is answered. Feedback sent over
+// the old connection may never have arrived, or its "saved" went there: the
+// button works again. A hand asked over the old connection is asked again,
+// while its trick view is open (a second answer only refreshes the replay).
+export function onReconnect() {
   if (feedbackWait?.sent) {
     feedbackWait.failed();
     feedbackWait = null;
   }
-  if (handWait) app.send({ t: 'handReview', hand: handWait.hand });
+  const w = handWait;
+  if (!w?.sent) return;
+  if (w.btn.closest('.modal.open')) {
+    app.send({ t: 'handReview', hand: w.hand });
+    return;
+  }
+  handWait = null;
+  w.done();
 }
 
 // Confetti burst for a few seconds: small paper strips thrown up from the

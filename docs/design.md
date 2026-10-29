@@ -1718,8 +1718,14 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   a dead socket: the client reconnects. So does the client's keepalive
   `ping` (every 20 s) with nothing at all received by the next one; that
   counts from the ping, not the clock, since Chrome may fire the timers of a
-  tab hidden for 5 minutes or more only once a minute. Every rejoin drops what was sent
-  but unanswered and renders purely from the resync. A tab in the background still sounds
+  tab hidden for 5 minutes or more only once a minute. Every rejoin drops the
+  moves and votes sent but unanswered and renders purely from the resync.
+  As the connection opens again, right after the `join` and before what
+  was queued while offline goes out, requests sent over the old connection
+  are settled: a feedback form's *Versturen* and the expert's question come
+  back (their answer went to the old connection), and a hand asked with
+  `handReview` is asked again while its trick view is open; queued ones go
+  out and are answered. A tab in the background still sounds
   the turn (and the takeover question) and shows "● Jouw beurt" in its
   title on your turn, and "● Vraag aan tafel" while the question waits for
   your answer. Leaving while offline sends `join` (with the seat
@@ -1785,8 +1791,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   and `gameOver`, for the hand just played. A tap sends `handReview` with
   that hand (the hand of the tricks shown) and shows *Laden…* on the
   button, disabled, until the answer (an error gives the button back; a
-  rejoin asks again, and gives a feedback form's *Versturen* back when its
-  feedback went out over the old connection); the answer opens
+  reconnect asks again, §9 Connection); the answer opens
   the replay of that hand (owner 'hand', §9 Terugkijken) just before the
   player's card in the tapped trick (*Laatste slag*: trick 8). In short landscape the trick view
   puts the cross beside its line and the button, so the button is in view
@@ -2103,9 +2108,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   other decisions show the button disabled. An answer counts only when its
   hand and trick are the request's; an error clears the request, sheet open
   or not (main.js passes every server error to expert.js in an expert game),
-  and so does a rejoin when the request went out over the old connection
-  (the answer goes there; one queued while offline goes out after the
-  rejoin and is answered). Answers
+  and so does a reconnect when the request went out over the old
+  connection (§9 Connection). Answers
   are kept per decision for the life of the page
   (`hand/trick/kind/nu|gedaan`, kind: card, bid or suit, so in gedraaid a
   pass and the forced trump choice after it are apart), an awaited one
