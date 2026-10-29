@@ -290,7 +290,8 @@ function onRefused(name) {
 
 // Every state goes to the call as it arrives, ahead of the animations: who
 // is in the call decides the connections. call.js loads once someone else
-// sits at the table, in a browser that can call.
+// sits at the table, in a browser that can call (also one that offers a
+// page no microphone or camera: it listens).
 function toCall(s) {
   if (!s) return;
   callState = s;
@@ -299,7 +300,7 @@ function toCall(s) {
     return;
   }
   const others = s.players.some((p, seat) => seat !== s.you && p && !p.bot && p.connected);
-  if (callLoad || !others || !window.RTCPeerConnection || !navigator.mediaDevices?.getUserMedia) return;
+  if (callLoad || !others || !window.RTCPeerConnection) return;
   callLoad = import('./call.js').then(m => {
     app.call = m;
     if (callState && inRoom) m.state(callState);

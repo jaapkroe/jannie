@@ -1872,12 +1872,18 @@ body.busy::after {
   height: calc(100% - 6px);
 }
 
-/* A ring with a video is larger, and its marks (dealer, trump, call) sit
-   just outside it on the diagonals, so they hide none of the face. --d is
-   how far a mark's centre lies from the ring's on each axis, --out how far
-   a mark (14px from its centre to the edge of its shadow) reaches past the
-   ring's box. A margin keeps that room free on the left, by the call mark;
-   on the right the marks pass above and below the name. */
+/* A video waits out of sight until its pictures arrive (call.js). */
+:not(.cam) > .call-video {
+  opacity: 0;
+}
+
+/* A ring with a video is larger, and its marks (dealer, trump) sit just
+   outside it on the diagonals to the right, so they hide none of the face.
+   --d is how far a mark's centre lies from the ring's on each axis, --out
+   how far a mark (14px from its centre to the edge of its shadow) reaches
+   past the ring's box. A margin keeps as much room free on the left, so
+   ring and marks sit balanced; on the right they pass above and below the
+   name. */
 .ring.cam {
   --ring: calc(var(--av) * var(--cam-zoom, 1.6));
   --d: calc((var(--ring) / 2 + 12px) * 0.7071);
@@ -1901,7 +1907,7 @@ body.busy::after {
   margin-right: var(--out);
 }
 
-.ring.cam > :is(.dealer-chip, .trump-tag, .call-tag) {
+.ring.cam > :is(.dealer-chip, .trump-tag) {
   top: 50%;
   left: 50%;
   right: auto;
@@ -1911,7 +1917,6 @@ body.busy::after {
 
 .ring.cam > .trump-tag { --dx: 1; --dy: -1; }
 .ring.cam > .dealer-chip { --dx: 1; --dy: 1; }
-.ring.cam > .call-tag { --dx: -1; --dy: 1; }
 
 /* The bubbles keep clear of the marks. */
 .seat:has(.ring.cam) > .bubble {
@@ -1953,30 +1958,30 @@ body.busy::after {
   position: relative;
 }
 
-/* Who is in the call: the microphone on or off, or no connection. */
+/* In the call with the microphone off, or without a connection: a mark in
+   the circle, at the bottom left (a ring without video has the dealer's
+   chip at the bottom right), --tag wide and 2px in from the edge (--at).
+   The lobby's avatars are 52px. */
 .call-tag {
+  --tag: clamp(12px, calc(var(--ring, 52px) * 0.3), 22px);
+  --at: calc(50% - (50% - var(--tag) / 2 - 2px) * 0.7071 - var(--tag) / 2);
   position: absolute;
-  left: -5px;
-  bottom: -3px;
+  left: var(--at);
+  bottom: var(--at);
   display: grid;
   place-items: center;
-  width: 21px;
-  height: 21px;
+  width: var(--tag);
+  height: var(--tag);
   border-radius: 50%;
-  background: #12382d;
-  color: var(--wij-hi);
-  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.4);
+  background: #4a1b17;
+  color: var(--zij-hi);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
 .call-tag .icon {
-  width: 13px;
-  height: 13px;
+  width: 68%;
+  height: 68%;
   stroke-width: 2.4;
-}
-
-.call-tag.off {
-  background: #4a1b17;
-  color: var(--zij-hi);
 }
 
 .call-tag.lost {
@@ -2088,20 +2093,46 @@ body.busy::after {
   margin-top: 14px;
 }
 
-/* Short landscape: the switches side by side, so the answers stay in view. */
+/* Short landscape: the switches side by side; what does not fit scrolls
+   above the answers (call.js), which stay in view, the first time with
+   the question whether to call by itself, under a line. Still shorter,
+   the whole body scrolls, with at least a few lines above. The inline
+   padding keeps room for a switch's focus ring. */
 @media (orientation: landscape) and (max-height: 520px) {
   :where(html:not(.kb)) .m-call > .dialog {
     width: min(100%, 580px);
   }
 
   :where(html:not(.kb)) .m-call .dlg-body {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 24px;
+    display: flex;
+    flex-direction: column;
   }
 
-  :where(html:not(.kb)) .m-call .dlg-body > :not(.set-row) {
+  :where(html:not(.kb)) .m-call .call-scroll {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: max-content;
+    column-gap: 24px;
+    min-height: 56px;
+    margin-inline: -8px;
+    padding-inline: 8px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  :where(html:not(.kb)) .m-call .call-scroll > :not(.set-row) {
     grid-column: 1 / -1;
+  }
+
+  :where(html:not(.kb)) .m-call .call-answer {
+    flex: none;
+    border-top: 1px solid var(--line);
+    padding-top: 4px;
+  }
+
+  :where(html:not(.kb)) .m-call .call-answer > .btn-row {
+    margin-top: 8px;
   }
 }
 

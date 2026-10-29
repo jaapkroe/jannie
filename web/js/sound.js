@@ -26,7 +26,7 @@ const lastPlayed = new Map();        // sound name → clock() of last start
 const voices = [];                   // sounding voices, oldest first
 let ctx = null;                      // the live AudioContext, made by unlock()
 let resumeUntil = 0;                 // a pending resume() may still start queued sounds
-let calling = false;                 // a call holds the audio session (setCall)
+let calling = false;                 // call.js holds the audio session (setCall)
 let napping = false;                 // we suspended the context ourselves
 let napTimer = 0;
 
@@ -501,9 +501,9 @@ function steal(v, now) {
 // audio hardware and its IO thread, in Chrome a render callback some 100
 // times a second (after 30 s silent into a fake sink). So it sleeps once
 // nothing has sounded for a while; the next sound wakes it, a tap or a key
-// typed in the chat does not. It does not fall asleep during a call (setCall),
-// which keeps the audio hardware busy anyway; one already asleep wakes at the
-// next sound. After the call the wait starts again.
+// typed in the chat does not. It does not fall asleep while call.js holds
+// the session (setCall), which keeps the audio hardware busy anyway; one
+// already asleep wakes at the next sound. After that the wait starts again.
 function napLater() {
   clearTimeout(napTimer);
   napTimer = setTimeout(nap, settings.muted ? NAP_MS.muted : NAP_MS.idle);
@@ -600,7 +600,8 @@ function session() {
   } catch { /* unsupported */ }
 }
 
-// call.js: on before it asks for the microphone, off on every way out.
+// call.js: on before it asks for the microphone, or once someone else in the
+// call has it on; off on every way out.
 function setCall(on) {
   if (calling === Boolean(on)) return;
   calling = Boolean(on);
@@ -655,7 +656,7 @@ export const sound = {
   isMuted: () => settings.muted,
   setVolume,                       // 0..1
   getVolume: () => settings.volume,
-  setCall,                         // setCall(bool): a call holds the iOS audio session
+  setCall,                         // setCall(bool): call.js holds the iOS audio session
   _renderTo: renderTo,             // test-only
   _names: Object.freeze(Object.keys(SOUNDS)),   // test-only
   _voiceCount: () => voices.length,             // test-only

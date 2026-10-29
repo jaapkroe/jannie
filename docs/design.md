@@ -1504,12 +1504,12 @@ export const sound = {
   play(name),          // 'card','deal','shuffle','trick','trickWon','roem','trump','turn','chat',
                        // 'nat','pit','handWon','handLost','win','lose','click','error','join'
   setMuted(bool), isMuted(), setVolume(0..1), getVolume()   // persisted in localStorage kj.sound
-  setCall(bool),       // call.js: a call holds the iOS audio session ('play-and-record', else 'ambient')
+  setCall(bool),       // call.js holds the iOS audio session ('play-and-record', else 'ambient')
 };
 // The context sleeps (suspend) 30 s after the last sound, or 0.4 s after muting, so the device can
 //   stop its audio output; the next play() wakes it without a gesture, a tap or a key does not.
-//   It does not fall asleep during a call (setCall(true) until setCall(false)), which keeps the
-//   audio output busy anyway; one already asleep wakes at the next sound, as outside a call.
+//   It does not fall asleep while call.js holds the session (setCall(true) until setCall(false)),
+//   which keeps the audio output busy anyway; one already asleep wakes at the next sound.
 //   setCall(false) starts the wait again.
 
 // web/js/manual.js — the in-game handleiding (Dutch content + renderer)
@@ -1760,32 +1760,78 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   line waits behind a chat log still queued, which was sent before it.
   `app-checks.mjs --only queue` sends lines during the trump banner and
   drops the socket there.
-- **Calling** (issue #43, `call.js`, loaded once another person is at the
-  table, in a browser with WebRTC and a camera API): at the start of a game
-  with another person (the first update of a match, or the first at a table
-  joined mid-game, once per room and page) a dialog *Meebellen?* proposes
-  the call: "Gast zit ook aan tafel. Bel mee met geluid, en met beeld als je
-  wilt." (or who already calls), switches *Microfoon* and *Camera* as last
-  chosen, a line that sound and picture go from device to device, not
-  through the server, and *Niet nu* / *Meebellen*. Not in the lobby, where
-  the call is offered but not proposed, and not in training or alone with
-  bots. On iOS (`navigator.audioSession`) sound.js plays the game's sounds
-  in an `ambient` session, mixed with the user's own music; as that
-  records nothing and goes quiet with the silent switch, the session is
-  `play-and-record` from the tap on *Meebellen*, before the microphone is
-  asked, until the call ends and the microphone has stopped (hanging up,
-  leaving the room, a join called off), also for a sound context made
-  meanwhile.
-  *Meebellen* asks the browser for microphone and camera together;
-  refused, for each on its own, so the microphone may still come when the
-  camera is blocked. What cannot be had is a toast ("Geen toegang tot de
-  camera", "Geen microfoon gevonden", "De camera is in gebruik"), and the
-  player joins without it, still hearing and seeing the others. A
-  microphone or camera that ends by itself later (unplugged, taken by
+- **Calling** (issues #43, #61, `call.js`, loaded once another person is
+  at the table, in a browser with WebRTC, also one that offers a page no
+  microphone or camera): at the start of a game with another person (the
+  first update of a match, or the first at a table joined mid-game, once
+  per room and page, not in a room where the page was in the call
+  already; again after leaving the room and coming back) a
+  dialog *Meebellen?* proposes the call: "Gast zit ook aan tafel. Bel mee
+  met geluid, en met beeld als je wilt." (or who already calls), switches
+  *Microfoon* and *Camera* as last chosen (on before the first choice), a
+  line that sound and picture go from device to device, not through the
+  server (when the game is on screen also how to switch them during the
+  game), and
+  *Niet nu* / *Meebellen*. Not in the lobby, where the call is offered but
+  not proposed, and not in training or alone with bots. Instellingen
+  *Bellen voorstellen* ("Bij een spel met andere spelers vragen of je
+  meebelt, als je niet automatisch meebelt"; `kj.call` `ask`) turns the
+  proposal off. Not in the call, the
+  *Bellen* button opens the same dialog, with *Annuleren*. Until the
+  player has called once (`auto` unset), the dialog also asks *Automatisch
+  meebellen* ("Voortaan zit je bij een spel met andere spelers meteen in
+  het gesprek"), switched off; *Meebellen* keeps the answer,
+  *Niet nu* and *Annuleren* keep nothing, so the next dialog asks again.
+  With *Automatisch meebellen* on (also under Instellingen: "Bij een spel
+  met andere spelers zit je meteen in het gesprek"; off by default), a
+  page comes into the call by itself at a table with another person, once
+  per room and page, already in the lobby, with its microphone and camera
+  as last chosen (`mic`, `cam`), and is not proposed the call. A page that
+  has been in the call in a room, however it came in, is neither proposed
+  it nor put in it again there: hung up, it stays out until the *Bellen*
+  button (a reload, or leaving the room and coming back, starts afresh).
+  Never chosen yet, a dialog *Microfoon en camera*
+  asks for them: "Je zit in het gesprek: je hoort en ziet wie de microfoon
+  of camera aan heeft. Met die van jou aan horen en zien de anderen jou
+  ook.", with the two switches (on), the line (with "Automatisch meebellen
+  zet je uit bij Instellingen.") and *Niet nu* / *Aanzetten* (*Uit laten*
+  with both switches off). Both dialogs
+  remember the switches as set. *Meebellen* joins at once: the page hears
+  and sees the others while its own devices are still asked for, or with
+  both off. A browser that offers a page no microphone or camera joins to
+  listen: *Meebellen?* says so ("Deze browser deelt geen microfoon of
+  camera: je kunt wel meeluisteren en meekijken."), without their
+  switches, and in the call there are no buttons for them. On iOS
+  (`navigator.audioSession`) sound.js plays the game's sounds in an
+  `ambient` session, mixed with the user's own music; as that records
+  nothing and goes quiet with the silent switch, the session is
+  `play-and-record` from the first time the page records or asks for the
+  microphone (set before it is asked) or someone else in the call has the
+  microphone on, until it hangs up or leaves the room (given back once the
+  microphone has stopped; devices that come after are stopped), also for a
+  sound context made meanwhile: switching back and forth as someone mutes
+  would break into the sound and move a headset between its modes. A page
+  that only listens to a call where nobody has talked yet stays `ambient`.
+  Switching on asks the browser for microphone and camera together;
+  refused at once (a setting blocks one of them), for each on its own, so
+  the microphone may still come when the camera is blocked; refused after
+  0.8 s (someone answered the browser's question; Safari asks for both
+  together) only one the browser already allows this page
+  (`navigator.permissions`) is asked for again. What cannot be had is a
+  toast while still in the call ("Geen toegang tot de camera" with "Sta het
+  toe in de instellingen van je browser.", "Geen microfoon gevonden", "De
+  camera is in gebruik"; for another error "Geen toegang tot …" with its
+  name: "Fout: OverconstrainedError."), and the call goes on without it.
+  A device that could not be had is remembered as off, but for one in use
+  (it may be free next time), also when the page hung up meanwhile, so the
+  next table does not ask for it by itself (its button still does). While
+  the devices are asked for, their two buttons wait.
+  A microphone or camera that ends by itself later (unplugged, taken by
   another app, its permission withdrawn), or already while the other was
   still being asked for, is switched off as with its button, but not
-  remembered; a tap asks for it again. Then the
-  page sends `call`; every two pages in the call connect, the lower session
+  remembered; a tap asks for it again. The page sends `call` as it joins
+  and at every switch; every two pages in the call connect, also two that
+  only listen, the lower session
   id offering, with one audio and one video transceiver from the start, so
   switching later only swaps tracks (the camera's track is stopped, its
   light goes off; the microphone's is muted and taken off the connections,
@@ -1797,7 +1843,16 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   with the addresses found within 2.5 s (no trickling, for the message
   limit); STUN from Google and Cloudflare, no TURN. A connection not up
   within 20 s, or lost for 8 s, failed: the offerer tries again three
-  times, then the seat is marked. The call buttons sit in the prompt row
+  times, then the seat is marked. The others' sound and pictures play in
+  one `<audio>` and one `<video>` for each other seat, made when call.js
+  loads and started empty at the first taps (pointerup, touchend, click,
+  keydown; a touch's pointerdown is no gesture to Safari): Safari then
+  plays them without a tap, also on a page that records nothing, where it
+  would otherwise refuse the sound; a priming refused (a swipe is no
+  gesture) waits for the next tap. A browser that still refuses gets "Tik
+  ergens om de anderen te horen" once someone in the call has the
+  microphone on, and the next tap plays everything. The call buttons sit
+  in the prompt row
   right of the rule: *Microfoon* and *Camera* toggles (`aria-pressed`,
   coral while off) and a red *Ophangen*; while they show, a long rule wraps
   sooner, so the two never overlap. On phones under 600 px the two toggles
@@ -1805,25 +1860,44 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   the trick, and *Ophangen* is in the ⋯ menu. Not in the call, one button
   *Bellen* (on phones also in the ⋯ menu) opens the dialog. In the lobby
   the same buttons sit under the table, *Bellen* and *Ophangen* with their
-  label. In short landscape the dialog puts the two switches side by side,
-  so its answers stay in view. A seat in the call shows that person's
-  video in place of the face (in the ring, and in the lobby's avatar), ours
-  mirrored, while the camera is on and pictures arrive, and a mark at the
-  bottom left of the ring: a microphone, crossed out and coral while it is
-  off, or a warning sign when no connection could be made. A toast says
-  "Kees belt mee". The microphone and camera last chosen are kept in
-  `kj.call` (`mic`, `cam`), with `ask`: Instellingen *Bellen voorstellen*
-  ("Bij een spel met andere spelers vragen of je meebelt"). A browser that
-  refuses to play the sound before a tap gets "Tik ergens om de anderen te
-  horen". Leaving the room hangs up. `app-checks.mjs --only call` plays it through with the
-  fake devices of `scripts/chrome`, with a camera and a microphone whose
-  permission is withdrawn and given back, the microphone's permission also
-  while the call is joining, with the camera still asked for, and checks the
-  video ceiling on both sides and that a muted microphone is off the
-  connection and back on it with one tap, and, with a fake
-  `navigator.audioSession` on the host, that the devices are asked under
-  `play-and-record` and that hanging up and a join called off give `ambient`
-  back once the tracks have stopped.
+  label. The question whether to call by itself sits just above the
+  answers. In short landscape the dialog puts the microphone's and
+  camera's switches side by side, and only what lies above the question
+  and the answers scrolls (at least 56 px of it; on a still shorter screen
+  the whole body scrolls), so those stay in view, under a line. A seat in the call shows that
+  person's video in place of the face (in the ring, and in the lobby's
+  avatar), ours mirrored, while the camera is on and pictures arrive:
+  another's video waits in the ring out of sight until its first picture
+  (Safari plays a video in the page, not one outside it, and unmutes a
+  track before its pictures come). In the call with the microphone off (so
+  also a page that only listens) the ring has a mark in its circle, at the
+  bottom left (the dealer's chip is at the bottom right), 30% of the
+  ring's width (12 to 22 px): a microphone crossed out, coral; when no
+  connection could be made a warning sign; with the microphone on none. A toast says "Kees
+  belt mee". Leaving the room hangs up. `app-checks.mjs --only call` plays
+  it through with the fake devices of `scripts/chrome`: a host with
+  Automatisch meebellen on comes into the call in the lobby and is asked
+  for the devices; the guest is offered the call there, not proposed it,
+  calls with *Bellen*, is asked the first time whether to call by itself,
+  says yes with both devices off and hears the host, hangs up and stays
+  out, also when the game starts; it calls again, asked only for the
+  devices, and sees and hears the host. Then a camera refused and allowed,
+  a camera and a microphone whose permission is withdrawn and given back,
+  a hang-up and a join with the camera slow to be refused and the
+  microphone's permission withdrawn meanwhile, the marks of muted
+  microphones in their circles, the dealer's and trump's marks outside the
+  videos, the video ceiling on both sides, a muted microphone off the
+  connection and back on it with one tap, a host that came into the call
+  by itself and stays out after hanging up, a reload with Automatisch
+  meebellen that comes back into the call with the devices as last chosen
+  (a refused camera then remembered as off), a reload never answered that
+  is proposed the call with the question (it and the answers in reach
+  at 568x320 and 740x300) and keeps nothing after *Niet nu*, and a refusal at the
+  question (slow) that asks again only for the microphone the browser
+  allows and remembers the camera as off; and, with a fake
+  `navigator.audioSession` on the host, that the microphone is asked for
+  under `play-and-record` and that hanging up and leaving while the
+  devices are asked for give `ambient` back once the tracks have stopped.
 - **Training**: tip bubble with the hint text and a glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it) and the advised suit or *Spelen*/*Passen*

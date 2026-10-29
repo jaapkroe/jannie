@@ -123,7 +123,7 @@ export const CONTENT = {
         ['Scorebord', 'Alle potjes op een rij: troef, wie er speelde, punten en roem per koppel, **nat** en **pit** duidelijk gemarkeerd, en de stand. Tik op het laatste potje om de slagen terug te zien, en op een slag om te zien wie wat speelde.', 'score'],
         ['Chat', 'Kletsen met de tafel. Met de snelle reacties (👍 😂 😱 😭 Mooi! Nat! Goed gespeeld!) ben je in één tik klaar. Schrijft een andere speler iets, dan staat er een bolletje met het aantal nieuwe berichten op de knop. De AI-spelers praten ook terug.', 'chat'],
         ['Handleiding', 'Deze uitleg, ook midden in een potje.', 'help'],
-        ['Instellingen', 'Geluidseffecten en volume, **Bellen voorstellen**, vierkleurenspel (klaveren groen, ruiten blauw), **Eén tik** of **Twee tikken** om een kaart te spelen, minder animaties en je naam.', 'settings'],
+        ['Instellingen', 'Geluidseffecten en volume, **Bellen voorstellen** en **Automatisch meebellen**, vierkleurenspel (klaveren groen, ruiten blauw), **Eén tik** of **Twee tikken** om een kaart te spelen, minder animaties en je naam.', 'settings'],
         ['Geluid', 'Zet het geluid in één tik aan of uit.', 'soundOn'],
         ['Meer', 'Alleen op een smalle telefoon. Achter deze knop zitten het scorebord, de handleiding, de instellingen, het geluid, **Bellen** of **Ophangen** en **Spel verlaten**. De knop voor de laatste slag staat dan naast je kaarten.', 'menu'],
       ],
@@ -132,23 +132,24 @@ export const CONTENT = {
     { tip: 'Zie je ergens een ⓘ? Tik erop voor een korte uitleg.' },
 
     { h: 'Bellen' },
-    { p: 'Speel je met anderen, dan vraagt het spel bij de start of je meebelt: met je microfoon, en met je camera als je wilt. Je browser vraagt daarna om toestemming. Bel je niet meteen mee, dan kan het later met de knop Bellen.' },
+    { p: 'Speel je met anderen, dan vraagt het spel bij de start of je meebelt: met je microfoon, en met je camera als je wilt. Je browser vraagt daarna om toestemming. Bel je niet meteen mee, dan kan het later met de knop Bellen. In het gesprek hoor en zie je wie de microfoon of camera aan heeft, ook als die van jou uit staan.' },
+    { p: 'De eerste keer dat je meebelt, kun je ook **Automatisch meebellen** aanzetten. Dan zit je voortaan bij een spel met anderen meteen in het gesprek, al bij Klaarzetten, met je microfoon en camera zoals de vorige keer.' },
     {
       dl: [
         ['Bellen', 'Meebellen met wie er aan tafel zit. De knop staat rechts boven je kaarten (op een smalle telefoon boven de knop voor de laatste slag) zodra er iemand anders aan tafel zit, en bij Klaarzetten onder de tafel.', 'phone'],
         ['Microfoon', 'Zet je microfoon aan of uit.', 'mic'],
         ['Camera', 'Zet je camera aan of uit. Staat hij aan, dan zien de anderen jou op je plaats aan tafel, in plaats van je letter, en zie je jezelf daar ook.', 'cam'],
-        ['Ophangen', 'Uit het gesprek. Op een smalle telefoon staat deze knop onder ⋯ (Meer).', 'hangup'],
+        ['Ophangen', 'Uit het gesprek. Aan deze tafel kom je er daarna alleen met Bellen weer in, tot je de pagina opnieuw laadt of opnieuw aan tafel gaat. Op een smalle telefoon staat deze knop onder ⋯ (Meer).', 'hangup'],
       ],
       chips: true,
     },
     {
       ul: [
-        'Bij wie meebelt, staat een microfoontje op de plaats aan tafel; doorgestreept als de microfoon uit staat.',
-        'Of je microfoon en camera aan stonden, wordt onthouden voor het volgende spel. Wil je het niet meer gevraagd krijgen, zet dan **Bellen voorstellen** uit bij Instellingen.',
+        'Staat bij iemand in het gesprek de microfoon uit, dan staat er een doorgestreept microfoontje in de cirkel op die plaats aan tafel.',
+        'Of je microfoon en camera aan stonden, wordt onthouden voor het volgende spel. Krijgt het spel geen toegang tot je microfoon of camera, dan staat die de volgende keer uit. Wil je het niet meer gevraagd krijgen, zet dan **Bellen voorstellen** uit bij Instellingen. Daar zet je ook **Automatisch meebellen** aan of uit.',
       ],
     },
-    { note: 'Beeld en geluid gaan rechtstreeks van toestel naar toestel, niet via de server van het spel. Wie meebelt, krijgt daarbij elkaars IP-adres te zien. Sommige netwerken laten geen rechtstreekse verbinding toe, vooral mobiel internet: dan staat er een waarschuwingsteken bij die speler en horen jullie elkaar niet.' },
+    { note: 'Beeld en geluid gaan rechtstreeks van toestel naar toestel, niet via de server van het spel. Wie in het gesprek zit, krijgt daarbij elkaars IP-adres te zien; met Automatisch meebellen aan zit je meteen in het gesprek. Sommige netwerken laten geen rechtstreekse verbinding toe, vooral mobiel internet: dan staat er een waarschuwingsteken bij die speler en horen jullie elkaar niet.' },
 
     { h: 'Na elk potje' },
     { p: 'Na de laatste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle slagen. Tik op een slag om te zien wie wat speelde. Speel je met anderen, dan begint het volgende potje na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt. Speel je alleen met AI-spelers, dan wacht het spel tot je op [Volgend potje] tikt, zodat je de slagen rustig kunt nalopen.' },
