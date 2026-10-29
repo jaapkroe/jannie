@@ -213,7 +213,7 @@ function onJoined(m) {
     app.call?.joined();
     panels.onRejoin();
     // An answer of the AI on its way to the old connection is lost.
-    if (app.s?.expert) import('./expert.js').then(x => x.onError());
+    if (app.s?.expert) import('./expert.js').then(x => x.onRejoin());
   }
   inRoom = true;
   joining = false;

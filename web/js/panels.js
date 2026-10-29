@@ -322,7 +322,7 @@ function openTrick(s, t, i, owner, hand) {
 // Under a trick of finished hand `hand`, at a table of four: the button that
 // opens that hand in the replay, just before the player's card in the
 // trick. The server sends the hand (handReview); until then the button
-// says it is loading.
+// says it is loading. A rejoin asks again (onRejoin).
 let handWait = null; // {hand, trick, btn, done}: the tap waiting for its hand
 function replayButton(hand, trick) {
   const s = app.s;
@@ -1094,21 +1094,24 @@ export function openReplay(s, { hands, moment = null, owner = 'review' }) {
   const m = openModal({ id: 'replay', title: 'Terugkijken', cls: 'm-replay', body: [] });
   m.owner = owner;
   // A hand looked back at during the next one: your turn at the table. To
-  // the table closes the views that led here too. The text is set as it
-  // shows, so a screen reader announces it.
+  // the table closes the views that led here too, top down, so the focus
+  // goes back to the table. The text comes a frame after the line shows,
+  // so a screen reader announces it.
   const turnText = h('span');
   const turn = h('p', { class: 'rp-turn', role: 'status', hidden: true }, turnText,
     h('button', {
       class: 'btn btn-sm', type: 'button', onclick: () => {
-        for (const id of ['trick', 'last', 'score']) byId(id)?.close();
         m.close();
+        for (const id of ['trick', 'last', 'score']) byId(id)?.close();
       },
     }, 'Naar tafel'));
   m.body.before(turn);
   const showTurn = () => {
     const on = s.turn === s.you && PLAYING.has(s.phase);
-    if (on && turn.hidden) turnText.textContent = 'Aan tafel ben je aan de beurt.';
+    if (on === !turn.hidden) return;
     turn.hidden = !on;
+    turnText.textContent = '';
+    if (on) requestAnimationFrame(() => { turnText.textContent = 'Aan tafel ben je aan de beurt.'; });
   };
   showTurn();
   // A later state: the turn at the table, and at game over the review's
@@ -1292,11 +1295,11 @@ export function feedbackForm(extra, label, placeholder = 'Wat viel je op? Wat kl
       sound.play('click');
       send.disabled = true;
       status.textContent = '';
-      feedbackWait = {
+      const w = feedbackWait = {
         saved: () => { text.value = ''; status.textContent = 'Bewaard.'; send.disabled = false; },
         failed: () => { send.disabled = false; },
       };
-      app.send({ t: 'feedback', text: text.value, ...extra() });
+      w.sent = app.send({ t: 'feedback', text: text.value, ...extra() }); // false: queued until the connection is back
     },
   }, 'Versturen');
   text.addEventListener('input', () => { status.textContent = ''; });
@@ -1313,20 +1316,22 @@ export function onSaved() {
 // and so can feedback and a hand to look back at.
 export function onError() {
   byId('over')?.reset?.();
-  freeWaits();
-}
-
-// A rejoin: feedback or a hand asked for over the old connection may never
-// have arrived, so their buttons work again.
-export function onRejoin() {
-  freeWaits();
-}
-
-function freeWaits() {
   feedbackWait?.failed();
   feedbackWait = null;
   handWait?.done();
   handWait = null;
+}
+
+// A rejoin. Feedback sent over the old connection may never have arrived,
+// or its "saved" went to that connection: the button works again. Feedback
+// queued while offline goes out now and is answered. A hand waited for is
+// asked again; a second answer only refreshes the replay.
+export function onRejoin() {
+  if (feedbackWait?.sent) {
+    feedbackWait.failed();
+    feedbackWait = null;
+  }
+  if (handWait) app.send({ t: 'handReview', hand: handWait.hand });
 }
 
 // Confetti burst for a few seconds: small paper strips thrown up from the

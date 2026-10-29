@@ -1784,8 +1784,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   row (`prevHand`'s hand). *Laatste slag* has the same button in `handEnd`
   and `gameOver`, for the hand just played. A tap sends `handReview` with
   that hand (the hand of the tricks shown) and shows *Laden…* on the
-  button, disabled, until the answer (an error or a rejoin gives the
-  button back, as it does a feedback form's *Versturen*); the answer opens
+  button, disabled, until the answer (an error gives the button back; a
+  rejoin asks again, and gives a feedback form's *Versturen* back when its
+  feedback went out over the old connection); the answer opens
   the replay of that hand (owner 'hand', §9 Terugkijken) just before the
   player's card in the tapped trick (*Laatste slag*: trick 8). In short landscape the trick view
   puts the cross beside its line and the button, so the button is in view
@@ -2058,8 +2059,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   gespeeld: geen duidelijk betere keuze volgens Juf Jannie* (*♥ als troef:
   …*, *Gepast: …*, *Gespeeld: …*; `fineLine`), without a split. Below,
   the hands left, the player's first: at a card choice of the step on
-  screen, the card played and the better (or obvious) one are marked in it,
-  with a key. A bar under the scrolling body keeps ‹ *Slag 4 · 2 van 4
+  screen that lost or gained points, the card played and the better (or
+  obvious) one are marked in it, with a key. A bar under the scrolling body keeps ‹ *Slag 4 · 2 van 4
   kaarten* › (also ←/→) and the eight tricks in view: each in its taker's
   colour, with a small dot for the player's graded card in it (light: points
   left, gold: a strong move, also said in its title; a trump choice or bid
@@ -2074,8 +2075,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   closes in the lobby and when a new match starts (a `deal` with no score
   rows yet). While it is open and the player is to play at the table, a
   line on top says *Aan tafel ben je aan de beurt.* with *Naar tafel*,
-  which closes it and the views that led to it (the trick view, *Laatste
-  slag*, the score sheet). The replay has no feedback per decision (issue #34): the review's
+  which closes it and then the views that led to it (the trick view,
+  *Laatste slag*, the score sheet). The replay has no feedback per decision (issue #34): the review's
   *Opmerkingen* is about the game as a whole (the expert comments on their
   decisions while playing, §9 Expert).
 - **Expert** (§3 Expert mode; `expert.js`, loaded when first needed): the
@@ -2088,9 +2089,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   − the cards in `hand` during play, 8 at `handEnd` and `gameOver`), and on
   their turn in a playing phase the decision awaited now (trick 0 for a bid
   or trump choice, else k + 1). It opens on the awaited one on their turn,
-  else on the latest, short of trick 8 (one card left, no choice); with
-  none, a toast "Nog geen zet van jou in dit
-  potje.". In the head ‹ › step through them (disabled at the ends), with
+  else on the latest; never on trick 8 (one card left, no choice: the one
+  before it instead, also when trick 8 is awaited). With none, a toast
+  "Nog geen zet van jou in dit potje.". In the head ‹ › step through them (disabled at the ends), with
   the decision in bold: awaited, *Slag 3 · Jij bent aan de beurt* or *Voor
   de eerste kaart · Jij bent aan de beurt*; made, *Slag 3* or *Voor de
   eerste kaart* until the answer names the choice (*Slag 3 · Jij speelde
@@ -2102,7 +2103,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   other decisions show the button disabled. An answer counts only when its
   hand and trick are the request's; an error clears the request, sheet open
   or not (main.js passes every server error to expert.js in an expert game),
-  and so does a rejoin (the answer would go to the old connection). Answers
+  and so does a rejoin when the request went out over the old connection
+  (the answer goes there; one queued while offline goes out after the
+  rejoin and is answered). Answers
   are kept per decision for the life of the page
   (`hand/trick/kind/nu|gedaan`, kind: card, bid or suit, so in gedraaid a
   pass and the forced trump choice after it are apart), an awaited one

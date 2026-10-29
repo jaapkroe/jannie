@@ -51,7 +51,7 @@ export function openWhy() {
     const w = whys.get(d.key);
     head.replaceChildren(suitify(headText(d, w)));
     const asking = wait?.key === d.key;
-    out.replaceChildren(w ? whyView(s, w)
+    out.replaceChildren(w ? whyView(w)
       : h('button', { class: 'btn btn-ghost btn-sm', type: 'button', disabled: !!wait, onclick: () => { sound.play('click'); ask(d); } },
         asking ? null : icon('search'), asking ? 'De AI denkt na…' : 'Redenering van de AI'));
   }
@@ -70,12 +70,18 @@ export function onWhy(m) {
   redraw?.();
 }
 
-// The server refused something, or the connection the question went out on
-// is gone: a question still out gets its button back.
+// The server refused something: a question still out gets its button back.
 export function onError() {
   if (!wait) return;
   wait = null;
   redraw?.();
+}
+
+// A rejoin: the answer to a question sent over the old connection goes to
+// that connection, so its button comes back; a question queued while
+// offline goes out now and is answered.
+export function onRejoin() {
+  if (wait?.sent) onError();
 }
 
 // A new deal (panels.sync): the answers about the hands before are
@@ -88,8 +94,8 @@ export function onDeal() {
 
 // Asks the server's reasoning for decision d; one question is out at a time.
 function ask(d) {
-  wait = { key: d.key, hand: d.hand, trick: d.trick };
-  app.send({ t: 'why', hand: d.hand, trick: d.trick });
+  const w = wait = { key: d.key, hand: d.hand, trick: d.trick };
+  w.sent = app.send({ t: 'why', hand: d.hand, trick: d.trick }); // false: queued until the connection is back
   redraw?.();
 }
 
@@ -139,7 +145,7 @@ const pct = x => `${Math.round(100 * x)}%`;
 
 // The engine's reasoning (design §7 why): the choices of normaal (with its
 // rule's reason), sterk and the hint, and the value of every option.
-function whyView(s, w) {
+function whyView(w) {
   if (!w.options.length) return h('p', { class: 'xp-note', text: 'Voor deze beslissing heeft de AI geen redenering.' });
   const cards = w.options.some(o => o.parts);
   const best = Math.max(...w.options.map(o => o.value));
