@@ -5,6 +5,7 @@ import (
 	"math/rand/v2"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -94,12 +95,11 @@ func TestExpertFrom(t *testing.T) {
 }
 
 // TestExpertMatch plays an expert match: it starts at once, alone against
-// three bots, with open cards, and nobody can join. The state shows the
-// hand in play with the decisions before the first card and, per card,
-// what its player could play. The expert asks the reasoning for a bot's
-// card and for their own decision now, gives their own choice for the
-// bot's card and comments on it; at game over the state has every hand,
-// and the game log the match, the choice and the comment.
+// three bots, with open cards, and nobody can join; the state says expert.
+// The expert asks the reasoning for their own card in trick 1 and for
+// their decision now; a seat in the question is ignored, so a bot's
+// decision cannot be asked about. They comment on their own card; the
+// game log has the match and the comment, about the expert's own seat.
 func TestExpertMatch(t *testing.T) {
 	dir := t.TempDir()
 	srv, ts, ai := newTestServer(t, func(s *Server) { s.games = newGameLog(dir, s.log) })
@@ -109,8 +109,8 @@ func TestExpertMatch(t *testing.T) {
 	c.waitType("joined")
 	c.waitType("chatlog")
 	s := c.waitState("the deal", func(s *state) bool { return s.Phase != phaseLobby })
-	if s.Expert == nil || s.Training || len(s.Players) != 4 || !s.Opts.Open || s.Opts.Seed != 4242 {
-		t.Fatalf("expert %+v, training %v, %d players, opts %+v", s.Expert, s.Training, len(s.Players), s.Opts)
+	if !s.Expert || s.Training || len(s.Players) != 4 || !s.Opts.Open || s.Opts.Seed != 4242 {
+		t.Fatalf("expert %v, training %v, %d players, opts %+v", s.Expert, s.Training, len(s.Players), s.Opts)
 	}
 	for k := 1; k < 4; k++ {
 		if !s.Players[k].Bot {
@@ -121,44 +121,24 @@ func TestExpertMatch(t *testing.T) {
 	other.send(map[string]any{"t": "join", "code": c.code, "name": "Gast"})
 	other.waitError(errFull)
 
-	// On: until the expert's turn to play, after a bot's card in this hand.
-	botCard := func(s *state) (int, game.Played, bool) {
-		if s == nil || s.Expert == nil || len(s.Expert.Hands) != 1 {
-			return 0, game.Played{}, false
-		}
-		for k, tr := range s.Expert.Hands[0].Tricks {
-			for _, p := range tr.Cards {
-				if p.Seat != 0 {
-					return k + 1, p, true
-				}
+	// On: until the expert's turn to play, after their own card in trick 1.
+	drive(t, func() bool { return c.s.Phase == phasePlay && c.myTurn() && len(c.s.Hand) < 8 }, c)
+	s = c.s
+	r := roomOf(t, srv, c.code)
+	var first game.Card
+	call(r, func() {
+		for _, tok := range strings.Fields(r.acts) {
+			if seat, a, _ := parseAct(tok); seat == 0 && a.kind == actPlay {
+				first = a.card
+				break
 			}
 		}
-		return 0, game.Played{}, false
-	}
-	drive(t, func() bool {
-		_, _, ok := botCard(c.s)
-		return ok && c.s.Phase == phasePlay && c.myTurn()
-	}, c)
-	s = c.s
-	hand := s.Expert.Hands[0]
-	var played []game.Played
-	for _, tr := range hand.Tricks {
-		played = append(played, tr.Cards...)
-	}
-	if hand.Hand != s.HandNo || len(hand.Pre) == 0 || len(hand.Legal) != len(played) {
-		t.Fatalf("hand %d (in play %d): %d decisions before play, %d legal sets for %d cards", hand.Hand, s.HandNo, len(hand.Pre), len(hand.Legal), len(played))
-	}
-	for k, p := range played {
-		if !slices.Contains(hand.Legal[k], p.Card) || !slices.Contains(hand.Cards[p.Seat], p.Card) {
-			t.Errorf("card %d: %v of seat %v, legal %v, dealt %v", k, p.Card, p.Seat, hand.Legal[k], hand.Cards[p.Seat])
-		}
-	}
-	trick, bot, _ := botCard(s)
-	legal := hand.Legal[slices.Index(played, bot)]
+	})
 
 	why := func(args map[string]any) whyMsg {
 		t.Helper()
-		c.send(map[string]any{"t": "why", "hand": hand.Hand, "trick": args["trick"], "seat": args["seat"]})
+		args["t"], args["hand"] = "why", s.HandNo
+		c.send(args)
 		m := c.until(5*time.Second, "why", func(m *msg) bool { return m.T == "why" || m.T == "error" })
 		if m.T == "error" {
 			t.Fatalf("why %v: %s", args, m.errMsg())
@@ -169,48 +149,26 @@ func TestExpertMatch(t *testing.T) {
 		}
 		return w
 	}
-	w := why(map[string]any{"trick": trick, "seat": int(bot.Seat)})
-	if w.Played == nil || w.Played.Card == nil || *w.Played.Card != bot.Card || w.Seat != bot.Seat || w.Trick != trick ||
-		len(w.Options) != len(legal) || w.Hint.Card == nil || *w.Hint.Card != legal[0] || w.Worlds != 1 {
-		t.Errorf("why %v of seat %v in trick %d (legal %v): %+v", bot.Card, bot.Seat, trick, legal, w)
+	w := why(map[string]any{"trick": 1})
+	if w.Played == nil || w.Played.Card == nil || *w.Played.Card != first || w.Seat != 0 || w.Trick != 1 || w.Hint.Card == nil || w.Worlds != 1 {
+		t.Errorf("why %v, the expert's card in trick 1: %+v", first, w)
 	}
-	now := len(played)/4 + 1
-	w = why(map[string]any{"trick": now})
-	if w.Played != nil || w.Seat != 0 || len(w.Options) != len(s.Legal) || w.Rule == "" {
-		t.Errorf("why now (trick %d, legal %v): %+v", now, s.Legal, w)
+	now := 9 - len(s.Hand)
+	w = why(map[string]any{"trick": now, "seat": 1})
+	if w.Played != nil || w.Seat != 0 || w.Trick != now || len(w.Options) != len(s.Legal) || w.Rule == "" {
+		t.Errorf("why now (trick %d, legal %v), asked with seat 1: %+v", now, s.Legal, w)
 	}
 	if n := ai.reasoned.Load(); n != 2 {
 		t.Errorf("%d explanations, want 2", n)
 	}
-	c.send(map[string]any{"t": "why", "hand": hand.Hand, "trick": 8, "seat": 1})
+	c.send(map[string]any{"t": "why", "hand": s.HandNo, "trick": 8})
 	c.waitError(errInvalid)
-
-	// The expert's own choice for the bot's card, and a card it could not play.
-	own := legal[len(legal)-1]
-	c.send(map[string]any{"t": "mark", "hand": hand.Hand, "trick": trick, "seat": int(bot.Seat), "card": own.String()})
-	s = c.waitState("the mark", func(s *state) bool { return s.Expert != nil && len(s.Expert.Marks) == 1 })
-	if m := s.Expert.Marks[0]; m.Hand != hand.Hand || m.Trick != trick || m.Seat != bot.Seat || m.Card == nil || *m.Card != own {
-		t.Errorf("mark %+v, want %v for seat %v in trick %d", m, own, bot.Seat, trick)
-	}
-	for _, x := range hand.Cards[(bot.Seat+1)%4] {
-		if !slices.Contains(legal, x) {
-			c.send(map[string]any{"t": "mark", "hand": hand.Hand, "trick": trick, "seat": int(bot.Seat), "card": x.String()})
-			c.waitError(errInvalid)
-			break
-		}
-	}
-	c.send(map[string]any{"t": "feedback", "text": "Waarom niet hoger?", "hand": hand.Hand, "trick": trick, "seat": int(bot.Seat)})
+	c.send(map[string]any{"t": "feedback", "text": "Waarom niet hoger?", "hand": s.HandNo, "trick": 1, "seat": 1})
 	c.waitType("saved")
 
 	playGame(t, rand.New(rand.NewPCG(31, 32)), 4, c)
-	s = c.s
-	if len(s.Expert.Hands) != 4 || len(s.Expert.Marks) != 1 {
-		t.Fatalf("game over: %d hands, marks %+v", len(s.Expert.Hands), s.Expert.Marks)
-	}
-	for k, rh := range s.Expert.Hands {
-		if rh.Hand != k+1 || len(rh.Legal) != 32 || len(rh.Pre) == 0 || len(rh.Tricks) != 8 {
-			t.Errorf("hand %d: number %d, %d legal sets, %d decisions before play, %d tricks", k+1, rh.Hand, len(rh.Legal), len(rh.Pre), len(rh.Tricks))
-		}
+	if s = c.s; !s.Expert {
+		t.Errorf("game over: expert %v", s.Expert)
 	}
 
 	srv.games.close()
@@ -225,60 +183,118 @@ func TestExpertMatch(t *testing.T) {
 			if !m.Expert || m.Seed != 4242 {
 				t.Errorf("match record %+v", m)
 			}
-		case "mark":
-			var m logMark
-			remarshal(t, r, &m)
-			if m.Seat != 0 || m.By != int(bot.Seat) || m.Hand != hand.Hand || m.Trick != trick || m.Played == nil || *m.Played.Card != bot.Card || *m.Mark.Card != own {
-				t.Errorf("mark record %+v", m)
-			}
 		case "feedback":
 			var f logFeedback
 			remarshal(t, r, &f)
-			if f.By == nil || *f.By != int(bot.Seat) || f.Hand != hand.Hand || f.Trick != trick {
+			if f.Seat != 0 || f.By == nil || *f.By != 0 || f.Hand != 1 || f.Trick != 1 {
 				t.Errorf("feedback record %+v", f)
 			}
 		}
 	}
-	if kinds["match"] != 1 || kinds["mark"] != 1 || kinds["feedback"] != 1 {
+	if kinds["match"] != 1 || kinds["feedback"] != 1 || kinds["mark"] != 0 {
 		t.Errorf("records %v", kinds)
 	}
 }
 
-// TestExpertMarkBid: the expert gives their own choice for a bid (here
-// passen, where seat 3 played); a seat that did not bid has no bid to give
-// one for.
-func TestExpertMarkBid(t *testing.T) {
-	dir := t.TempDir()
-	s, _, _ := newTestServer(t, func(s *Server) { s.games = newGameLog(dir, s.log) })
+// TestExpertSeat: the expert sits at the seat they chose, host there, with
+// bots at the others, and holds the cards that seat holds in a normal game
+// with the same seed, the same seat dealing. A seat outside 0–3, or in
+// another game, puts the creator at seat 0.
+func TestExpertSeat(t *testing.T) {
+	srv, ts, _ := newTestServer(t)
+	whole := newRoom(srv, "TEST")
+	defer whole.stop()
+	whole.seats[0] = newHuman("A")
+	whole.opts.Seed = 77
+	whole.startMatch()
+
+	c := dial(t, ts)
+	c.send(map[string]any{"t": "create", "name": "Expert", "expert": true, "seat": 2, "opts": map[string]any{"hands": 4, "seed": 77}})
+	if m := c.waitType("joined"); m.Seat != 2 {
+		t.Errorf("joined at seat %d, want 2", m.Seat)
+	}
+	s := c.waitState("the deal", func(s *state) bool { return s.Phase != phaseLobby })
+	if s.You != 2 || s.Host != 2 || s.Players[2].Bot || s.Players[2].Name != "Expert" {
+		t.Errorf("you %d, host %d, seat 2 %+v", s.You, s.Host, s.Players[2])
+	}
+	for _, k := range []int{0, 1, 3} {
+		if !s.Players[k].Bot {
+			t.Errorf("seat %d: %+v", k, s.Players[k])
+		}
+	}
+	r := roomOf(t, srv, c.code)
+	call(r, func() {
+		a, b := whole.dealt, r.dealt
+		if r.handNo != 1 || a.dealer != b.dealer || a.turned != b.turned || !slices.Equal(a.hands[2], b.hands[2]) {
+			t.Errorf("hand %d: dealer %v, turned %v, seat 2 %v; in a normal game %v, %v, %v", r.handNo, b.dealer, b.turned, b.hands[2], a.dealer, a.turned, a.hands[2])
+		}
+	})
+
+	for _, tc := range []struct {
+		expert, training bool
+		seat             int
+	}{{false, false, 2}, {false, true, 3}, {true, false, 4}, {true, false, -1}} {
+		c := dial(t, ts)
+		c.send(map[string]any{"t": "create", "name": "Piet", "expert": tc.expert, "training": tc.training, "seat": tc.seat, "opts": map[string]any{"hands": 4}})
+		m := c.until(5*time.Second, "joined", func(m *msg) bool { return m.T == "joined" || m.T == "error" })
+		if m.T != "joined" || m.Seat != 0 {
+			t.Errorf("%+v: %s at seat %d (%s)", tc, m.T, m.Seat, m.errMsg())
+			continue
+		}
+		if s := c.waitState("a state", func(*state) bool { return true }); s.You != 0 || s.Host != 0 {
+			t.Errorf("%+v: you %d, host %d", tc, s.You, s.Host)
+		}
+	}
+}
+
+// TestWhyAwaited: before the first card, trick 0 is the seat's last
+// decision, but on its turn the one awaited now: in gedraaid, voorhand who
+// passed and must now choose trump once everyone passed.
+func TestWhyAwaited(t *testing.T) {
+	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEST")
 	defer r.stop()
 	r.expert = true
 	r.seats[0] = newHuman("A")
 	r.opts.TrumpMode = game.Gedraaid
-	r.phase = phaseGameOver
-	r.matchID = "m1"
-	r.firstHand = 1
-	r.handDealt = []dealtCards{{dealer: 0, hands: game.Shuffle(rand.New(rand.NewPCG(3, 4))), turned: game.Hearts}}
-	r.handActs = []string{"1b0 2b0 3b1"}
-	c := newClient(s, nil, "1.2.3.4", "test")
-	hand, trick, play := 1, 0, false
-	for _, seat := range []int{3, 0} {
-		r.cmdMark(c, 0, &inMsg{Hand: &hand, Trick: &trick, Seat: &seat, Play: &play})
+	r.firstHand, r.handNo = 1, 1
+	r.dealt = dealtCards{dealer: 3, hands: game.Shuffle(rand.New(rand.NewPCG(3, 4))), turned: game.Hearts}
+	r.deal = r.dealOf(r.dealt)
+	r.phase = string(r.deal.Phase())
+	act := func(tok string) {
+		t.Helper()
+		seat, a, err := parseAct(tok)
+		if err == nil {
+			err = applyAct(r.deal, seat, a)
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", tok, err)
+		}
+		r.acts = strings.TrimSpace(r.acts + " " + tok)
+		r.phase = string(r.deal.Phase())
 	}
-	got, ok := r.marks[markKey{hand: 1, trick: 0, seat: 3}]
-	if !ok || got.Play == nil || *got.Play || len(r.marks) != 1 {
-		t.Errorf("marks %+v", r.marks)
+	ask := func(want choiceJSON, awaited bool) {
+		t.Helper()
+		_, done, ok := r.decision(1, 0, 0)
+		switch {
+		case !ok:
+			t.Errorf("after %q: no decision", r.acts)
+		case awaited != (done == nil):
+			t.Errorf("after %q: done %+v, want awaited %v", r.acts, done, awaited)
+		case done != nil && string(mustJSON(choiceOf(*done))) != string(mustJSON(want)):
+			t.Errorf("after %q: %s, want %s", r.acts, mustJSON(choiceOf(*done)), mustJSON(want))
+		}
 	}
-	s.games.close()
-	recs := readGameLog(t, filepath.Join(dir, "games-"+time.Now().UTC().Format("2006-01")+".jsonl"))
-	if len(recs) != 1 || recs[0]["t"] != "mark" {
-		t.Fatalf("log %v", recs)
-	}
-	var m logMark
-	remarshal(t, recs[0], &m)
-	if m.Seat != 0 || m.By != 3 || m.Played == nil || m.Played.Play == nil || !*m.Played.Play || m.Mark.Play == nil || *m.Mark.Play {
-		t.Errorf("mark record %+v (played %+v)", m, m.Played)
-	}
+	no, clubs := false, game.Clubs
+	ask(choiceJSON{}, true) // voorhand's bid
+	act("0b0")
+	ask(choiceJSON{Play: &no}, false) // the pass, while the others bid
+	act("1b0")
+	act("2b0")
+	act("3b0")
+	ask(choiceJSON{}, true) // everyone passed: trump, awaited
+	act("0tC")
+	ask(choiceJSON{Suit: &clubs}, false)
 }
 
 // gateAI is the fake AI whose explanations wait for the gate; it counts
@@ -309,8 +325,8 @@ func TestWhyOneAtATime(t *testing.T) {
 	ai := &gateAI{gate: make(chan struct{})}
 	s, _ := newTestServerWith(t, ai)
 	c := newClient(s, nil, "1.2.3.4", "test")
-	hand, trick, seat := 1, 0, 3
-	ask := func(r *room) { r.cmdWhy(c, 0, &inMsg{Hand: &hand, Trick: &trick, Seat: &seat}) }
+	hand, trick := 1, 0
+	ask := func(r *room) { r.cmdWhy(c, 0, &inMsg{Hand: &hand, Trick: &trick}) }
 	var rooms []*room
 	for _, code := range []string{"WHYA", "WHYB"} {
 		r := newRoom(s, code)
@@ -320,8 +336,8 @@ func TestWhyOneAtATime(t *testing.T) {
 		r.opts.TrumpMode = game.Gedraaid
 		r.firstHand = 1
 		r.handDealt = []dealtCards{{dealer: 0, hands: game.Shuffle(rand.New(rand.NewPCG(3, 4))), turned: game.Hearts}}
-		r.handActs = []string{"1b0 2b0 3b1"}
-		ask(r) // why seat 3 played
+		r.handActs = []string{"1b0 2b0 3b0 0b1"}
+		ask(r) // why the expert played
 		rooms = append(rooms, r)
 	}
 	running := func() int {

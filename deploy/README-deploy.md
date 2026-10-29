@@ -174,7 +174,7 @@ The server appends a compact record of every game to the volume `klaverjas-games
 - who played: name, IP address and browser (User-Agent);
 - the cards dealt and every move;
 - the results and the Spelanalyse;
-- the players' own choices (*bij nader inzien*) and their feedback.
+- the players' feedback (in the expert mode also about one of their own decisions).
 
 It is used for statistics and to improve the game (looking at games again, tuning the engine). It grows by a few kB per game and is kept for **at most 12 months**: the server removes the month files older than the current month and the eleven before it, when it starts and every hour, and says so in its log (`game log: removed an old month`).
 

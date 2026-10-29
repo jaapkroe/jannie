@@ -13,7 +13,7 @@ func (r *room) stateFor(i game.Seat) *state {
 		Phase:       r.phase,
 		Opts:        r.opts,
 		Training:    r.training,
-		Expert:      r.expertFor(),
+		Expert:      r.expert,
 		You:         int(i),
 		Host:        int(r.host),
 		HandNo:      r.handNo,

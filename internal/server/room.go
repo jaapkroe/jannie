@@ -150,8 +150,7 @@ type room struct {
 	handDealt []dealtCards // every finished hand of the match as dealt
 
 	// The expert mode (expert.go).
-	marks      map[markKey]choiceJSON // the expert's own choices for decisions of the match
-	explaining bool                   // an explanation is being worked out (cmdWhy)
+	explaining bool // an explanation is being worked out (cmdWhy)
 }
 
 // dealtCards is a hand as dealt: the dealer, the seats' cards, the talon
@@ -570,14 +569,18 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 		r.opts.Lessons = false
 	}
 	r.expertOpts()
-	r.seats[0] = newHuman(cleanName(m.Name))
-	r.setClient(0, c)
-	r.host = 0
+	var i game.Seat // the expert sits where they chose; anyone else at seat 0
+	if r.expert && m.Seat != nil && *m.Seat >= 0 && *m.Seat < 4 {
+		i = game.Seat(*m.Seat)
+	}
+	r.seats[i] = newHuman(cleanName(m.Name))
+	r.setClient(i, c)
+	r.host = i
 	if r.training {
 		r.seatTraining()
 	}
 	r.log.Info("room created", "training", r.training, "expert", r.expert, "players", r.opts.Players, "start", m.Start)
-	r.welcome(c, 0)
+	r.welcome(c, i)
 	r.emitTo(evLobby{Type: "lobby"}, c)
 	if m.Start || r.expert { // an expert game has no lobby
 		r.startMatch()
@@ -785,10 +788,12 @@ func (r *room) reconnect(c *client, i game.Seat) {
 		} else {
 			r.resync(c, i)
 		}
+		r.rewatch(c, i)
 		r.checkHost()
 		return
 	}
 	r.emitTo(evSeat{Type: "back", Seat: i}, c)
+	r.rewatch(c, i)
 	r.checkHost()
 	r.drive()
 }
@@ -1032,8 +1037,8 @@ func (r *room) handle(c *client, m *inMsg) {
 		r.cmdLobby(c, i)
 	case "leave":
 		r.leave(c, i)
-	case "mark":
-		r.cmdMark(c, i, m)
+	case "handReview":
+		r.cmdHandReview(c, i, m)
 	case "why":
 		r.cmdWhy(c, i, m)
 	case "feedback":

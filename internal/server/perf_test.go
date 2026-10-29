@@ -312,8 +312,8 @@ func BenchmarkMarshalState(b *testing.B) {
 }
 
 // BenchmarkStateGameOver builds and encodes the state at game over after
-// 24 hands, as every update then does (a vote, a call switched on, an
-// expert's mark): the review's replay and, for the expert, every hand.
+// 24 hands, as every update then does (a vote, a call switched on): the
+// review with its replay, every graded decision in it.
 func BenchmarkStateGameOver(b *testing.B) {
 	for _, sc := range []perfScenario{
 		{"solo", 1, inMsg{Opts: json.RawMessage(`{"hands":24}`)}},

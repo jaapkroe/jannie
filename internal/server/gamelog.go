@@ -15,12 +15,12 @@ import (
 
 // gameLog keeps a compact record of every match (design §6 Game log): one
 // JSON line per event in a file per month, games-2026-10.jsonl, in dir. It
-// holds what was dealt and played, the reviews, the players' own choices
-// and feedback, and who played (name, address, device), so games can be
-// looked at again, shown as statistics and the engine tuned on them. Lines
-// go through a bounded queue to one writer goroutine: a slow disk never
-// holds up a room, and a full queue drops lines (and says so in the server
-// log) rather than block. The writer keeps gameLogMonths of files (prune).
+// holds what was dealt and played, the reviews and feedback, and who
+// played (name, address, device), so games can be looked at again, shown
+// as statistics and the engine tuned on them. Lines go through a bounded
+// queue to one writer goroutine: a slow disk never holds up a room, and a
+// full queue drops lines (and says so in the server log) rather than
+// block. The writer keeps gameLogMonths of files (prune).
 type gameLog struct {
 	dir  string
 	log  *slog.Logger
@@ -251,22 +251,6 @@ type logReview struct {
 	Review *reviewState `json:"review"`
 }
 
-// logMark: the expert's own choice for a decision of seat By (theirs or a
-// bot's), given while looking back; a mark without card, suit or play
-// clears it.
-type logMark struct {
-	T      string      `json:"t"` // "mark"
-	Match  string      `json:"match"`
-	At     time.Time   `json:"at"`
-	Seat   int         `json:"seat"`
-	Name   string      `json:"name"`
-	Hand   int         `json:"hand"`
-	Trick  int         `json:"trick"`
-	By     int         `json:"by"`
-	Mark   choiceJSON  `json:"mark"`
-	Played *choiceJSON `json:"played,omitempty"`
-}
-
 type logFeedback struct {
 	T      string    `json:"t"` // "feedback"
 	Match  string    `json:"match"`
@@ -277,7 +261,7 @@ type logFeedback struct {
 	Device string    `json:"device"`
 	Hand   int       `json:"hand,omitempty"` // 0: about the game as a whole
 	Trick  int       `json:"trick,omitempty"`
-	By     *int      `json:"by,omitempty"` // expert: the seat of the decision commented on
+	By     *int      `json:"by,omitempty"` // expert: the seat of the decision commented on (their own)
 	Text   string    `json:"text"`
 }
 

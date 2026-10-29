@@ -31,7 +31,7 @@ web/                       static frontend, vanilla ES modules, no build step
   icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
   css/app.css  css/cards.css  css/manual.css
   js/main.js … (app modules)  js/cards.js  js/sound.js  js/manual.js
-  js/expert.js               the expert mode's tools, loaded only when an expert game needs them
+  js/expert.js               the expert mode's sheet *Redenering van de AI*, loaded only when an expert game needs it
   js/call.js                 the call with the others at the table, loaded once another person sits there
 test/e2e/                  node scripts that play full games over the websocket
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
@@ -241,13 +241,18 @@ nobody else can join. With option `lessons` Juf Jannie also teaches the game
 step by step (§6 Lessons).
 
 **Expert mode** (`expert: true` at create, issue #34; reached only by an
-easter egg on the home screen, §9) is a solo room as well: 1 human at seat 0,
-three random bots at the room's level, always four players, `open` allowed,
-no hints or tips, nobody else can join ("Dit is een expertspel; daar kun je
-niet aan meedoen."), no lobby (it starts at once; `lobby` is refused, a
-`rematch` plays the same seed and hand again). It deals from `seed` and
-`from`, and adds the state's `expert` part, `why`, `mark` for any seat and
-feedback about one decision, while the match runs and after it (§6, §7).
+easter egg on the home screen, §9) is a solo room as well: 1 human at the
+seat that `create` names (`seat`, 0–3; left out or out of range: 0), the
+host, three random bots at the room's level on the other seats, always four
+players, `open` allowed, no hints or tips, nobody else can join ("Dit is een
+expertspel; daar kun je niet aan meedoen."), no lobby (it starts at once;
+`lobby` is refused, a `rematch` plays the same seed and hand again, at the
+same seat). It deals from `seed` and `from` by seat, as a game of four with
+the same seed and options deals: the same first dealer, and the same cards
+for seat k. The state's `expert` is true, and the expert may ask `why`
+about their own decisions and give feedback about one of them, while the
+match runs and after it (§6, §7). The review per hand and the Spelanalyse
+are those of any game at a table of four.
 
 ## 4. Go API contracts
 
@@ -507,7 +512,7 @@ type Signal struct{ Seat game.Seat; Card game.Card; Kind string; Means game.Card
 func TrickSignals(v game.View) []Signal
 func SignalChance(v game.View, prefer game.Card) (Signal, bool)
 
-// The review at the end of a match (§9 Spelanalyse). GradeChoice runs the
+// The review of a player's decisions (§6 and §9 Spelanalyse). GradeChoice runs the
 // search of Advise on the same view (same seed), so it agrees with the hint.
 // Points are expected score differences between the teams, as in the hints:
 // the player's team's score minus the opponents' at the end of the hand
@@ -880,7 +885,8 @@ reply attempt.
   gone 10 s by then (counted as above: the pause does not reset that clock),
   else once they have.
 - Spelanalyse (§9), at a table of four only (three and two players get no
-  review: `review` stays null): every decision a connected human makes with a
+  review: `review` stays null, and `handReview` is refused): every decision
+  a connected human makes with a
   choice (a card when more than one is legal, a trump choice, a bid) is
   graded in the background with `AI.Grade` on the view it was made on, and
   each human's cards with `AI.HandLuck` at the deal. A substitute's decisions are not
@@ -893,26 +899,44 @@ reply attempt.
   turn opening (after the pause before it) to the decision, if they were
   connected all along: a turn that opened while they were away, or in which
   their connection dropped, is not. A match starts
-  every review afresh; a seat that changes hands starts a new one. At game
+  every review afresh; a seat that changes hands starts a new one.
+  Every graded decision is also kept with its hand, by hand number, with
+  what its grade says (`choices` of the hand in `replay`, §7): in trick
+  order, within trick 0 a bid before a trump choice (gedraaid: the pass,
+  then the forced trump choice). A grade that did not run (skipped as
+  above, or a panic) or came out with stake 0 (a failed search, or options
+  that all came out the same) is left out there; the review's sums are as
+  before. Each hand also counts its grades still out. A player asks for a
+  finished hand of the match (not the hand in play) with `handReview`, in
+  any phase but the lobby, and alone gets that hand as the replay shows
+  it, with their own graded decisions and the number of that hand's grades
+  still out (`pending`). The review remembers the hand asked last: every
+  grade of that hand that comes in later, kept or not, sends that player a
+  fresh `handReview` while they are connected, so an open replay fills in
+  as the grades arrive, and coming back after a dropped connection sends
+  it once more, with what came in meanwhile. A new match forgets it. A player without a review
+  gets the hand with no decisions. The state carries none of this. At game
   over each human's state carries their own review and nobody else's
   (`review`, §7); while grades are still out it is `{"pending": true, …}`,
   and the player gets an update without event once the last one is in.
-- Expert mode (§3; `expert.go`): the state's `expert` part carries the hand
-  in play, or just played (`handEnd`), as the replay shows it, with each
-  seat's bids and trump choice before the first card (`pre`) and per card
-  played the cards its player could play (`legal`); at game over every hand
-  of the match; and the expert's own choices (`marks`). A decision is named
-  by hand, trick (1–8; 0: the seat's last bid or trump choice before the
-  first card) and seat. The server rebuilds any moment of a hand from the
-  cards as dealt and the decisions (`acts`, as in the game log) up to it,
-  and so validates a `mark` (a card legal there, a suit allowed there, the
-  bid) and works out a `why`: `AI.Explain` on the view of that seat then,
-  match fields filled in as for the bots. A `why` names a decision made, or
-  the one awaited now in the hand in play; it runs in the background, one
-  at a time per room (another meanwhile: error `limiet`) and one at a time
-  over all rooms (the search takes every core; others wait their turn), and
-  the answer goes to the asker alone. At most 500 marks and 200 feedback lines per
-  match.
+- Expert mode (§3; `expert.go`): the state's `expert` is true. A `why`
+  names one of the expert's own decisions by hand and trick (1–8; 0: the
+  bid or trump choice before the first card): one made, or the one awaited
+  now in the hand in play. Trick 0 is the expert's last bid or trump choice
+  before the first card, except while the hand in play is in its bid or
+  trump phase and it is the expert's turn: then it is the decision awaited
+  now (in gedraaid, after everyone passed, voorhand's trump choice, not
+  their pass before it, which can no longer be asked about then). The
+  server rebuilds that moment of the hand from the cards as dealt and the
+  decisions (`acts`, as in the game log) up to it, and works out the `why`:
+  `AI.Explain` on the expert's view then, match fields filled in as for the
+  bots. It runs in the background, one at a time per room (another
+  meanwhile: error `limiet`) and one at a time over all rooms (the search
+  takes every core; others wait their turn), and the answer goes to the
+  asker alone. The expert gives `feedback` while the match runs and after
+  it, about the game or about one of their own decisions (hand and trick),
+  at most 200 lines per match. The review per hand and the Spelanalyse are
+  as for anyone at a table of four.
 - Bot chat (limits in §5): a bot does not repeat one of its last two lines for
   the same kind of event (numbers aside: "20 roem" and "50 roem" are one line);
   it asks for another line a few times and otherwise stays silent.
@@ -969,12 +993,10 @@ reply attempt.
   HandResult), `end` (`total`, `winner`), `close` (a room removed before game
   over: `hand`, `reason`; a match cut short by a server restart has neither
   `end` nor `close`), `review` (`seat`, `name`, `review`: the review state of
-  §7 without `replay`, once every grade is in), `mark` (the expert's own
-  choice: `seat` and `name` of the expert, `hand`, `trick`, `by`: the seat
-  whose decision it is, `mark` and `played`: card, suit or play; a mark
-  without one clears it) and `feedback` (`seat`, `name`, `ip`, `device`,
-  `text`; from the expert also `hand`, `trick` and `by` when about one
-  decision). `acts` lists the hand's decisions in order,
+  §7 without `replay`, once every grade is in) and `feedback` (`seat`,
+  `name`, `ip`, `device`, `text`; from the expert also `hand`, `trick` and
+  `by`, the expert's own seat, when about one of their decisions). `acts`
+  lists the hand's decisions in order,
   space-separated: the seat, then a card ("2AS"), or `b1`/`b0` (spelen,
   passen), `tH` (trump), `a90` (auction bid; `a0` pass), `dJS7H` (laid away).
 
@@ -1153,7 +1175,7 @@ client rotates so `you` is at the bottom.
 
 | `t` | Fields | When |
 |---|---|---|
-| `create` | `name`, `opts` (partial ok), `training` bool, `expert` bool, `start` bool | Home. `start:true` starts at once (quick play vs bots); an expert game always does |
+| `create` | `name`, `opts` (partial ok), `training` bool, `expert` bool, `start` bool; with `expert` also `seat` (0–3, optional) | Home. `start:true` starts at once (quick play vs bots); an expert game always does, with you at `seat` (left out or out of range: 0, §3); any other create seats you at 0 and ignores `seat` |
 | `join` | `code`, `name`, `token` (optional) | Join link, code entry, reconnect |
 | `sit` | `seat` | Lobby: move to an empty seat |
 | `bot` | `seat`, `id` ("" = random) | Host, lobby: put a bot on an empty seat (or replace a bot) |
@@ -1174,9 +1196,9 @@ client rotates so `you` is at the bottom.
 | `rematch` | | Host, phase `gameOver`: new match, same seats and options |
 | `lobby` | | Host, phase `gameOver`, not training: back to the lobby, same code and options (§6) |
 | `leave` | | Leave the room |
-| `mark` | `hand`, `trick` (1–8, or 0: the seat's last bid or trump choice before the first card), `seat` (whose decision; default your own), and `card`, `suit` or `play` (none: clear) | Expert, once the match started (also at game over): the expert's own choice for a decision made, of any seat. A card must have been legal for that seat there, a suit allowed for its trump choice, `play` for a bid. At most 500; each one goes to the game log (§6), and an `update` without event shows it in `expert.marks`. Elsewhere error `ongeldig` |
-| `why` | `hand`, `trick`, `seat` (as `mark`) | Expert: the engine's reasoning for a decision made, or the one awaited now in the hand in play; answered with `why` to you alone, one at a time per room (§6) |
-| `feedback` | `text` (at most 2000 characters, cleaned per line); the expert also `hand`, `trick` and `seat` (optional: about that decision) | Phase `gameOver`, with a review: free text for the game log (§6), about the game; the expert also while the match runs. Answered with `saved`. At most 20 per player and match, 200 for the expert |
+| `handReview` | `hand` | A table of four, any phase but the lobby: a finished hand of the match (not the hand in play) as the replay shows it, with your own graded decisions in it; answered with `handReview` to you alone, and again each time a grade of that hand comes in, until you ask for another hand or a new match starts (§6 Spelanalyse). With three or two players error `ongeldig` ("Terugkijken kan alleen met z'n vieren."); in the lobby, or a hand not finished: `ongeldig` ("Dat potje is er (nog) niet.") |
+| `why` | `hand`, `trick` (1–8, or 0: your bid or trump choice before the first card; on your turn to bid or choose trump, the one awaited now) | Expert, once the match started (also at game over): the engine's reasoning for one of your own decisions, made or awaited now in the hand in play; answered with `why` to you alone, one at a time per room (another meanwhile: `limiet`, §6). Elsewhere, or no such decision (yet): error `ongeldig` |
+| `feedback` | `text` (at most 2000 characters, cleaned per line); the expert also `hand` and `trick` (optional, as in `why`: about that decision of their own; the log keeps them when the match has that hand) | Phase `gameOver`, with a review: free text for the game log (§6), about the game; the expert also while the match runs. Answered with `saved`. At most 20 per player and match, 200 for the expert |
 | `ping` | | Keepalive (server answers `pong`) |
 
 ### Server → client
@@ -1191,7 +1213,8 @@ client rotates so `you` is at the bottom.
 | `refused` | `name`: to the host only, someone could not join because the table is full (§6); no state change, so no `update` |
 | `saved` | `what`: `"feedback"`: kept in the game log |
 | `rtc` | `from` (the sender's session), `seat` (the sender's), `desc` as sent: to the session named only (§6 Calls) |
-| `why` | Expert: `hand`, `trick`, `seat` (as asked), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `hint`, `hintText`, `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
+| `handReview` | `hand`, `pending` (that hand's grades still out), `replay`: the hand as in `review.replay` (below), with your graded decisions in `choices`; to you alone (client `handReview` above) |
+| `why` | Expert: `hand`, `trick` (as asked), `seat` (yours), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `hint`, `hintText`, `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
 
@@ -1247,7 +1270,7 @@ persona on a seat its player left). `away` comes once per lost connection.
             "ai":"normaal", "tempo":"normaal", "open":false, "lessons":false,
             "signals":{"aas":true,"kleintjeBoer":true,"hoogLaag":true,"boerOverBoer":false}, "seed":0, "from":0 },
   "training": false, "you": 0, "host": 0,
-  "expert": null,                  // an expert match: {"hands":[hand…],"marks":[…]}, below
+  "expert": false,                 // true in an expert match (§3)
   "roster": [ {"id":"dirk","name":"Opa Dirk","emoji":"👴","color":"#8a5a2b","bio":"…"} ],  // lobby only: bot picker
   "players": [ // opts.players entries; null = empty seat
     { "name":"Piet", "bot":false, "botId":"", "emoji":"", "color":"",
@@ -1318,21 +1341,19 @@ ms: `{"n":118,"median":2400,"total":372000,"slowest":{"hand":4,"trick":2,"ms":48
 the median and summed think time, the slowest one (`trick` 0: a trump choice
 or bid), and the same sums over the other humans of the match (null without
 one). `replay` lists every finished hand of the match:
-`{"hand":4,"cards":[[8 cards]×4],"tricks":[8 Tricks]}`, its number, the cards
-dealt to each seat (display-sorted under that hand's trump) and its tricks;
-the hand's result is the score sheet's row (`hand`). In an expert match each
-hand also has `pre` and `legal` (as in `expert.hands`). `seed` is the
-match's seed (§3).
-
-`expert` (null outside an expert match and in its lobby):
-`{"hands":[hand…],"marks":[{"hand":5,"trick":3,"seat":1,"card":"AS"},{"hand":5,"trick":0,"seat":2,"play":false}]}`.
-`hands` holds the hand in play, or just played (`handEnd`), and at game over
-every hand of the match, each as in `replay` with the trick in progress
-included (fewer than four cards, `winner` -1) and `pre`: the bids and trump
-choices before the first card in order, `[{"seat":1,"play":false},
-{"seat":0,"suit":"H"}]`, and `legal`: per card played so far, the cards its
-player could play there. `marks` are the expert's own choices (§7 `mark`),
-in hand, trick and seat order.
+`{"hand":4,"cards":[[8 cards]×4],"tricks":[8 Tricks],"choices":[choice…]}`,
+its number, the cards dealt to each seat (display-sorted under that hand's
+trump), its tricks and the player's graded decisions in it (§6
+Spelanalyse; always an array, `[]` when none); the hand's result is the
+score sheet's row (`hand`). A choice is a moment without `hand`, `cards`
+and `table`, in trick order, within trick 0 a bid before a trump choice:
+`{"trick":3,"played":{"card":"TS"},"better":{"card":"AS"},"points":18,"us":11,
+"them":-7,"nat":[31,18],"natThem":[0,0],"why":"…","text":"…"}`. `trick` and
+`played` are always there; a decision that lost points has `better`, one
+that gained them `alt`, both with `points`, `us`, `them`, `nat`, `natThem`,
+`why` and `text` as in a moment; a decision that did neither has only
+`trick` and `played`. Every field but those two is left out when zero or
+empty (a missing `us` or `them` is 0). `seed` is the match's seed (§3).
 
 `HandResult` JSON: `{"players":4,"playingTeam":0,"trumpBy":2,"trump":"H","dealer":1,
 "points":[104,58],"roem":[20,0],"score":[124,58],"nat":false,"pit":false,"pitTeam":-1,
@@ -1543,12 +1564,21 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   `/api/health`). Five quick taps on that line (each within 1.5 s of the
   last) open the expert mode's sheet, *Expert*: the only way in, and not
   named anywhere (§3; in short landscape the footer, and so the line, is
-  hidden). The sheet has a line on what the mode does, *Open kaarten*,
+  hidden). The sheet has, in this order, a line on what the mode does
+  ("Speel een spel opnieuw met de seed, of één potje ervan, op een plaats
+  naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op het
+  vergrootglas voor de redenering van de AI, en geef je commentaar. Na elk
+  potje tik je op een slag en dan op Dit potje terugkijken."), *Open
+  kaarten*, *Potjes*, *Troef*, *Regels*, *AI-sterkte*, *Tempo*, *Seinen*,
   *Seed*, *Potje* (`from`, 1–24, empty: *Hele spel*; with a number the
-  *Potjes* row hides), *Potjes*, *Troef*, *Regels*, *Seinen*, *AI-sterkte*
-  and *Tempo*, all kept on the device in `kj.expert`, the seed included,
-  and *Start expertspel* (`create` with `expert`, `start`, without asking
-  for a name). *Nieuw spel* and
+  *Potjes* row hides) and *Plaats* (*1* to *4*: the seat, 0–3; ⓘ: where
+  you sit; in a normal game plaats 1 is the creator's seat, plaats 2 sits
+  to the left of 1, plaats 3 opposite and plaats 4 to the right; with the
+  same seed every plaats gets the cards and the dealer it gets in that
+  game; the game log calls plaats 1 seat 0 and plaats 4 seat 3), all kept
+  on the device in `kj.expert`, the seed included, and *Start expertspel*
+  (`create` with `expert`, `start` and `seat`, the latter beside `opts`,
+  not in them; without asking for a name). *Nieuw spel* and
   *Meedoen*, where others see the name, ask for it first, gently: the name
   field takes the focus with a soft glow and a toast "Hoe heet je?" says why.
   Opening a join link `/ABCD` goes straight to joining (asks only for a name if
@@ -1576,7 +1606,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   potje n/16; buttons for chat (with unread
   badge), score sheet, last trick, help, settings, sound (a toggle:
   `aria-pressed` while the sound is on, tooltip "Geluid aan" / "Geluid uit",
-  icon to match; on phones it is in the ⋯ menu). Where a name must
+  icon to match; on phones it is in the ⋯ menu); in an expert game, first
+  of them, a magnifier for the reasoning of the AI (§9 Expert). Where a name must
   shorten (lobby seat, score bar, *Laatste slag*), only the name does: its
   "(AI)" stays readable ("Kees de Vi… (AI)"). The trump badge's details show
   what the badge shows, also during the trump banner. Whatever the order of
@@ -1687,8 +1718,14 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   a dead socket: the client reconnects. So does the client's keepalive
   `ping` (every 20 s) with nothing at all received by the next one; that
   counts from the ping, not the clock, since Chrome may fire the timers of a
-  tab hidden for 5 minutes or more only once a minute. Every rejoin drops what was sent
-  but unanswered and renders purely from the resync. A tab in the background still sounds
+  tab hidden for 5 minutes or more only once a minute. Every rejoin drops the
+  moves and votes sent but unanswered and renders purely from the resync.
+  As the connection opens again, right after the `join` and before what
+  was queued while offline goes out, requests sent over the old connection
+  are settled: a feedback form's *Versturen* and the expert's question come
+  back (their answer went to the old connection), and a hand asked with
+  `handReview` is asked again while its trick view is open; queued ones go
+  out and are answered. A tab in the background still sounds
   the turn (and the takeover question) and shows "● Jouw beurt" in its
   title on your turn, and "● Vraag aan tafel" while the question waits for
   your answer. Leaving while offline sends `join` (with the seat
@@ -1745,6 +1782,23 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   the score; the ready chips show only with another person at the table
   (who left no longer counts), and alone at the table there is no
   countdown ring either (`nextAt` 0).
+  The review per hand (issue #54) starts from a trick: at a table of four
+  the trick view (from the summary's tiles, or the score sheet's last
+  potje) has under the cross and its line *Dit potje terugkijken*
+  (history icon) while that hand is finished: in `handEnd` the hand of
+  `handNo`, during the next hand and at game over the score sheet's last
+  row (`prevHand`'s hand). *Laatste slag* has the same button in `handEnd`
+  and `gameOver`, for the hand just played. A tap sends `handReview` with
+  that hand (the hand of the tricks shown) and shows *Laden…* on the
+  button, disabled, until the answer (an error gives the button back; a
+  reconnect asks again, §9 Connection); the answer opens
+  the replay of that hand (owner 'hand', §9 Terugkijken) just before the
+  player's card in the tapped trick (*Laatste slag*: trick 8). In short landscape the trick view
+  puts the cross beside its line and the button, so the button is in view
+  without scrolling (640 × 360, 844 × 390). The summary itself gets no
+  button: it must fit without scrolling. Tables of three or two have none
+  either, like the Spelanalyse: the engine analyses four players, and the
+  replay is built for four seats.
 - **Chat**: drawer (side panel on wide screens), quick reactions (👍 😂 😱 😭
   "Mooi!" "Nat!" "Goed gespeeld"), bot lines, system lines, unread badge (counts what
   people write; system lines and bot chatter, shown as speech bubbles, do not).
@@ -1935,8 +1989,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   (also in its title: "De anderen hebben nog 3 troeven."). Input handlers
   read the step on screen (`app.view`): the
   trick animation shows a trick's explanation before it becomes `app.s`.
-- **Spelanalyse** (issues #6 and #18, four players only): under the final
-  score, a line for the player alone: *Jouw spel volgens Juf Jannie: 87% (goed
+- **Spelanalyse** (issues #6 and #18, four players only; the same for
+  everyone, the expert included): under the final score, a line for the
+  player alone: *Jouw spel volgens Juf Jannie: 87% (goed
   gespeeld) ›* (*Jouw spelanalyse wordt berekend…*, disabled, while grades
   are out; hidden without a review). Juf Jannie stands for the engine of the
   hints, so the numbers read as hers, not as a fact. The verdict is
@@ -1964,9 +2019,11 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   with a line that splits the points (`outcomeLine`): *Jullie +11, zij −7;
   kans dat jullie nat gaan 31% → 18%* (a chance that moves by less than 5
   is left out), for a strong move *Tegenover ♠8: jullie +6, zij −6*. A tap
-  opens the replay at that moment; *Potjes terugkijken* opens it at the
-  first hand. The header line under the percentage ends with the seed:
-  *16 potjes · 118 keuzes · seed 482913*. Then
+  opens the replay (owner 'review', every hand of `replay`) at that moment;
+  *Potjes terugkijken* opens it at the first hand. A moment is disabled
+  when its hand is not in `replay` (looked up by number: with `from` the
+  only hand is not hand 1). The header line under the percentage ends
+  with the seed: *16 potjes · 118 keuzes · seed 482913*. Then
   *Vorige partijen 79% · 83%* (the percentages of up to five earlier matches
   on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
   Dit is slechts de mening van Juf Jannie.*, and last *Opmerkingen*: a text
@@ -1978,51 +2035,103 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   the line: on a short phone it takes the place of the emoji (portrait up to
   760 px high) and of *Laatste potje* (up to 680 px); in short landscape the
   sub-line goes and the title and score shrink.
-- **Terugkijken** (the replay, `replay`): a finished hand card by card with
-  all four hands open. On top *Potje 4 van 16* with ‹ › for the other hands
-  and "♥ troef · Kees speelt"; from a moment, the moment and its split
-  (*Naar dit moment* once stepped away). The trick lies at the seats with
-  every name, whose turn it is marked, then "Kees is aan de beurt" or, with
-  the trick complete, "Kees neemt de slag · 21 punten · roem: …", and *Stand
-  in dit potje: Wij 34 – Zij 12* (card points and roem of the tricks taken),
-  after the last card *Uitslag: Wij 0 – Zij 182 · Wij nat*. Below, the
-  hands left, the player's first: at the moment the card played and the
-  better (or obvious) one are marked in it, with a key. A bar under the
-  scrolling body keeps ‹ *Slag 4 · 2 van 4 kaarten* › (also ←/→) and the
-  eight tricks (each in its taker's colour; a tap shows it complete) in
-  view. A moment opens just before the player's card (a lead: with the
-  previous trick still on the table), a trump choice or bid before the
-  first card. In short landscape the table sits beside the moment and the
-  hands, and the bar is one line. Outside the expert mode the replay has no
-  choices of the player's own and no feedback per situation (issue #34):
-  the review's *Opmerkingen* is about the game as a whole.
-- **Expert** (§3 Expert mode; `expert.js`): the replay with the expert's
-  tools, titled *Expert: terugkijken*, wider on large screens. It opens from
-  the table's search button (top bar, only in an expert game: the hand in
-  play, after its latest card, and it follows the cards played while it is
-  open), from *Dit potje terugkijken* on the hand summary (at the deal),
-  and at game over from *Potjes terugkijken* or a moment of the review (all
-  hands, `expert.hands`). Under the table a box shows the decision at that
-  step: before the first card a chip per seat's bid or trump choice and one
-  for the first card (*Kees (AI): ♥ als troef*, *Kees (AI) speelde ♦7*), the
-  card chosen by default; after the latest card of the hand in play the
-  decision awaited now (*Slag 3 · Jij bent aan de beurt*). For the decision
-  chosen: the head (*Slag 3 · Bram (AI) speelde ♠8*); the expert's own
-  choice (the decider's card is lifted with a gold ring, the cards it could
-  play are tappable, a tap sends `mark` and gives a blue ring, *Jouw keuze:
-  ♠9. Tik er nog eens op om hem weg te halen.*; four suit buttons for a
-  trump choice, *Spelen* and *Passen* for a bid); *Redenering van de AI*
-  (`why`; *De AI denkt na…* until the answer), which shows *Normaal:* the
-  normaal choice with its rule's reason, *Sterk:*, *Tip:* the hint, a table
-  of every option (*Waarde*, *±*, for a card *Punten slag*, *Punten
-  later*, *Roem slag*, *Roem later*, *Nat, pit*, and *Nat wij*, *Nat zij*;
-  the option played marked *gespeeld* or *gekozen*, the best value in gold;
-  on a phone the table scrolls sideways) and *Over 400 verdelingen van de
-  kaarten die Bram (AI) niet kon zien.* with an ⓘ on what the numbers mean;
-  answers are kept per situation while the page lives. Last a fold-out
-  *Commentaar bij ♠8 van Bram (AI)*: one feedback form for the whole
-  replay (typed text stays across steps), sent with the hand, trick and
-  seat of the decision shown. Values read as numbers, plainly.
+- **Terugkijken** (the replay, `openReplay`): a finished hand card by card
+  with all four hands open, the same for everyone. It has an owner: 'hand'
+  (one finished hand, from a `handReview` answer, §9 Review) or 'review'
+  (game over, every hand of `review.replay`, from the Spelanalyse). On top
+  *Potje 4 van 16* with ‹ › for the other hands and "♥ troef · Kees
+  speelt", and under it one line for the hand (`.rp-sum`, in the head):
+  *Volgens Juf Jannie: 7 keuzes · 1 sterke zet · 18 punten laten liggen in
+  1 zet* (the hand's `choices`; a part that is 0 left out, no line without
+  choices and nothing pending), ending in *· nog 2 keuzes in berekening*
+  (*· nog 1 keuze …*) while the hand's `pending` is above 0 (owner
+  'hand'), with an ⓘ on *Laten liggen* (differences under 5 points, or
+  within the uncertainty of the search, do not count) and *Sterke zet*.
+  The trick lies at the seats with every name, whose turn it is marked,
+  then "Kees is aan de beurt" or, with the trick complete, "Kees neemt de
+  slag · 21 punten · roem: …", and *Stand in dit potje: Wij 34 – Zij 12*
+  (card points and roem of the tricks taken), after the last card
+  *Uitslag: Wij 0 – Zij 182 · Wij nat*. Below the table, a box
+  (`.rp-moment`) with Juf Jannie's view of the player's own decisions: a choice belongs to the step
+  just before the player's card in its trick (`before`; a lead: with the
+  previous trick still on the table), a trump choice or bid to step 0,
+  before the first card. The box shows every choice of the step on screen
+  (step 0 may have a bid, a trump choice and the lead of trick 1), else the
+  latest one before it with *Naar deze keuze*, and nothing before the
+  player's first choice. A choice that lost points reads as in the
+  Spelanalyse (*Potje 5, slag 3*, *♠10 gespeeld, ♠A 18 punten beter: …*,
+  its split), so does a strong move; one that did neither reads *♠8
+  gespeeld: geen duidelijk betere keuze volgens Juf Jannie* (*♥ als troef:
+  …*, *Gepast: …*, *Gespeeld: …*; `fineLine`), without a split. Below,
+  the hands left, the player's first: at a card choice of the step on
+  screen that lost or gained points, the card played and the better (or
+  obvious) one are marked in it, with a key. A bar under the scrolling body keeps ‹ *Slag 4 · 2 van 4
+  kaarten* › (also ←/→) and the eight tricks in view: each in its taker's
+  colour, with a small dot for the player's graded card in it (light: points
+  left, gold: a strong move, also said in its title; a trump choice or bid
+  only shows at step 0), and a tap shows it complete. It opens at the
+  step of a moment, or just before the player's card in the tapped trick;
+  *Potjes terugkijken* at the deal of the first hand. In short landscape
+  the table sits beside the box and the hands, the hand's line stays in
+  the head, and the bar is one line. The 'review' replay follows
+  `review.replay` at game over and closes outside it. The 'hand' replay
+  stays open as the phase moves on (its hand is finished; a
+  `handReview` for the hand on screen refreshes it, at the same step) and
+  closes in the lobby and when a new match starts (a `deal` with no score
+  rows yet). While it is open and the player is to play at the table, a
+  line on top says *Aan tafel ben je aan de beurt.* with *Naar tafel*,
+  which closes it and then the views that led to it (the trick view,
+  *Laatste slag*, the score sheet). The replay has no feedback per decision (issue #34): the review's
+  *Opmerkingen* is about the game as a whole (the expert comments on their
+  decisions while playing, §9 Expert).
+- **Expert** (§3 Expert mode; `expert.js`, loaded when first needed): the
+  top bar's magnifier (*Redenering van de AI*, "Redenering van de AI bij
+  jouw zetten, en commentaar"; only in an expert game) opens the sheet
+  *Redenering van de AI* about the player's own decisions in the hand in
+  play, or just played (`handNo`). Those come from the state, so a reload
+  keeps them: trick 0 when the player bid or chose trump before the first
+  card (`bids`, `trumpBy`), tricks 1 to k for the cards they played (k = 8
+  − the cards in `hand` during play, 8 at `handEnd` and `gameOver`), and on
+  their turn in a playing phase the decision awaited now (trick 0 for a bid
+  or trump choice, else k + 1). It opens on the awaited one on their turn,
+  else on the latest; never on trick 8 (one card left, no choice: the one
+  before it instead, also when trick 8 is awaited). With none, a toast
+  "Nog geen zet van jou in dit potje.". In the head ‹ › step through them (disabled at the ends), with
+  the decision in bold: awaited, *Slag 3 · Jij bent aan de beurt* or *Voor
+  de eerste kaart · Jij bent aan de beurt*; made, *Slag 3* or *Voor de
+  eerste kaart* until the answer names the choice (*Slag 3 · Jij speelde
+  ♠8*, *Jij: ♥ als troef*, *Jij: passen*, *Jij: spelen*; its `played`).
+  The reasoning (`why`) is asked at once for the decision the sheet opens
+  on, unless already known; after a step, a button *Redenering van de AI*
+  asks for the one shown; *De AI denkt na…* (disabled) while the request is
+  out. One request is out at a time (expert.js keeps it): meanwhile the
+  other decisions show the button disabled. An answer counts only when its
+  hand and trick are the request's; an error clears the request, sheet open
+  or not (main.js passes every server error to expert.js in an expert game),
+  and so does a reconnect when the request went out over the old
+  connection (§9 Connection). Answers
+  are kept per decision for the life of the page
+  (`hand/trick/kind/nu|gedaan`, kind: card, bid or suit, so in gedraaid a
+  pass and the forced trump choice after it are apart), an awaited one
+  shown only while it is still awaited; a `deal` forgets them and the
+  request, so a rematch on the same seed never shows an old answer. An answer shows *Normaal:* the normaal
+  choice with its rule's reason, *Sterk:*, *Tip:* the hint, a table of
+  every option (*Waarde*, *±*, for a card *Punten slag*, *Punten later*,
+  *Roem slag*, *Roem later*, *Nat, pit*, and *Nat wij*, *Nat zij*; the
+  option played marked *gespeeld* or *gekozen*, the best value in gold; on
+  a phone the table scrolls sideways) and *Over 400 verdelingen van de
+  kaarten die jij niet kon zien.* (`worlds`) with an ⓘ on what the numbers
+  mean. Last
+  a fold-out *Commentaar bij deze zet*: one feedback form for the sheet
+  (*Wat klopt er volgens jou niet, of wat is beter?*), sent with the hand
+  and trick of the decision shown when sending; whether it is open, and
+  the text typed, stay for the life of the page. The sheet closes on a
+  `deal` and when the phase becomes `handEnd` or `gameOver` (the summary or
+  the game-over screen comes up; the magnifier opens the sheet again over
+  it); otherwise it stays as it is while play goes on. Values read as
+  numbers, plainly. The expert looks back at a hand as anyone does (§9
+  Review, Terugkijken): there is no replay of their own, and no choice of
+  their own for another card.
 - **Help**: the manual (SECTIONS) in a modal, plus `title` tooltips and small ⓘ
   explanations on UI elements.
 - **Responsive**: phones portrait (360×640 up, and an iPhone SE in Safari:

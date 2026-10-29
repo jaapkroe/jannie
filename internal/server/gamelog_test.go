@@ -21,7 +21,8 @@ import (
 // feedback, and reads the log back: the match with its seed and who
 // played, every hand with its cards and moves, the end, both reviews and
 // the feedback (design §6 Game log). Outside the expert mode a player
-// gives no choices of their own and no feedback about one situation.
+// asks no reasoning and gives no feedback about one decision; mark is an
+// unknown message.
 func TestGameLog(t *testing.T) {
 	dir := t.TempDir()
 	srv, ts := newTestServerWith(t, newGradeAI(false), func(s *Server) {
@@ -40,8 +41,8 @@ func TestGameLog(t *testing.T) {
 	if !slices.ContainsFunc(guest.chats, func(m chatMsg) bool { return m.Sys && m.Text == start }) {
 		t.Errorf("no start line with the seed in %+v", guest.chats)
 	}
-	if s.Review.Seed != 4242 || s.Expert != nil {
-		t.Errorf("review seed %d, want 4242; expert %+v", s.Review.Seed, s.Expert)
+	if s.Review.Seed != 4242 || s.Expert {
+		t.Errorf("review seed %d, want 4242; expert %v", s.Review.Seed, s.Expert)
 	}
 	played := s.Review.Replay[0].Tricks[0].Cards[0]
 	host.send(map[string]any{"t": "mark", "hand": 1, "trick": 1, "seat": int(played.Seat), "card": played.Card.String()})

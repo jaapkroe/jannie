@@ -187,7 +187,7 @@ func (r *room) startMatch() {
 	r.deals = dealRNG(r.seed)
 	r.firstHand = max(1, r.opts.From)
 	r.handNo = r.firstHand - 1
-	r.handActs, r.handDealt, r.marks = nil, nil, nil
+	r.handActs, r.handDealt = nil, nil
 	delete(r.taught, lessonSolo) // the last hands of every match are without tips: each says so
 	// The seed from the start, so nobody has to play to the end to see it.
 	if r.opts.From > 0 {

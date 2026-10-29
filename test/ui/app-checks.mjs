@@ -482,10 +482,77 @@ CHECKS.dbltap = async browser => {
   }
 };
 
+// The button under a trick of a finished hand that opens the hand in the
+// replay: on screen without scrolling the trick view, and not covered.
+const REPLAY_FIT = () => {
+  const btn = document.querySelector('.m-last.open .last-replay');
+  if (!btn) return ['missing'];
+  const body = document.querySelector('.m-last.open .dlg-body');
+  const b = btn.getBoundingClientRect();
+  const bb = body.getBoundingClientRect();
+  const bad = [];
+  if (body.scrollTop > 0) bad.push(`scrolled ${body.scrollTop}`);
+  if (b.top < 0 || b.bottom > innerHeight || b.left < 0 || b.right > innerWidth) bad.push(`outside the screen [${Math.round(b.top)}..${Math.round(b.bottom)}]`);
+  if (b.bottom > bb.bottom + 1) bad.push(`below the visible body [${Math.round(b.bottom)} > ${Math.round(bb.bottom)}]`);
+  const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+  if (!hit?.closest('.last-replay')) bad.push(`covered by ${hit?.tagName}.${hit?.className}`);
+  return bad;
+};
+
+// What the replay shows at its step: where it is, the line over the hand,
+// the analysis boxes, the rings in the player's own hand and the dots in
+// the trick bar.
+const REPLAY_VIEW = () => ({
+  title: document.querySelector('.m-replay .rp-title b')?.textContent,
+  pos: document.querySelector('.m-replay .rp-pos')?.textContent,
+  sum: document.querySelector('.m-replay .rp-sum')?.textContent,
+  boxes: [...document.querySelectorAll('.m-replay .rp-choices > .rp-moment')].map(e => ({
+    now: e.classList.contains('now'), where: e.querySelector('.rv-where')?.textContent, back: !!e.querySelector('[data-key="choice"]'),
+  })),
+  rings: [...document.querySelectorAll('.m-replay .rp-hands > .rp-hand:first-child .card:is(.rp-played, .rp-better)')].map(e => e.dataset.card),
+  dots: [...document.querySelectorAll('.m-replay .rp-tn')].map(e => (e.classList.contains('missed') ? 'missed' : e.classList.contains('strong') ? 'strong' : '')),
+  turn: !!document.querySelector('.m-replay .rp-turn')?.getClientRects().length,
+});
+
+// The replay of finished hand rh (a handReview) at the step just before
+// the player's (you) card in trick t: the analysis boxes as design §9
+// Terugkijken has them, the player's card ringed when graded there, a dot
+// for every trick with points left or a strong move.
+function replayAt(rh, you, t, v) {
+  const before = d => {
+    const tr = d.trick ? rh.tricks[d.trick - 1] : null;
+    return tr ? 4 * (d.trick - 1) + Math.max(0, tr.cards.findIndex(pc => pc.seat === you)) : 0;
+  };
+  const step = before({ trick: t });
+  const ti = Math.ceil(step / 4);
+  const pos = step === 0 ? 'Voor de eerste kaart' : `Slag ${ti} · ${step - 4 * (ti - 1)} van 4 kaarten`;
+  const now = rh.choices.filter(d => before(d) === step);
+  const last = now.length ? [] : rh.choices.filter(d => before(d) < step).slice(-1);
+  const boxes = [...now.map(d => ({ now: true, d })), ...last.map(d => ({ now: false, d }))]
+    .map(({ now: n, d }) => ({ now: n, where: `Potje ${rh.hand}` + (d.trick ? `, slag ${d.trick}` : ''), back: !n }));
+  // A card that lost and gained nothing is not ringed.
+  const card = now.find(d => d.played?.card && (d.better || d.points > 0))?.played.card;
+  const dots = rh.tricks.map((_, k) => {
+    const d = rh.choices.find(x => x.trick === k + 1);
+    return d?.better ? 'missed' : d?.points > 0 ? 'strong' : '';
+  });
+  const bad = [];
+  if (v.pos !== pos) bad.push(`at "${v.pos}", want "${pos}"`);
+  if (JSON.stringify(v.boxes) !== JSON.stringify(boxes)) bad.push(`boxes ${JSON.stringify(v.boxes)}, want ${JSON.stringify(boxes)}`);
+  if (card && !v.rings.includes(card)) bad.push(`${card} not ringed: ${v.rings}`);
+  if (!card && v.rings.length) bad.push(`rings ${v.rings} without a card graded here`);
+  if (String(v.dots) !== String(dots)) bad.push(`dots ${v.dots}, want ${dots}`);
+  return bad;
+}
+
 // Hand summary and score sheet: who played which card, running totals,
 // and the review of the previous hand stays while updates arrive. The
 // updates are held back while the overlays open (-fast pacing would move
-// on first), then let through.
+// on first), then let through. A trick of the finished hand opens that
+// hand in the replay (handReview): the line over the hand once its grades
+// are in, the analysis at the player's card in that trick (a trick they
+// led where there is one), open into the next hand until Escape. The
+// score sheet's last potje offers the same.
 CHECKS.review = async browser => {
   const P = await page(browser, VP.iphone, 'review', {
     hooks: true,
@@ -494,7 +561,20 @@ CHECKS.review = async browser => {
   await run(P, async () => {
     await home(P);
     await quick(P);
-    await P.page.evaluate(() => { window.__kj.last().__holdAfter = 'handEnd'; });
+    // The finished hand as the state has it, and the last hand the server
+    // sent to look back at.
+    await P.page.evaluate(() => {
+      const K = window.__kj;
+      K.last().__holdAfter = 'handEnd';
+      K.rewrite = data => {
+        if (data.includes('"t":"handReview"')) K.handReview = JSON.parse(data);
+        else if (data.includes('"phase":"handEnd"')) {
+          const m = JSON.parse(data);
+          if (m.s?.prevHand) K.ended = { you: m.s.you, hand: m.s.handNo, tricks: m.s.prevHand.tricks };
+        }
+        return data;
+      };
+    });
     await playUntil(P, () => !!document.querySelector('.m-summary.open'), { ready: false, label: 'summary' });
     await sleep(600);
     const tiles = await P.page.$$eval('.m-summary .mt', els => els.map(e => ({
@@ -506,10 +586,62 @@ CHECKS.review = async browser => {
     await waitFor(P, () => document.querySelector('.m-last.open h2')?.textContent === 'Slag 1', { label: 'trick detail' });
     const cross = await P.page.$$eval('.m-last.open .cross-slot', els => els.map(e => e.textContent));
     if (cross.length !== 4 || cross.filter(t => t.includes('kwam uit')).length !== 1 || !cross.some(t => t.includes('Jij'))) throw new Error(`trick detail ${cross}`);
+    const button = await P.page.$$eval('.m-last.open .last-replay', els => els.map(e => e.textContent.trim()));
+    if (String(button) !== 'Dit potje terugkijken') throw new Error(`trick detail buttons ${button}`);
+    // In short landscape the button sits beside the trick.
+    for (const vp of ['landscape', 'smallLandscape']) {
+      await P.page.setViewport(VP[vp]);
+      await sleep(500);
+      const bad = await P.page.evaluate(REPLAY_FIT);
+      if (bad.length) throw new Error(`"Dit potje terugkijken" at ${vp}: ${bad.join('; ')}`);
+      await shot(P, `trick-${vp}`);
+    }
+    await P.page.setViewport(VP.iphone);
+    await sleep(500);
     await P.page.keyboard.press('Escape');
     await sleep(300);
-    await press(P, '.m-summary .btn-go');
+
+    // A trick the player led (not the last, which has one card left), else
+    // the first.
+    const ended = await P.page.evaluate(() => window.__kj.ended);
+    if (ended?.hand !== 1 || ended.tricks.length !== 8) throw new Error(`the end of potje 1 as seen: ${JSON.stringify(ended)}`);
+    const led = ended.tricks.map((t, k) => (t.cards[0].seat === ended.you ? k + 1 : 0)).filter(t => t && t < 8);
+    const trick = led.find(t => t > 1) || led[0] || 1;
+    await press(P, `.m-summary .review > .mt:nth-child(${trick})`);
+    await waitFor(P, t => document.querySelector('.m-last.open h2')?.textContent === `Slag ${t}`, { label: `trick ${trick}` }, trick);
     await P.page.evaluate(() => window.__kj.release());
+    await press(P, '.m-last.open .last-replay');
+    await waitFor(P, () => document.querySelector('.m-replay.open .rp-sum'), { label: 'the hand in the replay' });
+    await waitFor(P, () => !/in berekening/.test(document.querySelector('.m-replay.open .rp-sum')?.textContent), { label: 'the grades of the hand', timeout: 90000 });
+    await sleep(300);
+    const hr = await P.page.evaluate(() => window.__kj.handReview);
+    const asked = await P.page.evaluate(() => window.__kj.sent.filter(m => m.t === 'handReview'));
+    if (asked.length !== 1 || asked[0].hand !== 1 || hr?.hand !== 1 || hr.pending !== 0 || !hr.replay.choices.length) {
+      throw new Error(`handReview asked ${JSON.stringify(asked)}, answered ${JSON.stringify(hr && { hand: hr.hand, pending: hr.pending, choices: hr.replay.choices.length })}`);
+    }
+    const view = await P.page.evaluate(REPLAY_VIEW);
+    const n = hr.replay.choices.length;
+    const bad = replayAt(hr.replay, ended.you, trick, view);
+    if (view.title !== 'Potje 1 van 4' || !view.sum.startsWith(`Volgens Juf Jannie: ${n}\u00a0${n === 1 ? 'keuze' : 'keuzes'}`) || view.turn) bad.push(`head ${JSON.stringify(view)}`);
+    // A box once the player had a graded choice up to this trick (the card
+    // there may have been the only one they could play).
+    if (!view.boxes.length && hr.replay.choices.some(d => d.trick <= trick)) bad.push('no analysis at the player\'s card');
+    if (bad.length) throw new Error(`replay of potje 1 at trick ${trick}: ${bad.join('; ')}`);
+    const lead = led.includes(trick) && hr.replay.choices.some(d => d.trick === trick);
+    if (lead && !view.boxes.some(b => b.now && b.where === `Potje 1, slag ${trick}`)) throw new Error(`the lead in trick ${trick} not at its step: ${JSON.stringify(view)}`);
+    if (!lead) console.log(`    (no graded lead of the player in potje 1 besides the last trick: looked at trick ${trick})`);
+    await shot(P, 'replay-hand');
+    await checkOverflow(P, 'replay of a hand');
+
+    // Ready (the summary lies under the replay): the replay stays open in
+    // the next hand, says when it is the player's turn, closes with Escape.
+    await P.page.evaluate(() => window.__kj.last().send(JSON.stringify({ t: 'ready' })));
+    await waitFor(P, () => Number(document.querySelector('.potje-n b')?.textContent) === 2 && !document.querySelector('.m-summary'), { label: 'potje 2' });
+    await waitFor(P, () => document.querySelector('.m-replay.open .rp-turn')?.getClientRects().length, { label: 'your turn, in the replay', timeout: 60000 });
+    const still = await P.page.evaluate(REPLAY_VIEW);
+    if (still.title !== 'Potje 1 van 4' || still.pos !== view.pos) throw new Error(`the replay in potje 2: ${JSON.stringify(still)}`);
+    await P.page.keyboard.press('Escape');
+    await waitFor(P, () => !document.querySelector('.m-replay.open'), { label: 'the replay closed' });
 
     // In the next hand: running totals per row, then the previous hand's
     // tricks, while the updates after a card of ours come in.
@@ -537,17 +669,28 @@ CHECKS.review = async browser => {
       const st = await P.page.evaluate(() => ({ review: !!document.querySelector('.m-score .review'), title: document.querySelector('.m-score h2').textContent }));
       if (!st.review || st.title !== 'Potje 1: de slagen') throw new Error(`review gone after ${(i + 1) * 500} ms: ${JSON.stringify(st)}`);
     }
+    // A trick of it opens potje 1 in the replay too.
+    await press(P, '.m-score .review .mt');
+    await waitFor(P, () => document.querySelector('.m-last.open h2')?.textContent === 'Slag 1', { label: 'a trick of potje 1' });
+    await press(P, '.m-last.open .last-replay');
+    await waitFor(P, () => document.querySelector('.m-replay.open .rp-title b')?.textContent === 'Potje 1 van 4', { label: 'potje 1 in the replay, from the score sheet' });
+    await P.page.keyboard.press('Escape');
+    await waitFor(P, () => !document.querySelector('.m-replay.open'), { label: 'the replay closed' });
+    await P.page.keyboard.press('Escape');
+    await waitFor(P, () => !document.querySelector('.m-last.open'), { label: 'the trick closed' });
     await press(P, '.m-score .back-btn');
     await waitFor(P, () => document.querySelector('.m-score .scoresheet') && document.querySelector('.m-score h2').textContent === 'Scorebord', { label: 'back to the score sheet' });
   });
 };
 
-// The expert mode (issue #34): five taps on the version open its sheet;
-// seed 4242 and potje 3 deal that hand alone, the chat names the seed at
-// the start. The search button opens the replay of the hand in play; a
-// card back, the reasoning of the AI for that card, a card of the expert's
-// own and a comment; the summary and game over offer the replay, not the
-// lobby.
+// The expert mode (issues #34, #54): five taps on the version open its
+// sheet; seed 4242, potje 3 and Plaats 3 deal that hand alone with the
+// player at seat 2, the chat names the seed at the start. On the player's
+// turn the search button opens the sheet Redenering van de AI on the
+// decision awaited, with the reasoning; ‹ goes to their card before,
+// asked about and commented on (hand and trick, no seat). Over the hand
+// summary the button opens the sheet again; the summary and game over
+// have no replay of their own (the trick view's, as anyone) and no lobby.
 CHECKS.expert = async browser => {
   const P = await page(browser, VP.iphone, 'expert', { hooks: true });
   await run(P, async () => {
@@ -558,48 +701,95 @@ CHECKS.expert = async browser => {
       await P.page.$eval(`.modal.open .opt-row[data-key="${key}"] input`, (e, v) => { e.value = v; e.dispatchEvent(new Event('change')); }, v);
     }
     if (!(await P.page.$eval('.modal.open .opt-row[data-key="hands"]', e => e.hidden))) throw new Error('the Potjes row shows with a potje');
+    const rows = await P.page.$$eval('.modal.open .opt-row', els => els.map(e => e.dataset.key));
+    if (rows[rows.indexOf('from') + 1] !== 'seat') throw new Error(`Plaats not right after Potje: ${rows}`);
+    const seats = await P.page.$$('.modal.open .opt-row[data-key="seat"] .seg-btn');
+    const labels = await Promise.all(seats.map(b => b.evaluate(e => e.textContent)));
+    if (String(labels) !== '1,2,3,4') throw new Error(`Plaats ${labels}`);
+    await seats[2].evaluate(e => e.scrollIntoView({ block: 'center' }));
+    await sleep(150);
+    await pressEl(P, seats[2]);
+    await waitFor(P, () => JSON.parse(localStorage.getItem('kj.expert') || '{}').seat === 2, { label: 'Plaats 3 kept' });
+    await shot(P, 'sheet');
+    // The seat the server gives, and the state's.
+    await P.page.evaluate(() => {
+      const K = window.__kj;
+      K.rewrite = data => {
+        const m = data.includes('"t":"joined"') || data.includes('"t":"update"') ? JSON.parse(data) : null;
+        if (m?.t === 'joined') K.seat = m.seat;
+        if (m?.t === 'update' && m.s) K.you = m.s.you;
+        return data;
+      };
+    });
     await press(P, '#btn-expert-go');
     await waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelector('.potje-n b')?.textContent === '3', { label: 'potje 3' });
     const start = await P.page.$$eval('.chat-list .msg.sys', els => els.map(e => e.textContent));
     if (!start.some(t => t.includes('Spel (4242) begint: potje 3'))) throw new Error(`start line ${start}`);
     const created = await P.page.evaluate(() => window.__kj.sent.find(m => m.t === 'create'));
-    if (!created?.expert || created.opts.seed !== 4242 || created.opts.from !== 3) throw new Error(`create ${JSON.stringify(created)}`);
+    if (!created?.expert || created.seat !== 2 || 'seat' in created.opts || created.opts.seed !== 4242 || created.opts.from !== 3) throw new Error(`create ${JSON.stringify(created)}`);
+    const at = await P.page.evaluate(() => ({ seat: window.__kj.seat, you: window.__kj.you }));
+    if (at.seat !== 2 || at.you !== 2) throw new Error(`seated at ${JSON.stringify(at)}, want 2`);
 
-    await playUntil(P, () => document.querySelectorAll('.hand .card').length <= 6 && !!document.querySelector('.hand.my-turn .card.legal'), { label: 'my turn in trick 3' });
-    await press(P, '.tb-expert');
-    await waitFor(P, () => /Jij bent aan de beurt/.test(document.querySelector('.m-expert.open .xp-head')?.textContent), { label: 'the replay now' });
-    await press(P, '.m-expert [data-key="prev"]');
-    await waitFor(P, () => /speelde/.test(document.querySelector('.m-expert .xp-head')?.textContent), { label: 'a card back' });
-    await press(P, '.m-expert .xp-box > .btn');
-    await waitFor(P, () => document.querySelector('.m-expert .xp-why .xp-table tbody tr'), { label: 'the reasoning' });
-    const why = await P.page.evaluate(() => ({
-      rows: document.querySelectorAll('.m-expert .xp-table tbody tr').length,
-      played: [...document.querySelectorAll('.m-expert .xp-table tbody small')].map(e => e.textContent.trim()),
-      lines: [...document.querySelectorAll('.m-expert .xp-why > p b')].map(e => e.textContent.trim()),
+    // The decision awaited, with a choice.
+    await playUntil(P, () => document.querySelectorAll('.hand .card').length <= 6 && document.querySelectorAll('.hand.my-turn .card.legal').length > 1, { label: 'my turn from trick 3 on, with a choice' });
+    const trick = 9 - (await P.page.$$eval('.hand .card', els => els.length));
+    const reasoning = () => P.page.evaluate(() => ({
+      head: document.querySelector('.m-why .why-head p')?.textContent,
+      rows: document.querySelectorAll('.m-why .xp-table tbody tr').length,
+      played: [...document.querySelectorAll('.m-why .xp-table tbody small')].map(e => e.textContent.trim()),
+      lines: [...document.querySelectorAll('.m-why .xp-why > p b')].map(e => e.textContent.trim()),
+      prev: document.querySelector('.m-why .why-head .icon-btn[aria-label="Vorige zet"]')?.disabled,
+      next: document.querySelector('.m-why .why-head .icon-btn[aria-label="Volgende zet"]')?.disabled,
     }));
-    if (!why.rows || String(why.played) !== 'gespeeld' || String(why.lines) !== 'Normaal:,Sterk:,Tip:') throw new Error(`reasoning ${JSON.stringify(why)}`);
+    await press(P, '.tb-expert');
+    await waitFor(P, t => document.querySelector('.m-why.open .why-head p')?.textContent === `Slag ${t} · Jij bent aan de beurt`, { label: 'the sheet on the decision now' }, trick);
+    await waitFor(P, () => document.querySelector('.m-why .xp-why .xp-table tbody tr'), { label: 'the reasoning now', timeout: 60000 });
+    const now = await reasoning();
+    if (now.rows < 2 || now.played.length || String(now.lines) !== 'Normaal:,Sterk:,Tip:' || now.prev !== false || now.next !== true) throw new Error(`reasoning now ${JSON.stringify(now)}`);
     await checkOverflow(P, 'reasoning');
-    const pick = await P.page.$('.m-expert .rp-pick');
-    if (pick) {
-      await pressEl(P, pick);
-      await waitFor(P, () => /Jouw keuze: /.test(document.querySelector('.m-expert .rp-own')?.textContent) && document.querySelector('.m-expert .rp-mine'), { label: 'own choice' });
-    }
-    await press(P, '.m-expert .xp-fb summary');
-    await type(P, '.m-expert .fb-text', 'Waarom deze kaart?');
-    await press(P, '.m-expert .fb .btn');
-    await waitFor(P, () => document.querySelector('.m-expert .fb-status')?.textContent === 'Bewaard.', { label: 'comment kept' });
+    await shot(P, 'why-now');
+
+    // ‹: the card before, asked about; a comment on it.
+    await press(P, '.m-why .why-head .icon-btn[aria-label="Vorige zet"]');
+    await waitFor(P, t => document.querySelector('.m-why .why-head p')?.textContent === `Slag ${t}` && document.querySelector('.m-why .why-out > .btn:not(:disabled)'), { label: 'the card before' }, trick - 1);
+    await press(P, '.m-why .why-out > .btn');
+    await waitFor(P, t => document.querySelector('.m-why .why-head p')?.textContent.startsWith(`Slag ${t} · Jij speelde `) && document.querySelector('.m-why .xp-why'), { label: 'the reasoning before', timeout: 60000 }, trick - 1);
+    const before = await reasoning();
+    if (String(before.lines) !== 'Normaal:,Sterk:,Tip:' || (before.rows && String(before.played) !== 'gespeeld') || before.next !== false) throw new Error(`reasoning before ${JSON.stringify(before)}`);
+    await press(P, '.m-why details.xp-fb > summary');
+    await type(P, '.m-why .fb-text', 'Waarom deze kaart?');
+    await press(P, '.m-why .fb .btn');
+    await waitFor(P, () => document.querySelector('.m-why .fb-status')?.textContent === 'Bewaard.', { label: 'comment kept' });
+    // ›: the decision awaited again, its answer kept.
+    await press(P, '.m-why .why-head .icon-btn[aria-label="Volgende zet"]');
+    await waitFor(P, t => document.querySelector('.m-why .why-head p')?.textContent === `Slag ${t} · Jij bent aan de beurt` && document.querySelector('.m-why .xp-table tbody tr'), { label: 'the decision now again' }, trick);
     const sent = await P.page.evaluate(() => window.__kj.sent.filter(m => m.t === 'feedback' || m.t === 'why' || m.t === 'mark'));
-    const fb = sent.find(m => m.t === 'feedback');
-    if (fb?.hand !== 3 || !(fb.trick >= 1) || !(fb.seat >= 0) || !sent.some(m => m.t === 'why' && m.seat === fb.seat && m.trick === fb.trick)) throw new Error(`sent ${JSON.stringify(sent)}`);
+    const fb = sent.filter(m => m.t === 'feedback');
+    const whys = sent.filter(m => m.t === 'why').map(m => `${m.hand}/${m.trick}${'seat' in m ? '/seat' : ''}`);
+    if (fb.length !== 1 || fb[0].hand !== 3 || fb[0].trick !== trick - 1 || 'seat' in fb[0] || String(whys) !== `3/${trick},3/${trick - 1}` || sent.some(m => m.t === 'mark')) {
+      throw new Error(`sent ${JSON.stringify(sent)}`);
+    }
     await P.page.keyboard.press('Escape');
+    await waitFor(P, () => !document.querySelector('.m-why.open'), { label: 'the sheet closed' });
 
     await playUntil(P, () => !!document.querySelector('.m-summary.open'), { ready: false, label: 'the summary' });
     const foot = await P.page.$$eval('.m-summary .sum-foot button', els => els.map(e => e.textContent.trim()));
-    if (!foot.includes('Naar de uitslag') || !foot.includes('Dit potje terugkijken')) throw new Error(`summary buttons ${foot}`);
+    if (!foot.includes('Naar de uitslag') || foot.some(t => t.includes('terugkijken'))) throw new Error(`summary buttons ${foot}`);
+    // Over the summary, the sheet on the player's card before the last one
+    // (the last had no choice).
+    await press(P, '.tb-expert');
+    await waitFor(P, () => /^Slag 7\b/.test(document.querySelector('.m-why.open .why-head p')?.textContent || ''), { label: 'the sheet over the summary' });
+    const top = await P.page.evaluate(() => {
+      const b = document.querySelector('.m-why.open .dialog').getBoundingClientRect();
+      return document.elementFromPoint(b.left + b.width / 2, b.top + Math.min(b.height / 2, 40))?.closest('.modal')?.className;
+    });
+    if (!top?.includes('m-why')) throw new Error(`the sheet over the summary is under ${top}`);
+    await P.page.keyboard.press('Escape');
+    await waitFor(P, () => !document.querySelector('.m-why.open') && document.querySelector('.m-summary.open'), { label: 'back to the summary' });
     await press(P, '.m-summary .btn-go');
     await waitFor(P, () => document.querySelector('.m-over.open'), { label: 'game over' });
     const over = await P.page.$$eval('.m-over .btn-col button', els => els.filter(e => !e.hidden).map(e => e.textContent.trim()));
-    if (over.some(t => t.includes('Spelers of regels')) || !over.includes('Potjes terugkijken')) throw new Error(`game over buttons ${over}`);
+    if (over.some(t => t.includes('Spelers of regels') || t.includes('terugkijken'))) throw new Error(`game over buttons ${over}`);
   });
 };
 

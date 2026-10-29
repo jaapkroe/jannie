@@ -4157,6 +4157,11 @@ body.busy::after {
   color: var(--team-hi);
 }
 
+/* Under a trick of a finished hand: that hand in the replay. */
+.last-replay {
+  margin-top: 14px;
+}
+
 .gold {
   color: var(--gold);
 }
@@ -4883,8 +4888,9 @@ body.busy::after {
 
 .rp-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 0 8px;
 }
 
 .rp-title {
@@ -4900,6 +4906,34 @@ body.busy::after {
 
 .rp-title small {
   color: var(--ink-2);
+}
+
+/* What Juf Jannie found in the hand, on a line of its own under the title. */
+.rp-sum {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
+/* A hand looked back at during the next one: your turn at the table. */
+.rp-turn {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 12px;
+  margin: 0 20px 6px;
+  padding: 4px 4px 4px 14px;
+  border-radius: 14px;
+  background: rgba(242, 193, 78, 0.14);
+  box-shadow: inset 0 0 0 1.5px rgba(242, 193, 78, 0.45);
+  color: var(--gold-hi);
+  font-size: 14px;
+  font-weight: 800;
 }
 
 .rp-moment {
@@ -4920,6 +4954,16 @@ body.busy::after {
 .rp-moment .btn {
   justify-self: start;
   margin-top: 4px;
+}
+
+.rp-choices {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.rp-choices > .rp-moment {
+  margin: 0;
 }
 
 .rp-cross {
@@ -5002,6 +5046,29 @@ body.busy::after {
   color: var(--ink);
 }
 
+/* The player's card in that trick: points left (a light dot), a strong
+   move (a gold dot). */
+.rp-tn.missed,
+.rp-tn.strong {
+  position: relative;
+}
+
+.rp-tn.missed::after,
+.rp-tn.strong::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.rp-tn.strong::after {
+  background: var(--gold);
+}
+
 .rp-hands {
   display: grid;
   gap: 8px;
@@ -5061,101 +5128,38 @@ body.busy::after {
   translate: 0 -4px;
 }
 
-/* The expert's own choice, looking back: the cards the decider could play
-   are tappable, the one chosen has a blue ring. */
-.rp-cards > .card.rp-pick {
-  cursor: pointer;
-}
-
-.rp-cards > .card.rp-pick:focus-visible {
-  outline: 2px solid var(--wij-hi);
-  outline-offset: 1px;
-}
-
-.rp-cards > .card.rp-mine,
-.rp-key.rp-mine {
-  box-shadow: 0 0 0 2.5px var(--wij-hi);
-}
-
-.rp-cards > .card.rp-mine {
-  z-index: 2;
-  translate: 0 -8px;
-}
-
-.rp-own {
-  margin: -2px 0 2px;
-  font-size: 13px;
-  color: var(--ink-2);
-}
-
-.rp-own-suits {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-}
-
-.rp-suit {
-  min-width: 44px;
-  font-size: 18px;
-  line-height: 1;
-}
-
-.rp-suit.red {
-  color: #ff7a85;
-}
-
-.rp-suit[aria-pressed="true"] {
-  box-shadow: inset 0 0 0 2px var(--wij-hi);
-}
-
-.rp-fb {
-  margin: 12px 0 0;
-}
-
-/* The expert's tools in the replay (expert.js). */
-.m-expert > .dialog {
+/* The expert's sheet Redenering van de AI (expert.js): one of the
+   player's decisions, stepped through with ‹ ›, its reasoning and a
+   comment. */
+.m-why > .dialog {
   width: min(100%, 720px);
 }
 
-.rp-tn.open {
-  box-shadow: inset 0 -3px 0 var(--ink-3);
-}
-
-.rp-cards > .card.xp-next {
-  z-index: 1;
-  translate: 0 -4px;
-  box-shadow: 0 0 0 2px var(--gold);
-}
-
-.xp-box {
-  display: grid;
+.why-head {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  margin: 10px 0 0;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.05);
-  box-shadow: inset 3px 0 0 var(--gold);
 }
 
-.xp-box > .btn {
+.why-head p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+}
+
+.why-out {
+  display: grid;
+  margin: 10px 0 0;
+}
+
+.why-out > .btn {
   justify-self: start;
 }
 
-.xp-head {
-  margin: 0;
-  font-size: 14px;
-}
-
-.xp-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.xp-chip[aria-pressed="true"] {
-  box-shadow: inset 0 0 0 2px var(--gold);
-  color: var(--ink);
+.xp-fb {
+  margin: 12px 0 0;
 }
 
 .xp-why {
@@ -5225,7 +5229,7 @@ body.busy::after {
   color: var(--gold-hi);
 }
 
-.rp-fb summary {
+.xp-fb summary {
   min-height: 44px;
   padding: 10px 0;
   font-size: 14px;
@@ -5234,7 +5238,7 @@ body.busy::after {
   cursor: pointer;
 }
 
-/* Feedback forms (review, replay). */
+/* Feedback forms (review, the expert's sheet). */
 .fb {
   display: grid;
   gap: 8px;
@@ -5593,18 +5597,8 @@ body.chat-open .chat-scrim {
     align-items: start;
   }
 
-  :where(html:not(.kb)) .m-expert > .dialog {
-    width: min(100%, 980px);
-  }
-
-  :where(html:not(.kb)) .m-expert .dlg-body {
-    grid-template-areas: "table head" "table moment" "table xp" "table hands" "legend legend";
-    grid-template-rows: auto auto auto 1fr auto;
-  }
-
-  :where(html:not(.kb)) .m-expert .xp-box { grid-area: xp; }
   :where(html:not(.kb)) .m-replay .rp-head { grid-area: head; }
-  :where(html:not(.kb)) .m-replay .rp-moment { grid-area: moment; }
+  :where(html:not(.kb)) .m-replay .rp-choices { grid-area: moment; }
   :where(html:not(.kb)) .m-replay .rp-table { grid-area: table; }
   :where(html:not(.kb)) .m-replay .rp-hands { grid-area: hands; }
   :where(html:not(.kb)) .m-replay .dlg-body > .legend { grid-area: legend; }
@@ -5620,6 +5614,37 @@ body.chat-open .chat-scrim {
 
   :where(html:not(.kb)) .m-replay .rp-tricks {
     margin: 0;
+  }
+
+  /* A trick at the seats: the line and the replay button beside a smaller
+     cross, so the button is on screen without scrolling. */
+  :where(html:not(.kb)) .m-last > .dialog {
+    width: min(100%, 560px);
+  }
+
+  :where(html:not(.kb)) .m-last .dlg-body {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: 1fr auto auto 1fr;
+    column-gap: 16px;
+  }
+
+  :where(html:not(.kb)) .m-last .cross {
+    --card-w: 46px;
+    grid-column: 1;
+    grid-row: 1 / -1;
+    height: 236px;
+  }
+
+  :where(html:not(.kb)) .m-last .last-sum {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0;
+  }
+
+  :where(html:not(.kb)) .m-last .last-replay {
+    grid-column: 2;
+    grid-row: 3;
   }
 
   :where(html:not(.kb)) .m-summary .dlg-body {

@@ -84,7 +84,10 @@ func testStateKeys(t *testing.T, players int) {
 	var roster []json.RawMessage
 	json.Unmarshal(field(t, lobby.S, "roster"), &roster)
 	wantKeys(t, "roster entry", roster[0], []string{"id", "name", "emoji", "color", "bio"})
-	for _, k := range []string{"trick", "lastTrick", "prevHand", "hint", "lesson", "hands4", "turned", "trump", "piles", "openRoem", "review", "takeover", "expert"} {
+	if v := string(field(t, lobby.S, "expert")); v != "false" {
+		t.Errorf("lobby expert = %s, want false", v)
+	}
+	for _, k := range []string{"trick", "lastTrick", "prevHand", "hint", "lesson", "hands4", "turned", "trump", "piles", "openRoem", "review", "takeover"} {
 		if v := string(field(t, lobby.S, k)); v != "null" {
 			t.Errorf("lobby %s = %s, want null", k, v)
 		}

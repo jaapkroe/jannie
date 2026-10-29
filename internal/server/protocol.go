@@ -16,7 +16,7 @@ type inMsg struct {
 	Start    bool            `json:"start"`
 	Code     string          `json:"code"`
 	Token    string          `json:"token"`
-	Seat     *int            `json:"seat"` // also mark, why, feedback (expert): whose decision; default your own
+	Seat     *int            `json:"seat"` // also create (expert): the seat to sit at, 0–3
 	ID       string          `json:"id"`   // bot: the persona; call: the call session ("" hangs up)
 	Suit     string          `json:"suit"`
 	Play     *bool           `json:"play"`
@@ -26,8 +26,8 @@ type inMsg struct {
 	Text     string          `json:"text"`
 	AI       *bool           `json:"ai"`
 	Left     *bool           `json:"left"`  // vote, optional: the question it answers is about a seat its player left
-	Hand     *int            `json:"hand"`  // mark, why, feedback: the hand (its number)
-	Trick    *int            `json:"trick"` // mark, why, feedback: the trick (1–8; 0: the trump choice or bid)
+	Hand     *int            `json:"hand"`  // why, feedback, handReview: the hand (its number)
+	Trick    *int            `json:"trick"` // why, feedback: the trick (1–8; 0: the trump choice or bid)
 	N        *int            `json:"n"`     // tipRead: the lesson step read (lesson.go)
 	Mic      *bool           `json:"mic"`   // call: the microphone is on
 	Cam      *bool           `json:"cam"`   // call: the camera is on
@@ -41,7 +41,7 @@ type whyMsg struct {
 	T        string       `json:"t"` // "why"
 	Hand     int          `json:"hand"`
 	Trick    int          `json:"trick"`
-	Seat     game.Seat    `json:"seat"`
+	Seat     game.Seat    `json:"seat"`   // the asker
 	Played   *choiceJSON  `json:"played"` // null: the decision awaited now
 	Normaal  choiceJSON   `json:"normaal"`
 	Rule     string       `json:"rule"`
@@ -50,6 +50,15 @@ type whyMsg struct {
 	HintText string       `json:"hintText"`
 	Worlds   int          `json:"worlds"`
 	Options  []optionJSON `json:"options"`
+}
+
+// handReviewMsg is a finished hand of the match as the replay shows it,
+// with the asker's graded decisions in it: see cmdHandReview.
+type handReviewMsg struct {
+	T       string     `json:"t"` // "handReview"
+	Hand    int        `json:"hand"`
+	Pending int        `json:"pending"` // grades of the hand still out
+	Replay  replayHand `json:"replay"`
 }
 
 // optionJSON is one option of an explanation, rounded to tenths.
@@ -250,7 +259,7 @@ type state struct {
 	Phase       string              `json:"phase"`
 	Opts        Options             `json:"opts"`
 	Training    bool                `json:"training"`
-	Expert      *expertState        `json:"expert"`
+	Expert      bool                `json:"expert"`
 	You         int                 `json:"you"`
 	Host        int                 `json:"host"`
 	Roster      []rosterEntry       `json:"roster,omitempty"`

@@ -28,6 +28,9 @@ const SIZE = { 2: 16, 3: 10, 4: 8 };
 // player came back, the others agreed): told, not a failure, as long as the
 // question did close or change after the vote was sent.
 const LATE_VOTE = 'Die vraag staat niet (meer) open.';
+// The server's answer to a hand asked to look back at, at a table of three
+// or two (design §7 handReview).
+const ALONE_FOUR = "Terugkijken kan alleen met z'n vieren.";
 
 let args;
 try {
@@ -174,6 +177,9 @@ class Player {
     this.voteTimer = null;
     this.question = ''; // the open question as seen: seat, left and the seq it opened at
     this.lastVote = null; // {question, ai}: the answer sent last
+    this.reviewsAsked = new Set(); // hands asked to look back at (handReview)
+    this.handReviews = new Map(); // hand → its last handReview: {pending, choices}
+    this.refusalDue = false; // a handReview asked at a table of three or two
     this.over = false;
     this.done = new Promise((res, rej) => { this.resolve = res; this.reject = rej; });
     this.joined = new Promise(res => { this.onJoined = res; });
@@ -249,8 +255,9 @@ class Player {
         break;
       case 'chat':
         // At most 200 characters, as people may type; Juf Jannie's explanations
-        // in training (coach) may run longer.
-        this.check(m.msg && typeof m.msg.text === 'string' && m.msg.text.length > 0 && ([...m.msg.text].length <= 200 || m.msg.coach), 'bad chat message');
+        // in training (coach) and the table's own lines (sys: the signals
+        // agreed at the start) may run longer.
+        this.check(m.msg && typeof m.msg.text === 'string' && m.msg.text.length > 0 && ([...m.msg.text].length <= 200 || m.msg.coach || m.msg.sys), 'bad chat message');
         if (m.msg.coach) this.check(this.game.cfg.training && m.msg.bot && m.msg.seat === 2, `coach line outside training or not of Juf Jannie: ${JSON.stringify(m.msg)}`);
         if (m.msg.bot) this.check(/ \(AI\)$/.test(m.msg.name), `bot chat without (AI): ${m.msg.name}`);
         break;
@@ -278,7 +285,15 @@ class Player {
           this.game.lateVotes++;
           break;
         }
+        // A hand to look back at, asked at a table of three or two.
+        if (m.code === 'ongeldig' && m.msg === ALONE_FOUR && this.refusalDue) {
+          this.refusalDue = false;
+          break;
+        }
         this.fail(`server error ${m.code}: ${m.msg}`);
+        break;
+      case 'handReview':
+        this.checkHandReview(m);
         break;
       case 'pong':
         break;
@@ -470,9 +485,11 @@ class Player {
       for (const m of r.strong) this.check(!!m.alt, `strong moment without the obvious option ${JSON.stringify(m)}`);
       this.check(r.replay.length === s.handNo, `replay of ${r.replay.length} hands after ${s.handNo}`);
       r.replay.forEach((rh, h) => {
-        const dealt = new Set(rh.cards.flat());
-        const played = rh.tricks.flatMap(t => t.cards);
-        this.check(rh.hand === h + 1 && dealt.size === 32 && played.length === 32 && played.every(pc => rh.cards[pc.seat].includes(pc.card)), `replay of hand ${h + 1} does not add up`);
+        this.checkReplayHand(rh, h + 1);
+        // All grades are in: at least those of the hand looked back at,
+        // and the same ones once that had none still out.
+        const seen = this.handReviews.get(h + 1);
+        if (seen) this.check(rh.choices.length >= seen.choices && (seen.pending > 0 || rh.choices.length === seen.choices), `hand ${h + 1} at game over has ${rh.choices.length} choices, its handReview ${JSON.stringify(seen)}`);
       });
       const sp = r.speed;
       this.check(sp === null || sp.n >= 1 && sp.median <= sp.slowest.ms && sp.slowest.ms <= sp.total, `review speed ${JSON.stringify(sp)}`);
@@ -488,6 +505,33 @@ class Player {
       r.gains.forEach((g, k) => { total[k] += g; });
     });
     this.check(total.every((t, k) => t === s.total[k]), `total ${s.total} but the rows add up to ${total}`);
+  }
+
+  // A finished hand as the replay shows it: the 32 cards dealt, all played
+  // by whoever held them, and this player's graded decisions in it by trick
+  // (0 before the first card), each card one they played in that trick.
+  checkReplayHand(rh, hand) {
+    const dealt = new Set(rh.cards.flat());
+    const played = rh.tricks.flatMap(t => t.cards);
+    this.check(rh.hand === hand && dealt.size === 32 && played.length === 32 && played.every(pc => rh.cards[pc.seat].includes(pc.card)), `replay of hand ${hand} does not add up`);
+    const mine = t => rh.tricks[t - 1]?.cards.find(pc => pc.seat === this.seat)?.card;
+    const ok = Array.isArray(rh.choices) && rh.choices.every((d, k) => Number.isInteger(d.trick) && d.trick >= 0 && d.trick <= 8
+      && (k === 0 || d.trick >= rh.choices[k - 1].trick)
+      && (d.trick === 0 ? !d.played?.card && (!!d.played?.suit || typeof d.played?.play === 'boolean') : d.played?.card === mine(d.trick)));
+    this.check(ok, `choices of hand ${hand}: ${JSON.stringify(rh.choices)}`);
+  }
+
+  // A hand asked to look back at (handReview), at its end; the server sends
+  // it again with each grade of it that comes in: no fewer choices, no more
+  // still out.
+  checkHandReview(m) {
+    this.check(this.reviewsAsked.has(m.hand), `handReview of hand ${m.hand}, which was not asked`);
+    this.checkReplayHand(m.replay, m.hand);
+    this.check(Number.isInteger(m.pending) && m.pending >= 0, `handReview of hand ${m.hand} with pending ${m.pending}`);
+    const was = this.handReviews.get(m.hand);
+    const now = { pending: m.pending, choices: m.replay.choices.length };
+    if (was) this.check(now.pending <= was.pending && now.choices >= was.choices, `handReview of hand ${m.hand} went back: ${JSON.stringify(was)} → ${JSON.stringify(now)}`);
+    this.handReviews.set(m.hand, now);
   }
 
   checkHandEnd(s, ev) {
@@ -530,6 +574,15 @@ class Player {
     const people = s.players.filter(p => p && !p.bot && !p.left).length;
     if (people === 1) this.check(s.nextAt === 0, `handEnd alone with nextAt ${s.nextAt}`);
     else this.check(s.nextAt > 0, `handEnd of ${people} people without nextAt`);
+    // Looking back at the hand: at a table of four every hand, else the
+    // first is refused.
+    if (n === 4) {
+      this.reviewsAsked.add(s.handNo);
+      this.send({ t: 'handReview', hand: s.handNo });
+    } else if (s.handNo === 1) {
+      this.refusalDue = true;
+      this.send({ t: 'handReview', hand: s.handNo });
+    }
   }
 
   checkGameOver(s, ev) {
@@ -541,6 +594,12 @@ class Player {
     const w = s.total.filter(t => t === top).length > 1 ? -1 : s.total.indexOf(top);
     this.check(ev.winner === w && s.winner === w, `winner ${ev.winner} for total ${s.total}`);
     if (cfg.training && !this.reconnects) this.check(this.tips >= 8 * cfg.hands && this.hints > 0, `training: ${this.tips} tips, ${this.hints} hints`);
+    // Every hand asked to look back at came back (the last one may still
+    // be on its way), and the refusal at a table of three or two came.
+    if (!cfg.reconnect) {
+      const missing = [...this.reviewsAsked].filter(h => h < s.handNo && !this.handReviews.has(h));
+      this.check(!missing.length && !this.refusalDue, `no handReview for hands ${missing}${this.refusalDue ? ', no refusal' : ''}`);
+    }
     this.over = true;
     this.resolve(s);
   }
