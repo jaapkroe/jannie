@@ -201,7 +201,9 @@ export function init() {
   root.querySelector('.home-inner').append(E.card,
     h('footer', { class: 'home-foot' },
       h('span', { text: 'Klaverjassen zoals in het café.' }),
-      h('small', { class: 'home-ver', text: `Versie ${versionText(document.querySelector('meta[name="version"]')?.content)}`, onclick: versionTap })),
+      h('div', { class: 'home-meta' },
+        h('small', { class: 'home-ver', text: `Versie ${versionText(document.querySelector('meta[name="version"]')?.content)}`, onclick: versionTap }),
+        h('button', { class: 'home-support', type: 'button', id: 'btn-support', onclick: openSupport }, icon('hand'), 'Support deze app'))),
   );
   E.lobby = document.getElementById('lobby');
   buildLobby();
@@ -333,6 +335,26 @@ function openTraining() {
         m.close(true);
         app.create({ opts, training: true, start: true, name: soloName() });
       } }, 'Start oefenspel')),
+    ],
+  });
+}
+
+// ---------- support ----------
+
+// A free contribution to the owner: an ING payment request, valid until
+// 2027-10-29, so a new one goes here before then. For the site only: the
+// store apps may not point to a payment outside the store.
+const SUPPORT_URL = 'https://www.ing.nl/payreq/m/YPJ0vnfaNXF4YztOueB1ZPIJSX7LY8nK';
+
+function openSupport() {
+  sound.unlock();
+  sound.play('click');
+  panels.openModal({
+    id: 'support', title: 'Support deze app', cls: 'm-info',
+    body: [
+      h('p', { text: 'Klaverjas is gratis en zonder reclame. Met een vrijwillige bijdrage help je de server en de ontwikkeling te betalen, zodat dat zo blijft.' }),
+      h('p', { text: 'Je kiest zelf het bedrag en betaalt via je eigen bank.' }),
+      h('a', { class: 'btn btn-go btn-block', href: SUPPORT_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Bijdragen met iDEAL'),
     ],
   });
 }

@@ -1060,6 +1060,37 @@ CHECKS.hometiles = async browser => {
   }
 };
 
+// The support line beside the version: its tap opens a short sheet with the
+// payment link in a new tab, and is no tap on the version (the expert mode).
+CHECKS.support = async browser => {
+  for (const vp of ['phone', 'oldSE']) {
+    const P = await page(browser, VP[vp], `support-${vp}`);
+    await run(P, async () => {
+      await home(P);
+      const line = await P.page.evaluate(() => {
+        const box = s => document.querySelector(s).getBoundingClientRect();
+        const ver = box('.home-ver'), btn = box('#btn-support');
+        const mid = btn.top + btn.height / 2;
+        return { sameLine: mid > ver.top && mid < ver.bottom, gap: btn.left - ver.right, onScreen: btn.right <= innerWidth };
+      });
+      // 4 px of tap area either side: the two must not overlap.
+      if (!line.sameLine || line.gap < 8 || !line.onScreen) throw new Error(`support line ${JSON.stringify(line)}`);
+      await shot(P, 'home');
+      for (let i = 0; i < 5; i++) {
+        await press(P, '#btn-support');
+        await waitFor(P, () => document.querySelector('.m-info.open a.btn-go'), { label: 'support sheet' });
+        await P.page.keyboard.press('Escape');
+        await waitFor(P, () => !document.querySelector('.modal.open'), { label: 'sheet closed' });
+      }
+      await press(P, '#btn-support');
+      await waitFor(P, () => document.querySelector('.m-info.open a.btn-go'), { label: 'support sheet' });
+      const a = await P.page.$eval('.m-info a.btn-go', e => ({ href: e.href, target: e.target, rel: e.rel, text: e.textContent }));
+      if (!a.href.startsWith('https://www.ing.nl/payreq/') || a.target !== '_blank' || !a.rel.includes('noopener') || a.text !== 'Bijdragen met iDEAL') throw new Error(`support link ${JSON.stringify(a)}`);
+      await shot(P, 'sheet');
+    });
+  }
+};
+
 // Touch: a lifted card says how to play it, and a tap beside the hand puts
 // it down again, also one lifted while others play; a forced card plays on
 // one tap. The chat badge stays dark for bot and system lines.
