@@ -761,11 +761,48 @@ body[data-screen="game"] #game {
   color: var(--ink-3);
 }
 
-.home-ver {
-  display: block;
+.home-meta {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
   margin-top: 4px;
   font-size: 11px;
+}
+
+.home-ver {
+  position: relative;
+  font-size: inherit;
   opacity: 0.75;
+}
+
+.home-support {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: inherit;
+  font-weight: 700;
+}
+
+.home-ver::before,
+.home-support::before {
+  content: "";
+  position: absolute;
+  inset: -15px -4px;
+}
+
+.home-support:hover {
+  color: var(--gold);
+}
+
+.home-support .icon {
+  width: 14px;
+  height: 14px;
 }
 
 body.busy::after {

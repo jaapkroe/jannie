@@ -1573,10 +1573,15 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   small: "Versie a05a087", the commit the web image was built from (the
   Containerfile fills in index.html's `<meta name="version">`; `versionText`
   shortens it, "dev" when run from source; `pod-check` compares it with
-  `/api/health`). Five quick taps on that line (each within 1.5 s of the
+  `/api/health`). Five quick taps on the version (each within 1.5 s of the
   last) open the expert mode's sheet, *Expert*: the only way in, and not
   named anywhere (§3; in short landscape the footer, and so the line, is
-  hidden). The sheet has, in this order, a line on what the mode does
+  hidden). Beside it, *Support deze app* with a hand: a short sheet on why
+  (free and without ads, a contribution pays for the server and the
+  development) and the button *Bijdragen met iDEAL*, the owner's ING payment
+  request in a new tab. `SUPPORT_URL` in home.js runs until 2027-10-29 and
+  stays out of the store apps. The expert sheet has, in this order, a line
+  on what the mode does
   ("Speel een spel opnieuw met de seed, of één potje ervan, op een plaats
   naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op de
   robot voor de redenering van de AI, en geef je commentaar. Na elk
