@@ -78,7 +78,7 @@ type Server struct {
 	players atomic.Int64 // humans connected to a room seat
 
 	grading  chan struct{} // analysis slots (see analyse)
-	explains chan struct{} // the expert's why: one search at a time, on every core (see cmdWhy)
+	explains chan struct{} // the reasoning's why (expert, training): one search at a time, on every core (see cmdWhy)
 }
 
 // New returns a server ready to serve; it panics without an AI.

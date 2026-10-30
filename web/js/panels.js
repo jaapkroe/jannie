@@ -198,7 +198,7 @@ export function toolButtons(names) {
     const b = h('button', { class: 'tb tb-' + n, type: 'button', title, 'aria-label': label, onclick: () => { sound.unlock(); fn(); } }, icon(ic));
     if (n === 'chat') b.append(h('span', { class: 'chat-badge', hidden: true }));
     if (n === 'sound') soundState(b);
-    if (n === 'expert') b.hidden = true; // shown in an expert game (table.js)
+    if (n === 'expert') b.hidden = true; // shown in an expert game and in training (table.js)
     return b;
   });
 }
@@ -1274,18 +1274,21 @@ export function onHandReview(msg) {
   if (rp?.owner === 'hand') rp.update(rh);
 }
 
-// The expert's sheet Redenering van de AI (expert.js, loaded when first
-// needed); sync tells it about every new deal, onReconnect about a new
-// connection.
+// The sheet Redenering van de AI (expert.js, loaded when first needed; the
+// expert mode and training); sync tells it about every new deal,
+// onReconnect about a new connection, whyError about a refusal.
 let expertJs = null;
 function openWhy() {
   import('./expert.js').then(x => { expertJs = x; x.openWhy(); })
     .catch(() => toast('Laden lukte niet', { sub: 'Controleer je internet en probeer het nog eens.', kind: 'error' }));
 }
 
+// The server refused something: a question to the AI still out is given up.
+export function whyError() { expertJs?.onError(); }
+
 // A free-text form that sends feedback (design §7) with what extra()
-// returns (the expert: hand and trick of their own decision; else nothing,
-// the game as a whole). Saved, the text stays, marked Bewaard., and
+// returns (the reasoning sheet: hand and trick of the player's own decision;
+// else nothing, the game as a whole). Saved, the text stays, marked Bewaard., and
 // Versturen waits for a change. onSaved(about, text), when given, hears of
 // every "saved" with what extra() gave and the text sent, and returns
 // false when the form shows something else by now (the expert's sheet,

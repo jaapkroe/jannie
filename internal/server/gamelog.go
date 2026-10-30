@@ -261,7 +261,7 @@ type logFeedback struct {
 	Device string    `json:"device"`
 	Hand   int       `json:"hand,omitempty"` // 0: about the game as a whole
 	Trick  int       `json:"trick,omitempty"`
-	By     *int      `json:"by,omitempty"` // expert: the seat of the decision commented on (their own)
+	By     *int      `json:"by,omitempty"` // the reasoning sheet (expert, training): the seat of the decision commented on (their own)
 	Text   string    `json:"text"`
 }
 

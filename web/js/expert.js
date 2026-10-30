@@ -147,20 +147,24 @@ function ask(d) {
 // card the server knows a decision by the player's last one, or the one
 // awaited now: in gedraaid a pass and then, once everyone passed, the trump
 // choice. kind keeps those apart, and key names a decision for the answers
-// kept: an answer about a decision awaited is not one about it made.
+// kept: an answer about a decision awaited is not one about it made. In
+// training the decision awaited now is there only with tips: the last
+// hands of Speluitleg are played without them (the state has no hint then).
 function decisions(s) {
   const out = [];
   const add = (trick, kind, awaited) => out.push({
     hand: s.handNo, trick, kind, awaited, key: `${s.handNo}/${trick}/${kind}/${awaited ? 'nu' : 'gedaan'}`,
   });
   const turn = s.turn === s.you && PLAYING.has(s.phase);
+  const asks = turn && (!s.training || !!s.hint);
   const bid = s.bids?.[s.you] ?? -1; // gedraaid: -1 none yet, 0 passen, 1 spelen
-  if (turn && (s.phase === 'bid' || s.phase === 'trump')) add(0, s.phase === 'trump' ? 'suit' : 'bid', true);
-  else if (bid >= 0 || s.trumpBy === s.you) add(0, s.trumpBy === s.you && bid !== 1 ? 'suit' : 'bid', false);
+  if (turn && (s.phase === 'bid' || s.phase === 'trump')) {
+    if (asks) add(0, s.phase === 'trump' ? 'suit' : 'bid', true);
+  } else if (bid >= 0 || s.trumpBy === s.you) add(0, s.trumpBy === s.you && bid !== 1 ? 'suit' : 'bid', false);
   // Out of a hand (its end, game over) the state holds no cards: all eight were played.
   const played = PLAYING.has(s.phase) ? 8 - (s.hand?.length ?? 8) : 8;
   for (let t = 1; t <= played; t++) add(t, 'card', false);
-  if (turn && s.phase === 'play') add(played + 1, 'card', true);
+  if (asks && s.phase === 'play') add(played + 1, 'card', true);
   return out;
 }
 

@@ -31,7 +31,7 @@ web/                       static frontend, vanilla ES modules, no build step
   icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
   css/app.css  css/cards.css  css/manual.css
   js/main.js … (app modules)  js/cards.js  js/sound.js  js/manual.js
-  js/expert.js               the expert mode's sheet *Redenering van de AI*, loaded only when an expert game needs it
+  js/expert.js               the sheet *Redenering van de AI* (expert mode, training), loaded only when first opened
   js/call.js                 the call with the others at the table, loaded once another person sits there
 test/e2e/                  node scripts that play full games over the websocket
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
@@ -943,7 +943,9 @@ reply attempt.
   the match runs and after it, about the game or about one of their own
   decisions (hand and trick), at most 200 lines per match. The review per
   hand and the Spelanalyse are as for anyone at a table of four. Training
-  has `why` and this `feedback` as well (`room.reasoning`).
+  has `why` and this `feedback` as well (`room.reasoning`), except a `why`
+  about the decision awaited now in the last hands of Speluitleg, which
+  are played without tips (`tipsOn`; error `ongeldig`).
 - Bot chat (limits in §5): a bot does not repeat one of its last two lines for
   the same kind of event (numbers aside: "20 roem" and "50 roem" are one line);
   it asks for another line a few times and otherwise stays silent.
@@ -1001,8 +1003,9 @@ reply attempt.
   over: `hand`, `reason`; a match cut short by a server restart has neither
   `end` nor `close`), `review` (`seat`, `name`, `review`: the review state of
   §7 without `replay`, once every grade is in) and `feedback` (`seat`,
-  `name`, `ip`, `device`, `text`; from the expert also `hand`, `trick` and
-  `by`, the expert's own seat, when about one of their decisions). `acts`
+  `name`, `ip`, `device`, `text`; from the expert and in training also
+  `hand`, `trick` and `by`, the player's own seat, when about one of their
+  decisions). `acts`
   lists the hand's decisions in order,
   space-separated: the seat, then a card ("2AS"), or `b1`/`b0` (spelen,
   passen), `tH` (trump), `a90` (auction bid; `a0` pass), `dJS7H` (laid away).
@@ -1471,7 +1474,7 @@ text. At most 17 requests per page load in total, the websocket included
 (NPM's rate limit for the name is in shrek-infra, `docs/services/klaverjas.md`):
 html, 3 css, favicon, manifest, one PNG icon (Chrome's install check),
 ≤ 6 app modules, cards.js, sound.js, manual.js, the websocket; `expert.js` is
-imported only when an expert game first needs it, and `call.js` once another
+imported only when its sheet is first opened (expert mode, training), and `call.js` once another
 person sits at the table, so a page load never fetches them. No service
 worker. System font stack.
 `localStorage` access wrapped in try/catch (keys prefixed `kj.`).
@@ -1960,8 +1963,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   under `play-and-record` and that hanging up and leaving while the
   devices are asked for give `ambient` back once the tracks have stopped.
 - **Training**: the robot in the top bar opens *Redenering van de AI*, as in
-  the expert mode (§9 Expert), with the line *Je opmerking wordt met je naam
-  bewaard, …* under its comment form; tip bubble with the hint text and a
+  the expert mode (§9 Expert); tip bubble with the hint text and a
   glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it) and the advised suit or *Spelen*/*Passen*
@@ -2107,7 +2109,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   card (`bids`, `trumpBy`), tricks 1 to k for the cards they played (k = 8
   − the cards in `hand` during play, 8 at `handEnd` and `gameOver`), and on
   their turn in a playing phase the decision awaited now (trick 0 for a bid
-  or trump choice, else k + 1). It opens on the awaited one on their turn,
+  or trump choice, else k + 1; in training only while tips are on: the
+  last hands of Speluitleg are played without them, and the server refuses
+  a `why` about the decision awaited then). It opens on the awaited one on their turn,
   else on the latest; never on trick 8 (one card left, no choice: the one
   before it instead, also when trick 8 is awaited). With none, a toast
   "Nog geen zet van jou in dit potje.". In the head ‹ › step through them (disabled at the ends), with
@@ -2121,7 +2125,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   a step meanwhile shows *De AI denkt na…*, and the decision shown is asked
   once the answer is in. An answer counts only when its hand and trick are
   the request's. An error gives the request up, sheet open or not (main.js
-  passes every server error to expert.js in an expert game), and its
+  passes every server error on, `panels.whyError`, once expert.js is
+  loaded), and its
   decision shows *De AI gaf hier geen antwoord.* with *Opnieuw* (a step
   back to it asks again too). A reconnect asks again when the request went
   out over the old connection (§9 Connection). Answers
@@ -2152,7 +2157,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   kaarten die jij niet kon zien.* (`worlds`) with an ⓘ on what the numbers
   mean. Last
   a fold-out *Commentaar bij deze zet*: one feedback form for the sheet
-  (*Wat klopt er volgens jou niet, of wat is beter?*), sent with the hand
+  (*Wat klopt er volgens jou niet, of wat is beter?*, with the line *Je
+  opmerking wordt met je naam bewaard, …* under it), sent with the hand
   and trick of the decision shown when sending. Each decision keeps its
   own text while the hand lasts (a step shows the text of the decision
   stepped to): typed, or saved and marked so (*Bewaard.*, as in every

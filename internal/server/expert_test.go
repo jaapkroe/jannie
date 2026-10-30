@@ -399,3 +399,28 @@ func TestMatchViewSignals(t *testing.T) {
 		t.Errorf("after it: %+v, want %+v", *v.Signals, r.opts.Signals)
 	}
 }
+
+// TestWhySoloHands: the last hands of Speluitleg are played without tips,
+// so the reasoning of the decision awaited then is refused.
+func TestWhySoloHands(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	r := newRoom(s, "TEST")
+	defer r.stop()
+	c := newClient(s, nil, "1.2.3.4", "test")
+	r.seats[0] = newHuman("Leerling")
+	r.training, r.opts.Lessons, r.opts.Hands = true, true, 16
+	r.lessonHands, r.firstHand, r.handNo = lessonsEnd+1, 1, 14
+	if r.tipsOn() {
+		t.Fatal("setup: tips on in hand 14 of 16 after the lessons")
+	}
+	r.phase = phasePlay
+	r.dealt = dealtCards{dealer: 3, hands: game.Shuffle(rand.New(rand.NewPCG(3, 4))), turned: game.Hearts}
+	r.deal = r.dealOf(r.dealt)
+	r.deal.ChooseTrump(0, game.Hearts)
+	r.acts = actToken(0, action{kind: actTrump, suit: game.Hearts})
+	hand, trick := 14, 1
+	r.cmdWhy(c, 0, &inMsg{Hand: &hand, Trick: &trick})
+	if b := string(<-c.out); !strings.Contains(b, "zonder tips") {
+		t.Errorf("why awaited in a hand without tips: %s", b)
+	}
+}
