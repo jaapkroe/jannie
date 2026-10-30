@@ -265,8 +265,8 @@ function onError(m) {
   toast(msg, { kind: 'error' });
   table.onError();
   panels.onError();
-  // A question to the AI still out gets its button back.
-  if (app.s?.expert) import('./expert.js').then(x => x.onError());
+  // A question to the AI still out is given up: its decision shows Opnieuw.
+  panels.whyError();
   // A refused lobby change: show the options as the server has them again.
   if (app.s?.phase === 'lobby') {
     home.resetLobby();

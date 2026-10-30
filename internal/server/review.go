@@ -601,19 +601,19 @@ func (r *room) sendHandReview(c *client, i game.Seat, h int) {
 
 // Limits on the feedback of a player.
 const (
-	maxFeedback    = 20   // feedback lines per player and match (maxExpertFeedback for the expert)
+	maxFeedback    = 20   // feedback lines per player and match (maxExpertFeedback with the reasoning sheet)
 	maxFeedbackLen = 2000 // characters
 )
 
 // cmdFeedback keeps a player's free text about the game in the game log
-// (design §7 feedback), at game over with a review. The expert gives it
-// while the match runs too, also about one of their own decisions (hand
-// and trick).
+// (design §7 feedback), at game over with a review. The expert and a
+// player in training give it while the match runs too, also about one of
+// their own decisions (hand and trick), from the reasoning sheet.
 func (r *room) cmdFeedback(c *client, i game.Seat, m *inMsg) {
 	rv := r.seats[i].review
 	limit := maxFeedback
 	switch {
-	case r.expert && r.phase != phaseLobby && rv != nil:
+	case r.reasoning() && r.phase != phaseLobby && rv != nil:
 		limit = maxExpertFeedback
 	case r.phase != phaseGameOver || rv == nil:
 		c.sendError(errInvalid, "Een opmerking geef je bij de spelanalyse, na het spel.")
@@ -631,7 +631,7 @@ func (r *room) cmdFeedback(c *client, i game.Seat, m *inMsg) {
 	rv.feedbackN++
 	rec := logFeedback{T: "feedback", Match: r.matchID, At: time.Now().UTC(), Seat: int(i), Name: r.displayName(i),
 		IP: c.ip, Device: c.device, Text: text}
-	if h, t, ok := decisionArgs(m); r.expert && ok && t >= 0 && t <= 8 {
+	if h, t, ok := decisionArgs(m); r.reasoning() && ok && t >= 0 && t <= 8 {
 		if _, _, found := r.handData(h); found {
 			by := int(i)
 			rec.Hand, rec.Trick, rec.By = h, t, &by

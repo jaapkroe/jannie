@@ -384,7 +384,7 @@ function openExpert() {
   showHands();
   const m = panels.openModal({
     id: 'expert', title: 'Expert', cls: 'm-sheet m-train', body: [
-      h('p', { class: 'sheet-note', text: 'Speel een spel opnieuw met de seed, of één potje ervan, op een plaats naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op het vergrootglas voor de redenering van de AI, en geef je commentaar. Na elk potje tik je op een slag en dan op Dit potje terugkijken.' }),
+      h('p', { class: 'sheet-note', text: 'Speel een spel opnieuw met de seed, of één potje ervan, op een plaats naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op de robot voor de redenering van de AI, en geef je commentaar. Na elk potje tik je op een slag en dan op Dit potje terugkijken.' }),
       h('label', { class: 'set-row' },
         h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
         h('span', { class: 'switch' }, open, h('i'))),

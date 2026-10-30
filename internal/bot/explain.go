@@ -14,8 +14,10 @@ type Explanation struct {
 	Normaal  Choice // the rule-based choice
 	Rule     string // a card: the hint text for the rule that chose it ("Speel ♠A: …"); else ""
 	Sterk    Choice // sterk's choice from this search, at average aggression
+	SterkWhy string // a card: why sterk's card is not one the search values most; else ""
 	Hint     Choice // the training hint
 	HintText string
+	HintWhy  string   // a card: why the hint keeps the rule-based card while sterk plays another; else ""
 	Worlds   int      // sampled deals per option; 0 without a search (one legal card)
 	Options  []Option // every option: the legal cards, the allowed suits, or spelen and passen
 }
@@ -110,9 +112,14 @@ func explainPlay(v *game.View, seed uint64) Explanation {
 		return e
 	}
 	res := searchPlay(v, &tab, adviseSearch, seed, 0.5)
-	sterk := res[sterkPick(&m, res, c)].card
+	si, why := sterkChoose(&m, res, c)
+	sterk := res[si].card
 	hint, text := teachPick(&m, res, c, r)
 	e.Sterk.Card, e.Hint.Card, e.HintText, e.Worlds = &sterk, &hint, text, res[0].n
+	e.SterkWhy = m.sterkReason(res, si, why)
+	if hint != sterk {
+		e.HintWhy = hintKeptReason(res, si, resultIndex(res, c))
+	}
 	best := 0
 	for i := range res {
 		if res[i].mean() > res[best].mean() {

@@ -57,8 +57,8 @@ func (botAI) Explain(v game.View) server.Explanation {
 	e := bot.Explain(v)
 	choice := func(c bot.Choice) server.Choice { return server.Choice{Card: c.Card, Suit: c.Suit, Play: c.Play} }
 	out := server.Explanation{
-		Normaal: choice(e.Normaal), Rule: e.Rule, Sterk: choice(e.Sterk),
-		Hint: choice(e.Hint), HintText: e.HintText, Worlds: e.Worlds,
+		Normaal: choice(e.Normaal), Rule: e.Rule, Sterk: choice(e.Sterk), SterkWhy: e.SterkWhy,
+		Hint: choice(e.Hint), HintText: e.HintText, HintWhy: e.HintWhy, Worlds: e.Worlds,
 	}
 	for _, o := range e.Options {
 		out.Options = append(out.Options, server.Option{

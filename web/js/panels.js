@@ -189,7 +189,7 @@ const TOOLS = {
   settings: ['settings', 'Instellingen', 'Instellingen: geluid, kaarten, animaties en je naam', () => openSettings()],
   sound: ['soundOn', 'Geluid', 'Geluid aan', () => toggleSound()], // a toggle: soundState sets icon, tooltip, aria-pressed
   menu: ['menu', 'Meer', 'Meer: scorebord, handleiding, instellingen', () => openMenu()],
-  expert: ['search', 'Redenering van de AI', 'Redenering van de AI bij jouw zetten, en commentaar', () => openWhy()],
+  expert: ['bot', 'Redenering van de AI', 'Redenering van de AI bij jouw zetten, en commentaar', () => openWhy()],
 };
 
 export function toolButtons(names) {
@@ -198,7 +198,7 @@ export function toolButtons(names) {
     const b = h('button', { class: 'tb tb-' + n, type: 'button', title, 'aria-label': label, onclick: () => { sound.unlock(); fn(); } }, icon(ic));
     if (n === 'chat') b.append(h('span', { class: 'chat-badge', hidden: true }));
     if (n === 'sound') soundState(b);
-    if (n === 'expert') b.hidden = true; // shown in an expert game (table.js)
+    if (n === 'expert') b.hidden = true; // shown in an expert game and in training (table.js)
     return b;
   });
 }
@@ -1274,37 +1274,59 @@ export function onHandReview(msg) {
   if (rp?.owner === 'hand') rp.update(rh);
 }
 
-// The expert's sheet Redenering van de AI (expert.js, loaded when first
-// needed); sync tells it about every new deal, onReconnect about a new
-// connection.
+// The sheet Redenering van de AI (expert.js, loaded when first needed; the
+// expert mode and training); sync tells it about every new deal,
+// onReconnect about a new connection, whyError about a refusal.
 let expertJs = null;
 function openWhy() {
   import('./expert.js').then(x => { expertJs = x; x.openWhy(); })
     .catch(() => toast('Laden lukte niet', { sub: 'Controleer je internet en probeer het nog eens.', kind: 'error' }));
 }
 
+// The server refused something: a question to the AI still out is given up.
+export function whyError() { expertJs?.onError(); }
+
 // A free-text form that sends feedback (design §7) with what extra()
-// returns (the expert: hand and trick of their own decision; else nothing,
-// the game as a whole).
+// returns (the reasoning sheet: hand and trick of the player's own decision;
+// else nothing, the game as a whole). Saved, the text stays, marked Bewaard., and
+// Versturen waits for a change. onSaved(about, text), when given, hears of
+// every "saved" with what extra() gave and the text sent, and returns
+// false when the form shows something else by now (the expert's sheet,
+// stepped to another decision). The form's value() and load({text, saved})
+// let the sheet keep a text per decision.
 let feedbackWait = null; // the form waiting for its "saved"
-export function feedbackForm(extra, label, placeholder = 'Wat viel je op? Wat klopt er volgens jou niet?') {
+export function feedbackForm(extra, label, placeholder = 'Wat viel je op? Wat klopt er volgens jou niet?', onSaved = null) {
   const text = h('textarea', { class: 'field fb-text', maxLength: 2000, rows: 3, placeholder, 'aria-label': label });
   const status = h('span', { class: 'fb-status', role: 'status' });
+  let saved = false;
+  let sending = false; // one feedback is out at a time: a second "saved" could not be told apart
+  const mark = on => {
+    saved = on;
+    el.classList.toggle('saved', on);
+    status.replaceChildren(...(on ? [icon('check'), 'Bewaard.'] : []));
+    send.disabled = on || sending;
+  };
   const send = h('button', {
     class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => {
       if (!text.value.trim()) { text.focus(); return; }
       sound.play('click');
-      send.disabled = true;
-      status.textContent = '';
+      sending = true;
+      mark(false);
+      const about = extra();
+      const sent = text.value;
       const w = feedbackWait = {
-        saved: () => { text.value = ''; status.textContent = 'Bewaard.'; send.disabled = false; },
-        failed: () => { send.disabled = false; },
+        // Text typed meanwhile is not what was saved.
+        saved: () => { sending = false; mark(onSaved?.(about, sent) === false ? saved : text.value === sent); },
+        failed: () => { sending = false; mark(saved); },
       };
-      w.sent = app.send({ t: 'feedback', text: text.value, ...extra() }); // false: queued until the connection is back
+      w.sent = app.send({ t: 'feedback', text: sent, ...about }); // false: queued until the connection is back
     },
   }, 'Versturen');
-  text.addEventListener('input', () => { status.textContent = ''; });
-  return h('div', { class: 'fb' }, text, h('div', { class: 'fb-row' }, send, status));
+  text.addEventListener('input', () => { if (saved || status.textContent) mark(false); });
+  const el = h('div', { class: 'fb' }, text, h('div', { class: 'fb-row' }, send, status));
+  el.value = () => ({ text: text.value, saved });
+  el.load = d => { text.value = d?.text || ''; mark(!!d?.saved); };
+  return el;
 }
 
 // The server kept what was sent (feedback).

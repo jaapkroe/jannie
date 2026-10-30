@@ -17,7 +17,8 @@ import (
 // their own decisions (why) and comments on them (feedback), which goes to
 // the game log. Looking back at a hand is the review's (handReview).
 
-// maxExpertFeedback limits the expert's feedback lines in a match.
+// maxExpertFeedback limits the feedback lines in a match of a player who
+// comments from the reasoning sheet (the expert, training).
 const maxExpertFeedback = 200
 
 // expertOpts keeps option from to expert rooms, in a match long enough to
@@ -120,8 +121,14 @@ func (r *room) decision(h, t int, seat game.Seat) (d *game.Deal, done *action, o
 	return d, nil, now
 }
 
+// reasoning reports whether players here may ask the engine's reasoning
+// for their decisions (why) and comment on them while the match runs: in
+// the expert mode and in training.
+func (r *room) reasoning() bool { return r.expert || r.training }
+
 // matchView is what seat knew in deal d, a moment of hand h, with the
-// match fields filled in as viewFor does.
+// match fields filled in as viewFor does, and the signals the table plays
+// with by now (r.signals: none before the lesson on them).
 func (r *room) matchView(d *game.Deal, seat game.Seat, h int) game.View {
 	v := d.View(seat)
 	v.HandNo, v.HandsTotal = h, r.opts.Hands
@@ -133,7 +140,7 @@ func (r *room) matchView(d *game.Deal, seat game.Seat, h int) game.View {
 			}
 		}
 	}
-	sig := r.opts.Signals
+	sig := r.signals()
 	v.Signals = &sig
 	return v
 }
@@ -152,8 +159,8 @@ func decisionArgs(m *inMsg) (h, t int, ok bool) {
 // a time per room and over all rooms (the search takes every core), and
 // the answer goes to the asker.
 func (r *room) cmdWhy(c *client, i game.Seat, m *inMsg) {
-	if !r.expert || r.phase == phaseLobby {
-		c.sendError(errInvalid, "De redenering van de AI vraag je op in de expertmodus.")
+	if !r.reasoning() || r.phase == phaseLobby {
+		c.sendError(errInvalid, "De redenering van de AI vraag je op bij Oefenen.")
 		return
 	}
 	h, t, ok := decisionArgs(m)
@@ -164,6 +171,11 @@ func (r *room) cmdWhy(c *client, i game.Seat, m *inMsg) {
 	}
 	if !ok {
 		c.sendError(errInvalid, "Die beslissing is er (nog) niet.")
+		return
+	}
+	if done == nil && r.training && !r.tipsOn() {
+		// The last hands of Speluitleg are played without tips.
+		c.sendError(errInvalid, "Deze potjes speel je zonder tips: na je zet zie je de redenering.")
 		return
 	}
 	if r.explaining {
@@ -208,6 +220,7 @@ func (msg *whyMsg) fill(e Explanation) {
 	tenths := func(x float64) float64 { return math.Round(10*x) / 10 }
 	share := func(x float64) float64 { return math.Round(1000*x) / 1000 }
 	msg.Normaal, msg.Rule, msg.Sterk = choiceJSON(e.Normaal), e.Rule, choiceJSON(e.Sterk)
+	msg.SterkWhy, msg.HintWhy = e.SterkWhy, e.HintWhy
 	msg.Hint, msg.HintText, msg.Worlds = choiceJSON(e.Hint), e.HintText, e.Worlds
 	for _, o := range e.Options {
 		oj := optionJSON{choiceJSON: choiceJSON(o.Choice), Value: tenths(o.Value), SE: tenths(o.SE),

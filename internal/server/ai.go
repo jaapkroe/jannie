@@ -66,15 +66,17 @@ type Outcome struct {
 
 // Explanation is the engine's reasoning for one decision, for the expert
 // mode (see bot.Explanation): the rule-based choice of normaal and its
-// reason, the choices of sterk and of the hint, and the value of every
-// option.
+// reason, the choices of sterk and of the hint (with why they leave a
+// better-valued card), and the value of every option.
 type Explanation struct {
 	Normaal  Choice
 	Rule     string // a card: the hint text of the rule that chose it
 	Sterk    Choice
+	SterkWhy string // a card: why sterk's card is not one the search values most
 	Hint     Choice
 	HintText string
-	Worlds   int // deals sampled per option; 0 without a search
+	HintWhy  string // a card: why the hint keeps the rule's card while sterk plays another
+	Worlds   int    // deals sampled per option; 0 without a search
 	Options  []Option
 }
 

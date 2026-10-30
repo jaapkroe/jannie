@@ -155,7 +155,8 @@ func TestExpertMatch(t *testing.T) {
 	}
 	now := 9 - len(s.Hand)
 	w = why(map[string]any{"trick": now, "seat": 1})
-	if w.Played != nil || w.Seat != 0 || w.Trick != now || len(w.Options) != len(s.Legal) || w.Rule == "" {
+	if w.Played != nil || w.Seat != 0 || w.Trick != now || len(w.Options) != len(s.Legal) || w.Rule == "" ||
+		w.SterkWhy != "waarom sterk" || w.HintWhy != "waarom de tip" {
 		t.Errorf("why now (trick %d, legal %v), asked with seat 1: %+v", now, s.Legal, w)
 	}
 	if n := ai.reasoned.Load(); n != 2 {
@@ -358,5 +359,68 @@ func TestWhyOneAtATime(t *testing.T) {
 	defer ai.mu.Unlock()
 	if ai.most != 1 {
 		t.Errorf("%d searches at once", ai.most)
+	}
+}
+
+// TestWhyInTraining: in training the player asks the reasoning of their
+// own decision and comments on it while the match runs, as the expert does.
+func TestWhyInTraining(t *testing.T) {
+	_, ts, ai := newTestServer(t)
+	c := dial(t, ts)
+	c.create("Leerling", map[string]any{"hands": 4}, true, true)
+	drive(t, func() bool { return c.s.Phase == phasePlay && c.myTurn() && len(c.s.Legal) > 1 }, c)
+	trick := 9 - len(c.s.Hand)
+	c.send(map[string]any{"t": "why", "hand": c.s.HandNo, "trick": trick})
+	m := c.until(5*time.Second, "why", func(m *msg) bool { return m.T == "why" || m.T == "error" })
+	var w whyMsg
+	if err := json.Unmarshal(m.raw, &w); err != nil || m.T != "why" || w.Trick != trick || w.Played != nil || len(w.Options) != len(c.s.Legal) {
+		t.Fatalf("why in training: %s", m.raw)
+	}
+	if n := ai.reasoned.Load(); n != 1 {
+		t.Errorf("%d explanations, want 1", n)
+	}
+	c.send(map[string]any{"t": "feedback", "text": "Waarom deze?", "hand": c.s.HandNo, "trick": trick})
+	c.waitType("saved")
+}
+
+// TestMatchViewSignals: the reasoning reads the signals the table plays
+// with by now: with lessons none before the lesson on them.
+func TestMatchViewSignals(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	r := newRoom(s, "TEST")
+	defer r.stop()
+	r.training, r.opts.Lessons = true, true
+	d := game.NewDeal(0, game.Shuffle(rand.New(rand.NewPCG(1, 2))), game.Utrechts, game.Amsterdams, 0)
+	if v := r.matchView(d, 0, 1); *v.Signals != (game.Signals{}) {
+		t.Errorf("before the lesson on signals: %+v", *v.Signals)
+	}
+	r.taught = map[string]int{lessonSignals: 1}
+	if v := r.matchView(d, 0, 1); *v.Signals != r.opts.Signals || *v.Signals == (game.Signals{}) {
+		t.Errorf("after it: %+v, want %+v", *v.Signals, r.opts.Signals)
+	}
+}
+
+// TestWhySoloHands: the last hands of Speluitleg are played without tips,
+// so the reasoning of the decision awaited then is refused.
+func TestWhySoloHands(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	r := newRoom(s, "TEST")
+	defer r.stop()
+	c := newClient(s, nil, "1.2.3.4", "test")
+	r.seats[0] = newHuman("Leerling")
+	r.training, r.opts.Lessons, r.opts.Hands = true, true, 16
+	r.lessonHands, r.firstHand, r.handNo = lessonsEnd+1, 1, 14
+	if r.tipsOn() {
+		t.Fatal("setup: tips on in hand 14 of 16 after the lessons")
+	}
+	r.phase = phasePlay
+	r.dealt = dealtCards{dealer: 3, hands: game.Shuffle(rand.New(rand.NewPCG(3, 4))), turned: game.Hearts}
+	r.deal = r.dealOf(r.dealt)
+	r.deal.ChooseTrump(0, game.Hearts)
+	r.acts = actToken(0, action{kind: actTrump, suit: game.Hearts})
+	hand, trick := 14, 1
+	r.cmdWhy(c, 0, &inMsg{Hand: &hand, Trick: &trick})
+	if b := string(<-c.out); !strings.Contains(b, "zonder tips") {
+		t.Errorf("why awaited in a hand without tips: %s", b)
 	}
 }

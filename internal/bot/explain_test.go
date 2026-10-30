@@ -55,6 +55,9 @@ func TestExplainAgreesWithAdvise(t *testing.T) {
 				t.Fatalf("%d options, want %d: %+v", len(e.Options), want, e.Options)
 			}
 			checkOptions(t, &v, e)
+			if d.Phase() == game.PhasePlay && e.Worlds > 0 {
+				checkReasons(t, e)
+			}
 			var err error
 			switch d.Phase() {
 			case game.PhaseBid:
@@ -75,6 +78,26 @@ func TestExplainAgreesWithAdvise(t *testing.T) {
 	}
 	if n := fallbacks.Load(); n != 0 {
 		t.Errorf("the search failed %d times", n)
+	}
+}
+
+// checkReasons: Sterk says why exactly when its card is not one the search
+// values most, and the hint exactly when it keeps the rule's card while
+// sterk plays another.
+func checkReasons(t *testing.T, e Explanation) {
+	t.Helper()
+	top, sterk := math.Inf(-1), math.Inf(-1)
+	for _, o := range e.Options {
+		top = max(top, o.Value)
+		if *o.Card == *e.Sterk.Card {
+			sterk = o.Value
+		}
+	}
+	if (sterk < top) != (e.SterkWhy != "") {
+		t.Errorf("sterk %v at %.1f of %.1f, reason %q", *e.Sterk.Card, sterk, top, e.SterkWhy)
+	}
+	if (*e.Hint.Card != *e.Sterk.Card) != (e.HintWhy != "") {
+		t.Errorf("hint %v, sterk %v, reason %q", *e.Hint.Card, *e.Sterk.Card, e.HintWhy)
 	}
 }
 

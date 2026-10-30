@@ -232,6 +232,13 @@ CHECKS.coach = async browser => {
       // The next own turn brings a hint again.
       await playLegal(P);
       await playUntil(P, () => !!document.querySelector('.hand.my-turn .card.legal') && !document.querySelector('.coach[hidden]'), { label: 'next hint', timeout: 30000 });
+      // The robot: the reasoning of the decision now, as in the expert mode.
+      await press(P, '.topbar .tb-expert');
+      await waitFor(P, () => /Jij bent aan de beurt$/.test(document.querySelector('.m-why.open .why-head p')?.textContent || ''), { label: 'the reasoning sheet' });
+      await waitFor(P, () => document.querySelector('.m-why .xp-why'), { label: 'the reasoning', timeout: 60000 });
+      await checkOverflow(P, 'reasoning in training');
+      await P.page.keyboard.press('Escape');
+      await waitFor(P, () => !document.querySelector('.m-why.open'), { label: 'the sheet closed' });
     });
   }
   // Gedraaid: the bid advice inside the bidding panel.
@@ -740,29 +747,50 @@ CHECKS.expert = async browser => {
       lines: [...document.querySelectorAll('.m-why .xp-why > p b')].map(e => e.textContent.trim()),
       prev: document.querySelector('.m-why .why-head .icon-btn[aria-label="Vorige zet"]')?.disabled,
       next: document.querySelector('.m-why .why-head .icon-btn[aria-label="Volgende zet"]')?.disabled,
+      // Sterk's card, whether a best (gold) row holds it, and its reason.
+      sterk: (() => {
+        const p = [...document.querySelectorAll('.m-why .xp-why > p')].find(e => e.querySelector('b')?.textContent === 'Sterk: ');
+        const [card, ...why] = (p?.textContent.replace('Sterk: ', '') || '').split(' · ');
+        const best = [...document.querySelectorAll('.m-why .xp-table tr.xp-best th')].map(e => e.textContent.replace(/\s*(gespeeld|gekozen)$/, '').trim());
+        return { card, gold: best.includes(card), why: why.join(' · ') };
+      })(),
     }));
+    // Sterk on a card the search does not value most says why.
+    const sterkOk = r => !r.rows || r.sterk.gold || r.sterk.why.length > 20;
     await press(P, '.tb-expert');
     await waitFor(P, t => document.querySelector('.m-why.open .why-head p')?.textContent === `Slag ${t} · Jij bent aan de beurt`, { label: 'the sheet on the decision now' }, trick);
     await waitFor(P, () => document.querySelector('.m-why .xp-why .xp-table tbody tr'), { label: 'the reasoning now', timeout: 60000 });
     const now = await reasoning();
-    if (now.rows < 2 || now.played.length || String(now.lines) !== 'Normaal:,Sterk:,Tip:' || now.prev !== false || now.next !== true) throw new Error(`reasoning now ${JSON.stringify(now)}`);
+    if (now.rows < 2 || now.played.length || String(now.lines) !== 'Normaal:,Sterk:,Tip:' || now.prev !== false || now.next !== true || !sterkOk(now)) throw new Error(`reasoning now ${JSON.stringify(now)}`);
     await checkOverflow(P, 'reasoning');
     await shot(P, 'why-now');
 
-    // ‹: the card before, asked about; a comment on it.
+    // ‹: the card before, asked about by itself (no button); a comment on it.
     await press(P, '.m-why .why-head .icon-btn[aria-label="Vorige zet"]');
-    await waitFor(P, t => document.querySelector('.m-why .why-head p')?.textContent === `Slag ${t}` && document.querySelector('.m-why .why-out > .btn:not(:disabled)'), { label: 'the card before' }, trick - 1);
-    await press(P, '.m-why .why-out > .btn');
     await waitFor(P, t => document.querySelector('.m-why .why-head p')?.textContent.startsWith(`Slag ${t} · Jij speelde `) && document.querySelector('.m-why .xp-why'), { label: 'the reasoning before', timeout: 60000 }, trick - 1);
+    if (await P.page.$('.m-why .why-out .btn')) throw new Error('a button in the reasoning');
     const before = await reasoning();
-    if (String(before.lines) !== 'Normaal:,Sterk:,Tip:' || (before.rows && String(before.played) !== 'gespeeld') || before.next !== false) throw new Error(`reasoning before ${JSON.stringify(before)}`);
+    if (String(before.lines) !== 'Normaal:,Sterk:,Tip:' || (before.rows && String(before.played) !== 'gespeeld') || before.next !== false || !sterkOk(before)) throw new Error(`reasoning before ${JSON.stringify(before)}`);
     await press(P, '.m-why details.xp-fb > summary');
     await type(P, '.m-why .fb-text', 'Waarom deze kaart?');
     await press(P, '.m-why .fb .btn');
+    // Saved: the text stays, marked, and Versturen waits for a change.
+    const form = () => P.page.evaluate(() => ({
+      text: document.querySelector('.m-why .fb-text')?.value, status: document.querySelector('.m-why .fb-status')?.textContent,
+      saved: document.querySelector('.m-why .fb')?.classList.contains('saved'), send: document.querySelector('.m-why .fb .btn')?.disabled,
+    }));
     await waitFor(P, () => document.querySelector('.m-why .fb-status')?.textContent === 'Bewaard.', { label: 'comment kept' });
-    // ›: the decision awaited again, its answer kept.
+    const kept = await form();
+    if (kept.text !== 'Waarom deze kaart?' || !kept.saved || !kept.send) throw new Error(`after saving ${JSON.stringify(kept)}`);
+    // ›: the decision awaited again, its answer kept, its own (empty) comment.
     await press(P, '.m-why .why-head .icon-btn[aria-label="Volgende zet"]');
     await waitFor(P, t => document.querySelector('.m-why .why-head p')?.textContent === `Slag ${t} · Jij bent aan de beurt` && document.querySelector('.m-why .xp-table tbody tr'), { label: 'the decision now again' }, trick);
+    const other = await form();
+    if (other.text !== '' || other.saved || other.status !== '' || other.send) throw new Error(`the comment of the decision now ${JSON.stringify(other)}`);
+    // ‹ once more: the saved comment is back, no question asked again.
+    await press(P, '.m-why .why-head .icon-btn[aria-label="Vorige zet"]');
+    await waitFor(P, () => document.querySelector('.m-why .fb-text')?.value === 'Waarom deze kaart?' && document.querySelector('.m-why .fb.saved'), { label: 'the saved comment back' });
+    await press(P, '.m-why .why-head .icon-btn[aria-label="Volgende zet"]');
     const sent = await P.page.evaluate(() => window.__kj.sent.filter(m => m.t === 'feedback' || m.t === 'why' || m.t === 'mark'));
     const fb = sent.filter(m => m.t === 'feedback');
     const whys = sent.filter(m => m.t === 'why').map(m => `${m.hand}/${m.trick}${'seat' in m ? '/seat' : ''}`);

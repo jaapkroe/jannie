@@ -31,7 +31,7 @@ web/                       static frontend, vanilla ES modules, no build step
   icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
   css/app.css  css/cards.css  css/manual.css
   js/main.js … (app modules)  js/cards.js  js/sound.js  js/manual.js
-  js/expert.js               the expert mode's sheet *Redenering van de AI*, loaded only when an expert game needs it
+  js/expert.js               the sheet *Redenering van de AI* (expert mode, training), loaded only when first opened
   js/call.js                 the call with the others at the table, loaded once another person sits there
 test/e2e/                  node scripts that play full games over the websocket
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
@@ -238,7 +238,9 @@ bid), with two "Met z'n tweeën, Utrechts" (no rules: nobody has a partner).
 default, hints on, explanatory tips after every trick (the last trick of a
 hand waits for its tip, §6; each tip is a line of Juf Jannie in the chat too),
 nobody else can join. With option `lessons` Juf Jannie also teaches the game
-step by step (§6 Lessons).
+step by step (§6 Lessons). As in the expert mode, the player asks the
+engine's reasoning for their own decisions (`why`, the robot in the top bar,
+§9 Expert) and comments on them while the match runs.
 
 **Expert mode** (`expert: true` at create, issue #34; reached only by an
 easter egg on the home screen, §9) is a solo room as well: 1 human at the
@@ -545,8 +547,11 @@ type Explanation struct {
     Normaal  Choice   // the normaal choice (the rule-based card, bestTrumpNormal, the bid threshold at aggression 0.5)
     Rule     string   // a card: the hint text of the rule that chose it ("Speel ♠A: …"); else ""
     Sterk    Choice   // sterk's pick from this search at average aggression (sterkPick, the bid without bias)
+    SterkWhy string   // a card: why Sterk is not a card the search values most (sterkChoose: a false signal
+                      // short of its gain, or the normaal card kept as close enough or above the honest one); else ""
     Hint     Choice   // the hint (Advise)
     HintText string
+    HintWhy  string   // a card: why the hint keeps the normaal card while sterk plays another; else ""
     Worlds   int      // deals per option; 0 with one legal card (no search)
     Options  []Option // the legal cards (in v.Legal order), the allowed suits, or spelen then passen
 }
@@ -695,7 +700,7 @@ type Brain interface {
 type Advice struct{ Card *game.Card; Suit *game.Suit; Play *bool; Text string }
 type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool }                   // as bot.Choice
 type Grade struct{ Stake, Lost, Gain float64; Better Choice; Text string; Nat float64 } // as bot.Grade
-type Explanation struct{ Normaal Choice; Rule string; Sterk, Hint Choice; HintText string; Worlds int; Options []Option } // as bot.Explanation
+type Explanation struct{ Normaal Choice; Rule string; Sterk Choice; SterkWhy string; Hint Choice; HintText, HintWhy string; Worlds int; Options []Option } // as bot.Explanation
 type Option struct{ Choice; Value, SE float64; Outcome; Parts []float64 }
 type ChatEvent struct{ Kind string; Mine bool; Text string; Points int; InHand, Playing bool } // as bot.ChatEvent
 type Signal struct{ Seat game.Seat; Card game.Card; Kind string; Means game.Card }           // as bot.Signal
@@ -930,13 +935,17 @@ reply attempt.
   server rebuilds that moment of the hand from the cards as dealt and the
   decisions (`acts`, as in the game log) up to it, and works out the `why`:
   `AI.Explain` on the expert's view then, match fields filled in as for the
-  bots. It runs in the background, one at a time per room (another
-  meanwhile: error `limiet`) and one at a time over all rooms (the search
-  takes every core; others wait their turn), and the answer goes to the
-  asker alone. The expert gives `feedback` while the match runs and after
-  it, about the game or about one of their own decisions (hand and trick),
-  at most 200 lines per match. The review per hand and the Spelanalyse are
-  as for anyone at a table of four.
+  bots, and the signals the table plays with by then (`r.signals`: with
+  lessons none before the lesson on them). It runs in the background, one
+  at a time per room (another meanwhile: error `limiet`) and one at a time
+  over all rooms (the search takes every core; others wait their turn),
+  and the answer goes to the asker alone. The expert gives `feedback` while
+  the match runs and after it, about the game or about one of their own
+  decisions (hand and trick), at most 200 lines per match. The review per
+  hand and the Spelanalyse are as for anyone at a table of four. Training
+  has `why` and this `feedback` as well (`room.reasoning`), except a `why`
+  about the decision awaited now in the last hands of Speluitleg, which
+  are played without tips (`tipsOn`; error `ongeldig`).
 - Bot chat (limits in §5): a bot does not repeat one of its last two lines for
   the same kind of event (numbers aside: "20 roem" and "50 roem" are one line);
   it asks for another line a few times and otherwise stays silent.
@@ -994,8 +1003,9 @@ reply attempt.
   over: `hand`, `reason`; a match cut short by a server restart has neither
   `end` nor `close`), `review` (`seat`, `name`, `review`: the review state of
   §7 without `replay`, once every grade is in) and `feedback` (`seat`,
-  `name`, `ip`, `device`, `text`; from the expert also `hand`, `trick` and
-  `by`, the expert's own seat, when about one of their decisions). `acts`
+  `name`, `ip`, `device`, `text`; from the expert and in training also
+  `hand`, `trick` and `by`, the player's own seat, when about one of their
+  decisions). `acts`
   lists the hand's decisions in order,
   space-separated: the seat, then a card ("2AS"), or `b1`/`b0` (spelen,
   passen), `tH` (trump), `a90` (auction bid; `a0` pass), `dJS7H` (laid away).
@@ -1197,8 +1207,8 @@ client rotates so `you` is at the bottom.
 | `lobby` | | Host, phase `gameOver`, not training: back to the lobby, same code and options (§6) |
 | `leave` | | Leave the room |
 | `handReview` | `hand` | A table of four, any phase but the lobby: a finished hand of the match (not the hand in play) as the replay shows it, with your own graded decisions in it; answered with `handReview` to you alone, and again each time a grade of that hand comes in, until you ask for another hand or a new match starts (§6 Spelanalyse). With three or two players error `ongeldig` ("Terugkijken kan alleen met z'n vieren."); in the lobby, or a hand not finished: `ongeldig` ("Dat potje is er (nog) niet.") |
-| `why` | `hand`, `trick` (1–8, or 0: your bid or trump choice before the first card; on your turn to bid or choose trump, the one awaited now) | Expert, once the match started (also at game over): the engine's reasoning for one of your own decisions, made or awaited now in the hand in play; answered with `why` to you alone, one at a time per room (another meanwhile: `limiet`, §6). Elsewhere, or no such decision (yet): error `ongeldig` |
-| `feedback` | `text` (at most 2000 characters, cleaned per line); the expert also `hand` and `trick` (optional, as in `why`: about that decision of their own; the log keeps them when the match has that hand) | Phase `gameOver`, with a review: free text for the game log (§6), about the game; the expert also while the match runs. Answered with `saved`. At most 20 per player and match, 200 for the expert |
+| `why` | `hand`, `trick` (1–8, or 0: your bid or trump choice before the first card; on your turn to bid or choose trump, the one awaited now) | Expert and training, once the match started (also at game over): the engine's reasoning for one of your own decisions, made or awaited now in the hand in play; answered with `why` to you alone, one at a time per room (another meanwhile: `limiet`, §6). Elsewhere, or no such decision (yet): error `ongeldig` |
+| `feedback` | `text` (at most 2000 characters, cleaned per line); the expert and training also `hand` and `trick` (optional, as in `why`: about that decision of their own; the log keeps them when the match has that hand) | Phase `gameOver`, with a review: free text for the game log (§6), about the game; the expert and training also while the match runs. Answered with `saved`. At most 20 per player and match, 200 in the expert mode and training |
 | `ping` | | Keepalive (server answers `pong`) |
 
 ### Server → client
@@ -1214,7 +1224,7 @@ client rotates so `you` is at the bottom.
 | `saved` | `what`: `"feedback"`: kept in the game log |
 | `rtc` | `from` (the sender's session), `seat` (the sender's), `desc` as sent: to the session named only (§6 Calls) |
 | `handReview` | `hand`, `pending` (that hand's grades still out), `replay`: the hand as in `review.replay` (below), with your graded decisions in `choices`; to you alone (client `handReview` above) |
-| `why` | Expert: `hand`, `trick` (as asked), `seat` (yours), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `hint`, `hintText`, `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
+| `why` | Expert and training: `hand`, `trick` (as asked), `seat` (yours), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `sterkWhy`, `hint`, `hintText`, `hintWhy` (both "" but for a card, see §9 Expert), `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
 
@@ -1464,7 +1474,7 @@ text. At most 17 requests per page load in total, the websocket included
 (NPM's rate limit for the name is in shrek-infra, `docs/services/klaverjas.md`):
 html, 3 css, favicon, manifest, one PNG icon (Chrome's install check),
 ≤ 6 app modules, cards.js, sound.js, manual.js, the websocket; `expert.js` is
-imported only when an expert game first needs it, and `call.js` once another
+imported only when its sheet is first opened (expert mode, training), and `call.js` once another
 person sits at the table, so a page load never fetches them. No service
 worker. System font stack.
 `localStorage` access wrapped in try/catch (keys prefixed `kj.`).
@@ -1566,8 +1576,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   named anywhere (§3; in short landscape the footer, and so the line, is
   hidden). The sheet has, in this order, a line on what the mode does
   ("Speel een spel opnieuw met de seed, of één potje ervan, op een plaats
-  naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op het
-  vergrootglas voor de redenering van de AI, en geef je commentaar. Na elk
+  naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op de
+  robot voor de redenering van de AI, en geef je commentaar. Na elk
   potje tik je op een slag en dan op Dit potje terugkijken."), *Open
   kaarten*, *Potjes*, *Troef*, *Regels*, *AI-sterkte*, *Tempo*, *Seinen*,
   *Seed*, *Potje* (`from`, 1–24, empty: *Hele spel*; with a number the
@@ -1606,8 +1616,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   potje n/16; buttons for chat (with unread
   badge), score sheet, last trick, help, settings, sound (a toggle:
   `aria-pressed` while the sound is on, tooltip "Geluid aan" / "Geluid uit",
-  icon to match; on phones it is in the ⋯ menu); in an expert game, first
-  of them, a magnifier for the reasoning of the AI (§9 Expert). Where a name must
+  icon to match; on phones it is in the ⋯ menu); in an expert game and in training, first
+  of them, a robot for the reasoning of the AI (§9 Expert). Where a name must
   shorten (lobby seat, score bar, *Laatste slag*), only the name does: its
   "(AI)" stays readable ("Kees de Vi… (AI)"). The trump badge's details show
   what the badge shows, also during the trump banner. Whatever the order of
@@ -1722,10 +1732,10 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   moves and votes sent but unanswered and renders purely from the resync.
   As the connection opens again, right after the `join` and before what
   was queued while offline goes out, requests sent over the old connection
-  are settled: a feedback form's *Versturen* and the expert's question come
-  back (their answer went to the old connection), and a hand asked with
-  `handReview` is asked again while its trick view is open; queued ones go
-  out and are answered. A tab in the background still sounds
+  are settled: a feedback form's *Versturen* comes back (its `saved` went
+  to the old connection), the expert's question is asked again (at once
+  when the sheet is open), and a hand asked with `handReview` is asked
+  again while its trick view is open; queued ones go out and are answered. A tab in the background still sounds
   the turn (and the takeover question) and shows "● Jouw beurt" in its
   title on your turn, and "● Vraag aan tafel" while the question waits for
   your answer. Leaving while offline sends `join` (with the seat
@@ -1952,7 +1962,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   `navigator.audioSession` on the host, that the microphone is asked for
   under `play-and-record` and that hanging up and leaving while the
   devices are asked for give `ambient` back once the tracks have stopped.
-- **Training**: tip bubble with the hint text and a glow on the advised card;
+- **Training**: the robot in the top bar opens *Redenering van de AI*, as in
+  the expert mode (§9 Expert); tip bubble with the hint text and a
+  glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it) and the advised suit or *Spelen*/*Passen*
   glows; ✕ closes a hint until the next one; tips after
@@ -2028,7 +2040,10 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
   Dit is slechts de mening van Juf Jannie.*, and last *Opmerkingen*: a text
   field (*Wat viel je op? Wat klopt er volgens jou niet?*) with *Versturen*
-  (`feedback`; *Bewaard.* on `saved`) and the line *Je opmerking wordt met
+  (`feedback`; on `saved` the text stays, its edge and a check with
+  *Bewaard.* in the team colour, and *Versturen* waits for a change; text
+  typed while it was being sent stays unsaved; one feedback is out at a
+  time) and the line *Je opmerking wordt met
   je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor
   statistieken en om het spel te verbeteren.* Apart from the verdict, the wording is plain and factual:
   numbers, cards and the hint's reasons, no praise or consolation. The game-over buttons stay in view with
@@ -2082,18 +2097,21 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   line on top says *Aan tafel ben je aan de beurt.* with *Naar tafel*,
   which closes it and then the views that led to it (the trick view,
   *Laatste slag*, the score sheet). The replay has no feedback per decision (issue #34): the review's
-  *Opmerkingen* is about the game as a whole (the expert comments on their
-  decisions while playing, §9 Expert).
+  *Opmerkingen* is about the game as a whole (the expert, and a player in
+  training, comment on their decisions while playing, §9 Expert).
 - **Expert** (§3 Expert mode; `expert.js`, loaded when first needed): the
-  top bar's magnifier (*Redenering van de AI*, "Redenering van de AI bij
-  jouw zetten, en commentaar"; only in an expert game) opens the sheet
+  top bar's robot (*Redenering van de AI*, "Redenering van de AI bij
+  jouw zetten, en commentaar"; only in an expert game and in training)
+  opens the sheet
   *Redenering van de AI* about the player's own decisions in the hand in
   play, or just played (`handNo`). Those come from the state, so a reload
   keeps them: trick 0 when the player bid or chose trump before the first
   card (`bids`, `trumpBy`), tricks 1 to k for the cards they played (k = 8
   − the cards in `hand` during play, 8 at `handEnd` and `gameOver`), and on
   their turn in a playing phase the decision awaited now (trick 0 for a bid
-  or trump choice, else k + 1). It opens on the awaited one on their turn,
+  or trump choice, else k + 1; in training only while tips are on: the
+  last hands of Speluitleg are played without them, and the server refuses
+  a `why` about the decision awaited then). It opens on the awaited one on their turn,
   else on the latest; never on trick 8 (one card left, no choice: the one
   before it instead, also when trick 8 is awaited). With none, a toast
   "Nog geen zet van jou in dit potje.". In the head ‹ › step through them (disabled at the ends), with
@@ -2101,21 +2119,37 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   de eerste kaart · Jij bent aan de beurt*; made, *Slag 3* or *Voor de
   eerste kaart* until the answer names the choice (*Slag 3 · Jij speelde
   ♠8*, *Jij: ♥ als troef*, *Jij: passen*, *Jij: spelen*; its `played`).
-  The reasoning (`why`) is asked at once for the decision the sheet opens
-  on, unless already known; after a step, a button *Redenering van de AI*
-  asks for the one shown; *De AI denkt na…* (disabled) while the request is
-  out. One request is out at a time (expert.js keeps it): meanwhile the
-  other decisions show the button disabled. An answer counts only when its
-  hand and trick are the request's; an error clears the request, sheet open
-  or not (main.js passes every server error to expert.js in an expert game),
-  and so does a reconnect when the request went out over the old
-  connection (§9 Connection). Answers
+  The reasoning (`why`) of the decision shown is asked by itself, when
+  the sheet opens and after every step, unless already known; *De AI denkt
+  na…* while it is out. One request is out at a time (expert.js keeps it):
+  a step meanwhile shows *De AI denkt na…*, and the decision shown is asked
+  once the answer is in. An answer counts only when its hand and trick are
+  the request's. An error gives the request up, sheet open or not (main.js
+  passes every server error on, `panels.whyError`, once expert.js is
+  loaded), and its
+  decision shows *De AI gaf hier geen antwoord.* with *Opnieuw* (a step
+  back to it asks again too). A reconnect asks again when the request went
+  out over the old connection (§9 Connection). Answers
   are kept per decision for the life of the page
   (`hand/trick/kind/nu|gedaan`, kind: card, bid or suit, so in gedraaid a
   pass and the forced trump choice after it are apart), an awaited one
   shown only while it is still awaited; a `deal` forgets them and the
-  request, so a rematch on the same seed never shows an old answer. An answer shows *Normaal:* the normaal
-  choice with its rule's reason, *Sterk:*, *Tip:* the hint, a table of
+  request, so a rematch on the same seed never shows an old answer. An
+  answer shows *Normaal:* the normaal choice with its rule's reason,
+  *Sterk:* sterk's choice and, when that is not a card the search values
+  most, why (`sterkWhy`: a false signal sterk does not give for less than
+  its gain, *♦9 is volgens de berekening 14,2 punten beter dan ♣10, maar
+  je maat zou ♦9 lezen als “speel ruiten, daar heb ik de hoogste van”
+  (opseinen), en die heb je niet. Een vals sein speelt Sterk pas als het
+  minstens 20 punten meer oplevert.*, or the normaal card kept: within a
+  point, as kleintje boer or boer over boer, as a card that wins and loses
+  alike, or valued above the best honest card that took a false signal's
+  place; a difference is written rounded down and a tolerance rounded up,
+  so a text never contradicts its threshold), *Tip:*
+  the hint, with `hintWhy` when it keeps the normaal card while sterk plays
+  another (*Sterk is volgens de berekening 3,0 punten beter dan de kaart
+  van Normaal, minder dan 5 punten: dan blijft de tip bij die kaart.*), a
+  table of
   every option (*Waarde*, *±*, for a card *Punten slag*, *Punten later*,
   *Roem slag*, *Roem later*, *Nat, pit*, and *Nat wij*, *Nat zij*; the
   option played marked *gespeeld* or *gekozen*, the best value in gold; on
@@ -2123,11 +2157,15 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   kaarten die jij niet kon zien.* (`worlds`) with an ⓘ on what the numbers
   mean. Last
   a fold-out *Commentaar bij deze zet*: one feedback form for the sheet
-  (*Wat klopt er volgens jou niet, of wat is beter?*), sent with the hand
-  and trick of the decision shown when sending; whether it is open, and
-  the text typed, stay for the life of the page. The sheet closes on a
+  (*Wat klopt er volgens jou niet, of wat is beter?*, with the line *Je
+  opmerking wordt met je naam bewaard, …* under it), sent with the hand
+  and trick of the decision shown when sending. Each decision keeps its
+  own text while the hand lasts (a step shows the text of the decision
+  stepped to): typed, or saved and marked so (*Bewaard.*, as in every
+  feedback form). Whether the fold-out is open stays for the life of the
+  page. The sheet closes on a
   `deal` and when the phase becomes `handEnd` or `gameOver` (the summary or
-  the game-over screen comes up; the magnifier opens the sheet again over
+  the game-over screen comes up; the robot opens the sheet again over
   it); otherwise it stays as it is while play goes on. Values read as
   numbers, plainly. The expert looks back at a hand as anyone does (§9
   Review, Terugkijken): there is no replay of their own, and no choice of
