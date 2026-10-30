@@ -80,11 +80,14 @@ export function openWhy() {
 // A comment is about a decision's hand and trick.
 const commentKey = d => `${d.hand}/${d.trick}`;
 
-// The server kept a comment: it stays with its decision, marked saved; the
-// form shows that only while the sheet is still on that decision.
+// The server kept a comment: it stays with its decision, marked saved,
+// unless its text was changed meanwhile. The form shows that only while the
+// sheet is still on that decision.
 function onSaved(about, text) {
-  drafts.set(commentKey(about), { text, saved: true });
-  return !!shown && commentKey(shown) === commentKey(about);
+  const k = commentKey(about);
+  if (shown && commentKey(shown) === k) return true; // the form tells whether its text is still what was sent
+  if ((drafts.get(k)?.text ?? text) === text) drafts.set(k, { text, saved: true });
+  return false;
 }
 
 // The server's reasoning for the question out.
@@ -210,7 +213,7 @@ function whyView(w) {
         `Waarde: hoeveel punten jij en je maat gemiddeld meer halen dan de tegenstanders aan het eind van het potje, roem, nat en pit meegeteld. ±: de standaardfout van het verschil met de beste; een verschil van minder dan twee keer ± kan toeval zijn.`,
         ...(cards ? ['Punten slag, punten later, roem slag en roem later: hetzelfde verschil, alleen van de kaartpunten of van de roem, in deze slag en in de latere slagen. Nat, pit: wat nat en pit daar nog aan toevoegen. Samen zijn ze de waarde, min wat er voor deze kaart al gehaald was.'] : []),
         `Nat wij: de kans dat jij en je maat spelen en nat gaan. Nat zij: de kans dat de tegenstanders spelen en nat gaan.`,
-        ...(cards ? ['Sterk speelt niet altijd de kaart met de hoogste waarde: geen vals sein voor minder dan 20 punten (kleintje boer: 10), en bij heel weinig verschil de kaart van Normaal. Staat Sterk niet op de hoogste waarde, dan staat erbij waarom. De tip houdt de kaart van Normaal aan, tenzij Sterk minstens 5 punten en minstens twee keer de standaardfout beter is.'] : []),
+        ...(cards ? ['Sterk speelt niet altijd de kaart met de hoogste waarde: geen vals sein voor minder dan 20 punten (kleintje boer of boer over boer: 10), tenzij de kaart van Normaal zelf al een vals sein is, en bij heel weinig verschil de kaart van Normaal. Staat Sterk niet op de hoogste waarde, dan staat erbij waarom. De tip houdt de kaart van Normaal aan, tenzij Sterk minstens 5 punten en minstens twee keer de standaardfout beter is.'] : []),
         'De AI-spelers op Sterk rekenen met hun eigen verdelingen en, naar karakter, met wat zin in pit: hun keuze kan een enkele keer anders zijn dan hier.',
       ])));
 }

@@ -162,8 +162,9 @@ func sterkChoice(v *game.View, cfg searchConfig, seed uint64, aggr float64) game
 
 // sterkPick returns the index in res (the search of m's legal cards) of
 // the sterk card. When the rule-based card pref is within a point of the
-// best (signalTolerance for a genuine kleintje boer), it is played instead:
-// the difference is noise, and the rule-based card looks natural. So is a
+// best (signalTolerance for a genuine kleintje boer or boer over boer), it
+// is played instead: the difference is noise, and the rule-based card
+// looks natural. So is a
 // pref that wins and loses alike with the best card (equivalent), unless
 // the search can tell the two apart (teachTolerance, two standard errors):
 // with ♥A and ♥10 the 10 goes first. A false signal needs its lieGain.
@@ -178,7 +179,7 @@ const (
 	keptNoise // within a point
 	keptBoer  // a genuine kleintje boer (or boer over boer), within signalTolerance
 	keptAlike // wins and loses alike, within the hints' tolerance
-	keptAbove // valued above the best honest card, which took the place of a false signal
+	keptAbove // a false signal itself, valued above the best honest card, which took the place of another
 )
 
 // sterkWhy says why sterkChoose did not play the card the search valued
@@ -199,7 +200,7 @@ func sterkChoose(m *mover, res []playResult, pref game.Card) (int, sterkWhy) {
 	if gain := m.lieGain(res[best].card); gain > 0 {
 		alt := -1
 		for i, r := range res {
-			if m.lieGain(r.card) == 0 && (alt < 0 || r.total > res[alt].total) {
+			if m.lieGain(r.card) == 0 && (alt < 0 || r.total > res[alt].total || r.total == res[alt].total && r.card == pref) {
 				alt = i
 			}
 		}

@@ -282,7 +282,7 @@ func TestSterkReason(t *testing.T) {
 	res = fakeResults(&v, map[string]float64{"8C": 40.5, "7C": 40, "QH": 39}, 1)
 	i, why = sterkChoose(&m, res, card("7C"))
 	want = "♣8 is volgens de berekening 1,5 punten beter dan ♥V, maar je maat zou ♣8 lezen als “speel klaveren, daar heb ik de hoogste van” (opseinen), " +
-		"en die heb je niet. Een vals sein speelt Sterk pas als het minstens 20 punten meer oplevert. ♣7, de kaart van Normaal, zet de berekening hoger dan ♥V: die speelt Sterk."
+		"en die heb je niet. Een vals sein speelt Sterk pas als het minstens 20 punten meer oplevert. ♣7, de kaart van Normaal, is ook een vals sein, maar de berekening zet die hoger dan ♥V: die speelt Sterk."
 	if got := m.sterkReason(res, i, why); res[i].card != card("7C") || got != want {
 		t.Errorf("Normaal above the honest card: sterk %v\n got %q\nwant %q", res[i].card, got, want)
 	}

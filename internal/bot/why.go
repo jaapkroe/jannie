@@ -464,7 +464,7 @@ func (m *mover) sterkReason(res []playResult, i int, w sterkWhy) string {
 		text = append(text, p+" en "+o+" winnen en verliezen even vaak, en "+o+" is volgens de berekening "+d+
 			" punten beter, minder dan "+toleranceNL(w.tol)+": dan speelt Sterk de kaart van Normaal.")
 	case keptAbove:
-		text = append(text, p+", de kaart van Normaal, zet de berekening hoger dan "+o+": die speelt Sterk.")
+		text = append(text, p+", de kaart van Normaal, is ook een vals sein, maar de berekening zet die hoger dan "+o+": die speelt Sterk.")
 	}
 	return strings.Join(text, " ")
 }
@@ -511,7 +511,7 @@ func toleranceNL(tol float64) string {
 
 // tenthsDownNL is tenthsNL of x rounded down: a difference stays below the
 // threshold it is measured against.
-func tenthsDownNL(x float64) string { return tenthsNL(math.Floor(10*x) / 10) }
+func tenthsDownNL(x float64) string { return tenthsNL(math.Floor(10*x+1e-9) / 10) } // a hair over: not floating-point noise
 
 // tenthsNL writes x to one decimal with a decimal comma, as the reasoning's
 // table does: "14,2".
