@@ -721,7 +721,7 @@ type AI interface {
 type Config struct {
     AI   AI
     Fast bool           // scale all delays by 0.05 (tests)
-    MaxRooms int        // default 500
+    MaxRooms int        // default 1500
     AllowedOrigins []string // websocket Origin patterns besides same-host
     Version  string     // reported by /api/health {ok, version, rooms, players}
     Logger   *slog.Logger // nil: slog.Default()
@@ -797,7 +797,7 @@ reply attempt.
   lobby. With no human connected it is removed after 30 min while a game runs
   that still has a human seat, and after 5 min in the lobby, after game over,
   or once every human has left (a seat its player left counts as no human,
-  here and for the host; it can be taken over until then). Max 500 rooms
+  here and for the host; it can be taken over until then). Max 1500 rooms
   (`Config.MaxRooms`): when full, a new game
   replaces the room that has had no human connected for longest (at least
   2 min), else error `te-veel-spellen`.
@@ -1159,13 +1159,15 @@ characters (bidi controls, zero-width spaces, soft hyphens, tag characters; a
 zero-width joiner stays between visible characters, as in 👩‍🏫), blank fillers
 (Hangul fillers, the empty Braille pattern) count as spaces, runs of whitespace
 become one space, trimmed, and a character keeps at most 3 combining marks; a
-chat line with nothing visible is dropped. Room creation ≤ 20 per 10 minutes
-and ≤ 10 live rooms per client IP (`X-Real-IP` from nginx, else remote address;
+chat line with nothing visible is dropped. Room creation ≤ 60 per 10 minutes
+and ≤ 60 live rooms per client IP (`X-Real-IP` from nginx, else remote address;
 over a limit, or `MaxRooms` reached with no idle room to replace: error
-`te-veel-spellen`); ≤ 16 websocket connections per IP (more: HTTP 429 before
-the upgrade). Failed joins (`onbekend`, `vol`, `gestart`) ≤ 10 per minute per
+`te-veel-spellen`); ≤ 150 websocket connections per IP (more: HTTP 429 before
+the upgrade). Failed joins (`onbekend`, `vol`, `gestart`) ≤ 200 per minute per
 IP; then joins from that IP get `limiet` for 5 minutes, except a `join` with a
-valid seat token (room codes cannot be guessed). Chat over the limit: error
+valid seat token (guessing room codes stays slow). These limits leave room for
+a club on one wifi: 25 tables of four, sockets of phones that dropped out, the
+old tables during a new round, a failed join per phone. Chat over the limit: error
 `limiet`; over the message rate: error `limiet`, then the server closes the
 connection (status 1008). WebSocket `Origin` must match
 the Host (coder/websocket default) or an `-origin` pattern. The server pings a
