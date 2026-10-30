@@ -93,12 +93,12 @@ func TestBadMessages(t *testing.T) {
 }
 
 func TestPerIPLimits(t *testing.T) {
-	s, ts, _ := newTestServer(t, func(s *Server) { s.createMax = 3 })
+	s, ts, _ := newTestServer(t, func(s *Server) { s.maxPerIP, s.createMax = 4, 3 })
 	for range s.maxPerIP {
 		dialIP(t, ts, "192.0.2.1")
 	}
 	if _, err := dialErr(ts, "192.0.2.1"); err == nil {
-		t.Error("17th connection from one address accepted")
+		t.Error("connection over the limit accepted")
 	}
 	dialIP(t, ts, "192.0.2.2") // another address is fine
 
@@ -111,6 +111,36 @@ func TestPerIPLimits(t *testing.T) {
 	// The limit is per address.
 	d := dialIP(t, ts, "192.0.2.4")
 	d.create("Piet", nil, false, false)
+}
+
+// A club plays on one wifi, so all of it comes from the same address: every
+// phone asking for a table that is gone, as after a restart, 25 tables of
+// four, a new round while the old tables still count, and the sockets of
+// phones that dropped out.
+func TestClubOnOneAddress(t *testing.T) {
+	s, ts, _ := newTestServer(t)
+	const ip = "192.0.2.30"
+	tab := dialIP(t, ts, ip)
+	for range s.maxPerIP {
+		tab.send(map[string]any{"t": "join", "code": "ZZZZ", "name": "X"})
+		tab.waitError(errUnknown)
+	}
+	for range 25 {
+		host := dialIP(t, ts, ip)
+		host.create("Piet", nil, false, false)
+		for _, name := range []string{"Joke", "Kees", "Riet"} {
+			dialIP(t, ts, ip).join(host.code, name, "")
+		}
+	}
+	for range 25 {
+		dialIP(t, ts, ip).create("Piet", nil, false, false)
+	}
+	for range s.maxPerIP - 126 {
+		dialIP(t, ts, ip)
+	}
+	if _, err := dialErr(ts, ip); err == nil {
+		t.Error("connection over the limit accepted")
+	}
 }
 
 func TestMaxRooms(t *testing.T) {

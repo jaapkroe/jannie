@@ -27,7 +27,7 @@ import (
 type Config struct {
 	AI             AI
 	Fast           bool     // scale all delays by 0.05 (tests)
-	MaxRooms       int      // default 500
+	MaxRooms       int      // default 1500
 	AllowedOrigins []string // websocket Origin patterns besides same-host
 	Version        string   // reported by /api/health
 	Logger         *slog.Logger
@@ -87,7 +87,7 @@ func New(cfg Config) *Server {
 		panic("server: Config.AI is required")
 	}
 	if cfg.MaxRooms <= 0 {
-		cfg.MaxRooms = 500
+		cfg.MaxRooms = 1500
 	}
 	if cfg.Version == "" {
 		cfg.Version = "dev"
@@ -111,11 +111,14 @@ func New(cfg Config) *Server {
 		msgRate:        20,
 		joinRate:       1,
 		joinBurst:      3,
-		maxPerIP:       16,
-		createMax:      20,
+		// A club on one wifi shares these: 25 tables of four, the sockets of
+		// phones that dropped out, the old tables during a new round, a failed
+		// join per phone.
+		maxPerIP:       150,
+		createMax:      60,
 		createWindow:   10 * time.Minute,
-		liveMax:        10,
-		joinFailMax:    10,
+		liveMax:        60,
+		joinFailMax:    200,
 		joinFailWindow: time.Minute,
 		joinBlock:      5 * time.Minute,
 		pingEvery:      pingEvery,
@@ -380,7 +383,7 @@ type joinRecord struct {
 
 // joinFailed counts a refused join (unknown code, full, started) from ip;
 // joinFailMax of them within joinFailWindow block the address's joins for
-// joinBlock, so room codes cannot be guessed.
+// joinBlock, so guessing room codes stays slow.
 func (s *Server) joinFailed(ip string) {
 	now := time.Now()
 	s.mu.Lock()

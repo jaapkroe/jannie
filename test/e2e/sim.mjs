@@ -137,7 +137,7 @@ function cardPoints(code, trump) {
 let ipSeq = 0;
 // A distinct client address per connection (and per process), sent as
 // X-Real-IP, so many simulated players do not hit the per-address limits
-// of the server (16 connections, 20 new rooms per 10 minutes).
+// of the server (150 connections, 60 new rooms per 10 minutes).
 const nextIP = () => {
   ipSeq++;
   return `10.${(process.pid >> 8) & 255}.${process.pid & 255}.${ipSeq & 255}`;

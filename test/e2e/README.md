@@ -60,7 +60,7 @@ for bad arguments. Use `-fast` on the server: at normal pace a hand takes about
 a minute.
 
 Each connection sends its own `X-Real-IP`, so many simulated players do not
-run into the per-address limits (16 connections, 20 new rooms per 10 minutes).
+run into the per-address limits (150 connections, 60 new rooms per 10 minutes).
 The server trusts that header because in production only nginx can reach it.
 
 ## What is checked

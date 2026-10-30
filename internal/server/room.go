@@ -605,7 +605,7 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 		c.sendError(errLimit, msgJoinBlocked)
 		return
 	}
-	// A refusal counts against the address: codes must not be guessable.
+	// A refusal counts against the address: guessing codes must stay slow.
 	fail := func(code, msg string) {
 		c.leaveRoom(r)
 		c.sendError(code, msg)
