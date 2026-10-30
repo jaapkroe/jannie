@@ -361,3 +361,41 @@ func TestWhyOneAtATime(t *testing.T) {
 		t.Errorf("%d searches at once", ai.most)
 	}
 }
+
+// TestWhyInTraining: in training the player asks the reasoning of their
+// own decision and comments on it while the match runs, as the expert does.
+func TestWhyInTraining(t *testing.T) {
+	_, ts, ai := newTestServer(t)
+	c := dial(t, ts)
+	c.create("Leerling", map[string]any{"hands": 4}, true, true)
+	drive(t, func() bool { return c.s.Phase == phasePlay && c.myTurn() && len(c.s.Legal) > 1 }, c)
+	trick := 9 - len(c.s.Hand)
+	c.send(map[string]any{"t": "why", "hand": c.s.HandNo, "trick": trick})
+	m := c.until(5*time.Second, "why", func(m *msg) bool { return m.T == "why" || m.T == "error" })
+	var w whyMsg
+	if err := json.Unmarshal(m.raw, &w); err != nil || m.T != "why" || w.Trick != trick || w.Played != nil || len(w.Options) != len(c.s.Legal) {
+		t.Fatalf("why in training: %s", m.raw)
+	}
+	if n := ai.reasoned.Load(); n != 1 {
+		t.Errorf("%d explanations, want 1", n)
+	}
+	c.send(map[string]any{"t": "feedback", "text": "Waarom deze?", "hand": c.s.HandNo, "trick": trick})
+	c.waitType("saved")
+}
+
+// TestMatchViewSignals: the reasoning reads the signals the table plays
+// with by now: with lessons none before the lesson on them.
+func TestMatchViewSignals(t *testing.T) {
+	s, _, _ := newTestServer(t)
+	r := newRoom(s, "TEST")
+	defer r.stop()
+	r.training, r.opts.Lessons = true, true
+	d := game.NewDeal(0, game.Shuffle(rand.New(rand.NewPCG(1, 2))), game.Utrechts, game.Amsterdams, 0)
+	if v := r.matchView(d, 0, 1); *v.Signals != (game.Signals{}) {
+		t.Errorf("before the lesson on signals: %+v", *v.Signals)
+	}
+	r.taught = map[string]int{lessonSignals: 1}
+	if v := r.matchView(d, 0, 1); *v.Signals != r.opts.Signals || *v.Signals == (game.Signals{}) {
+		t.Errorf("after it: %+v, want %+v", *v.Signals, r.opts.Signals)
+	}
+}

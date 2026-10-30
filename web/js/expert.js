@@ -1,8 +1,8 @@
-// The expert mode's sheet Redenering van de AI (design §9 Expert), loaded
-// when an expert game first needs it: for the player's own decisions in the
-// hand in play or just played, made or awaited now, the engine's reasoning
-// (why) and a comment (feedback). Looking back at a hand is the review's
-// (panels.js openReplay), as in any game.
+// The sheet Redenering van de AI (design §9 Expert), in the expert mode and
+// in training, loaded when first needed: for the player's own decisions in
+// the hand in play or just played, made or awaited now, the engine's
+// reasoning (why) and a comment (feedback). Looking back at a hand is the
+// review's (panels.js openReplay), as in any game.
 import { cardShort } from './cards.js';
 import { sound } from './sound.js';
 import { app, h, icon, suitSym, suitify, toast } from './util.js';
@@ -24,7 +24,7 @@ let deals = 0;            // deals seen (onDeal): a sheet of an earlier hand kee
 // only one card left to play).
 export function openWhy() {
   const s = app.s;
-  if (!s?.expert) return;
+  if (!s?.expert && !s?.training) return;
   const list = decisions(s);
   if (!list.length) { toast('Nog geen zet van jou in dit potje.'); return; }
   sound.play('click');
@@ -42,7 +42,8 @@ export function openWhy() {
       h('div', { class: 'why-head' }, prev, h('p', { 'aria-live': 'polite' }, head), next),
       out,
       h('details', { class: 'xp-fb', open: formOpen, ontoggle: e => { formOpen = e.target.open; } },
-        h('summary', { text: 'Commentaar bij deze zet' }), form),
+        h('summary', { text: 'Commentaar bij deze zet' }), form,
+        h('p', { class: 'legend', text: 'Je opmerking wordt met je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor statistieken en om het spel te verbeteren.' })),
     ],
   });
   // The decision at `at`, its reasoning asked for when not known yet (one

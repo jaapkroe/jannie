@@ -232,6 +232,13 @@ CHECKS.coach = async browser => {
       // The next own turn brings a hint again.
       await playLegal(P);
       await playUntil(P, () => !!document.querySelector('.hand.my-turn .card.legal') && !document.querySelector('.coach[hidden]'), { label: 'next hint', timeout: 30000 });
+      // The robot: the reasoning of the decision now, as in the expert mode.
+      await press(P, '.topbar .tb-expert');
+      await waitFor(P, () => /Jij bent aan de beurt$/.test(document.querySelector('.m-why.open .why-head p')?.textContent || ''), { label: 'the reasoning sheet' });
+      await waitFor(P, () => document.querySelector('.m-why .xp-why'), { label: 'the reasoning', timeout: 60000 });
+      await checkOverflow(P, 'reasoning in training');
+      await P.page.keyboard.press('Escape');
+      await waitFor(P, () => !document.querySelector('.m-why.open'), { label: 'the sheet closed' });
     });
   }
   // Gedraaid: the bid advice inside the bidding panel.

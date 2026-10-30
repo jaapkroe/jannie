@@ -238,7 +238,9 @@ bid), with two "Met z'n tweeën, Utrechts" (no rules: nobody has a partner).
 default, hints on, explanatory tips after every trick (the last trick of a
 hand waits for its tip, §6; each tip is a line of Juf Jannie in the chat too),
 nobody else can join. With option `lessons` Juf Jannie also teaches the game
-step by step (§6 Lessons).
+step by step (§6 Lessons). As in the expert mode, the player asks the
+engine's reasoning for their own decisions (`why`, the robot in the top bar,
+§9 Expert) and comments on them while the match runs.
 
 **Expert mode** (`expert: true` at create, issue #34; reached only by an
 easter egg on the home screen, §9) is a solo room as well: 1 human at the
@@ -933,13 +935,15 @@ reply attempt.
   server rebuilds that moment of the hand from the cards as dealt and the
   decisions (`acts`, as in the game log) up to it, and works out the `why`:
   `AI.Explain` on the expert's view then, match fields filled in as for the
-  bots. It runs in the background, one at a time per room (another
-  meanwhile: error `limiet`) and one at a time over all rooms (the search
-  takes every core; others wait their turn), and the answer goes to the
-  asker alone. The expert gives `feedback` while the match runs and after
-  it, about the game or about one of their own decisions (hand and trick),
-  at most 200 lines per match. The review per hand and the Spelanalyse are
-  as for anyone at a table of four.
+  bots, and the signals the table plays with by then (`r.signals`: with
+  lessons none before the lesson on them). It runs in the background, one
+  at a time per room (another meanwhile: error `limiet`) and one at a time
+  over all rooms (the search takes every core; others wait their turn),
+  and the answer goes to the asker alone. The expert gives `feedback` while
+  the match runs and after it, about the game or about one of their own
+  decisions (hand and trick), at most 200 lines per match. The review per
+  hand and the Spelanalyse are as for anyone at a table of four. Training
+  has `why` and this `feedback` as well (`room.reasoning`).
 - Bot chat (limits in §5): a bot does not repeat one of its last two lines for
   the same kind of event (numbers aside: "20 roem" and "50 roem" are one line);
   it asks for another line a few times and otherwise stays silent.
@@ -1200,8 +1204,8 @@ client rotates so `you` is at the bottom.
 | `lobby` | | Host, phase `gameOver`, not training: back to the lobby, same code and options (§6) |
 | `leave` | | Leave the room |
 | `handReview` | `hand` | A table of four, any phase but the lobby: a finished hand of the match (not the hand in play) as the replay shows it, with your own graded decisions in it; answered with `handReview` to you alone, and again each time a grade of that hand comes in, until you ask for another hand or a new match starts (§6 Spelanalyse). With three or two players error `ongeldig` ("Terugkijken kan alleen met z'n vieren."); in the lobby, or a hand not finished: `ongeldig` ("Dat potje is er (nog) niet.") |
-| `why` | `hand`, `trick` (1–8, or 0: your bid or trump choice before the first card; on your turn to bid or choose trump, the one awaited now) | Expert, once the match started (also at game over): the engine's reasoning for one of your own decisions, made or awaited now in the hand in play; answered with `why` to you alone, one at a time per room (another meanwhile: `limiet`, §6). Elsewhere, or no such decision (yet): error `ongeldig` |
-| `feedback` | `text` (at most 2000 characters, cleaned per line); the expert also `hand` and `trick` (optional, as in `why`: about that decision of their own; the log keeps them when the match has that hand) | Phase `gameOver`, with a review: free text for the game log (§6), about the game; the expert also while the match runs. Answered with `saved`. At most 20 per player and match, 200 for the expert |
+| `why` | `hand`, `trick` (1–8, or 0: your bid or trump choice before the first card; on your turn to bid or choose trump, the one awaited now) | Expert and training, once the match started (also at game over): the engine's reasoning for one of your own decisions, made or awaited now in the hand in play; answered with `why` to you alone, one at a time per room (another meanwhile: `limiet`, §6). Elsewhere, or no such decision (yet): error `ongeldig` |
+| `feedback` | `text` (at most 2000 characters, cleaned per line); the expert and training also `hand` and `trick` (optional, as in `why`: about that decision of their own; the log keeps them when the match has that hand) | Phase `gameOver`, with a review: free text for the game log (§6), about the game; the expert and training also while the match runs. Answered with `saved`. At most 20 per player and match, 200 in the expert mode and training |
 | `ping` | | Keepalive (server answers `pong`) |
 
 ### Server → client
@@ -1217,7 +1221,7 @@ client rotates so `you` is at the bottom.
 | `saved` | `what`: `"feedback"`: kept in the game log |
 | `rtc` | `from` (the sender's session), `seat` (the sender's), `desc` as sent: to the session named only (§6 Calls) |
 | `handReview` | `hand`, `pending` (that hand's grades still out), `replay`: the hand as in `review.replay` (below), with your graded decisions in `choices`; to you alone (client `handReview` above) |
-| `why` | Expert: `hand`, `trick` (as asked), `seat` (yours), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `sterkWhy`, `hint`, `hintText`, `hintWhy` (both "" but for a card, see §9 Expert), `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
+| `why` | Expert and training: `hand`, `trick` (as asked), `seat` (yours), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `sterkWhy`, `hint`, `hintText`, `hintWhy` (both "" but for a card, see §9 Expert), `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
 
@@ -1609,7 +1613,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   potje n/16; buttons for chat (with unread
   badge), score sheet, last trick, help, settings, sound (a toggle:
   `aria-pressed` while the sound is on, tooltip "Geluid aan" / "Geluid uit",
-  icon to match; on phones it is in the ⋯ menu); in an expert game, first
+  icon to match; on phones it is in the ⋯ menu); in an expert game and in training, first
   of them, a robot for the reasoning of the AI (§9 Expert). Where a name must
   shorten (lobby seat, score bar, *Laatste slag*), only the name does: its
   "(AI)" stays readable ("Kees de Vi… (AI)"). The trump badge's details show
@@ -1955,7 +1959,10 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   `navigator.audioSession` on the host, that the microphone is asked for
   under `play-and-record` and that hanging up and leaving while the
   devices are asked for give `ambient` back once the tracks have stopped.
-- **Training**: tip bubble with the hint text and a glow on the advised card;
+- **Training**: the robot in the top bar opens *Redenering van de AI*, as in
+  the expert mode (§9 Expert), with the line *Je opmerking wordt met je naam
+  bewaard, …* under its comment form; tip bubble with the hint text and a
+  glow on the advised card;
   for the trump or bid choice the hint is inside the panel (in short landscape
   the bubble sits beside it) and the advised suit or *Spelen*/*Passen*
   glows; ✕ closes a hint until the next one; tips after
@@ -2088,11 +2095,12 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   line on top says *Aan tafel ben je aan de beurt.* with *Naar tafel*,
   which closes it and then the views that led to it (the trick view,
   *Laatste slag*, the score sheet). The replay has no feedback per decision (issue #34): the review's
-  *Opmerkingen* is about the game as a whole (the expert comments on their
-  decisions while playing, §9 Expert).
+  *Opmerkingen* is about the game as a whole (the expert, and a player in
+  training, comment on their decisions while playing, §9 Expert).
 - **Expert** (§3 Expert mode; `expert.js`, loaded when first needed): the
   top bar's robot (*Redenering van de AI*, "Redenering van de AI bij
-  jouw zetten, en commentaar"; only in an expert game) opens the sheet
+  jouw zetten, en commentaar"; only in an expert game and in training)
+  opens the sheet
   *Redenering van de AI* about the player's own decisions in the hand in
   play, or just played (`handNo`). Those come from the state, so a reload
   keeps them: trick 0 when the player bid or chose trump before the first

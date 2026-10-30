@@ -210,7 +210,7 @@ function renderTop(s) {
     setScoreNames(g.names, s, k);
   });
   E.pill.classList.toggle('three', order.length === 3);
-  E.expert.hidden = !s.expert;
+  E.expert.hidden = !s.expert && !s.training; // the reasoning: expert mode and training
   E.potjeN.textContent = s.handNo || 1;
   E.potjeT.textContent = s.hands || s.opts?.hands || 16;
 

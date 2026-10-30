@@ -266,7 +266,7 @@ function onError(m) {
   table.onError();
   panels.onError();
   // A question to the AI still out is given up: its decision shows Opnieuw.
-  if (app.s?.expert) import('./expert.js').then(x => x.onError());
+  if (app.s?.expert || app.s?.training) import('./expert.js').then(x => x.onError());
   // A refused lobby change: show the options as the server has them again.
   if (app.s?.phase === 'lobby') {
     home.resetLobby();
