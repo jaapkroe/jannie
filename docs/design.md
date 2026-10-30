@@ -546,7 +546,7 @@ type Explanation struct {
     Rule     string   // a card: the hint text of the rule that chose it ("Speel ♠A: …"); else ""
     Sterk    Choice   // sterk's pick from this search at average aggression (sterkPick, the bid without bias)
     SterkWhy string   // a card: why Sterk is not a card the search values most (sterkChoose: a false signal
-                      // short of its gain, or the normaal card kept as close enough); else ""
+                      // short of its gain, or the normaal card kept as close enough or above the honest one); else ""
     Hint     Choice   // the hint (Advise)
     HintText string
     HintWhy  string   // a card: why the hint keeps the normaal card while sterk plays another; else ""
@@ -1725,10 +1725,10 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   moves and votes sent but unanswered and renders purely from the resync.
   As the connection opens again, right after the `join` and before what
   was queued while offline goes out, requests sent over the old connection
-  are settled: a feedback form's *Versturen* and the expert's question come
-  back (their answer went to the old connection), and a hand asked with
-  `handReview` is asked again while its trick view is open; queued ones go
-  out and are answered. A tab in the background still sounds
+  are settled: a feedback form's *Versturen* comes back (its `saved` went
+  to the old connection), the expert's question is asked again (at once
+  when the sheet is open), and a hand asked with `handReview` is asked
+  again while its trick view is open; queued ones go out and are answered. A tab in the background still sounds
   the turn (and the takeover question) and shows "● Jouw beurt" in its
   title on your turn, and "● Vraag aan tafel" while the question waits for
   your answer. Leaving while offline sends `join` (with the seat
@@ -2032,8 +2032,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   Dit is slechts de mening van Juf Jannie.*, and last *Opmerkingen*: a text
   field (*Wat viel je op? Wat klopt er volgens jou niet?*) with *Versturen*
   (`feedback`; on `saved` the text stays, its edge and a check with
-  *Bewaard.* in the team colour, and *Versturen* waits for a change; one
-  feedback is out at a time) and the line *Je opmerking wordt met
+  *Bewaard.* in the team colour, and *Versturen* waits for a change; text
+  typed while it was being sent stays unsaved; one feedback is out at a
+  time) and the line *Je opmerking wordt met
   je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor
   statistieken en om het spel te verbeteren.* Apart from the verdict, the wording is plain and factual:
   numbers, cards and the hint's reasons, no praise or consolation. The game-over buttons stay in view with
@@ -2127,8 +2128,11 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   its gain, *♦9 is volgens de berekening 14,2 punten beter dan ♣10, maar
   je maat zou ♦9 lezen als “speel ruiten, daar heb ik de hoogste van”
   (opseinen), en die heb je niet. Een vals sein speelt Sterk pas als het
-  minstens 20 punten meer oplevert.*, or the normaal card kept within a
-  point, as kleintje boer, or as a card that wins and loses alike), *Tip:*
+  minstens 20 punten meer oplevert.*, or the normaal card kept: within a
+  point, as kleintje boer or boer over boer, as a card that wins and loses
+  alike, or valued above the best honest card that took a false signal's
+  place; a difference is written rounded down and a tolerance rounded up,
+  so a text never contradicts its threshold), *Tip:*
   the hint, with `hintWhy` when it keeps the normaal card while sterk plays
   another (*Sterk is volgens de berekening 3,0 punten beter dan de kaart
   van Normaal, minder dan 5 punten: dan blijft de tip bij die kaart.*), a

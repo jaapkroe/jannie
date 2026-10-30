@@ -67,8 +67,10 @@ export function openWhy() {
   }
   redraw = draw;
   const dealt = deals;
+  // Once gone (a moment after closing): unless a new sheet opened meanwhile.
   m.onRemove = () => {
-    if (redraw === draw) redraw = null;
+    if (redraw !== draw) return;
+    redraw = null;
     if (shown && deals === dealt) drafts.set(commentKey(shown), form.value());
     shown = null;
   };
@@ -208,7 +210,7 @@ function whyView(w) {
         `Waarde: hoeveel punten jij en je maat gemiddeld meer halen dan de tegenstanders aan het eind van het potje, roem, nat en pit meegeteld. ±: de standaardfout van het verschil met de beste; een verschil van minder dan twee keer ± kan toeval zijn.`,
         ...(cards ? ['Punten slag, punten later, roem slag en roem later: hetzelfde verschil, alleen van de kaartpunten of van de roem, in deze slag en in de latere slagen. Nat, pit: wat nat en pit daar nog aan toevoegen. Samen zijn ze de waarde, min wat er voor deze kaart al gehaald was.'] : []),
         `Nat wij: de kans dat jij en je maat spelen en nat gaan. Nat zij: de kans dat de tegenstanders spelen en nat gaan.`,
-        'Sterk speelt niet altijd de kaart met de hoogste waarde: geen vals sein voor minder dan 20 punten (kleintje boer: 10), en bij heel weinig verschil de kaart van Normaal. Staat Sterk niet op de hoogste waarde, dan staat erbij waarom. De tip houdt de kaart van Normaal aan tenzij Sterk minstens 5 punten (of twee keer de ±) beter is.',
+        ...(cards ? ['Sterk speelt niet altijd de kaart met de hoogste waarde: geen vals sein voor minder dan 20 punten (kleintje boer: 10), en bij heel weinig verschil de kaart van Normaal. Staat Sterk niet op de hoogste waarde, dan staat erbij waarom. De tip houdt de kaart van Normaal aan, tenzij Sterk minstens 5 punten en minstens twee keer de standaardfout beter is.'] : []),
         'De AI-spelers op Sterk rekenen met hun eigen verdelingen en, naar karakter, met wat zin in pit: hun keuze kan een enkele keer anders zijn dan hier.',
       ])));
 }

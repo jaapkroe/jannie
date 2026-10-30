@@ -263,6 +263,29 @@ func TestSterkReason(t *testing.T) {
 	if i, why := sterkChoose(&m, res, card("KS")); res[i].card != card("7C") || m.sterkReason(res, i, why) != "" {
 		t.Errorf("a clear gain: sterk %v, reason %q", res[i].card, m.sterkReason(res, i, why))
 	}
+	// Just short of the gain: the difference is rounded down.
+	res = fakeResults(&v, map[string]float64{"7C": 49.96, "KS": 30}, 1)
+	if i, why := sterkChoose(&m, res, card("KS")); !strings.HasPrefix(m.sterkReason(res, i, why), "♣7 is volgens de berekening 19,9 punten beter") {
+		t.Errorf("just short: %q", m.sterkReason(res, i, why))
+	}
+
+	// Every side card a false signal: Normaal's ♣7 is valued above the best
+	// honest card ♥V (a trump), which took the place of ♣8, so sterk plays ♣7.
+	d = build(t, 1, [4]string{"7C 8C JH 9H AH TH KH QH", "7D", "AD", "8D"}, game.Hearts, game.Amsterdams, "7D AD 8D")
+	v = turnView(d)
+	v.Legal = legalCards(v)
+	tab = tableFromView(&v)
+	m = newMover(&tab, v.Seat, setOf(v.Hand), setOf(v.Legal), 0.5)
+	if pref := m.choose(); pref != card("7C") || !m.falseLow(card("8C")) {
+		t.Fatalf("setup: Normaal %v, ♣8 false low %v", pref, m.falseLow(card("8C")))
+	}
+	res = fakeResults(&v, map[string]float64{"8C": 40.5, "7C": 40, "QH": 39}, 1)
+	i, why = sterkChoose(&m, res, card("7C"))
+	want = "♣8 is volgens de berekening 1,5 punten beter dan ♥V, maar je maat zou ♣8 lezen als “speel klaveren, daar heb ik de hoogste van” (opseinen), " +
+		"en die heb je niet. Een vals sein speelt Sterk pas als het minstens 20 punten meer oplevert. ♣7, de kaart van Normaal, zet de berekening hoger dan ♥V: die speelt Sterk."
+	if got := m.sterkReason(res, i, why); res[i].card != card("7C") || got != want {
+		t.Errorf("Normaal above the honest card: sterk %v\n got %q\nwant %q", res[i].card, got, want)
+	}
 
 	// ♠A and ♠10 win and lose alike: sterk keeps the rule's ♠10 within the
 	// hints' tolerance.
@@ -295,7 +318,7 @@ func TestSterkReason(t *testing.T) {
 		t.Errorf("hint kept:\n got %q\nwant %q", got, want)
 	}
 	res = fakeResults(&v, map[string]float64{"AS": 40, "8S": 30}, 8)
-	if got := hintKeptReason(res, resultIndex(res, card("AS")), resultIndex(res, card("8S"))); !strings.Contains(got, "minder dan twee keer de ± (16,0 punten)") {
+	if got := hintKeptReason(res, resultIndex(res, card("AS")), resultIndex(res, card("8S"))); !strings.Contains(got, "minder dan twee keer de standaardfout van dat verschil (16,0 punten)") {
 		t.Errorf("hint kept within two standard errors: %q", got)
 	}
 }

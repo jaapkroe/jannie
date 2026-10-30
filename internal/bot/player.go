@@ -172,12 +172,13 @@ func sterkPick(m *mover, res []playResult, pref game.Card) int {
 	return i
 }
 
-// Why sterkChoose kept the rule-based card over a better one.
+// Why sterkChoose kept the rule-based card over another.
 const (
 	keptNone  = iota
 	keptNoise // within a point
-	keptBoer  // a genuine kleintje boer, within signalTolerance
+	keptBoer  // a genuine kleintje boer (or boer over boer), within signalTolerance
 	keptAlike // wins and loses alike, within the hints' tolerance
+	keptAbove // valued above the best honest card, which took the place of a false signal
 )
 
 // sterkWhy says why sterkChoose did not play the card the search valued
@@ -219,6 +220,9 @@ func sterkChoose(m *mover, res []playResult, pref game.Card) (int, sterkWhy) {
 		tol, kept = max(teachTolerance, 2*pairSE(res, best, i)), keptAlike
 	}
 	if res[best].mean()-res[i].mean() < tol {
+		if res[i].mean() >= res[best].mean() {
+			kept = keptAbove
+		}
 		if i != best {
 			why.kept, why.over, why.tol = kept, best, tol
 		}

@@ -1312,7 +1312,8 @@ export function feedbackForm(extra, label, placeholder = 'Wat viel je op? Wat kl
       const about = extra();
       const sent = text.value;
       const w = feedbackWait = {
-        saved: () => { sending = false; if (onSaved?.(about, sent) === false) mark(saved); else mark(true); },
+        // Text typed meanwhile is not what was saved.
+        saved: () => { sending = false; mark(onSaved?.(about, sent) === false ? saved : text.value === sent); },
         failed: () => { sending = false; mark(saved); },
       };
       w.sent = app.send({ t: 'feedback', text: sent, ...about }); // false: queued until the connection is back

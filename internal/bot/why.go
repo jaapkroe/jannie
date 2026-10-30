@@ -433,7 +433,8 @@ func (m *mover) roemNames(c game.Card) string {
 // sterkReason says why sterk plays res[i] although the search valued
 // another card more (sterkChoose's w): a false signal it does not give for
 // so little, or the rule-based card kept as close enough. "" when res[i] is
-// a card the search valued most.
+// a card the search valued most. A difference is rounded down and a
+// tolerance up, so the text never contradicts its threshold.
 func (m *mover) sterkReason(res []playResult, i int, w sterkWhy) string {
 	top := res[i].total
 	for _, r := range res {
@@ -445,26 +446,36 @@ func (m *mover) sterkReason(res []playResult, i int, w sterkWhy) string {
 	var text []string
 	if w.liar >= 0 {
 		l, h := res[w.liar], res[w.honest]
-		text = append(text, game.CardShortNL(l.card)+" is volgens de berekening "+tenthsNL(l.mean()-h.mean())+" punten beter dan "+
+		text = append(text, game.CardShortNL(l.card)+" is volgens de berekening "+tenthsDownNL(l.mean()-h.mean())+" punten beter dan "+
 			game.CardShortNL(h.card)+", maar "+m.lieWhat(l.card)+", en die heb je niet. Een vals sein speelt Sterk pas als het minstens "+
 			count(int(w.lie), "punt", "punten")+" meer oplevert.")
 	}
-	p, o := game.CardShortNL(res[i].card), ""
-	d := ""
+	p, o, d := game.CardShortNL(res[i].card), "", ""
 	if w.kept != keptNone {
-		o, d = game.CardShortNL(res[w.over].card), tenthsNL(res[w.over].mean()-res[i].mean())
+		o, d = game.CardShortNL(res[w.over].card), tenthsDownNL(res[w.over].mean()-res[i].mean())
 	}
 	switch w.kept {
 	case keptNoise:
 		text = append(text, o+" is volgens de berekening minder dan 1 punt beter: dan speelt Sterk de kaart van Normaal.")
 	case keptBoer:
-		text = append(text, p+" is kleintje boer. Dat sein mag Sterk tot "+count(signalTolerance, "punt", "punten")+
+		text = append(text, p+" is "+boerSignal(res[i].card)+". Dat sein mag Sterk tot "+count(signalTolerance, "punt", "punten")+
 			" kosten, en "+o+" is volgens de berekening "+d+" punten beter.")
 	case keptAlike:
 		text = append(text, p+" en "+o+" winnen en verliezen even vaak, en "+o+" is volgens de berekening "+d+
 			" punten beter, minder dan "+toleranceNL(w.tol)+": dan speelt Sterk de kaart van Normaal.")
+	case keptAbove:
+		text = append(text, p+", de kaart van Normaal, zet de berekening hoger dan "+o+": die speelt Sterk.")
 	}
 	return strings.Join(text, " ")
+}
+
+// boerSignal names the signal of side card c led as the first card of the
+// playing team: boer over boer with a boer, else kleintje boer.
+func boerSignal(c game.Card) string {
+	if c.Rank == game.Jack {
+		return "boer over boer"
+	}
+	return "kleintje boer"
 }
 
 // lieWhat says what false signal c would give: "je maat zou ♦9 lezen als
@@ -475,7 +486,7 @@ func (m *mover) lieWhat(c game.Card) string {
 	case m.falseAce(c):
 		return "je maat zou " + cs + " lezen als “ik heb " + game.CardShortNL(tenOf(c.Suit)) + " ook” (met de aas seinen)"
 	case m.fakeSignal(c):
-		return "met " + cs + " zou je kleintje boer seinen (“ik heb de troefboer”)"
+		return "met " + cs + " zou je " + boerSignal(c) + " seinen (“ik heb de troefboer”)"
 	}
 	return "je maat zou " + cs + " lezen als “speel " + game.SuitNameNL(c.Suit) + ", daar heb ik de hoogste van” (opseinen)"
 }
@@ -484,18 +495,23 @@ func (m *mover) lieWhat(c game.Card) string {
 // sterk plays res[i] (see teachPick): the search does not rate sterk's card
 // clearly higher.
 func hintKeptReason(res []playResult, i, j int) string {
-	return "Sterk is volgens de berekening " + tenthsNL(res[i].mean()-res[j].mean()) + " punten beter dan de kaart van Normaal, minder dan " +
+	return "Sterk is volgens de berekening " + tenthsDownNL(res[i].mean()-res[j].mean()) + " punten beter dan de kaart van Normaal, minder dan " +
 		toleranceNL(max(teachTolerance, 2*pairSE(res, i, j))) + ": dan blijft de tip bij die kaart."
 }
 
-// toleranceNL names the hints' tolerance tol: "5 punten", or "twee keer de
-// ± (12,3 punten)" when two standard errors are more.
+// toleranceNL names the hints' tolerance tol, rounded up: "5 punten", or
+// "twee keer de standaardfout van dat verschil (12,4 punten)" when two
+// standard errors are more.
 func toleranceNL(tol float64) string {
 	if tol <= teachTolerance {
 		return count(teachTolerance, "punt", "punten")
 	}
-	return "twee keer de ± (" + tenthsNL(tol) + " punten)"
+	return "twee keer de standaardfout van dat verschil (" + tenthsNL(math.Ceil(10*tol)/10) + " punten)"
 }
+
+// tenthsDownNL is tenthsNL of x rounded down: a difference stays below the
+// threshold it is measured against.
+func tenthsDownNL(x float64) string { return tenthsNL(math.Floor(10*x) / 10) }
 
 // tenthsNL writes x to one decimal with a decimal comma, as the reasoning's
 // table does: "14,2".
