@@ -189,7 +189,7 @@ const TOOLS = {
   settings: ['settings', 'Instellingen', 'Instellingen: geluid, kaarten, animaties en je naam', () => openSettings()],
   sound: ['soundOn', 'Geluid', 'Geluid aan', () => toggleSound()], // a toggle: soundState sets icon, tooltip, aria-pressed
   menu: ['menu', 'Meer', 'Meer: scorebord, handleiding, instellingen', () => openMenu()],
-  expert: ['search', 'Redenering van de AI', 'Redenering van de AI bij jouw zetten, en commentaar', () => openWhy()],
+  expert: ['bot', 'Redenering van de AI', 'Redenering van de AI bij jouw zetten, en commentaar', () => openWhy()],
 };
 
 export function toolButtons(names) {
@@ -1285,26 +1285,44 @@ function openWhy() {
 
 // A free-text form that sends feedback (design §7) with what extra()
 // returns (the expert: hand and trick of their own decision; else nothing,
-// the game as a whole).
+// the game as a whole). Saved, the text stays, marked Bewaard., and
+// Versturen waits for a change. onSaved(about, text), when given, hears of
+// every "saved" with what extra() gave and the text sent, and returns
+// false when the form shows something else by now (the expert's sheet,
+// stepped to another decision). The form's value() and load({text, saved})
+// let the sheet keep a text per decision.
 let feedbackWait = null; // the form waiting for its "saved"
-export function feedbackForm(extra, label, placeholder = 'Wat viel je op? Wat klopt er volgens jou niet?') {
+export function feedbackForm(extra, label, placeholder = 'Wat viel je op? Wat klopt er volgens jou niet?', onSaved = null) {
   const text = h('textarea', { class: 'field fb-text', maxLength: 2000, rows: 3, placeholder, 'aria-label': label });
   const status = h('span', { class: 'fb-status', role: 'status' });
+  let saved = false;
+  let sending = false; // one feedback is out at a time: a second "saved" could not be told apart
+  const mark = on => {
+    saved = on;
+    el.classList.toggle('saved', on);
+    status.replaceChildren(...(on ? [icon('check'), 'Bewaard.'] : []));
+    send.disabled = on || sending;
+  };
   const send = h('button', {
     class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => {
       if (!text.value.trim()) { text.focus(); return; }
       sound.play('click');
-      send.disabled = true;
-      status.textContent = '';
+      sending = true;
+      mark(false);
+      const about = extra();
+      const sent = text.value;
       const w = feedbackWait = {
-        saved: () => { text.value = ''; status.textContent = 'Bewaard.'; send.disabled = false; },
-        failed: () => { send.disabled = false; },
+        saved: () => { sending = false; if (onSaved?.(about, sent) === false) mark(saved); else mark(true); },
+        failed: () => { sending = false; mark(saved); },
       };
-      w.sent = app.send({ t: 'feedback', text: text.value, ...extra() }); // false: queued until the connection is back
+      w.sent = app.send({ t: 'feedback', text: sent, ...about }); // false: queued until the connection is back
     },
   }, 'Versturen');
-  text.addEventListener('input', () => { status.textContent = ''; });
-  return h('div', { class: 'fb' }, text, h('div', { class: 'fb-row' }, send, status));
+  text.addEventListener('input', () => { if (saved || status.textContent) mark(false); });
+  const el = h('div', { class: 'fb' }, text, h('div', { class: 'fb-row' }, send, status));
+  el.value = () => ({ text: text.value, saved });
+  el.load = d => { text.value = d?.text || ''; mark(!!d?.saved); };
+  return el;
 }
 
 // The server kept what was sent (feedback).

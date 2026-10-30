@@ -168,6 +168,32 @@ func sterkChoice(v *game.View, cfg searchConfig, seed uint64, aggr float64) game
 // the search can tell the two apart (teachTolerance, two standard errors):
 // with ♥A and ♥10 the 10 goes first. A false signal needs its lieGain.
 func sterkPick(m *mover, res []playResult, pref game.Card) int {
+	i, _ := sterkChoose(m, res, pref)
+	return i
+}
+
+// Why sterkChoose kept the rule-based card over a better one.
+const (
+	keptNone  = iota
+	keptNoise // within a point
+	keptBoer  // a genuine kleintje boer, within signalTolerance
+	keptAlike // wins and loses alike, within the hints' tolerance
+)
+
+// sterkWhy says why sterkChoose did not play the card the search valued
+// most: liar is that card when it would be a false signal that gains less
+// than lie over honest, the best honest card (-1: none); kept is why the
+// rule-based card was played over over, within tol.
+type sterkWhy struct {
+	liar, honest int
+	lie          float64
+	kept, over   int
+	tol          float64
+}
+
+// sterkChoose is sterkPick, with the reason (for the expert's reasoning).
+func sterkChoose(m *mover, res []playResult, pref game.Card) (int, sterkWhy) {
+	why := sterkWhy{liar: -1, honest: -1}
 	best := bestResult(res, pref, m.t.trump)
 	if gain := m.lieGain(res[best].card); gain > 0 {
 		alt := -1
@@ -177,24 +203,28 @@ func sterkPick(m *mover, res []playResult, pref game.Card) int {
 			}
 		}
 		if alt >= 0 && res[best].mean()-res[alt].mean() < gain {
+			why.liar, why.honest, why.lie = best, alt, gain
 			best = alt
 		}
 	}
 	i := resultIndex(res, pref)
 	if i < 0 {
-		return best
+		return best, why
 	}
-	tol := 1.0
+	tol, kept := 1.0, keptNoise
 	switch {
 	case m.t.signalsBoer(m.seat, pref) && !m.fakeSignal(pref):
-		tol = signalTolerance
+		tol, kept = signalTolerance, keptBoer
 	case m.equivalent(pref, res[best].card) && m.lieGain(pref) == 0:
-		tol = max(teachTolerance, 2*pairSE(res, best, i))
+		tol, kept = max(teachTolerance, 2*pairSE(res, best, i)), keptAlike
 	}
 	if res[best].mean()-res[i].mean() < tol {
-		return i
+		if i != best {
+			why.kept, why.over, why.tol = kept, best, tol
+		}
+		return i, why
 	}
-	return best
+	return best, why
 }
 
 // equivalent reports whether a and b, cards of one suit in the mover's

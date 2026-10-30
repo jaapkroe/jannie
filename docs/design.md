@@ -545,8 +545,11 @@ type Explanation struct {
     Normaal  Choice   // the normaal choice (the rule-based card, bestTrumpNormal, the bid threshold at aggression 0.5)
     Rule     string   // a card: the hint text of the rule that chose it ("Speel ♠A: …"); else ""
     Sterk    Choice   // sterk's pick from this search at average aggression (sterkPick, the bid without bias)
+    SterkWhy string   // a card: why Sterk is not a card the search values most (sterkChoose: a false signal
+                      // short of its gain, or the normaal card kept as close enough); else ""
     Hint     Choice   // the hint (Advise)
     HintText string
+    HintWhy  string   // a card: why the hint keeps the normaal card while sterk plays another; else ""
     Worlds   int      // deals per option; 0 with one legal card (no search)
     Options  []Option // the legal cards (in v.Legal order), the allowed suits, or spelen then passen
 }
@@ -695,7 +698,7 @@ type Brain interface {
 type Advice struct{ Card *game.Card; Suit *game.Suit; Play *bool; Text string }
 type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool }                   // as bot.Choice
 type Grade struct{ Stake, Lost, Gain float64; Better Choice; Text string; Nat float64 } // as bot.Grade
-type Explanation struct{ Normaal Choice; Rule string; Sterk, Hint Choice; HintText string; Worlds int; Options []Option } // as bot.Explanation
+type Explanation struct{ Normaal Choice; Rule string; Sterk Choice; SterkWhy string; Hint Choice; HintText, HintWhy string; Worlds int; Options []Option } // as bot.Explanation
 type Option struct{ Choice; Value, SE float64; Outcome; Parts []float64 }
 type ChatEvent struct{ Kind string; Mine bool; Text string; Points int; InHand, Playing bool } // as bot.ChatEvent
 type Signal struct{ Seat game.Seat; Card game.Card; Kind string; Means game.Card }           // as bot.Signal
@@ -1214,7 +1217,7 @@ client rotates so `you` is at the bottom.
 | `saved` | `what`: `"feedback"`: kept in the game log |
 | `rtc` | `from` (the sender's session), `seat` (the sender's), `desc` as sent: to the session named only (§6 Calls) |
 | `handReview` | `hand`, `pending` (that hand's grades still out), `replay`: the hand as in `review.replay` (below), with your graded decisions in `choices`; to you alone (client `handReview` above) |
-| `why` | Expert: `hand`, `trick` (as asked), `seat` (yours), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `hint`, `hintText`, `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
+| `why` | Expert: `hand`, `trick` (as asked), `seat` (yours), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `sterkWhy`, `hint`, `hintText`, `hintWhy` (both "" but for a card, see §9 Expert), `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
 
@@ -1566,8 +1569,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   named anywhere (§3; in short landscape the footer, and so the line, is
   hidden). The sheet has, in this order, a line on what the mode does
   ("Speel een spel opnieuw met de seed, of één potje ervan, op een plaats
-  naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op het
-  vergrootglas voor de redenering van de AI, en geef je commentaar. Na elk
+  naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op de
+  robot voor de redenering van de AI, en geef je commentaar. Na elk
   potje tik je op een slag en dan op Dit potje terugkijken."), *Open
   kaarten*, *Potjes*, *Troef*, *Regels*, *AI-sterkte*, *Tempo*, *Seinen*,
   *Seed*, *Potje* (`from`, 1–24, empty: *Hele spel*; with a number the
@@ -1607,7 +1610,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   badge), score sheet, last trick, help, settings, sound (a toggle:
   `aria-pressed` while the sound is on, tooltip "Geluid aan" / "Geluid uit",
   icon to match; on phones it is in the ⋯ menu); in an expert game, first
-  of them, a magnifier for the reasoning of the AI (§9 Expert). Where a name must
+  of them, a robot for the reasoning of the AI (§9 Expert). Where a name must
   shorten (lobby seat, score bar, *Laatste slag*), only the name does: its
   "(AI)" stays readable ("Kees de Vi… (AI)"). The trump badge's details show
   what the badge shows, also during the trump banner. Whatever the order of
@@ -2028,7 +2031,9 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
   Dit is slechts de mening van Juf Jannie.*, and last *Opmerkingen*: a text
   field (*Wat viel je op? Wat klopt er volgens jou niet?*) with *Versturen*
-  (`feedback`; *Bewaard.* on `saved`) and the line *Je opmerking wordt met
+  (`feedback`; on `saved` the text stays, its edge and a check with
+  *Bewaard.* in the team colour, and *Versturen* waits for a change; one
+  feedback is out at a time) and the line *Je opmerking wordt met
   je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor
   statistieken en om het spel te verbeteren.* Apart from the verdict, the wording is plain and factual:
   numbers, cards and the hint's reasons, no praise or consolation. The game-over buttons stay in view with
@@ -2085,7 +2090,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   *Opmerkingen* is about the game as a whole (the expert comments on their
   decisions while playing, §9 Expert).
 - **Expert** (§3 Expert mode; `expert.js`, loaded when first needed): the
-  top bar's magnifier (*Redenering van de AI*, "Redenering van de AI bij
+  top bar's robot (*Redenering van de AI*, "Redenering van de AI bij
   jouw zetten, en commentaar"; only in an expert game) opens the sheet
   *Redenering van de AI* about the player's own decisions in the hand in
   play, or just played (`handNo`). Those come from the state, so a reload
@@ -2101,21 +2106,33 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   de eerste kaart · Jij bent aan de beurt*; made, *Slag 3* or *Voor de
   eerste kaart* until the answer names the choice (*Slag 3 · Jij speelde
   ♠8*, *Jij: ♥ als troef*, *Jij: passen*, *Jij: spelen*; its `played`).
-  The reasoning (`why`) is asked at once for the decision the sheet opens
-  on, unless already known; after a step, a button *Redenering van de AI*
-  asks for the one shown; *De AI denkt na…* (disabled) while the request is
-  out. One request is out at a time (expert.js keeps it): meanwhile the
-  other decisions show the button disabled. An answer counts only when its
-  hand and trick are the request's; an error clears the request, sheet open
-  or not (main.js passes every server error to expert.js in an expert game),
-  and so does a reconnect when the request went out over the old
-  connection (§9 Connection). Answers
+  The reasoning (`why`) of the decision shown is asked by itself, when
+  the sheet opens and after every step, unless already known; *De AI denkt
+  na…* while it is out. One request is out at a time (expert.js keeps it):
+  a step meanwhile shows *De AI denkt na…*, and the decision shown is asked
+  once the answer is in. An answer counts only when its hand and trick are
+  the request's. An error gives the request up, sheet open or not (main.js
+  passes every server error to expert.js in an expert game), and its
+  decision shows *De AI gaf hier geen antwoord.* with *Opnieuw* (a step
+  back to it asks again too). A reconnect asks again when the request went
+  out over the old connection (§9 Connection). Answers
   are kept per decision for the life of the page
   (`hand/trick/kind/nu|gedaan`, kind: card, bid or suit, so in gedraaid a
   pass and the forced trump choice after it are apart), an awaited one
   shown only while it is still awaited; a `deal` forgets them and the
-  request, so a rematch on the same seed never shows an old answer. An answer shows *Normaal:* the normaal
-  choice with its rule's reason, *Sterk:*, *Tip:* the hint, a table of
+  request, so a rematch on the same seed never shows an old answer. An
+  answer shows *Normaal:* the normaal choice with its rule's reason,
+  *Sterk:* sterk's choice and, when that is not a card the search values
+  most, why (`sterkWhy`: a false signal sterk does not give for less than
+  its gain, *♦9 is volgens de berekening 14,2 punten beter dan ♣10, maar
+  je maat zou ♦9 lezen als “speel ruiten, daar heb ik de hoogste van”
+  (opseinen), en die heb je niet. Een vals sein speelt Sterk pas als het
+  minstens 20 punten meer oplevert.*, or the normaal card kept within a
+  point, as kleintje boer, or as a card that wins and loses alike), *Tip:*
+  the hint, with `hintWhy` when it keeps the normaal card while sterk plays
+  another (*Sterk is volgens de berekening 3,0 punten beter dan de kaart
+  van Normaal, minder dan 5 punten: dan blijft de tip bij die kaart.*), a
+  table of
   every option (*Waarde*, *±*, for a card *Punten slag*, *Punten later*,
   *Roem slag*, *Roem later*, *Nat, pit*, and *Nat wij*, *Nat zij*; the
   option played marked *gespeeld* or *gekozen*, the best value in gold; on
@@ -2124,10 +2141,13 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   mean. Last
   a fold-out *Commentaar bij deze zet*: one feedback form for the sheet
   (*Wat klopt er volgens jou niet, of wat is beter?*), sent with the hand
-  and trick of the decision shown when sending; whether it is open, and
-  the text typed, stay for the life of the page. The sheet closes on a
+  and trick of the decision shown when sending. Each decision keeps its
+  own text while the hand lasts (a step shows the text of the decision
+  stepped to): typed, or saved and marked so (*Bewaard.*, as in every
+  feedback form). Whether the fold-out is open stays for the life of the
+  page. The sheet closes on a
   `deal` and when the phase becomes `handEnd` or `gameOver` (the summary or
-  the game-over screen comes up; the magnifier opens the sheet again over
+  the game-over screen comes up; the robot opens the sheet again over
   it); otherwise it stays as it is while play goes on. Values read as
   numbers, plainly. The expert looks back at a hand as anyone does (§9
   Review, Terugkijken): there is no replay of their own, and no choice of

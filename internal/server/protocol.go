@@ -46,8 +46,10 @@ type whyMsg struct {
 	Normaal  choiceJSON   `json:"normaal"`
 	Rule     string       `json:"rule"`
 	Sterk    choiceJSON   `json:"sterk"`
+	SterkWhy string       `json:"sterkWhy"` // why sterk's card is not one the search values most; else ""
 	Hint     choiceJSON   `json:"hint"`
 	HintText string       `json:"hintText"`
+	HintWhy  string       `json:"hintWhy"` // why the hint keeps normaal's card while sterk plays another; else ""
 	Worlds   int          `json:"worlds"`
 	Options  []optionJSON `json:"options"`
 }

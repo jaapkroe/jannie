@@ -155,7 +155,8 @@ func TestExpertMatch(t *testing.T) {
 	}
 	now := 9 - len(s.Hand)
 	w = why(map[string]any{"trick": now, "seat": 1})
-	if w.Played != nil || w.Seat != 0 || w.Trick != now || len(w.Options) != len(s.Legal) || w.Rule == "" {
+	if w.Played != nil || w.Seat != 0 || w.Trick != now || len(w.Options) != len(s.Legal) || w.Rule == "" ||
+		w.SterkWhy != "waarom sterk" || w.HintWhy != "waarom de tip" {
 		t.Errorf("why now (trick %d, legal %v), asked with seat 1: %+v", now, s.Legal, w)
 	}
 	if n := ai.reasoned.Load(); n != 2 {

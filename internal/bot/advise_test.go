@@ -2,6 +2,7 @@ package bot
 
 import (
 	"math"
+	"strings"
 	"testing"
 
 	"klaverjas/internal/game"
@@ -230,6 +231,72 @@ func TestEquivalentPick(t *testing.T) {
 		if got := res[sterkPick(&m, res, pref)].card; got != card(c.want) {
 			t.Errorf("%s: sterk %v, want %v", c.name, got, c.want)
 		}
+	}
+}
+
+// TestSterkReason: when sterk's card is not the one the search values most,
+// the expert's reasoning says why: a false signal it does not give for so
+// little, or the rule-based card kept as close enough; and the hint that
+// keeps the rule-based card says why too.
+func TestSterkReason(t *testing.T) {
+	// Partner's ♦A has the trick; the mover cannot follow. ♣7 would say
+	// "I have the highest club" (opseinen), without the ace and the 10.
+	d := build(t, 1, [4]string{"KS QS 7C 8C 9C JC 8H 7H", "7D", "AD", "8D"}, game.Hearts, game.Amsterdams, "7D AD 8D")
+	v := turnView(d)
+	v.Legal = legalCards(v)
+	tab := tableFromView(&v)
+	m := newMover(&tab, v.Seat, setOf(v.Hand), setOf(v.Legal), 0.5)
+	if !m.falseLow(card("7C")) || m.lieGain(card("KS")) != 0 {
+		t.Fatalf("setup: ♣7 false low %v, ♠H lie gain %v", m.falseLow(card("7C")), m.lieGain(card("KS")))
+	}
+	res := fakeResults(&v, map[string]float64{"7C": 40, "KS": 30}, 1)
+	i, why := sterkChoose(&m, res, card("KS"))
+	if res[i].card != card("KS") {
+		t.Fatalf("sterk %v, want ♠H", res[i].card)
+	}
+	want := "♣7 is volgens de berekening 10,0 punten beter dan ♠H, maar je maat zou ♣7 lezen als “speel klaveren, daar heb ik de hoogste van” (opseinen), " +
+		"en die heb je niet. Een vals sein speelt Sterk pas als het minstens 20 punten meer oplevert."
+	if got := m.sterkReason(res, i, why); got != want {
+		t.Errorf("false signal:\n got %q\nwant %q", got, want)
+	}
+	res = fakeResults(&v, map[string]float64{"7C": 55, "KS": 30}, 1)
+	if i, why := sterkChoose(&m, res, card("KS")); res[i].card != card("7C") || m.sterkReason(res, i, why) != "" {
+		t.Errorf("a clear gain: sterk %v, reason %q", res[i].card, m.sterkReason(res, i, why))
+	}
+
+	// ♠A and ♠10 win and lose alike: sterk keeps the rule's ♠10 within the
+	// hints' tolerance.
+	d = build(t, 0, [4]string{"AS TS 8S 7D 9D 7C 8C 9C", "", "", ""}, game.Hearts, game.Amsterdams, "")
+	v = turnView(d)
+	v.Legal = legalCards(v)
+	tab = tableFromView(&v)
+	m = newMover(&tab, v.Seat, setOf(v.Hand), setOf(v.Legal), 0.5)
+	res = fakeResults(&v, map[string]float64{"AS": 34, "TS": 30}, 1)
+	i, why = sterkChoose(&m, res, card("TS"))
+	want = "♠10 en ♠A winnen en verliezen even vaak, en ♠A is volgens de berekening 4,0 punten beter, minder dan 5 punten: dan speelt Sterk de kaart van Normaal."
+	if got := m.sterkReason(res, i, why); res[i].card != card("TS") || got != want {
+		t.Errorf("alike: sterk %v\n got %q\nwant %q", res[i].card, got, want)
+	}
+	res = fakeResults(&v, map[string]float64{"AS": 30.5, "8S": 30}, 1)
+	i, why = sterkChoose(&m, res, card("8S"))
+	want = "♠A is volgens de berekening minder dan 1 punt beter: dan speelt Sterk de kaart van Normaal."
+	if got := m.sterkReason(res, i, why); res[i].card != card("8S") || got != want {
+		t.Errorf("noise: sterk %v\n got %q\nwant %q", res[i].card, got, want)
+	}
+
+	// Sterk plays ♠A, 3 points over the rule's ♠8: the hint keeps ♠8.
+	res = fakeResults(&v, map[string]float64{"AS": 33, "8S": 30}, 1)
+	si, j := sterkPick(&m, res, card("8S")), resultIndex(res, card("8S"))
+	if hint, _ := teachPick(&m, res, card("8S"), ruleCash); res[si].card != card("AS") || hint != card("8S") {
+		t.Fatalf("sterk %v, hint %v", res[si].card, hint)
+	}
+	want = "Sterk is volgens de berekening 3,0 punten beter dan de kaart van Normaal, minder dan 5 punten: dan blijft de tip bij die kaart."
+	if got := hintKeptReason(res, si, j); got != want {
+		t.Errorf("hint kept:\n got %q\nwant %q", got, want)
+	}
+	res = fakeResults(&v, map[string]float64{"AS": 40, "8S": 30}, 8)
+	if got := hintKeptReason(res, resultIndex(res, card("AS")), resultIndex(res, card("8S"))); !strings.Contains(got, "minder dan twee keer de ± (16,0 punten)") {
+		t.Errorf("hint kept within two standard errors: %q", got)
 	}
 }
 

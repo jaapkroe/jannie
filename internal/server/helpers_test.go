@@ -104,6 +104,9 @@ func (a *fakeAI) Explain(v game.View) Explanation {
 	a.advised.Add(-1)
 	c := Choice{Card: adv.Card, Suit: adv.Suit, Play: adv.Play}
 	e := Explanation{Normaal: c, Sterk: c, Hint: c, HintText: adv.Text, Worlds: 1}
+	if v.Phase == game.PhasePlay {
+		e.SterkWhy, e.HintWhy = "waarom sterk", "waarom de tip"
+	}
 	opt := func(o Choice, best bool) Option {
 		if best {
 			return Option{Choice: o, Value: 10, Outcome: Outcome{Us: 10}}

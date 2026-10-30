@@ -5260,8 +5260,25 @@ body.busy::after {
 }
 
 .fb-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 13px;
   color: var(--ink-2);
+}
+
+/* Saved: the text stays, its edge and the status in the team colour. */
+.fb.saved .fb-text {
+  border-color: var(--wij);
+}
+
+.fb.saved .fb-status {
+  color: var(--wij);
+}
+
+.fb-status svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* The seed field in the options. */

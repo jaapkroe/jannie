@@ -9,12 +9,15 @@ import { app, h, icon, suitSym, suitify, toast } from './util.js';
 import * as panels from './panels.js';
 
 const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
-const whys = new Map();  // decision (its key) → the server's why
-let wait = null;         // the question out: {key, hand, trick}
-let shown = null;        // the decision on the sheet, what a comment is about
-let form = null;         // the comment form: one for the page, so typed text stays
+const whys = new Map();   // decision (its key) → the server's why
+const failed = new Set(); // decisions whose question the server refused
+const drafts = new Map(); // hand/trick → the comment on it: {text, saved}
+let wait = null;          // the question out: {key, hand, trick, sent}
+let shown = null;         // the decision on the sheet, what a comment is about
+let form = null;          // the comment form: one for the page
 let formOpen = false;
-let redraw = null;       // shows the open sheet again
+let redraw = null;        // shows the open sheet again
+let deals = 0;            // deals seen (onDeal): a sheet of an earlier hand keeps no draft
 
 // The sheet, on the decision awaited now when it is the player's turn,
 // else on their latest one in this hand, short of the last card (there was
@@ -27,8 +30,9 @@ export function openWhy() {
   sound.play('click');
   let at = list.length - 1; // the decision awaited now comes last
   if (list[at].trick === 8 && at > 0) at--;
-  form ??= panels.feedbackForm(() => ({ hand: shown.hand, trick: shown.trick }), 'Commentaar', 'Wat klopt er volgens jou niet, of wat is beter?');
-  const step = k => { at += k; sound.play('click'); draw(); };
+  form ??= panels.feedbackForm(() => ({ hand: shown.hand, trick: shown.trick }), 'Commentaar', 'Wat klopt er volgens jou niet, of wat is beter?', onSaved);
+  // Stepping to a decision asks again what the server refused for it.
+  const step = k => { at += k; failed.delete(list[at].key); sound.play('click'); draw(); };
   const prev = h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Vorige zet', title: 'Vorige zet', onclick: () => step(-1) }, icon('back'));
   const next = h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Volgende zet', title: 'Volgende zet', onclick: () => step(1) }, icon('forward'));
   const head = h('b');
@@ -41,25 +45,44 @@ export function openWhy() {
         h('summary', { text: 'Commentaar bij deze zet' }), form),
     ],
   });
+  // The decision at `at`, its reasoning asked for when not known yet (one
+  // question at a time: the next once the one out is answered), and the
+  // comment typed or saved for it.
   function draw() {
     const d = list[at];
-    // "Bewaard." was about the decision shown before.
-    if (shown !== d) form.querySelector('.fb-status').textContent = '';
+    if (shown !== d) {
+      if (shown) drafts.set(commentKey(shown), form.value());
+      form.load(drafts.get(commentKey(d)));
+    }
     shown = d;
     prev.disabled = at === 0;
     next.disabled = at === list.length - 1;
     const w = whys.get(d.key);
     head.replaceChildren(suitify(headText(d, w)));
-    const asking = wait?.key === d.key;
-    out.replaceChildren(w ? whyView(w)
-      : h('button', { class: 'btn btn-ghost btn-sm', type: 'button', disabled: !!wait, onclick: () => { sound.play('click'); ask(d); } },
-        asking ? null : icon('search'), asking ? 'De AI denkt na…' : 'Redenering van de AI'));
+    if (!w && !wait && !failed.has(d.key)) { ask(d); return; }
+    out.replaceChildren(w ? whyView(w) : failed.has(d.key)
+      ? h('p', { class: 'xp-note' }, 'De AI gaf hier geen antwoord. ',
+        h('button', { class: 'btn btn-ghost btn-sm', type: 'button', onclick: () => { failed.delete(d.key); sound.play('click'); draw(); } }, 'Opnieuw'))
+      : h('p', { class: 'xp-note', text: 'De AI denkt na…' }));
   }
   redraw = draw;
-  m.onRemove = () => { if (redraw === draw) redraw = null; };
-  const d = list[at];
-  if (!whys.has(d.key) && !wait) ask(d);
-  else draw();
+  const dealt = deals;
+  m.onRemove = () => {
+    if (redraw === draw) redraw = null;
+    if (shown && deals === dealt) drafts.set(commentKey(shown), form.value());
+    shown = null;
+  };
+  draw();
+}
+
+// A comment is about a decision's hand and trick.
+const commentKey = d => `${d.hand}/${d.trick}`;
+
+// The server kept a comment: it stays with its decision, marked saved; the
+// form shows that only while the sheet is still on that decision.
+function onSaved(about, text) {
+  drafts.set(commentKey(about), { text, saved: true });
+  return !!shown && commentKey(shown) === commentKey(about);
 }
 
 // The server's reasoning for the question out.
@@ -70,28 +93,36 @@ export function onWhy(m) {
   redraw?.();
 }
 
-// The server refused something: a question still out gets its button back.
+// The server refused something: a question still out is given up, and its
+// decision shows Opnieuw.
 export function onError() {
   if (!wait) return;
+  failed.add(wait.key);
   wait = null;
   redraw?.();
 }
 
 // The connection is back, the join just sent and what was queued while
 // offline not yet (panels.onReconnect): the answer to a question sent over
-// the old connection goes there, so its button comes back; a question
-// queued meanwhile goes out next, over this connection, and is answered.
+// the old connection goes there, so it is asked again (an open sheet asks
+// at once); a question queued meanwhile goes out next, over this
+// connection, and is answered.
 export function onReconnect() {
   if (!wait) return;
-  if (wait.sent) onError();
-  else wait.sent = true;
+  if (!wait.sent) { wait.sent = true; return; }
+  wait = null;
+  redraw?.();
 }
 
-// A new deal (panels.sync): the answers about the hands before are
-// forgotten, and so is a question about them still out, whose answer then
-// counts no more (a rematch with the same seed has the same hand numbers).
+// A new deal (panels.sync): the answers and comments about the hands before
+// are forgotten, and so is a question about them still out, whose answer
+// then counts no more (a rematch with the same seed has the same hand
+// numbers).
 export function onDeal() {
+  deals++;
   whys.clear();
+  failed.clear();
+  drafts.clear();
   wait = null;
 }
 
@@ -165,8 +196,8 @@ function whyView(w) {
   const rule = w.rule.replace(/^[^:]*: /, '');
   return h('div', { class: 'xp-why' },
     h('p', {}, h('b', { text: 'Normaal: ' }), suitify(what(w.normaal) + (rule ? ` · ${rule}` : ''))),
-    h('p', {}, h('b', { text: 'Sterk: ' }), suitify(what(w.sterk))),
-    h('p', {}, h('b', { text: 'Tip: ' }), suitify(w.hintText)),
+    h('p', {}, h('b', { text: 'Sterk: ' }), suitify(what(w.sterk) + (w.sterkWhy ? ` · ${w.sterkWhy}` : ''))),
+    h('p', {}, h('b', { text: 'Tip: ' }), suitify(w.hintText + (w.hintWhy ? ` ${w.hintWhy}` : ''))),
     w.worlds ? h('div', { class: 'xp-scroll' }, h('table', { class: 'xp-table' },
       h('thead', {}, h('tr', {}, heads.map(t => h('th', { text: t })))),
       h('tbody', {}, rows))) : null,
@@ -177,6 +208,7 @@ function whyView(w) {
         `Waarde: hoeveel punten jij en je maat gemiddeld meer halen dan de tegenstanders aan het eind van het potje, roem, nat en pit meegeteld. ±: de standaardfout van het verschil met de beste; een verschil van minder dan twee keer ± kan toeval zijn.`,
         ...(cards ? ['Punten slag, punten later, roem slag en roem later: hetzelfde verschil, alleen van de kaartpunten of van de roem, in deze slag en in de latere slagen. Nat, pit: wat nat en pit daar nog aan toevoegen. Samen zijn ze de waarde, min wat er voor deze kaart al gehaald was.'] : []),
         `Nat wij: de kans dat jij en je maat spelen en nat gaan. Nat zij: de kans dat de tegenstanders spelen en nat gaan.`,
+        'Sterk speelt niet altijd de kaart met de hoogste waarde: geen vals sein voor minder dan 20 punten (kleintje boer: 10), en bij heel weinig verschil de kaart van Normaal. Staat Sterk niet op de hoogste waarde, dan staat erbij waarom. De tip houdt de kaart van Normaal aan tenzij Sterk minstens 5 punten (of twee keer de ±) beter is.',
         'De AI-spelers op Sterk rekenen met hun eigen verdelingen en, naar karakter, met wat zin in pit: hun keuze kan een enkele keer anders zijn dan hier.',
       ])));
 }

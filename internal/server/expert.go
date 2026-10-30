@@ -208,6 +208,7 @@ func (msg *whyMsg) fill(e Explanation) {
 	tenths := func(x float64) float64 { return math.Round(10*x) / 10 }
 	share := func(x float64) float64 { return math.Round(1000*x) / 1000 }
 	msg.Normaal, msg.Rule, msg.Sterk = choiceJSON(e.Normaal), e.Rule, choiceJSON(e.Sterk)
+	msg.SterkWhy, msg.HintWhy = e.SterkWhy, e.HintWhy
 	msg.Hint, msg.HintText, msg.Worlds = choiceJSON(e.Hint), e.HintText, e.Worlds
 	for _, o := range e.Options {
 		oj := optionJSON{choiceJSON: choiceJSON(o.Choice), Value: tenths(o.Value), SE: tenths(o.SE),
