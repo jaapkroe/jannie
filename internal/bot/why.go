@@ -326,7 +326,8 @@ func (m *mover) signalNote(c game.Card) string {
 // searchWhy is the reason for res[i], the card the search rates clearly
 // above res[j], the rule-based card: how much more it brings, and in which
 // part of the value mainly (two parts when the largest is under 60% of the
-// gap).
+// gap, or when nat brings at least 40% of it: the points in this trick and
+// in the later ones partly cancel, so either can look larger than nat).
 func (m *mover) searchWhy(res []playResult, i, j int) string {
 	b, r := res[i], res[j]
 	gap := b.mean() - r.mean()
@@ -340,23 +341,29 @@ func (m *mover) searchWhy(res []playResult, i, j int) string {
 			k1 = k
 		}
 	}
-	where := m.partWhere(k1, b, r)
-	if d[k1] < 0.6*gap {
-		k2 := -1
+	k2 := -1
+	if k1 != partNat && d[partNat] >= 0.4*gap {
+		k2 = partNat
+	} else if d[k1] < 0.6*gap {
 		for k := range d {
 			if k != k1 && d[k] > 0 && (k2 < 0 || d[k] > d[k2]) {
 				k2 = k
 			}
 		}
-		if k2 >= 0 {
-			where += " en " + m.partWhere(k2, b, r)
-		}
+	}
+	where := m.partWhere(k1, b, r)
+	if k2 >= 0 {
+		where += " en " + m.partWhere(k2, b, r)
 	}
 	return "volgens de berekening levert dat gemiddeld " + count(int(math.Round(gap)), "punt", "punten") + " meer op dan " +
 		game.CardShortNL(r.card) + ", vooral " + where + "." + m.signalNote(b.card)
 }
 
-// partWhere names part k of the value, where card b gains over card r.
+// partWhere names part k of the value, where card b gains over card r. A
+// change in the chance of nat is the reason only if it explains at least a
+// third of the gain in nat, a hand that turns nat counting for the 162 card
+// points. Otherwise the gain is in what the hands that go nat are worth;
+// the share is the higher of the two cards'.
 func (m *mover) partWhere(k int, b, r playResult) string {
 	switch k {
 	case partPointsNow:
@@ -367,19 +374,28 @@ func (m *mover) partWhere(k int, b, r playResult) string {
 		return "in de roem van deze slag"
 	case partRoemLater:
 		return "in de roem van de latere slagen"
+	case partPit:
+		return "door de kans op pit"
 	}
 	ob, or := b.outcome(), r.outcome()
+	changed := func(hi, lo float64) bool {
+		return wholePercent(hi) > wholePercent(lo) && 162*(hi-lo) >= (b.part(partNat)-r.part(partNat))/3
+	}
 	switch {
-	case m.ourTeamPlays() && or.NatUs-ob.NatUs >= 0.01:
+	case m.ourTeamPlays() && changed(or.NatUs, ob.NatUs):
 		return "doordat jullie minder vaak nat gaan (" + percent(ob.NatUs) + " tegen " + percent(or.NatUs) + ")"
-	case !m.ourTeamPlays() && ob.NatThem-or.NatThem >= 0.01:
+	case m.ourTeamPlays():
+		return "doordat alle punten en roem naar de tegenstanders gaan als jullie nat gaan (" + percent(max(ob.NatUs, or.NatUs)) + ")"
+	case changed(ob.NatThem, or.NatThem):
 		return "doordat de tegenstanders vaker nat gaan (" + percent(ob.NatThem) + " tegen " + percent(or.NatThem) + ")"
 	}
-	return "door de kans op pit"
+	return "doordat alle punten en roem naar jullie gaan als de tegenstanders nat gaan (" + percent(max(ob.NatThem, or.NatThem)) + ")"
 }
 
 // percent is a share as a whole percentage: "25%".
-func percent(f float64) string { return strconv.Itoa(int(math.Round(100*f))) + "%" }
+func percent(f float64) string { return strconv.Itoa(wholePercent(f)) + "%" }
+
+func wholePercent(f float64) int { return int(math.Round(100 * f)) }
 
 // noRuns reports whether c has no open run (see openRuns).
 func (m *mover) noRuns(c game.Card) bool {
