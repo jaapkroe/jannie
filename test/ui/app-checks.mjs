@@ -92,8 +92,8 @@ async function quick(P) {
   await waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelector('.hand .card'), { label: 'quick game' });
 }
 
-async function pickOpt(P, sheet, row, value) {
-  const btns = await P.page.$$(`${sheet} .opt-row:nth-child(${row}) .seg-btn`);
+async function pickOpt(P, sheet, key, value) {
+  const btns = await P.page.$$(`${sheet} .opt-row[data-key="${key}"] .seg-btn`);
   for (const b of btns) {
     if ((await b.evaluate(e => e.textContent)) !== value) continue;
     await b.evaluate(e => e.scrollIntoView({ block: 'center' }));
@@ -108,25 +108,48 @@ async function newGame(P, { players = 4, hands = 4 } = {}) {
   await press(P, '#btn-new');
   await waitFor(P, () => document.querySelector('.m-new.open'), { label: 'new game sheet' });
   await sleep(300);
-  await pickOpt(P, '.m-new', 1, String(players));
-  await pickOpt(P, '.m-new', 2, String(hands));
-  await pickOpt(P, '.m-new', 6, 'Snel');
+  await pickOpt(P, '.m-new', 'players', String(players));
+  await pickOpt(P, '.m-new', 'hands', String(hands));
+  await pickOpt(P, '.m-new', 'tempo', 'Snel');
   await press(P, '#btn-create');
   await waitFor(P, () => document.body.dataset.screen === 'lobby' && document.querySelector('.code-big span'), { label: 'lobby' });
   return P.page.$$eval('.code-big span', els => els.map(e => e.textContent).join(''));
 }
 
-// Starts a training game, by default without the lessons (Speluitleg).
-async function training(P, trumpMode = 'Utrechts', { lessons = false } = {}) {
+// The sheet Oefenen, at rest.
+async function trainSheet(P) {
   await press(P, '#btn-train');
-  await waitFor(P, () => document.querySelector('.m-train.open'), { label: 'training sheet' });
+  await waitFor(P, () => document.querySelector('.m-train.open #btn-train-go'), { label: 'training sheet' });
   await sleep(300);
-  if (await P.page.$eval('#train-lessons', e => e.checked) !== lessons) {
-    await press(P, '#train-lessons');
-    await waitFor(P, on => document.querySelector('#train-lessons').checked === on, { label: 'speluitleg' }, lessons);
-  }
-  if (trumpMode !== 'Utrechts') await pickOpt(P, '.m-train', 1, trumpMode);
-  await pickOpt(P, '.m-train', 3, 'Snel');
+}
+
+// Taps something in a sheet that scrolls under its foot and title, still
+// inside the viewport.
+async function pressRow(P, sel) {
+  await P.page.$eval(sel, e => e.scrollIntoView({ block: 'center' }));
+  await sleep(150);
+  await press(P, sel);
+}
+
+async function pickLesson(P, lesson) {
+  await pressRow(P, `#train-lesson-${lesson}`);
+  await waitFor(P, l => document.querySelector(`#train-lesson-${l}`).getAttribute('aria-checked') === 'true', { label: `lesson ${lesson}` }, lesson);
+}
+
+async function openFold(P) {
+  if (await P.page.$eval('.train-opts', e => e.open)) return;
+  await pressRow(P, '.train-opts > summary');
+  await waitFor(P, () => document.querySelector('.train-opts').open, { label: 'Spelopties open' });
+}
+
+// Starts a training game at tempo Snel, by default Vrij spelen: hints and
+// explanations of tricks, no lesson.
+async function training(P, trumpMode = 'Utrechts', { lesson = 'vrij' } = {}) {
+  await trainSheet(P);
+  await pickLesson(P, lesson);
+  await openFold(P);
+  if (trumpMode !== 'Utrechts') await pickOpt(P, '.m-train', 'trumpMode', trumpMode);
+  await pickOpt(P, '.m-train', 'tempo', 'Snel');
   await press(P, '#btn-train-go');
   await waitFor(P, () => document.body.dataset.screen === 'game', { label: 'training table' });
 }
@@ -254,19 +277,19 @@ CHECKS.coach = async browser => {
   });
 };
 
-// Training with Speluitleg (issues #41 and #45): Juf Jannie's steps wait for
-// Verder, a tap on the table or Enter, without a countdown, and light up
-// what they are about; a double tap reads one step; the trump step's link
-// opens the manual at Kaartwaarden and reads nothing; every trick of the
-// first hand stays until its explanation is read; on the player's turn the
-// hint follows the step; every step is a line of Juf Jannie in the chat,
-// without a speech bubble at her seat.
+// The lesson Basisspel, its first hand (issues #41, #45, #54): Juf Jannie's
+// steps wait for Verder, a tap on the table or Enter, without a countdown,
+// and light up what they are about; a double tap reads one step; the trump
+// step's link opens the manual at Kaartwaarden and reads nothing; every
+// trick of the first hand stays until its explanation is read; on the
+// player's turn the hint follows the step; every step is a line of Juf
+// Jannie in the chat, without a speech bubble at her seat.
 CHECKS.lessons = async browser => {
   for (const vp of ['iphone', 'desktop']) {
     const P = await page(browser, VP[vp], `lessons-${vp}`);
     await run(P, async () => {
       await home(P, 'Leerling');
-      await training(P, 'Utrechts', { lessons: true });
+      await training(P, 'Utrechts', { lesson: 'basis' });
       const step = () => P.page.evaluate(() => {
         const c = document.querySelector('.coach');
         const go = document.querySelector('.coach-go');
@@ -383,6 +406,212 @@ CHECKS.lessons = async browser => {
       if (missing.length || chat.bubbles.length) throw new Error(`chat lacks ${JSON.stringify(missing)}; bubbles ${JSON.stringify(chat.bubbles)}`);
     });
   }
+  // The other lessons start with their own subject.
+  for (const [lesson, first] of [['roem', 'In deze les leer je roem en troeven tellen.'], ['seinen', 'In deze les leer je seinen:']]) {
+    const P = await page(browser, VP.iphone, `lessons-${lesson}`);
+    await run(P, async () => {
+      await home(P, 'Leerling');
+      await training(P, 'Utrechts', { lesson });
+      await waitFor(P, t => document.querySelector('.coach:not([hidden]) .coach-txt')?.textContent.startsWith(t), { label: `the first step of ${lesson}` }, first);
+    });
+  }
+};
+
+// The sheet Oefenen (issue #54): title, Juf Jannie's intro, the four lessons,
+// the fold Spelopties and the start button, in that order. The fold is shut
+// at first; Potjes shows for Vrij spelen only, Seinen for Seinen and Vrij
+// spelen, and the button follows the lesson, at once. Every choice is kept
+// in kj.train and read back with care: what is corrupt or stale falls back
+// to its default, and who switched Speluitleg off before there were lessons
+// starts on Vrij spelen. With Tips off, Open kaarten on or a seed the fold
+// opens by itself. The create message carries the lesson, '' for Vrij
+// spelen; the server sets a lesson's length and strength. With Tips off the
+// robot still shows the decision awaited, without a hint.
+CHECKS.lessonSheet = async browser => {
+  for (const vp of ['oldSE', 'iphone', 'landscape', 'desktop']) {
+    const P = await page(browser, VP[vp], `lesson-sheet-${vp}`);
+    await run(P, async () => {
+      await home(P);
+      await trainSheet(P);
+      await checkOverflow(P, 'the sheet Oefenen');
+      await shot(P, 'sheet');
+      await openFold(P);
+      await pickLesson(P, 'vrij');
+      await checkOverflow(P, 'the sheet Oefenen, all rows');
+      await shot(P, 'sheet-open');
+    });
+  }
+  const P = await page(browser, VP.iphone, 'lesson-sheet', { hooks: true });
+  const sheet = () => P.page.evaluate(() => {
+    const chosen = key => document.querySelector(`.m-train .opt-row[data-key="${key}"] [aria-checked="true"]`)?.textContent;
+    return {
+      lesson: document.querySelector('.train-lessons [aria-checked="true"]')?.id.replace('train-lesson-', ''),
+      fold: document.querySelector('.train-opts').open,
+      rows: [...document.querySelectorAll('.train-opts .opt-row')].filter(e => !e.hidden).map(e => e.dataset.key).join(),
+      go: document.querySelector('#btn-train-go').textContent,
+      tips: document.querySelector('#train-tips').checked,
+      open: document.querySelector('#train-open').checked,
+      seed: document.querySelector('.m-train .opt-row[data-key="seed"] input').value,
+      tempo: chosen('tempo'), hands: chosen('hands'), ai: chosen('ai'),
+      signals: [...document.querySelectorAll('.m-train .opt-row[data-key="signals"] [aria-pressed]')].map(e => e.getAttribute('aria-pressed')).join(),
+    };
+  });
+  const stored = () => P.page.evaluate(() => JSON.parse(localStorage.getItem('kj.train') || 'null'));
+  const close = async () => {
+    await P.page.keyboard.press('Escape');
+    await waitFor(P, () => !document.querySelector('.m-train'), { label: 'sheet closed' });
+  };
+  await run(P, async () => {
+    await home(P);
+    await trainSheet(P);
+    const order = await P.page.evaluate(() => {
+      const top = sel => document.querySelector(`.m-train ${sel}`)?.getBoundingClientRect().top ?? NaN;
+      return {
+        title: document.querySelector('.m-train h2').textContent,
+        intro: document.querySelector('.m-train .train-intro p').textContent,
+        lessons: [...document.querySelectorAll('.train-lessons .seg-btn')].map(e => [e.id, e.querySelector('b').textContent, e.querySelector('small').textContent]),
+        heights: [...document.querySelectorAll('.train-lessons .seg-btn')].map(e => e.getBoundingClientRect().height),
+        summary: document.querySelector('.train-opts > summary').textContent,
+        tops: ['h2', '.train-intro', '.train-lessons', '.train-opts', '#btn-train-go'].map(top),
+        sequence: [...document.querySelector('.m-train .dlg-body').children].map(e => e.className.split(' ').at(-1)),
+      };
+    });
+    if (order.title !== 'Oefenen met Juf Jannie' || order.intro !== 'Je speelt samen met Juf Jannie tegen twee AI-spelers. Kies een les.' || order.summary !== 'Spelopties') throw new Error(`sheet texts ${JSON.stringify(order)}`);
+    if (order.tops.some(Number.isNaN) || order.tops.some((t, i) => i && t <= order.tops[i - 1])) throw new Error(`sheet order ${order.tops}`);
+    if (String(order.sequence) !== 'train-intro,train-lessons,train-opts,sheet-foot') throw new Error(`sheet parts ${order.sequence}`);
+    const LESSONS = [
+      ['train-lesson-basis', 'Basisspel', 'Kaarten, troef, bekennen en punten'],
+      ['train-lesson-roem', 'Roem en tellen', 'Extra punten herkennen en troeven tellen'],
+      ['train-lesson-seinen', 'Seinen', 'Je maat iets vertellen met je kaart'],
+      ['train-lesson-vrij', 'Vrij spelen', 'Een heel spel met een tip bij elke beurt'],
+    ];
+    if (JSON.stringify(order.lessons) !== JSON.stringify(LESSONS)) throw new Error(`lessons ${JSON.stringify(order.lessons)}`);
+    if (order.heights.some(x => x < 44)) throw new Error(`lesson rows of ${order.heights} px`);
+
+    // At first: Basisspel, the fold shut, its contents out of sight.
+    let st = await sheet();
+    if (st.lesson !== 'basis' || st.fold || st.go !== 'Start les' || !st.tips || st.open || st.tempo !== 'Rustig' || st.seed !== '' || st.ai !== 'Normaal') throw new Error(`at first ${JSON.stringify(st)}`);
+    if (await P.page.$eval('#train-tips', e => e.checkVisibility())) throw new Error('Tips shows in the shut fold');
+    if (await stored()) throw new Error('kj.train stored before any choice');
+    // Keyboard: the rows take the focus and answer the space bar.
+    await P.page.focus('#train-lesson-roem');
+    await P.page.keyboard.press('Space');
+    await waitFor(P, () => document.querySelector('#train-lesson-roem').getAttribute('aria-checked') === 'true', { label: 'a lesson chosen by keyboard' });
+    if ((await stored())?.lesson !== 'roem') throw new Error(`stored ${JSON.stringify(await stored())}`);
+
+    // The rows and the button follow the lesson, in the fold too.
+    await openFold(P);
+    const tap = await P.page.$eval('.train-opts > summary', e => e.getBoundingClientRect().height);
+    if (tap < 44) throw new Error(`Spelopties is a tap of ${tap} px`);
+    const inFold = await P.page.$$eval('.train-opts > *', els => els.map(e => e.querySelector?.('input')?.id || e.className || e.tagName));
+    if (String(inFold.slice(0, 4)) !== 'SUMMARY,train-tips,train-open,opts') throw new Error(`in the fold ${inFold}`);
+    const small = await P.page.$$eval('.train-opts .set-txt small', els => els.map(e => e.textContent));
+    if (String(small) !== 'Een tip bij elke beurt en uitleg na elke slag,Zie de kaarten van alle spelers') throw new Error(`switch texts ${small}`);
+    for (const [lesson, rows, go] of [
+      ['basis', 'trumpMode,rules,ai,tempo,seed', 'Start les'],
+      ['roem', 'trumpMode,rules,ai,tempo,seed', 'Start les'],
+      ['vrij', 'hands,trumpMode,rules,ai,tempo,signals,seed', 'Start oefenspel'],
+      ['seinen', 'trumpMode,rules,ai,tempo,signals,seed', 'Start les'],
+    ]) {
+      await pickLesson(P, lesson);
+      st = await sheet();
+      if (st.rows !== rows || st.go !== go) throw new Error(`${lesson}: rows ${st.rows}, button ${st.go}`);
+      if ((await stored())?.lesson !== lesson) throw new Error(`${lesson}: stored ${JSON.stringify(await stored())}`);
+    }
+
+    // The info of AI-sterkte says what the lesson does to it.
+    await pressRow(P, '.m-train .opt-row[data-key="ai"] .info-btn');
+    await waitFor(P, () => document.querySelector('.modal.m-info.open'), { label: 'info AI-sterkte' });
+    if (!(await P.page.$eval('.modal.m-info.open', e => e.textContent)).includes('In de les over seinen spelen ze minstens op Normaal.')) throw new Error('no line on the lesson in the info of AI-sterkte');
+    await P.page.keyboard.press('Escape');
+    await waitFor(P, () => !document.querySelector('.modal.m-info'), { label: 'info closed' });
+
+    // Tips off, Makkelijk: kept, and the fold opens by itself on return.
+    await pressRow(P, '#train-tips');
+    await waitFor(P, () => !document.querySelector('#train-tips').checked, { label: 'tips off' });
+    if ((await stored()).tips !== false) throw new Error(`Tips off not stored: ${JSON.stringify(await stored())}`);
+    await pickOpt(P, '.m-train', 'ai', 'Makkelijk');
+    await pickOpt(P, '.m-train', 'tempo', 'Snel');
+    await pickOpt(P, '.m-train', 'signals', 'Boer over boer');
+    let kept = await stored();
+    if (kept.lesson !== 'seinen' || kept.tips !== false || kept.open !== false || kept.ai !== 'makkelijk' || kept.tempo !== 'snel' || kept.seed !== null || !kept.signals?.boerOverBoer) throw new Error(`stored ${JSON.stringify(kept)}`);
+    await close();
+    await trainSheet(P);
+    st = await sheet();
+    if (st.lesson !== 'seinen' || !st.fold || st.tips || st.ai !== 'Makkelijk' || st.tempo !== 'Snel' || st.go !== 'Start les' || st.signals !== 'true,true,true,true') throw new Error(`reopened ${JSON.stringify(st)}`);
+    await close();
+
+    // What kj.train holds decides the fold; what makes no sense falls back.
+    const put = (train, lessons = null) => P.page.evaluate((t, l) => {
+      if (t == null) localStorage.removeItem('kj.train'); else localStorage.setItem('kj.train', t);
+      if (l == null) localStorage.removeItem('kj.lessons'); else localStorage.setItem('kj.lessons', l);
+    }, train, lessons);
+    const DEFAULT = { lesson: 'basis', fold: false, tips: true, open: false, seed: '', tempo: 'Rustig', ai: 'Normaal', hands: '8', signals: 'true,true,true,false' };
+    for (const [name, train, lessons, want] of [
+      ['nothing to show', '{"lesson":"roem","tips":true,"open":false,"seed":null}', null, { lesson: 'roem' }],
+      ['open cards', '{"open":true}', null, { fold: true, open: true }],
+      ['a seed', '{"seed":4242}', null, { fold: true, seed: '4242' }],
+      ['corrupt', '{"lesson":', null, {}],
+      ['not an object', '5', null, {}],
+      ['stale values', '{"lesson":"oud","tempo":"razend","hands":7,"ai":"max","tips":"ja","open":1,"seed":-1,"signals":3,"from":5}', null, {}],
+      ['Speluitleg off before', null, '0', { lesson: 'vrij' }],
+      ['Speluitleg on before', null, '1', {}],
+      ['Speluitleg off, kj.train there', '{"lesson":"seinen"}', '0', { lesson: 'seinen' }],
+    ]) {
+      await put(train, lessons);
+      await trainSheet(P);
+      const got = await sheet();
+      for (const [k, v] of Object.entries({ ...DEFAULT, ...want })) {
+        if (got[k] !== v) throw new Error(`${name}: ${k} is ${got[k]}, want ${v}`);
+      }
+      await close();
+    }
+    await put(null);
+
+    // A lesson at Makkelijk, with Tips off: the options as chosen go out.
+    await P.page.evaluate(() => {
+      const K = window.__kj;
+      K.hints = 0;
+      K.rewrite = data => {
+        const m = data.includes('"t":"update"') ? JSON.parse(data) : null;
+        if (m?.s) {
+          K.opts = m.s.opts;
+          if (m.s.hint) K.hints++;
+        }
+        return data;
+      };
+    });
+    await put(JSON.stringify({ lesson: 'seinen', tips: false, ai: 'makkelijk', hands: 16, tempo: 'snel', signals: { aas: false, kleintjeBoer: false, hoogLaag: false, boerOverBoer: false } }));
+    await trainSheet(P);
+    await press(P, '#btn-train-go');
+    await waitFor(P, () => document.body.dataset.screen === 'game' && window.__kj.opts, { label: 'the lesson at the table' });
+    const creates = () => P.page.evaluate(() => window.__kj.sent.filter(m => m.t === 'create'));
+    const first = (await creates())[0];
+    if (!first.training || first.opts.lesson !== 'seinen' || first.opts.tips !== false || first.opts.ai !== 'makkelijk' || 'players' in first.opts || Object.values(first.opts.signals).some(Boolean)) throw new Error(`create ${JSON.stringify(first)}`);
+    const lesson = await P.page.evaluate(() => window.__kj.opts);
+    if (lesson.lesson !== 'seinen' || lesson.hands !== 8 || lesson.ai !== 'normaal' || !Object.values(lesson.signals).some(Boolean)) throw new Error(`the lesson at the table ${JSON.stringify(lesson)}`);
+    await leaveTable(P);
+
+    // Vrij spelen: lesson '', the hands as chosen; the decision awaited on
+    // the robot's sheet, with Tips off and no hint.
+    await P.page.evaluate(() => { window.__kj.opts = null; });
+    await trainSheet(P);
+    await pickLesson(P, 'vrij');
+    await pickOpt(P, '.m-train', 'hands', '12');
+    await press(P, '#btn-train-go');
+    await waitFor(P, () => document.body.dataset.screen === 'game' && window.__kj.opts, { label: 'Vrij spelen at the table' });
+    const second = (await creates())[1];
+    if (second.opts.lesson !== '' || second.opts.hands !== 12 || second.opts.tips !== false) throw new Error(`create ${JSON.stringify(second)}`);
+    const vrij = await P.page.evaluate(() => window.__kj.opts);
+    if (vrij.lesson !== '' || vrij.hands !== 12) throw new Error(`Vrij spelen at the table ${JSON.stringify(vrij)}`);
+    await playUntil(P, () => !!document.querySelector('.hand.my-turn .card.legal'), { label: 'own turn' });
+    await press(P, '.tb-expert');
+    await waitFor(P, () => /Jij bent aan de beurt$/.test(document.querySelector('.m-why.open .why-head p')?.textContent || ''), { label: 'the decision awaited with tips off' });
+    const none = await P.page.evaluate(() => ({ hints: window.__kj.hints, marked: !!document.querySelector('.hand .card.hint') }));
+    if (none.hints || none.marked) throw new Error(`help with tips off ${JSON.stringify(none)}`);
+    await P.page.keyboard.press('Escape');
+    await waitFor(P, () => !document.querySelector('.m-why.open'), { label: 'the sheet closed' });
+  });
 };
 
 // Training on a short landscape screen: the coach in the top-left corner
@@ -1629,7 +1858,7 @@ CHECKS.full = async browser => {
     await waitFor(H, () => [...document.querySelectorAll('.toast')].some(t => t.textContent.startsWith('Laat wil meedoen, maar de tafel is vol') && t.textContent.includes('Zet Spelers op 3')), { label: 'host told how to make room' });
     await shot(H, 'toast');
 
-    await pickOpt(H, '.lb-opts', 1, '3');
+    await pickOpt(H, '.lb-opts', 'players', '3');
     await waitFor(H, () => document.querySelector('.lb-code .lb-hint')?.textContent.startsWith('Stuur de link'), { label: 'hint with a seat free again' });
     await press(L, '.btn-join');
     await waitFor(L, () => document.body.dataset.screen === 'lobby', { label: 'late friend seated after one tap' });

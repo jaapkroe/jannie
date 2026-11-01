@@ -28,7 +28,7 @@ const OPTS = [
     info: 'Hoe snel de AI-spelers spelen en hoe lang de pauzes tussen de slagen duren.' },
   { key: 'signals', label: 'Seinen', players: [4], multi: true,
     choices: [['aas', 'Met de aas seinen'], ['hoogLaag', 'Op- en afseinen'], ['kleintjeBoer', 'Kleintje boer'], ['boerOverBoer', 'Boer over boer']],
-    info: ['De afspraken aan deze tafel: welke kaarten je maat iets vertellen. De AI-spelers en de tips houden zich eraan. Bij de start van een spel staan ze in de chat.',
+    info: ['De afspraken aan deze tafel: welke kaarten je maat iets vertellen. De AI-spelers op Normaal en Sterk en de tips houden zich eraan. Bij de start van een spel staan ze in de chat.',
       'Met de aas seinen: gooi je op een slag van je maat een aas bij van een bijkleur die nog niet gespeeld is, dan heb je de 10 van die kleur ook.',
       'Op- en afseinen: kun je niet bekennen op een slag van je maat, dan zegt een 7, 8 of 9 “speel deze kleur, daar heb ik de hoogste van” (opseinen) en een 10, boer, vrouw of heer “de hoogste van deze kleur heb ik niet” (afseinen). Op een slag van de tegenpartij zegt je bijkaart niets.',
       'Kleintje boer: komt de spelende partij voor het eerst uit met een 7, 8 of 9 van een bijkleur, dan heeft die de troefboer.',
@@ -41,6 +41,14 @@ const OPTS = [
 ];
 
 const LABELS = Object.fromEntries(OPTS.map(o => [o.key, Object.fromEntries(o.choices)]));
+// The sheet Oefenen: Juf Jannie's lessons, each one match, and vrij, the
+// game with hints only (option lesson empty).
+const LESSONS = [
+  ['basis', 'Basisspel', 'Kaarten, troef, bekennen en punten'],
+  ['roem', 'Roem en tellen', 'Extra punten herkennen en troeven tellen'],
+  ['seinen', 'Seinen', 'Je maat iets vertellen met je kaart'],
+  ['vrij', 'Vrij spelen', 'Een heel spel met een tip bij elke beurt'],
+];
 // The agreements on signals as a whole object, defaults for what is missing.
 const signalsOf = v => Object.fromEntries(Object.entries(SIGNALS).map(([k, d]) => [k, typeof v?.[k] === 'boolean' ? v[k] : d]));
 const sameSignals = (a, b) => Object.keys(SIGNALS).every(k => signalsOf(a)[k] === signalsOf(b)[k]);
@@ -50,11 +58,12 @@ const START_GUARD_MS = 800;
 
 // The option rows; a row that does not apply to the number of players
 // (o.players) hides: troef with three (they bid), the rules with two
-// (nobody has a partner). onChange hears every choice.
-function optionsForm(opts, onChange, keys = OPTS.map(o => o.key)) {
+// (nobody has a partner). onChange hears every choice; more adds a line to
+// a row's info, for this form only.
+function optionsForm(opts, onChange, keys = OPTS.map(o => o.key), more = {}) {
   const form = h('div', { class: 'opts' }, OPTS.filter(o => keys.includes(o.key)).map(o =>
     h('div', { class: 'opt-row', dataset: { key: o.key } },
-      h('div', { class: 'opt-lbl' }, h('span', { text: o.label }), panels.infoBtn(o.label, o.info)),
+      h('div', { class: 'opt-lbl' }, h('span', { text: o.label }), panels.infoBtn(o.label, more[o.key] ? [o.info, more[o.key]].flat() : o.info)),
       o.input ? seedField(opts[o.key], v => onChange(o.key, v))
       : o.multi
         ? panels.toggles(o.choices, signalsOf(opts[o.key]), v => onChange(o.key, v), o.label)
@@ -309,32 +318,72 @@ function openNewGame() {
   });
 }
 
+// What Oefenen had last (kj.train), each value checked: what is corrupt or
+// stale falls back to its default. Who switched Speluitleg off before there
+// were lessons (kj.lessons) starts on Vrij spelen.
+function trainOpts() {
+  const { players, ...defaults } = DEFAULTS;
+  const raw = store.json('train', null);
+  const saved = raw && typeof raw === 'object' ? raw : null;
+  const opts = { ...defaults, hands: 8, tempo: 'rustig', tips: true, open: false, seed: null, lesson: !saved && store.get('lessons') === '0' ? 'vrij' : 'basis' };
+  if (!saved) return opts;
+  for (const o of OPTS) {
+    if (o.key in opts && o.choices.some(([v]) => v === saved[o.key])) opts[o.key] = saved[o.key];
+  }
+  for (const key of ['tips', 'open']) {
+    if (typeof saved[key] === 'boolean') opts[key] = saved[key];
+  }
+  if (LESSONS.some(([id]) => id === saved.lesson)) opts.lesson = saved.lesson;
+  if (Number.isInteger(saved.seed) && saved.seed >= 1 && saved.seed <= 999999999) opts.seed = saved.seed;
+  opts.signals = signalsOf(saved.signals);
+  return opts;
+}
+
+// Oefenen: a lesson or Vrij spelen, with Juf Jannie against two AI-spelers.
+// Every choice stays on the device (kj.train), the seed too. Spelopties is
+// folded, and opens by itself for what would surprise at the table: Tips
+// off, Open kaarten on or a seed.
 function openTraining() {
   sound.unlock();
   sound.play('click');
-  // Speluitleg stays as last chosen: once the game is known, it is off.
-  const opts = { open: false, lessons: store.get('lessons', '1') === '1', tempo: 'rustig', trumpMode: 'utrechts', rules: 'amsterdams' };
-  const open = h('input', { type: 'checkbox', id: 'train-open', onchange: e => { opts.open = e.target.checked; } });
-  const lessons = h('input', { type: 'checkbox', id: 'train-lessons', checked: opts.lessons, onchange: e => {
-    opts.lessons = e.target.checked;
-    store.set('lessons', opts.lessons ? '1' : '0');
+  const opts = trainOpts();
+  const save = () => store.setJSON('train', opts);
+  const switchRow = (key, title, sub) => h('label', { class: 'set-row' },
+    h('span', { class: 'set-txt' }, h('b', { text: title }), h('small', { text: sub })),
+    h('span', { class: 'switch' }, h('input', { type: 'checkbox', id: `train-${key}`, checked: opts[key], onchange: e => { opts[key] = e.target.checked; save(); } }), h('i')));
+  const form = optionsForm(opts, (k, v) => { opts[k] = v; save(); }, ['hands', 'trumpMode', 'rules', 'ai', 'tempo', 'signals', 'seed'],
+    { ai: 'In de les over seinen spelen ze minstens op Normaal.', signals: 'In Vrij spelen op AI-sterkte Makkelijk speelt niemand met seinen.' });
+  const go = h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-train-go', onclick: () => {
+    m.close(true);
+    app.create({ opts: { ...opts, lesson: opts.lesson === 'vrij' ? '' : opts.lesson }, training: true, start: true, name: soloName() });
   } });
+  // A lesson has its own length; only Seinen and Vrij spelen have signals.
+  const followLesson = () => {
+    const vrij = opts.lesson === 'vrij';
+    form.querySelector('[data-key="hands"]').hidden = !vrij;
+    form.querySelector('[data-key="signals"]').hidden = !vrij && opts.lesson !== 'seinen';
+    go.textContent = vrij ? 'Start oefenspel' : 'Start les';
+  };
+  const lessons = panels.segmented(LESSONS.map(([id, title, sub]) => [id, [h('b', { text: title }), h('small', { text: sub })]]), opts.lesson, v => {
+    opts.lesson = v;
+    save();
+    followLesson();
+  }, 'Les');
+  lessons.classList.add('train-lessons');
+  lessons.querySelectorAll('.seg-btn').forEach((b, i) => { b.id = `train-lesson-${LESSONS[i][0]}`; });
+  followLesson();
   const m = panels.openModal({
     id: 'train', title: 'Oefenen met Juf Jannie', cls: 'm-sheet m-train', body: [
       h('div', { class: 'train-intro' },
         h('span', { class: 'avatar is-bot train-av', text: '👩‍🏫' }),
-        h('p', { text: 'Je speelt samen met Juf Jannie tegen twee AI-spelers. Bij elke beurt krijg je een tip, en na elke slag legt ze uit wat er gebeurde.' })),
-      h('label', { class: 'set-row' },
-        h('span', { class: 'set-txt' }, h('b', { text: 'Speluitleg' }), h('small', { text: 'Juf Jannie legt het spel stap voor stap uit' })),
-        h('span', { class: 'switch' }, lessons, h('i'))),
-      h('label', { class: 'set-row' },
-        h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
-        h('span', { class: 'switch' }, open, h('i'))),
-      optionsForm(opts, (k, v) => { opts[k] = v; }, ['trumpMode', 'rules', 'signals', 'tempo', 'seed']),
-      h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-train-go', onclick: () => {
-        m.close(true);
-        app.create({ opts, training: true, start: true, name: soloName() });
-      } }, 'Start oefenspel')),
+        h('p', { text: 'Je speelt samen met Juf Jannie tegen twee AI-spelers. Kies een les.' })),
+      lessons,
+      h('details', { class: 'train-opts', open: !opts.tips || opts.open || !!opts.seed },
+        h('summary', { text: 'Spelopties' }),
+        switchRow('tips', 'Tips', 'Een tip bij elke beurt en uitleg na elke slag'),
+        switchRow('open', 'Open kaarten', 'Zie de kaarten van alle spelers'),
+        form),
+      h('div', { class: 'sheet-foot' }, go),
     ],
   });
 }

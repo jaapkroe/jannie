@@ -184,7 +184,7 @@ var perfScenarios = []perfScenario{
 	{"solo", 1, inMsg{}},
 	{"solo_gedraaid", 1, inMsg{Opts: json.RawMessage(`{"trumpMode":"gedraaid"}`)}},
 	{"4_humans", 4, inMsg{}},
-	{"training_lessons", 1, inMsg{Opts: json.RawMessage(`{"lessons":true}`), Training: true}},
+	{"training_lesson", 1, inMsg{Opts: json.RawMessage(`{"lesson":"basis"}`), Training: true}},
 	{"expert", 1, inMsg{Opts: json.RawMessage(`{"open":true}`), Expert: true}},
 	{"3_players", 1, inMsg{Opts: json.RawMessage(`{"players":3}`)}},
 	{"2_players", 1, inMsg{Opts: json.RawMessage(`{"players":2}`)}},
@@ -255,8 +255,8 @@ func playRoom(tb testing.TB, s *Server, sc perfScenario, seen func(t, ev string,
 	return r
 }
 
-// BenchmarkGame plays whole matches of 16 hands: the server's own cost
-// per match (the fake humans' decoding included).
+// BenchmarkGame plays whole matches of 16 hands, a lesson of lessonLength:
+// the server's own cost per match (the fake humans' decoding included).
 func BenchmarkGame(b *testing.B) {
 	for _, sc := range perfScenarios {
 		b.Run(sc.name, func(b *testing.B) {
@@ -406,7 +406,8 @@ func (w *wireStats) report(tb testing.TB, title string) {
 }
 
 // TestPerfWire lists what one connection receives over a match of 16
-// hands, per kind of message and per key of the state.
+// hands (a lesson: lessonLength), per kind of message and per key of the
+// state.
 func TestPerfWire(t *testing.T) {
 	if !*perfWire {
 		t.Skip("-args -perf.wire lists the messages of a match")

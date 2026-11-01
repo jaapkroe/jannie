@@ -128,13 +128,12 @@ type room struct {
 	nextAt    time.Time // when the summary moves on (zero: it waits for ready); training: when the last trick, kept for its tip, goes
 	trickNo   int       // tricks completed in this room, for bot chat limits
 
-	// Training with lessons (lesson.go).
-	lesson      *lessonStep    // on screen until read: a pause waits for it, or on the learner's turn the hint does
-	lessons     []lessonStep   // the steps after it
-	lessonChat  bool           // lesson went to the chat
-	lessonN     int            // steps numbered so far
-	lessonHands int            // hands dealt with lessons: in the first one every trick waits for its explanation
-	taught      map[string]int // the lessons given in this room, and how often
+	// Training with a lesson (lesson.go).
+	lesson     *lessonStep    // on screen until read: a pause waits for it, or on the learner's turn the hint does
+	lessons    []lessonStep   // the steps after it
+	lessonChat bool           // lesson went to the chat
+	lessonN    int            // steps numbered so far, in this room
+	taught     map[string]int // the parts of the lesson given in this match, and how often
 
 	// The review of the humans' play (review.go).
 	matchID    string
@@ -486,6 +485,30 @@ func (r *room) seatTraining() {
 	r.seats[3] = r.newBot(r.randomPersona(juf.ID))
 }
 
+// trainingOpts keeps what belongs to training to its rooms: outside it no
+// lesson, no tips and, but for the expert, no open cards. In it the table
+// has four players, a lesson its own length, and the lesson on signals
+// always something to teach: bots that signal, and agreements.
+func (r *room) trainingOpts() {
+	if !r.training {
+		r.opts.Lesson, r.opts.Tips = "", false
+		r.opts.Open = r.opts.Open && r.expert
+		return
+	}
+	r.opts.Players = 4 // with Juf Jannie as partner
+	if r.lessonsOn() {
+		r.opts.Hands = lessonLength
+	}
+	if r.inLesson(planSeinen) {
+		if r.opts.AI == "makkelijk" {
+			r.opts.AI = "normaal"
+		}
+		if r.opts.Signals == (game.Signals{}) {
+			r.opts.Signals = game.DefaultSignals
+		}
+	}
+}
+
 // ---- messages to clients ----
 
 // emit sends an update with ev to every connected human; fresh (a client
@@ -557,17 +580,10 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	if patch.Players != nil {
 		r.opts.Players = *patch.Players
 	}
-	switch {
-	case r.training:
-		r.opts.Players = 4 // with Juf Jannie as partner
-	case r.expert:
+	if r.expert {
 		r.opts.Players = 4 // the engine reasons for four
-	default:
-		r.opts.Open = false
 	}
-	if !r.training {
-		r.opts.Lessons = false
-	}
+	r.trainingOpts()
 	r.expertOpts()
 	var i game.Seat // the expert sits where they chose; anyone else at seat 0
 	if r.expert && m.Seat != nil && *m.Seat >= 0 && *m.Seat < 4 {
@@ -1181,9 +1197,7 @@ func (r *room) cmdOpts(c *client, i game.Seat, m *inMsg) {
 		}
 	}
 	patch.apply(&r.opts)
-	if !r.training {
-		r.opts.Open, r.opts.Lessons = false, false
-	}
+	r.trainingOpts()
 	r.expertOpts()
 	r.emit(evLobby{Type: "lobby"})
 }

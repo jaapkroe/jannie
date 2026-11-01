@@ -20,7 +20,8 @@ type Options struct {
 	AI        string         `json:"ai"`
 	Tempo     string         `json:"tempo"`
 	Open      bool           `json:"open"`
-	Lessons   bool           `json:"lessons"` // training: Juf Jannie explains the game step by step (lesson.go)
+	Lesson    string         `json:"lesson"`  // training: the lesson Juf Jannie gives (lesson.go); "": vrij spelen
+	Tips      bool           `json:"tips"`    // training: a hint on every turn and an explanation after every trick
 	Signals   game.Signals   `json:"signals"` // the table's agreements on signals (design §8)
 	Seed      int            `json:"seed"`    // 1..maxSeed: every match deals the same cards; 0: a new seed per match
 	From      int            `json:"from"`    // expert: 1..maxHands: the match is that one hand of the seed's deals; 0: the whole match
@@ -34,6 +35,7 @@ func defaultOptions() Options {
 		Rules:     game.Amsterdams,
 		AI:        "normaal",
 		Tempo:     "normaal",
+		Tips:      true,
 		Signals:   game.DefaultSignals,
 	}
 }
@@ -43,8 +45,9 @@ func defaultOptions() Options {
 const maxHands = 24
 
 var (
-	validHands  = map[int]bool{4: true, 8: true, 12: true, 16: true, 20: true, 24: true}
-	validLevels = map[string]bool{"makkelijk": true, "normaal": true, "sterk": true}
+	validHands   = map[int]bool{4: true, 8: true, 12: true, 16: true, 20: true, 24: true}
+	validLevels  = map[string]bool{"makkelijk": true, "normaal": true, "sterk": true}
+	validLessons = map[string]bool{"": true, planBasis: true, planRoem: true, planSeinen: true}
 )
 
 // optsPatch is a partial options update; nil fields are unchanged.
@@ -56,7 +59,8 @@ type optsPatch struct {
 	AI        *string
 	Tempo     *string
 	Open      *bool
-	Lessons   *bool
+	Lesson    *string
+	Tips      *bool
 	Signals   *game.Signals
 	Seed      *int
 	From      *int
@@ -135,12 +139,19 @@ func parseOpts(raw json.RawMessage, lenient bool) (optsPatch, error) {
 			} else {
 				p.Open = &b
 			}
-		case "lessons":
-			var b bool
-			if json.Unmarshal(val, &b) != nil {
-				err = fail("Ongeldige waarde voor speluitleg.")
+		case "lesson":
+			var s string
+			if json.Unmarshal(val, &s) != nil || !validLessons[s] {
+				err = fail("Ongeldige les.")
 			} else {
-				p.Lessons = &b
+				p.Lesson = &s
+			}
+		case "tips":
+			var b *bool // null would otherwise switch them off
+			if json.Unmarshal(val, &b) != nil || b == nil {
+				err = fail("Ongeldige waarde voor tips.")
+			} else {
+				p.Tips = b
 			}
 		case "seed":
 			var n *int
@@ -200,8 +211,11 @@ func (p optsPatch) apply(o *Options) {
 	if p.Open != nil {
 		o.Open = *p.Open
 	}
-	if p.Lessons != nil {
-		o.Lessons = *p.Lessons
+	if p.Lesson != nil {
+		o.Lesson = *p.Lesson
+	}
+	if p.Tips != nil {
+		o.Tips = *p.Tips
 	}
 	if p.Signals != nil {
 		o.Signals = *p.Signals

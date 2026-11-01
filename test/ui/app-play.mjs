@@ -322,10 +322,13 @@ async function training() {
     await press(P, '#btn-train');
     await waitFor(P, () => document.querySelector('.m-train.open'), { label: 'training sheet' });
     await sleep(300);
-    const fast = await P.page.$$('.m-train .opt-row:nth-child(3) .seg-btn');
+    // Hints and tips without a lesson (app-checks.mjs --only lessons has those).
+    await press(P, '#train-lesson-vrij');
+    await press(P, '.train-opts > summary');
+    const fast = await P.page.$$('.m-train .opt-row[data-key="tempo"] .seg-btn');
+    await fast[2].evaluate(e => e.scrollIntoView({ block: 'center' }));
+    await sleep(150);
     await pressEl(P, fast[2]);
-    // Hints and tips without the lessons (app-checks.mjs --only lessons has those).
-    if (await P.page.$eval('#train-lessons', e => e.checked)) await press(P, '#train-lessons');
     await press(P, '#btn-train-go');
     await waitFor(P, () => document.body.dataset.screen === 'game', { label: 'training table' });
     const partner = await P.page.$eval('.seat-top .nm', e => e.textContent);

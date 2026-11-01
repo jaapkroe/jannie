@@ -68,7 +68,7 @@ func testStateKeys(t *testing.T, players int) {
 		t.Errorf("first update ev %s, want null", lobby.Ev)
 	}
 	wantKeys(t, "lobby", lobby.S, append(slices.Clone(baseKeys), "roster"))
-	wantKeys(t, "opts", field(t, lobby.S, "opts"), []string{"players", "hands", "trumpMode", "rules", "ai", "tempo", "open", "lessons", "signals", "seed", "from"})
+	wantKeys(t, "opts", field(t, lobby.S, "opts"), []string{"players", "hands", "trumpMode", "rules", "ai", "tempo", "open", "lesson", "tips", "signals", "seed", "from"})
 	var seats []json.RawMessage
 	json.Unmarshal(field(t, lobby.S, "players"), &seats)
 	if len(seats) != players {

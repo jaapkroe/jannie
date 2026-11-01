@@ -32,7 +32,9 @@ func TestCreateDefaults(t *testing.T) {
 	if s.Phase != phaseLobby || s.You != 0 || s.Host != 0 || s.HandNo != 0 || s.Training {
 		t.Fatalf("state: phase %s you %d host %d hand %d", s.Phase, s.You, s.Host, s.HandNo)
 	}
-	if s.Opts != defaultOptions() {
+	want := defaultOptions()
+	want.Tips = false // training's
+	if s.Opts != want {
 		t.Errorf("opts %+v, want defaults", s.Opts)
 	}
 	if len(s.Roster) != len(fakePersonas) || s.Roster[0].ID != "dirk" || s.Roster[0].Bio == "" {

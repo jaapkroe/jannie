@@ -125,12 +125,17 @@ func (r *room) botsReact(n int, delay time.Duration, mk func(i game.Seat) (ChatE
 	}
 }
 
-// greet: up to two bots say hello as the match starts. With lessons Juf
-// Jannie introduces herself in the first one instead.
+// greet: up to two bots say hello as the match starts.
 func (r *room) greet() {
 	r.botsReact(2, 2500*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
-		return ChatEvent{Kind: "greet"}, !r.lessonsOn() || i != r.learner().Partner()
+		return ChatEvent{Kind: "greet"}, r.greets(i)
 	})
+}
+
+// greets reports whether the bot at seat i may say hello as the match starts:
+// in the lesson on the basic game Juf Jannie introduces herself at once.
+func (r *room) greets(i game.Seat) bool {
+	return !r.inLesson(planBasis) || i != r.learner().Partner()
 }
 
 // chatTrump: the bot that made trump comments on it; if it says nothing (or

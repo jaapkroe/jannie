@@ -53,7 +53,7 @@ export const CONTENT = {
         ['Snel spelen', 'Eén tik en je zit aan tafel met AI-spelers. Het spel begint meteen, met de spelregels die je het laatst bij Nieuw spel koos, ook het aantal spelers.', 'bolt'],
         ['Nieuw spel', 'Speel met vrienden. Kies de spelregels (zie hieronder) en tik op [Maak spel]. Je krijgt een spelcode en een link om te delen.', 'users'],
         ['Meedoen', 'Typ de spelcode van vier letters bij **Meedoen met een code**. Zodra de vierde letter staat, schuif je aan. Een link zoals **klaverjas.kroes.dev/ABCD** werkt ook: openen en je zit erin.', 'enter'],
-        ['Oefenen', 'Leer het spel met Juf Jannie (AI) als maat en een tip bij elke zet. Meer daarover onderaan.', 'school'],
+        ['Oefenen', 'Leer het spel in losse lessen met Juf Jannie (AI) als maat, of speel vrij met een tip bij elke zet. Meer daarover onderaan.', 'school'],
         ['Handleiding', 'Deze uitleg. Aan tafel open je hem met de knop Handleiding.', 'book'],
       ],
       chips: true,
@@ -69,7 +69,7 @@ export const CONTENT = {
         ['Regels', '**Amsterdams** (standaard) of **Rotterdams**: wanneer je moet troeven. De standaardvariant is dus Utrechts/Amsterdams. Met z’n tweeën heb je geen maat; dan staat deze keus er niet.'],
         ['AI-sterkte', '**Makkelijk**, **Normaal** (standaard) of **Sterk**: hoe goed de AI-spelers spelen.'],
         ['Tempo', '**Rustig**, **Normaal** (standaard) of **Snel**: hoe vlot de AI-spelers spelen en hoe lang een slag blijft liggen.'],
-        ['Seinen', 'Met z’n vieren: welke seinen aan tafel gelden. Tik een afspraak aan of uit: **Met de aas seinen**, **Op- en afseinen** en **Kleintje boer** staan standaard aan, **Boer over boer** uit. De AI-spelers en de tips houden zich eraan, zie Seinen. Bij de start van een spel staan de afspraken in de chat.'],
+        ['Seinen', 'Met z’n vieren: welke seinen aan tafel gelden. Tik een afspraak aan of uit: **Met de aas seinen**, **Op- en afseinen** en **Kleintje boer** staan standaard aan, **Boer over boer** uit. De AI-spelers op Normaal en Sterk en de tips houden zich eraan, zie Seinen. Bij de start van een spel staan de afspraken in de chat.'],
         ['Seed', 'Leeg laten (standaard) geeft elke partij nieuwe kaarten. Met een getal krijg je bij dezelfde spelregels dezelfde kaarten, ook bij [Nog een partij]: zo speel je een partij nog eens. De seed van een partij staat bij de start in de chat en in de spelanalyse.'],
       ],
     },
@@ -161,18 +161,42 @@ export const CONTENT = {
     { p: 'Wil je eerst iets veranderen, of is er nog iemand bij gekomen? Met [Spelers of regels wijzigen] gaat de tafel terug naar Klaarzetten, met dezelfde spelcode. De AI-spelers die bij de start de lege plaatsen opvulden, staan dan weer op, zodat vrienden kunnen aanschuiven (zet zo nodig **Spelers** hoger), en de host kan de spelregels aanpassen.' },
 
     { h: 'Oefenen' },
+    { p: 'Tik op [Oefenen], kies een les en tik op [Start les]. Je speelt alleen met AI-spelers: **Juf Jannie (AI)** is je maat en niemand anders kan aanschuiven. Een les duurt 8 potjes. Juf Jannie legt het stap voor stap uit, en het spel wacht tot je op [Verder] of ergens op tafel tikt.' },
+    {
+      dl: [
+        ['Basisspel', 'Wie waar zit en wat je op het scherm ziet, troef, welke kaarten je mag spelen en hoe een potje telt. In het eerste potje blijft elke slag liggen tot je de uitleg hebt gelezen. Bij het derde potje legt ze de **punten** uit.'],
+        ['Roem en tellen', 'Wat **roem** is en wat het oplevert. De eerste keren wijst ze het aan in een slag. In het vijfde potje tel je de **troeven**, met een teller bij de troef.'],
+        ['Seinen', 'De **seinen** van de tafel. De eerste keren wijst ze ze aan: een kans om zelf te seinen (de kaart licht op) en een sein van een ander. De AI-spelers spelen in deze les minstens op Normaal. Staan alle seinen uit, dan gelden in deze les de standaardafspraken.'],
+        ['Vrij spelen', 'Geen les, maar een spel dat je start met [Start oefenspel]: een tip bij elke beurt en uitleg na elke slag. Standaard zijn het 8 potjes.'],
+      ],
+    },
     {
       ul: [
-        'Tik op [Oefenen] en dan op [Start oefenspel]. Je speelt alleen met AI-spelers: **Juf Jannie (AI)** is je maat en niemand anders kan aanschuiven.',
-        'Staat **Speluitleg** aan, dan legt Juf Jannie het spel stap voor stap uit: eerst wie waar zit en wat je op het scherm ziet, troef, welke kaarten je mag spelen en hoe een potje telt. In het eerste potje blijft elke slag liggen tot je de uitleg hebt gelezen. Elke nieuwe les krijgt twee potjes om te oefenen: bij het derde potje legt ze de **punten** uit, in het vijfde tel je de **troeven** (met een teller bij de troef), bij het zevende legt ze **roem** uit en bij het negende de **seinen** van de tafel; tot dan speelt niemand met seinen. Daarna wijst ze ze de eerste keren aan: roem in een slag, een kans om zelf te seinen (de kaart licht op) en een sein van een ander. Na twaalf potjes speel je de laatste vier potjes van een spel zonder tips. Het spel wacht tot je op [Verder] of ergens op tafel tikt. Ken je het spel al, zet Speluitleg dan uit.',
+        'In Basisspel en Roem en tellen speelt niemand met seinen.',
+        'Aan het eind van een les zegt Juf Jannie wat je daarna kunt kiezen. Met [Nog een partij] doe je dezelfde les nog eens.',
+        'Na elk potje wacht het spel tot je op [Volgend potje] tikt, zodat je de slagen rustig kunt nalopen.',
+      ],
+    },
+
+    { h4: 'Spelopties' },
+    {
+      ul: [
+        'Onder **Spelopties** staan **Tips**, **Open kaarten** en de spelregels, zoals bij Nieuw spel. **Potjes** staat er alleen bij Vrij spelen, **Seinen** alleen bij de les Seinen en Vrij spelen. Je browser onthoudt je keuzes.',
+        'Dit menu is ingeklapt. Het staat vanzelf open als Tips uit staat, Open kaarten aan staat of er een seed is ingevuld.',
+        'Zet je **Tips** uit, dan krijg je geen tip bij je beurt en geen uitleg na de slag. Een les gaat gewoon door. De robot bovenin blijft werken.',
         'Zet **Open kaarten** aan als je alle vier de handen wilt zien. Zo snap je beter waarom iemand iets speelt.',
+        'Het tempo staat standaard op rustig, zodat je alles goed kunt volgen.',
+      ],
+    },
+
+    { h4: 'Tips en uitleg' },
+    {
+      ul: [
         'Ben je aan de beurt, dan geeft een tipballon advies en licht de aangeraden kaart op. Moet je troef kiezen, dan staat de tip in het venster met de kleuren. Met ✕ verberg je de tip tot je volgende beurt.',
         'Wil je weten waarom, tik dan bovenin op de robot: **Redenering van de AI** laat zien wat de AI-spelers zouden spelen en wat elke kaart volgens de berekening oplevert, ook bij je eerdere zetten van dit potje.',
         'Je mag het advies ook in de wind slaan: zo leer je het meest. Speel je een andere kaart, dan vertelt Juf Jannie na de slag welke kaart zij had aangeraden en waarom. Kies je een andere troef, of speel of pas je tegen haar advies in, dan hoor je dat na de eerste slag.',
         'Na elke slag legt Juf Jannie uit wat er gebeurde: wie er won, met welke kaart en hoeveel punten en roem erin zaten. Wat ze uitlegt, kun je teruglezen in de chat.',
         'Na de laatste slag van een potje blijft die slag even liggen, zodat je de uitleg kunt lezen. Met [Verder] ga je meteen door naar de uitslag.',
-        'Na elk potje wacht het spel tot je op [Volgend potje] tikt, zodat je de slagen rustig kunt nalopen.',
-        'Het tempo staat op rustig, zodat je alles goed kunt volgen.',
       ],
     },
 
@@ -455,7 +479,7 @@ export const CONTENT = {
   seinen: [
     { lead: 'Met **seinen** (ook wel **voorkaarten**) vertel je je maat iets over je hand, alleen met de kaart die je speelt.' },
     { note: 'Seinen is een afspraak tussen maten, geen valsspelen: de kaart zelf is het signaal en iedereen aan tafel mag de afspraken kennen. Praten over je kaarten, knipogen of zuchten bij een slag hoort er niet bij.' },
-    { p: 'Welke seinen gelden, spreek je per tafel af: bij **Nieuw spel** en in de lobby, onder **Seinen**. Standaard staan **met de aas seinen**, **op- en afseinen** en **kleintje boer** aan en **boer over boer** uit. Bij de start van een spel staan de afspraken van de tafel in de chat. De AI-spelers op Normaal en Sterk en de tips houden zich eraan. Komt een AI-speler van de spelende partij voor het eerst uit met een kleintje, dan heeft die (bijna altijd) de troefboer. Let dus goed op wat zij uitspelen en bijspelen.' },
+    { p: 'Welke seinen gelden, spreek je per tafel af, onder **Seinen**: bij **Nieuw spel**, in de lobby en bij **Oefenen** onder Spelopties. Standaard staan **met de aas seinen**, **op- en afseinen** en **kleintje boer** aan en **boer over boer** uit. Bij de start van een spel staan de afspraken van de tafel in de chat. In de les Seinen legt Juf Jannie ze zelf uit. De AI-spelers op Normaal en Sterk en de tips houden zich eraan. In **Oefenen** op AI-sterkte Makkelijk speelt niemand met seinen. Komt een AI-speler van de spelende partij voor het eerst uit met een kleintje, dan heeft die (bijna altijd) de troefboer. Let dus goed op wat zij uitspelen en bijspelen.' },
 
     { h: 'Met de aas seinen' },
     { p: 'Heeft je **maat de slag**, en kun je niet bekennen en hoef je niet te troeven, gooi dan een **aas** bij van een **bijkleur** (geen troef) die nog niet gespeeld is. Daarmee zeg je: “ik heb ook de **10** van deze kleur”. De 11 punten van het aas zijn binnen, en zonder het aas is jouw 10 de hoogste kaart van de kleur. Je maat speelt die kleur later naar je toe, en dan pak jij de slag met je 10.' },
@@ -548,7 +572,7 @@ export const CONTENT = {
     {
       ul: [
         'Speel tegen de AI-spelers op **Makkelijk**, dan **Normaal** en dan **Sterk**. Elke stap leert je iets nieuws.',
-        'Gebruik **Oefenen**: Juf Jannie geeft bij elke zet een tip en legt na elke slag uit wat er gebeurde.',
+        'Gebruik **Oefenen**: volg de lessen van Juf Jannie, of speel vrij met een tip bij elke zet en uitleg na elke slag.',
         'Bekijk de **laatste slag** en het **scorebord** om te zien waar het potje gewonnen of verloren werd, en na de partij **Jouw spelanalyse**.',
       ],
     },
