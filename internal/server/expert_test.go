@@ -384,12 +384,13 @@ func TestWhyInTraining(t *testing.T) {
 }
 
 // TestMatchViewSignals: the reasoning reads the signals the table plays
-// with by now: with lessons none before the lesson on them.
+// with by now: in the lesson on signals none before Juf Jannie introduced
+// them, in the other lessons none at all.
 func TestMatchViewSignals(t *testing.T) {
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEST")
 	defer r.stop()
-	r.training, r.opts.Lessons = true, true
+	r.training, r.opts.Lesson = true, planSeinen
 	d := game.NewDeal(0, game.Shuffle(rand.New(rand.NewPCG(1, 2))), game.Utrechts, game.Amsterdams, 0)
 	if v := r.matchView(d, 0, 1); *v.Signals != (game.Signals{}) {
 		t.Errorf("before the lesson on signals: %+v", *v.Signals)
@@ -398,29 +399,32 @@ func TestMatchViewSignals(t *testing.T) {
 	if v := r.matchView(d, 0, 1); *v.Signals != r.opts.Signals || *v.Signals == (game.Signals{}) {
 		t.Errorf("after it: %+v, want %+v", *v.Signals, r.opts.Signals)
 	}
+	r.opts.Lesson, r.taught = planRoem, nil
+	if v := r.matchView(d, 0, 1); *v.Signals != (game.Signals{}) {
+		t.Errorf("in the lesson on roem: %+v", *v.Signals)
+	}
 }
 
-// TestWhySoloHands: the last hands of Speluitleg are played without tips,
-// so the reasoning of the decision awaited then is refused.
-func TestWhySoloHands(t *testing.T) {
-	s, _, _ := newTestServer(t)
-	r := newRoom(s, "TEST")
-	defer r.stop()
-	c := newClient(s, nil, "1.2.3.4", "test")
-	r.seats[0] = newHuman("Leerling")
-	r.training, r.opts.Lessons, r.opts.Hands = true, true, 16
-	r.lessonHands, r.firstHand, r.handNo = lessonsEnd+1, 1, 14
-	if r.tipsOn() {
-		t.Fatal("setup: tips on in hand 14 of 16 after the lessons")
-	}
-	r.phase = phasePlay
-	r.dealt = dealtCards{dealer: 3, hands: game.Shuffle(rand.New(rand.NewPCG(3, 4))), turned: game.Hearts}
-	r.deal = r.dealOf(r.dealt)
-	r.deal.ChooseTrump(0, game.Hearts)
-	r.acts = actToken(0, action{kind: actTrump, suit: game.Hearts})
-	hand, trick := 14, 1
-	r.cmdWhy(c, 0, &inMsg{Hand: &hand, Trick: &trick})
-	if b := string(<-c.out); !strings.Contains(b, "zonder tips") {
-		t.Errorf("why awaited in a hand without tips: %s", b)
+// TestWhyAwaitedInLesson: in a lesson the reasoning of the decision awaited
+// is answered, also in its last hand and with tips off, as the reasoning
+// sheet asks it then.
+func TestWhyAwaitedInLesson(t *testing.T) {
+	for _, tips := range []bool{true, false} {
+		s, _, ai := newTestServer(t)
+		r := lessonRoomOn(s)
+		defer r.stop()
+		r.opts.Tips, r.opts.Hands, r.handNo, r.firstHand = tips, lessonLength, lessonLength, 1
+		r.phase = phasePlay
+		r.dealt = dealtCards{dealer: 3, hands: game.Shuffle(rand.New(rand.NewPCG(3, 4))), turned: game.Hearts}
+		r.deal = r.dealOf(r.dealt)
+		r.deal.ChooseTrump(0, game.Hearts)
+		r.acts = actToken(0, action{kind: actTrump, suit: game.Hearts})
+		c := newClient(s, nil, "1.2.3.4", "test")
+		hand, trick := lessonLength, 1
+		r.cmdWhy(c, 0, &inMsg{Hand: &hand, Trick: &trick})
+		waitFor(t, "the reasoning", func() bool { return ai.reasoned.Load() == 1 })
+		if len(c.out) != 0 {
+			t.Errorf("tips %v: why awaited: %s", tips, <-c.out)
+		}
 	}
 }

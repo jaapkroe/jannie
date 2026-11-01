@@ -188,7 +188,7 @@ func (r *room) startMatch() {
 	r.firstHand = max(1, r.opts.From)
 	r.handNo = r.firstHand - 1
 	r.handActs, r.handDealt = nil, nil
-	delete(r.taught, lessonSolo) // the last hands of every match are without tips: each says so
+	r.taught = nil // a rematch repeats the lesson from the start
 	// The seed from the start, so nobody has to play to the end to see it.
 	if r.opts.From > 0 {
 		r.sysChat("Spel (%d) begint: potje %d, %s. Veel plezier!", r.seed, r.firstHand, r.opts.variantNL())
@@ -206,12 +206,13 @@ func (r *room) startMatch() {
 
 // signalChat puts the table's agreements on signals in the chat at the
 // start of a match with four players (design §8), each with what it says.
-// With lessons they wait for Juf Jannie's lesson on signals.
+// A lesson has none to tell: Juf Jannie gives them herself in the lesson on
+// signals, and the other lessons play without.
 func (r *room) signalChat() {
-	if r.players() != 4 || r.lessonsOn() && r.taught[lessonSignals] == 0 {
+	if r.players() != 4 || r.lessonsOn() {
 		return
 	}
-	rules := signalRules(r.opts.Signals)
+	rules := signalRules(r.signals())
 	if len(rules) == 0 {
 		r.sysChat("Aan deze tafel spreken we geen seinen af.")
 		return
@@ -234,9 +235,6 @@ func (r *room) startHand() {
 	}
 	r.handNo++
 	r.missed, r.misses = nil, nil
-	if r.lessonsOn() {
-		r.lessonHands++
-	}
 	hands, talon := game.ShuffleFor(n, r.deals)
 	turned := game.Suit(r.deals.IntN(game.NumSuits))
 	r.dealt = dealtCards{dealer: dealer, talon: slices.Clone(talon), turned: turned}

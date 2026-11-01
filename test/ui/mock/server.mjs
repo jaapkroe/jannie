@@ -17,6 +17,9 @@
 // --rig makes the first hand of every room deterministic: seat 0 is voorhand
 // and holds KH AH TH 9H 8H AS TS AC; leading KH with hearts as trump gives a
 // trick with driekaart + stuk (40 roem). In gedraaid the turned suit is hearts.
+//
+// Training has the options lesson and tips with their effect on the match
+// (trainingOpts), but no lesson steps: those need the real server.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -194,7 +197,8 @@ const PLAYING = new Set(['trump', 'bid', 'play']);
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 const rooms = new Map();
 const SIGNALS = { aas: true, kleintjeBoer: true, hoogLaag: true, boerOverBoer: false };
-const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', open: false, signals: SIGNALS, seed: 0 };
+const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', open: false, lesson: '', tips: false, signals: SIGNALS, seed: 0 };
+const LESSON_LENGTH = 8; // hands of a lesson, as lessonLength on the server
 
 function newCode() {
   for (;;) {
@@ -236,9 +240,22 @@ function createRoom(opts, training) {
     chat: [], timers: new Set(), rigged: RIG, lastBotChat: 0,
     turnKey: '', turnAt: 0, openedAt: 0, think: 0, turnTimer: 0, question: null, takeover: null, summaryWaits: false,
   };
-  if (training) room.opts = { ...room.opts, tempo: opts?.tempo || 'rustig' };
+  room.opts = trainingOpts(room.opts, opts, training);
   rooms.set(room.code, room);
   return room;
+}
+
+// As on the server: lesson and tips belong to training; a lesson has its own
+// length, and the one on signals has bots that keep to them.
+function trainingOpts(o, asked, training) {
+  if (!training) return { ...o, lesson: '', tips: false };
+  const out = { ...o, tempo: asked?.tempo || 'rustig', tips: asked?.tips !== false };
+  if (out.lesson) out.hands = LESSON_LENGTH;
+  if (out.lesson === 'seinen') {
+    if (out.ai === 'makkelijk') out.ai = 'normaal';
+    if (!Object.values(out.signals).some(Boolean)) out.signals = SIGNALS;
+  }
+  return out;
 }
 
 function pickOpts(o = {}) {
@@ -250,6 +267,8 @@ function pickOpts(o = {}) {
   if (['makkelijk', 'normaal', 'sterk'].includes(o.ai)) out.ai = o.ai;
   if (['rustig', 'normaal', 'snel'].includes(o.tempo)) out.tempo = o.tempo;
   if (typeof o.open === 'boolean') out.open = o.open;
+  if (typeof o.tips === 'boolean') out.tips = o.tips;
+  if (['', 'basis', 'roem', 'seinen'].includes(o.lesson)) out.lesson = o.lesson;
   if (o.seed === null || Number.isInteger(o.seed) && o.seed >= 0 && o.seed <= 999999999) out.seed = o.seed || 0;
   // The bots here know no signals; the agreements are only kept.
   if (o.signals && typeof o.signals === 'object') {
@@ -288,7 +307,7 @@ function stateFor(room, seat) {
     hint: null, hands4: null, winner: room.winner,
     review: room.phase === 'gameOver' && !room.players[seat]?.bot ? mockReview(room, seat) : null,
   };
-  if (room.training && myTurn) s.hint = hintFor(room, seat);
+  if (room.opts.tips && myTurn) s.hint = hintFor(room, seat);
   if (room.training && room.opts.open && playing) s.hands4 = d.hands.map((h, i) => (i === seat ? null : sortHand(h, d.trump)));
   return s;
 }
@@ -681,7 +700,7 @@ function doPlay(room, seat, card) {
     const bot = room.players.findIndex((p, i) => p?.bot && i % 2 === team);
     if (bot >= 0) botSay(room, bot, 'roem');
   }
-  if (room.training) {
+  if (room.opts.tips) {
     const names = room.players.map((p, i) => (i === 0 ? 'Jij' : p.name));
     const rtxt = roem.length ? `, roem: ${roem.map(r => `${r.kind} (${r.points})`).join(', ')}` : '';
     later(room, 120, () => {
@@ -931,6 +950,9 @@ function onMessage(ws, m) {
       // the mock's grades are all in at once.
       if (room.phase === 'lobby' || !Number.isInteger(m.hand) || m.hand < 1 || m.hand > (room.handTricks?.length || 0)) return err('ongeldig', 'Dat potje is er (nog) niet.');
       return send(ws, { t: 'handReview', hand: m.hand, pending: 0, replay: replayOf(room, m.hand, seat) });
+    case 'why':
+      // The mock does not search: a decision without a reasoning.
+      return send(ws, { t: 'why', hand: m.hand, trick: m.trick, seat, options: [] });
     case 'feedback':
       if (room.phase !== 'gameOver') return err('ongeldig', 'Een opmerking geef je bij de spelanalyse, na het spel.');
       if (!String(m.text || '').trim()) return err('ongeldig', 'Schrijf eerst wat je kwijt wilt.');

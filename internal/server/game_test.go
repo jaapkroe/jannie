@@ -534,6 +534,75 @@ func TestIllegalPlayRejected(t *testing.T) {
 	}
 }
 
+// TestTipsOption: tips are on by default in training and off in any other
+// game, also when asked for there. A bad value is refused in the lobby.
+func TestTipsOption(t *testing.T) {
+	_, ts, _ := newTestServer(t)
+	for _, tc := range []struct {
+		opts     map[string]any
+		training bool
+		want     bool
+	}{
+		{map[string]any{}, true, true},
+		{map[string]any{"tips": true}, true, true},
+		{map[string]any{"tips": false}, true, false},
+		{map[string]any{}, false, false},
+		{map[string]any{"tips": true}, false, false},
+		{map[string]any{"tips": "ja"}, true, true}, // create skips a stale value
+		{map[string]any{"tips": nil}, true, true},  // and null
+	} {
+		c := dial(t, ts)
+		c.create("Speler", tc.opts, tc.training, false)
+		if c.s.Opts.Tips != tc.want {
+			t.Errorf("%+v: tips %v", tc, c.s.Opts.Tips)
+		}
+	}
+	h := dial(t, ts)
+	h.create("Host", nil, false, false)
+	h.send(map[string]any{"t": "opts", "opts": map[string]any{"tips": true}})
+	h.waitEvent("lobby")
+	if h.s.Opts.Tips {
+		t.Error("tips switched on outside training")
+	}
+	for _, bad := range []any{"ja", nil} {
+		h.send(map[string]any{"t": "opts", "opts": map[string]any{"tips": bad}})
+		if e := h.waitError(errInvalid); e.errMsg() != "Ongeldige waarde voor tips." {
+			t.Errorf("the bad value %v: %q", bad, e.errMsg())
+		}
+	}
+}
+
+// TestTrainingWithoutTips: vrij spelen with tips off has no hint on a turn,
+// no tip after a trick and no line of Juf Jannie as coach in the chat, while
+// the reasoning of the decision awaited is answered.
+func TestTrainingWithoutTips(t *testing.T) {
+	_, ts, ai := newTestServer(t)
+	c := dial(t, ts)
+	c.create("Speler", map[string]any{"hands": 4, "tips": false}, true, true)
+	drive(t, func() bool {
+		if c.s.Hint != nil {
+			t.Fatalf("a hint with tips off: %+v", c.s.Hint)
+		}
+		return c.phase() == phasePlay && c.myTurn()
+	}, c)
+	trick := 9 - len(c.s.Hand)
+	c.send(map[string]any{"t": "why", "hand": c.s.HandNo, "trick": trick})
+	m := c.until(5*time.Second, "why", func(m *msg) bool { return m.T == "why" || m.T == "error" })
+	if m.T != "why" || ai.reasoned.Load() != 1 {
+		t.Fatalf("why with tips off: %s", m.raw)
+	}
+	c.actRandom(rand.New(rand.NewPCG(9, 9)))
+	run := readLessons(t, c, func() bool { return c.phase() == phaseGameOver }, nil)
+	if c.tips != 0 || len(run.hints) != 0 || ai.explained.Load() != 0 {
+		t.Errorf("%d tips, hints %v, %d tricks explained", c.tips, run.hints, ai.explained.Load())
+	}
+	for _, line := range c.chats {
+		if line.Coach {
+			t.Errorf("a line of Juf Jannie as coach: %+v", line)
+		}
+	}
+}
+
 func TestTrainingHintsAndTips(t *testing.T) {
 	_, ts, ai := newTestServer(t)
 	rng := rand.New(rand.NewPCG(9, 9))

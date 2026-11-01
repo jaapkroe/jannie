@@ -147,16 +147,17 @@ function ask(d) {
 // card the server knows a decision by the player's last one, or the one
 // awaited now: in gedraaid a pass and then, once everyone passed, the trump
 // choice. kind keeps those apart, and key names a decision for the answers
-// kept: an answer about a decision awaited is not one about it made. In
-// training the decision awaited now is there only with tips: the last
-// hands of Speluitleg are played without them (the state has no hint then).
+// kept: an answer about a decision awaited is not one about it made. With
+// tips on the decision awaited now comes with its hint (in training the
+// state has one on every turn); with tips off, or in the expert mode, there
+// is no hint and it is always there.
 function decisions(s) {
   const out = [];
   const add = (trick, kind, awaited) => out.push({
     hand: s.handNo, trick, kind, awaited, key: `${s.handNo}/${trick}/${kind}/${awaited ? 'nu' : 'gedaan'}`,
   });
   const turn = s.turn === s.you && PLAYING.has(s.phase);
-  const asks = turn && (!s.training || !!s.hint);
+  const asks = turn && (s.expert || !s.opts.tips || !!s.hint);
   const bid = s.bids?.[s.you] ?? -1; // gedraaid: -1 none yet, 0 passen, 1 spelen
   if (turn && (s.phase === 'bid' || s.phase === 'trump')) {
     if (asks) add(0, s.phase === 'trump' ? 'suit' : 'bid', true);

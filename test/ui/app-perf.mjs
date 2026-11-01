@@ -40,7 +40,7 @@ const errors = [];
 function init() {
   try {
     localStorage.setItem('kj.prefs', JSON.stringify({ tap: 'one' }));
-    localStorage.setItem('kj.lessons', '0');
+    localStorage.setItem('kj.train', JSON.stringify({ lesson: 'vrij' }));
   } catch {}
   window.kjEvents = [];
   new PerformanceObserver(l => {

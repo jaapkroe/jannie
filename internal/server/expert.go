@@ -173,11 +173,6 @@ func (r *room) cmdWhy(c *client, i game.Seat, m *inMsg) {
 		c.sendError(errInvalid, "Die beslissing is er (nog) niet.")
 		return
 	}
-	if done == nil && r.training && !r.tipsOn() {
-		// The last hands of Speluitleg are played without tips.
-		c.sendError(errInvalid, "Deze potjes speel je zonder tips: na je zet zie je de redenering.")
-		return
-	}
 	if r.explaining {
 		c.sendError(errLimit, "Even geduld: de AI denkt nog na over de vorige vraag.")
 		return
