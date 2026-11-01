@@ -487,10 +487,14 @@ func New(p Persona, lvl Level, seed uint64) Player
 //     SE): then the hint is that card, with how much more it brings than
 //     the rule's card and in which part of the value mainly. The search
 //     keeps per card, from the same playouts, the points and the roem in
-//     the card's own trick and in the later tricks (ours minus theirs) and
-//     what nat and pit add; they sum to the value ("Speel ♠V: volgens de
-//     berekening levert dat gemiddeld 9 punten meer op dan ♠8, vooral in
-//     de roem van deze slag").
+//     the card's own trick and in the later tricks (ours minus theirs)
+//     in the playouts where the hand is made, all of that under nat where
+//     it goes nat, and the pit bonus; they sum to the value ("Speel ♠V:
+//     volgens de berekening levert dat gemiddeld 9 punten meer op dan ♠8,
+//     vooral in de roem van deze slag"). A gain in nat without more or
+//     less nat is in what the hands that go nat are worth ("vooral doordat
+//     alle punten en roem naar jullie gaan als de tegenstanders nat gaan
+//     (100%)").
 //   - What the card signals at the table (§8) is added: true, or a
 //     warning when the partner would read something untrue.
 // Every play hint opens with "Speel ♠V: ". The search values every option
@@ -561,7 +565,8 @@ type Option struct {
     SE    float64   // paired standard error of its difference with the best option; 0 for the best
     Outcome
     Parts []float64 // a card: points in its trick, in later tricks, roem in its trick, in later tricks,
-                    // nat and pit (searchWhy's parts); they sum to Value less what was scored before it
+                    // all that under nat when the hand goes nat, and the pit bonus (searchWhy's parts);
+                    // they sum to Value less what was scored before it
 }
 func Explain(v game.View) Explanation
 // What the cards dealt to v.Seat are worth to its team against an average
@@ -2158,7 +2163,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   van Normaal, minder dan 5 punten: dan blijft de tip bij die kaart.*), a
   table of
   every option (*Waarde*, *±*, for a card *Punten slag*, *Punten later*,
-  *Roem slag*, *Roem later*, *Nat, pit*, and *Nat wij*, *Nat zij*; the
+  *Roem slag*, *Roem later*, *Nat*, *Pit*, and *Nat wij*, *Nat zij*; the
   option played marked *gespeeld* or *gekozen*, the best value in gold; on
   a phone the table scrolls sideways) and *Over 400 verdelingen van de
   kaarten die jij niet kon zien.* (`worlds`) with an ⓘ on what the numbers

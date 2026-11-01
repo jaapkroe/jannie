@@ -194,7 +194,7 @@ function whyView(w) {
   const cards = w.options.some(o => o.parts);
   const best = Math.max(...w.options.map(o => o.value));
   const heads = cards
-    ? ['Kaart', 'Waarde', '±', 'Punten slag', 'Punten later', 'Roem slag', 'Roem later', 'Nat, pit', 'Nat wij', 'Nat zij']
+    ? ['Kaart', 'Waarde', '±', 'Punten slag', 'Punten later', 'Roem slag', 'Roem later', 'Nat', 'Pit', 'Nat wij', 'Nat zij']
     : [w.options[0].suit ? 'Troef' : 'Keuze', 'Waarde', '±', 'Nat wij', 'Nat zij'];
   const rows = w.options.map(o => h('tr', { class: (same(o, w.played) ? 'xp-played' : '') + (o.value === best ? ' xp-best' : '') },
     h('th', {}, suitify(label(o)), same(o, w.played) ? h('small', { text: o.card ? ' gespeeld' : ' gekozen' }) : null),
@@ -216,7 +216,7 @@ function whyView(w) {
         'Normaal: de keuze van de AI-spelers op Normaal, met de regel die hem koos. Sterk: de keuze van de AI-spelers op Sterk, uit deze berekening. Tip: wat Juf Jannie bij Oefenen aanraadt.',
         'De AI speelt elke keuze uit over honderden verdelingen van de kaarten die de speler niet kon zien, telkens met eenvoudige regels tot het eind van het potje.',
         `Waarde: hoeveel punten jij en je maat gemiddeld meer halen dan de tegenstanders aan het eind van het potje, roem, nat en pit meegeteld. ±: de standaardfout van het verschil met de beste; een verschil van minder dan twee keer ± kan toeval zijn.`,
-        ...(cards ? ['Punten slag, punten later, roem slag en roem later: hetzelfde verschil, alleen van de kaartpunten of van de roem, in deze slag en in de latere slagen. Nat, pit: wat nat en pit daar nog aan toevoegen. Samen zijn ze de waarde, min wat er voor deze kaart al gehaald was.'] : []),
+        ...(cards ? ['Punten slag, punten later, roem slag en roem later: hetzelfde verschil, alleen van de kaartpunten of van de roem, in deze slag en in de latere slagen, als het spelende team het potje haalt. Nat: gaat het spelende team nat, dan krijgt één team alles en telt dat hier. Pit: de pitbonus. Samen zijn ze de waarde, min wat er voor deze kaart al gehaald was.'] : []),
         `Nat wij: de kans dat jij en je maat spelen en nat gaan. Nat zij: de kans dat de tegenstanders spelen en nat gaan.`,
         ...(cards ? ['Sterk speelt niet altijd de kaart met de hoogste waarde: geen vals sein voor minder dan 20 punten (kleintje boer of boer over boer: 10), tenzij de kaart van Normaal zelf al een vals sein is, en bij heel weinig verschil de kaart van Normaal. Staat Sterk niet op de hoogste waarde, dan staat erbij waarom. De tip houdt de kaart van Normaal aan, tenzij Sterk minstens 5 punten en minstens twee keer de standaardfout beter is.'] : []),
         'De AI-spelers op Sterk rekenen met hun eigen verdelingen en, naar karakter, met wat zin in pit: hun keuze kan een enkele keer anders zijn dan hier.',

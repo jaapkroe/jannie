@@ -743,6 +743,8 @@ CHECKS.expert = async browser => {
     const reasoning = () => P.page.evaluate(() => ({
       head: document.querySelector('.m-why .why-head p')?.textContent,
       rows: document.querySelectorAll('.m-why .xp-table tbody tr').length,
+      // A heading per column, also when the engine adds a part of the value.
+      columns: [...document.querySelectorAll('.m-why .xp-table tr')].every(tr => tr.children.length === document.querySelectorAll('.m-why .xp-table thead th').length),
       played: [...document.querySelectorAll('.m-why .xp-table tbody small')].map(e => e.textContent.trim()),
       lines: [...document.querySelectorAll('.m-why .xp-why > p b')].map(e => e.textContent.trim()),
       prev: document.querySelector('.m-why .why-head .icon-btn[aria-label="Vorige zet"]')?.disabled,
@@ -761,7 +763,7 @@ CHECKS.expert = async browser => {
     await waitFor(P, t => document.querySelector('.m-why.open .why-head p')?.textContent === `Slag ${t} · Jij bent aan de beurt`, { label: 'the sheet on the decision now' }, trick);
     await waitFor(P, () => document.querySelector('.m-why .xp-why .xp-table tbody tr'), { label: 'the reasoning now', timeout: 60000 });
     const now = await reasoning();
-    if (now.rows < 2 || now.played.length || String(now.lines) !== 'Normaal:,Sterk:,Tip:' || now.prev !== false || now.next !== true || !sterkOk(now)) throw new Error(`reasoning now ${JSON.stringify(now)}`);
+    if (now.rows < 2 || !now.columns || now.played.length || String(now.lines) !== 'Normaal:,Sterk:,Tip:' || now.prev !== false || now.next !== true || !sterkOk(now)) throw new Error(`reasoning now ${JSON.stringify(now)}`);
     await checkOverflow(P, 'reasoning');
     await shot(P, 'why-now');
 

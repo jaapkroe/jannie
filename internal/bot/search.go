@@ -192,30 +192,44 @@ type playResult struct {
 	parts  [numParts]int64 // with cfg.points: the value summed per part
 }
 
-// The parts of a card's value that a hint names (see searchWhy): the
-// points and the roem in the card's own trick and in the later tricks,
-// ours minus the opponents', and what nat and pit add to that. They sum to
-// the value less what was scored before the card, which is the same for
-// every card.
+// The parts of a card's value that a hint names (see searchWhy): in a hand
+// that is made the points and the roem in the card's own trick and in the
+// later tricks, ours minus the opponents'; in a hand that goes nat all of
+// that under nat, as one team gets everything and the points and the roem
+// no longer count apart; and the pit bonus. They sum to the value less what
+// was scored before the card, which is the same for every card.
 const (
 	partPointsNow = iota
 	partPointsLater
 	partRoemNow
 	partRoemLater
-	partNatPit
+	partNat
+	partPit
 	numParts
 )
 
 // addParts adds the parts of one playout's value v to p: start, mid and
 // end are the points and the roem per side before the card, after its
-// trick and at the end of the hand.
-func addParts(p *[numParts]int64, start, mid, end [2][2]int, v, team int) {
+// trick and at the end of the hand, without the pit bonus; r is the result
+// of the hand.
+func addParts(p *[numParts]int64, start, mid, end [2][2]int, r *game.HandResult, v, team int) {
 	d := func(x [2]int) int { return x[team] - x[1-team] }
+	pit := 0
+	if r.Pit {
+		pit = game.PitBonus
+		if r.PitTeam != team {
+			pit = -pit
+		}
+	}
+	p[partPit] += int64(pit)
+	if r.Nat {
+		p[partNat] += int64(v - pit - d(start[0]) - d(start[1]))
+		return
+	}
 	p[partPointsNow] += int64(d(mid[0]) - d(start[0]))
 	p[partPointsLater] += int64(d(end[0]) - d(mid[0]))
 	p[partRoemNow] += int64(d(mid[1]) - d(start[1]))
 	p[partRoemLater] += int64(d(end[1]) - d(mid[1]))
-	p[partNatPit] += int64(v - d(end[0]) - d(end[1]))
 }
 
 // part is part k of r's value per world.
@@ -312,7 +326,7 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 				sums[ch][i] += vals[i]
 				outs[ch][i].add(&r, team)
 				if cfg.points {
-					addParts(&parts[ch][i], start, mid, [2][2]int{s.d.HandPoints(), s.d.HandRoem()}, int(vals[i]), team)
+					addParts(&parts[ch][i], start, mid, [2][2]int{s.d.HandPoints(), s.d.HandRoem()}, &r, int(vals[i]), team)
 				}
 				for j := range i {
 					d := vals[j] - vals[i]

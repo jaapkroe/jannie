@@ -104,6 +104,38 @@ func fakeResults(v *game.View, means map[string]float64, se float64) []playResul
 	return res
 }
 
+// TestAddParts: the pit bonus is its own part, whoever makes it, and a hand
+// that goes nat counts whole under nat: the points and the roem no longer
+// count apart. The parts sum to the value less what was scored before.
+func TestAddParts(t *testing.T) {
+	start := [2][2]int{{41, 8}, {20, 0}}
+	for _, c := range []struct {
+		name         string
+		points, roem [2]int
+		r            game.HandResult
+		v            int
+		want         [numParts]int64
+	}{
+		{"made", [2]int{100, 62}, [2]int{20, 0}, game.HandResult{PitTeam: -1}, 58,
+			[numParts]int64{partPointsNow: -8, partPointsLater: 13, partRoemNow: 20, partRoemLater: -20}},
+		{"they go nat", [2]int{110, 52}, [2]int{20, 20}, game.HandResult{Nat: true, PitTeam: -1}, 202,
+			[numParts]int64{partNat: 149}},
+		{"we go nat", [2]int{52, 110}, [2]int{20, 20}, game.HandResult{Nat: true, PitTeam: -1}, -202,
+			[numParts]int64{partNat: -255}},
+		{"our pit", [2]int{162, 0}, [2]int{20, 0}, game.HandResult{Pit: true, PitTeam: 0}, 282,
+			[numParts]int64{partPointsNow: -8, partPointsLater: 137, partRoemNow: 20, partRoemLater: -20, partPit: 100}},
+		{"their pit and we go nat", [2]int{0, 162}, [2]int{0, 20}, game.HandResult{Nat: true, Pit: true, PitTeam: 1}, -282,
+			[numParts]int64{partNat: -235, partPit: -100}},
+	} {
+		var p [numParts]int64
+		mid := [2][2]int{{start[0][0], start[0][1] + 8}, {start[1][0] + 20, 0}}
+		addParts(&p, start, mid, [2][2]int{c.points, c.roem}, &c.r, c.v, 0)
+		if p != c.want {
+			t.Errorf("%s: parts %v, want %v", c.name, p, c.want)
+		}
+	}
+}
+
 // withParts sets the parts of the value of card c in res, per world.
 func withParts(res []playResult, c string, parts map[int]float64) {
 	for i := range res {
@@ -182,22 +214,76 @@ func TestSearchWhy(t *testing.T) {
 	for _, c := range []struct {
 		name       string
 		parts      map[int]float64
-		natA, natT int // percent nat with ♠A and with ♠10
+		natA, natT int  // percent nat with ♠A and with ♠10
+		them       bool // the opponents play, so that is their nat
 		want       string
 	}{
-		{"roem in this trick", map[int]float64{partRoemNow: 12, partPointsNow: -2}, 0, 0, "in de roem van deze slag."},
-		{"two parts", map[int]float64{partPointsLater: 5, partRoemLater: 5}, 0, 0,
+		{"roem in this trick", map[int]float64{partRoemNow: 12, partPointsNow: -2}, 0, 0, false, "in de roem van deze slag."},
+		{"two parts", map[int]float64{partPointsLater: 5, partRoemLater: 5}, 0, 0, false,
 			"in de punten van de latere slagen en in de roem van de latere slagen."},
-		{"nat", map[int]float64{partNatPit: 10}, 10, 30, "doordat jullie minder vaak nat gaan (10% tegen 30%)."},
-		{"pit", map[int]float64{partNatPit: 10}, 0, 0, "door de kans op pit."},
+		{"nat", map[int]float64{partNat: 10}, 10, 30, false, "doordat jullie minder vaak nat gaan (10% tegen 30%)."},
+		{"nat, they play", map[int]float64{partNat: 10}, 30, 10, true, "doordat de tegenstanders vaker nat gaan (30% tegen 10%)."},
+		{"nat by one percent", map[int]float64{partNat: 3}, 28, 29, false, "doordat jullie minder vaak nat gaan (28% tegen 29%)."},
+		{"nat by one percent, they play", map[int]float64{partNat: 3}, 29, 28, true, "doordat de tegenstanders vaker nat gaan (29% tegen 28%)."},
+		{"a change in nat that does not explain the gain", map[int]float64{partNat: 10}, 99, 100, false,
+			"doordat alle punten en roem naar de tegenstanders gaan als jullie nat gaan (100%)."},
+		{"a change in nat that does not explain the gain, they play", map[int]float64{partNat: 10}, 100, 99, true,
+			"doordat alle punten en roem naar jullie gaan als de tegenstanders nat gaan (100%)."},
+		{"nat either way", map[int]float64{partNat: 30, partRoemNow: -20}, 99, 99, false,
+			"doordat alle punten en roem naar de tegenstanders gaan als jullie nat gaan (99%)."},
+		{"nat either way, they play", map[int]float64{partNat: 30, partRoemNow: -20}, 100, 100, true,
+			"doordat alle punten en roem naar jullie gaan als de tegenstanders nat gaan (100%)."},
+		{"the higher share", map[int]float64{partNat: 10}, 100, 90, false,
+			"doordat alle punten en roem naar de tegenstanders gaan als jullie nat gaan (100%)."},
+		{"the higher share, they play", map[int]float64{partNat: 10}, 90, 100, true,
+			"doordat alle punten en roem naar jullie gaan als de tegenstanders nat gaan (100%)."},
+		{"nat and a second part", map[int]float64{partNat: 5.5, partRoemLater: 4.5}, 100, 100, false,
+			"doordat alle punten en roem naar de tegenstanders gaan als jullie nat gaan (100%) en in de roem van de latere slagen."},
+		{"nat beside a larger part", map[int]float64{partPointsNow: -2, partPointsLater: 7, partNat: 5}, 2, 34, false,
+			"in de punten van de latere slagen en doordat jullie minder vaak nat gaan (2% tegen 34%)."},
+		{"nat too small to name", map[int]float64{partPointsLater: 7, partNat: 3}, 2, 34, false, "in de punten van de latere slagen."},
+		{"pit", map[int]float64{partPit: 10}, 0, 0, false, "door de kans op pit."},
+		{"pit with nat the same", map[int]float64{partPit: 10}, 30, 30, false, "door de kans op pit."},
 	} {
 		res := fakeResults(&v, map[string]float64{"AS": 40, "TS": 30}, 1)
 		withParts(res, "AS", c.parts)
 		i, j := resultIndex(res, card("AS")), resultIndex(res, card("TS"))
-		res[i].out.natUs = c.natA * res[i].n / 100
-		res[j].out.natUs = c.natT * res[j].n / 100
+		tab.playing = m.seat.Team()
+		if c.them {
+			tab.playing = 1 - tab.playing
+			res[i].out.natThem = c.natA * res[i].n / 100
+			res[j].out.natThem = c.natT * res[j].n / 100
+		} else {
+			res[i].out.natUs = c.natA * res[i].n / 100
+			res[j].out.natUs = c.natT * res[j].n / 100
+		}
 		if got := m.searchWhy(res, i, j); got != head+c.want {
 			t.Errorf("%s: got %q\nwant %q", c.name, got, head+c.want)
+		}
+	}
+}
+
+// TestNatEitherWay: the opponents go nat whatever the player does, so the
+// 20 roem that ♥10 adds to their trick comes back with everything else.
+// The gain is in nat: both teams have a trick, so there is no pit left.
+func TestNatEitherWay(t *testing.T) {
+	d := build(t, 1, [4]string{
+		"8H JD TH 9H 7D AC QS JC",
+		"TS TD TC JH 8C 7H 9D 9C",
+		"7S AS KC 8S AD KD KS AH",
+		"QH 9S 7C QC QD JS 8D KH",
+	}, game.Hearts, game.Amsterdams, "8C KC 7C JC AD 8D 7D 9D AS 9S QS TS KS JS JD 7H JH AH QH")
+	v := turnView(d)
+	a := Advise(v)
+	want := "Speel ♥10: volgens de berekening levert dat gemiddeld 20 punten meer op dan ♥8, " +
+		"vooral doordat alle punten en roem naar jullie gaan als de tegenstanders nat gaan (100%)."
+	if a.Card == nil || *a.Card != card("TH") || a.Text != want {
+		t.Errorf("got %v %q\nwant ♥10 %q", a.Card, a.Text, want)
+	}
+	// The sheet shows that all of it is in nat.
+	for _, o := range Explain(v).Options {
+		if want := o.Value - 53; o.Parts[partNat] != want {
+			t.Errorf("%v: nat part %v, want %v", *o.Card, o.Parts[partNat], want)
 		}
 	}
 }
