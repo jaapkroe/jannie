@@ -1,19 +1,63 @@
-/* The table of toepen (web/js/toepen.js), loaded with it. It builds on
-   app.css (tokens, buttons, avatars, bubbles, modals) and cards.css. */
+/* Toepen's site (web/toepen): its look and its table (js/table.js). It
+   builds on the shell's app.css (layout, tokens, buttons, avatars, bubbles,
+   modals, the lobby) and cards.css, and comes after them: what it sets on
+   :root gives the site its own colours. */
 
-body[data-screen="toepen"] #toepen {
-  display: flex;
+/* ---------- the site's colours ---------- */
+
+/* A blue café felt instead of klaverjas's green; the gold stays. */
+:root {
+  --bg: #0b1f2e;
+  --bg-2: #06131c;
+  --felt-1: #3a7fb0;
+  --felt-2: #22597f;
+  --felt-3: #0f3552;
+  --panel: rgba(8, 20, 30, 0.82);
+  --panel-solid: #0f2433;
 }
 
-.screen-toepen {
-  position: relative;
-  flex-direction: column;
-  height: 100dvh;
-  overflow: hidden;
-  overflow: clip;
+body {
+  background-color: var(--bg-2);
+  background-image:
+    radial-gradient(120% 80% at 50% -10%, rgba(70, 130, 190, 0.35), transparent 60%),
+    radial-gradient(100% 100% at 50% 100%, rgba(0, 0, 0, 0.5), transparent 70%),
+    linear-gradient(180deg, #0e2a3b 0%, #0a1f2c 50%, #06131c 100%);
 }
 
-/* ---------- top bar ---------- */
+.topbar {
+  background: linear-gradient(180deg, rgba(4, 10, 16, 0.94), rgba(4, 10, 16, 0.78));
+}
+
+/* ---------- home and lobby ---------- */
+
+/* Nieuw spel alone: toepen has no Oefenen. */
+.tiles > :only-child {
+  grid-column: 1 / -1;
+}
+
+/* Up to six seats around the mini table (game.js places them), nobody
+   anyone's partner. */
+.mini-table.tp .lseat {
+  width: 96px;
+  translate: -50% -50%;
+}
+
+.mini-table.tp .ls-main {
+  min-width: 80px;
+}
+
+.mini-table.tp .ls-main .avatar {
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+}
+
+.lseat.tp-opp {
+  --team: rgba(255, 255, 255, 0.4);
+}
+
+/* ---------- the table ---------- */
+
 
 .tp-pill {
   display: flex;

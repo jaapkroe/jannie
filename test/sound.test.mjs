@@ -1,10 +1,10 @@
-// Unit tests for web/js/sound.js against a strict fake WebAudio API.
+// Unit tests for web/shared/js/sound.js against a strict fake WebAudio API.
 //   node --test test/sound.test.mjs
 
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-const MODULE = new URL('../web/js/sound.js', import.meta.url).href;
+const MODULE = new URL('../web/shared/js/sound.js', import.meta.url).href;
 const NAMES = ['card', 'deal', 'shuffle', 'trick', 'trickWon', 'roem', 'trump', 'turn', 'chat',
   'nat', 'pit', 'handWon', 'handLost', 'win', 'lose', 'click', 'error', 'join', 'knock'];
 const MAX_LENGTH = {

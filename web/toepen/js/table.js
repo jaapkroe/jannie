@@ -1,14 +1,14 @@
-// The table of toepen (design §11), loaded once a room plays it: the seats
+// The table of toepen (docs/toepen.md) at toepen.kroes.dev: the seats
 // around the felt (two to six), the trick, the stake, your four cards and
-// the questions of the round (was, check, toep). It shares the shell with
-// klaverjas: the lobby, chat, calls, settings and the takeover question's
-// protocol; its own overlays are the round summary, game over, the
-// standings and the rules. Pure parts: toepen-rules.js.
+// the questions of the round (was, check, toep), the takeover question,
+// and the overlays of the game: the round summary, game over, the
+// standings and the rules. The shell (main.js, home.js, panels.js) does the
+// rest; game.js ties the two together. Pure parts: rules.js.
 import { app, h, clear, icon, toast, avatar, fillAvatar, playerName, wait, anim, dur, vibrate } from './util.js';
 import { createCard, createBack, cardName } from './cards.js';
 import { sound } from './sound.js';
 import * as panels from './panels.js';
-import * as R from './toepen-rules.js';
+import * as R from './rules.js';
 
 const E = {};
 let built = false;
@@ -22,11 +22,11 @@ let shownCheck = 0;      // the number of settled claims shown
 const touch = matchMedia('(pointer: coarse)');
 const STUCK_MS = 4000;
 
-function build() {
+// Builds the table in #game once, at boot (main.js: table.init).
+export function init() {
   if (built) return;
   built = true;
-  document.head.append(h('link', { rel: 'stylesheet', href: '/css/toepen.css' }));
-  const root = h('section', { id: 'toepen', class: 'screen screen-toepen', 'aria-label': 'Toepentafel' });
+  const root = document.getElementById('game');
   E.top = h('header', { class: 'topbar tp-top' },
     E.pill = h('button', { class: 'tp-pill', type: 'button', title: 'Stand: de strafpunten van iedereen', onclick: openStand },
       h('span', { class: 'tp-pill-lbl', text: 'Jij' }), E.mine = h('b', { class: 'tp-pill-n', text: '0' }), E.limit = h('span', { class: 'tp-pill-lim' })),
@@ -35,10 +35,7 @@ function build() {
     E.stakeTop = h('div', { class: 'tp-stake-top', title: 'De inzet: zoveel strafpunten krijgt wie de laatste slag niet haalt' },
       h('span', { class: 'tp-st-lbl', text: 'Inzet' }), E.stakeN = h('b', { text: '1' })),
     h('span', { class: 'spacer' }),
-    ...panels.toolButtons(['chat']),
-    h('button', { class: 'tb tb-rules', type: 'button', title: 'Spelregels van toepen', 'aria-label': 'Spelregels', onclick: () => { sound.unlock(); openRules(); } }, icon('help')),
-    ...panels.toolButtons(['settings', 'sound']),
-    h('button', { class: 'tb tb-menu', type: 'button', title: 'Meer: stand, spelregels, verlaten', 'aria-label': 'Meer', onclick: () => { sound.unlock(); openMenu(); } }, icon('menu')));
+    ...panels.toolButtons(['chat', 'help', 'settings', 'sound', 'menu']));
   E.table = h('div', { class: 'tp-table' }, h('div', { class: 'tp-felt', 'aria-hidden': 'true' }));
   E.seats = h('div', { class: 'tp-seats' });
   E.trick = h('div', { class: 'tp-trick', role: 'group', 'aria-label': 'Slag op tafel' });
@@ -53,10 +50,10 @@ function build() {
   E.ring = panels.countdownRing();
   E.ringBox = h('span', { class: 'tp-ring', hidden: true }, E.ring.el);
   E.vote = h('div', { class: 'tp-vote', hidden: true });
-  E.prompt = h('div', { class: 'tp-prompt' }, E.me, E.text, E.ringBox, E.actions, E.vote);
+  E.callDock = h('div', { class: 'call-dock', role: 'group', 'aria-label': 'Bellen', hidden: true });
+  E.prompt = h('div', { class: 'tp-prompt' }, E.me, E.text, E.ringBox, E.actions, E.vote, E.callDock);
   E.hand = h('div', { class: 'tp-hand', role: 'group', 'aria-label': 'Jouw kaarten' });
   root.append(E.top, E.table, E.prompt, E.hand);
-  document.getElementById('app').append(root);
   root.addEventListener('click', e => {
     if (selected && !e.target.closest('.tp-hand .card')) { selected = ''; renderHand(app.s); }
   });
@@ -67,7 +64,7 @@ function build() {
 
 export function render(s) {
   if (!s) return;
-  build();
+  init();
   app.view = s;
   if (pending && (pending.key !== stateKey(s) || performance.now() - pending.at > STUCK_MS)) pending = null;
   if (!R.IN_HAND.has(s.phase)) selected = '';
@@ -78,9 +75,21 @@ export function render(s) {
   renderPrompt(s);
   renderHand(s);
   syncOverlays(s);
-  if (app.call) app.call.dock(E.callDock ??= E.prompt.appendChild(h('div', { class: 'call-dock', role: 'group', 'aria-label': 'Bellen' })));
-  for (const [seat, S] of seatEls.entries()) app.call?.decorate(S.ring, seat);
+  renderCall();
 }
+
+// The call, once call.js is loaded: a seat's video in place of its face,
+// and the call buttons by your name.
+export function renderCall() {
+  if (!app.call || !E.callDock) return;
+  app.call.dock(E.callDock);
+  for (const [seat, S] of seatEls.entries()) app.call.decorate(S.ring, seat);
+}
+
+// What main.js asks of every game's table, with nothing to do here.
+export function settle() {}
+export function welcomeBack() {}
+export function relayout() {}
 
 // What changes when a decision of ours went through.
 const stateKey = s => `${s.handNo}/${s.phase}/${s.turn}/${s.tricks}/${s.trick?.cards?.length}/${s.answered?.[s.you]}/${s.stake}`;
@@ -264,7 +273,7 @@ function playCard(code) {
 
 function onKey(e) {
   const s = app.view;
-  if (!s || s.game !== 'toepen' || document.body.dataset.screen !== 'toepen' || e.target.closest?.('input, textarea') || panels.isOpen()) return;
+  if (!s || document.body.dataset.screen !== 'game' || e.target.closest?.('input, textarea') || panels.isOpen()) return;
   const hand = s.hand || [];
   const k = Number(e.key);
   if (k >= 1 && k <= hand.length && s.turn === s.you && s.phase === 'play') {
@@ -380,7 +389,7 @@ function standTable(s) {
 }
 
 // The standings and every round: who won it, and the points each took.
-function openStand() {
+export function openStand() {
   sound.unlock();
   sound.play('click');
   const m = panels.openModal({ id: 'tp-stand', title: 'Stand', cls: 'm-score tp-stand', body: [] });
@@ -404,7 +413,7 @@ function openStand() {
   app.toepStand = m;
 }
 
-function openRules() {
+export function openRules() {
   const o = app.view?.opts || {};
   panels.openModal({
     id: 'tp-rules', title: 'Spelregels toepen', cls: 'm-manual tp-rules', body: [
@@ -413,27 +422,6 @@ function openRules() {
       h('h3', { text: 'Bediening' }),
       h('p', { text: touch.matches ? 'Tik een kaart aan om hem op te tillen, en nog een keer om hem te spelen. Toepen doe je met de knop Toep! naast je naam, voordat je speelt.'
         : 'Klik een kaart om hem te spelen (of de toetsen 1 tot 4). Toepen: de knop Toep! of de toets T, voordat je speelt.' })],
-  });
-}
-
-function openMenu() {
-  const s = app.view;
-  const item = (ic, text, fn, cls = '') => h('button', { class: 'menu-item ' + cls, type: 'button', onclick: () => { m.close(true); fn(); } }, icon(ic), h('span', { text }));
-  const m = panels.openModal({
-    id: 'menu', cls: 'm-menu', label: 'Menu', body: [
-      item('score', 'Stand', openStand),
-      item('help', 'Spelregels toepen', openRules),
-      item('settings', 'Instellingen', panels.openSettings),
-      item(sound.isMuted() ? 'soundOff' : 'soundOn', sound.isMuted() ? 'Geluid aanzetten' : 'Geluid uitzetten', () => {
-        sound.setMuted(!sound.isMuted());
-        if (!sound.isMuted()) sound.play('click');
-        panels.refreshSound();
-        toast(sound.isMuted() ? 'Geluid uit' : 'Geluid aan', { ms: 1200 });
-      }),
-      app.call?.inCall() ? item('hangup', 'Ophangen', () => app.call.hangup())
-        : app.call?.possible() && app.call.supported() ? item('phone', 'Bellen', () => app.call.openSheet()) : null,
-      s ? item('leave', 'Spel verlaten', () => panels.confirmLeave(), 'danger') : null,
-    ],
   });
 }
 
@@ -493,8 +481,12 @@ async function flash(text, kind = '', ms = 1100) {
 const NAME = (s, seat) => (seat === s.you ? 'Jij' : s.players[seat]?.name || 'Speler');
 
 export async function animate(ev, prev, next) {
-  build();
-  if (!ev || !prev || prev.game !== 'toepen') return;
+  init();
+  if (!ev || !prev) return;
+  if (next.phase === 'lobby' || prev.phase === 'lobby' && ev.type !== 'deal') {
+    seatToast(ev, next); // the lobby is the shell's
+    return;
+  }
   if (prev.players.length !== next.players.length || !seatEls.length) render(prev);
   switch (ev.type) {
     case 'deal': {

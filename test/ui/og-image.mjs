@@ -1,24 +1,66 @@
-// Renders web/og.png, the 1200×630 preview image that chat apps show for a
-// shared link (og:image in web/index.html): the felt, the gold clover, the
-// name and a fan of real card faces from web/js/cards.js. Run it again when
-// the cards or the look change, and commit the PNG.
+// Renders web/<site>/og.png, the 1200×630 preview image that chat apps show
+// for a shared link (og:image in the site's index.html): the felt, the
+// site's emblem (klaverjas: the gold clover; toepen: a ten of hearts), its
+// name and a fan of real card faces from cards.js. Run it again when the
+// cards or the look change, and commit the PNG. Without --url it serves
+// the site itself (test/ui/site.mjs): no game server needed.
 //
-//   scripts/dev-server 18701 ; scripts/chrome 9700
-//   cd test/ui && node og-image.mjs --url http://127.0.0.1:18701 --cdp http://127.0.0.1:9700 [--out FILE]
+//   scripts/chrome 9700
+//   cd test/ui && node og-image.mjs --cdp http://127.0.0.1:9700 [--site klaverjas|toepen] [--out FILE]
 //
 // test/ui/app-icons.test.mjs checks the result (size, opaque, under 300 KB).
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
+import http from 'node:http';
 import puppeteer from 'puppeteer-core';
 import { args } from './app-lib.mjs';
+import { siteFile } from './site.mjs';
 
 const a = args();
 const argv = process.argv.slice(2);
-const outArg = argv.indexOf('--out');
-const out = outArg >= 0 ? argv[outArg + 1]
-  : path.join(path.dirname(fileURLToPath(import.meta.url)), '../../web/og.png');
+const opt = name => (argv.includes('--' + name) ? argv[argv.indexOf('--' + name) + 1] : '');
+const site = opt('site') || 'klaverjas';
+const out = opt('out') || path.join(path.dirname(fileURLToPath(import.meta.url)), `../../web/${site}/og.png`);
+
+// Each site's scene: the felt's colour stops, the background, the emblem,
+// the name, the two lines and the fan.
+const CLOVER = '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/>'
+  + '<stop offset="1" stop-color="#d79b28"/></linearGradient></defs><g fill="url(#g)"><circle cx="32" cy="20" r="9.5"/>'
+  + '<circle cx="21" cy="35" r="9.5"/><circle cx="43" cy="35" r="9.5"/><path d="M29 34h6l3 18H26z"/></g>';
+const TEN = '<g transform="rotate(-9 32 33)"><rect x="18.5" y="11" width="27" height="40" rx="4" fill="#fffaf0"/>'
+  + '<text x="32" y="34" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="900" font-size="17" fill="#c8102e">10</text>'
+  + '<path d="M32 47.5c-5.8-3.9-7.6-7.2-5.2-9.6 1.8-1.8 4.1-.9 5.2.9 1.1-1.8 3.4-2.7 5.2-.9 2.4 2.4.6 5.7-5.2 9.6z" fill="#c8102e"/></g>';
+const SCENES = {
+  klaverjas: {
+    bg: '#0b2b21', stops: [[0, [0x2f, 0x9a, 0x62]], [0.45, [0x1b, 0x6b, 0x43]], [0.75, [0x0f, 0x4a, 0x2d]], [1, [0x0b, 0x2b, 0x21]]],
+    emblem: CLOVER, title: 'Klaverjas', t1: 'Speel mee aan tafel', t2: 'Met vrienden of tegen AI-spelers met karakter. Geen account nodig.',
+    t2color: '#bfe0cc', codes: ['TD', 'AS', 'JH', '9H', 'KC'],
+  },
+  toepen: {
+    bg: '#0b1f2e', stops: [[0, [0x3a, 0x7f, 0xb0]], [0.45, [0x22, 0x59, 0x7f]], [0.75, [0x0f, 0x35, 0x52]], [1, [0x0b, 0x1f, 0x2e]]],
+    emblem: TEN, title: 'Toepen', t1: 'Wie haalt de laatste slag?', t2: 'Met vrienden of tegen AI-spelers met karakter. Geen account nodig.',
+    t2color: '#c4dbec', codes: ['JS', '7C', '8D', '9S', 'TH'],
+  },
+};
+const scene = SCENES[site];
+if (!scene) throw new Error(`og-image: no scene for site ${site}`);
+
+// The site's files, unless --url names a server.
+let server = null;
+if (!argv.includes('--url')) {
+  server = http.createServer((req, res) => {
+    const p = new URL(req.url, 'http://x').pathname;
+    const file = siteFile(site, p === '/' ? '/index.html' : p);
+    if (!file) { res.writeHead(404); return res.end(); }
+    const type = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.svg': 'image/svg+xml' }[path.extname(file)];
+    res.writeHead(200, type ? { 'content-type': type } : {});
+    res.end(fs.readFileSync(file));
+  });
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  a.url = `http://127.0.0.1:${server.address().port}`;
+}
 
 const { webSocketDebuggerUrl } = await (await fetch(`${a.cdp}/json/version`)).json();
 const browser = await puppeteer.connect({ browserWSEndpoint: webSocketDebuggerUrl });
@@ -29,10 +71,10 @@ try {
   await page.setBypassCSP(true);
   await page.setViewport({ width: 1200, height: 630, deviceScaleFactor: 1 });
   await page.goto(`${a.url}/`, { waitUntil: 'networkidle0' });
-  await page.evaluate(async () => {
+  await page.evaluate(async cfg => {
     const { createCard } = await import('/js/cards.js');
     const css = `
-      html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; background: #0b2b21; }
+      html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; background: ${cfg.bg}; }
       body > :not(.og) { display: none !important; }
       .og { position: fixed; inset: 0; overflow: hidden;
         font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "DejaVu Sans", sans-serif; }
@@ -48,7 +90,7 @@ try {
       h1 { margin: 0; font-size: 104px; line-height: 1; font-weight: 800; letter-spacing: -1px; color: #ffe08a;
         text-shadow: 0 4px 14px rgb(0 0 0 / .4); }
       .t1 { margin: 34px 0 0; font-size: 46px; font-weight: 700; line-height: 1.15; }
-      .t2 { margin: 18px 0 0; font-size: 28px; line-height: 1.35; color: #bfe0cc; }
+      .t2 { margin: 18px 0 0; font-size: 28px; line-height: 1.35; color: ${cfg.t2color}; }
       .suits { margin-top: 30px; font-size: 40px; letter-spacing: 14px; }
       .suits .r { color: #ef6f5a; } .suits .k { color: #e8f3ec; }`;
     const style = document.createElement('style');
@@ -68,7 +110,7 @@ try {
     canvas.height = 630;
     const g2d = canvas.getContext('2d');
     const img = g2d.createImageData(1200, 630);
-    const stops = [[0, [0x2f, 0x9a, 0x62]], [0.45, [0x1b, 0x6b, 0x43]], [0.75, [0x0f, 0x4a, 0x2d]], [1, [0x0b, 0x2b, 0x21]]];
+    const { stops } = cfg;
     for (let y = 0; y < 630; y++) {
       for (let x = 0; x < 1200; x++) {
         const t = Math.min(1, Math.hypot((x - 408) / 900, (y - 328) / 504));
@@ -85,7 +127,7 @@ try {
     g2d.putImageData(img, 0, 0);
     scene.append(canvas);
     const fan = el('div', 'fan');
-    const codes = ['TD', 'AS', 'JH', '9H', 'KC'];
+    const { codes } = cfg;
     codes.forEach((code, i) => {
       const c = createCard(code, { size: 'lg' });
       c.style.transform = `rotate(${(i - 2) * 11}deg)`;
@@ -94,21 +136,18 @@ try {
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', '0 0 64 64');
-    svg.innerHTML = '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/>'
-      + '<stop offset="1" stop-color="#d79b28"/></linearGradient></defs><g fill="url(#g)"><circle cx="32" cy="20" r="9.5"/>'
-      + '<circle cx="21" cy="35" r="9.5"/><circle cx="43" cy="35" r="9.5"/><path d="M29 34h6l3 18H26z"/></g>';
+    svg.innerHTML = cfg.emblem;
     const suits = el('div', 'suits');
     for (const [s, cls] of [['♥', 'r'], ['♣', 'k'], ['♦', 'r'], ['♠', 'k']]) suits.append(el('span', cls, s));
     const txt = el('div', 'txt');
     const brand = el('div', 'brand');
-    brand.append(svg, el('h1', '', 'Klaverjas'));
-    txt.append(brand, el('p', 't1', 'Speel mee aan tafel'),
-      el('p', 't2', 'Met vrienden of tegen AI-spelers met karakter. Geen account nodig.'), suits);
+    brand.append(svg, el('h1', '', cfg.title));
+    txt.append(brand, el('p', 't1', cfg.t1), el('p', 't2', cfg.t2), suits);
     scene.append(fan, txt);
     document.body.append(scene);
     await document.fonts.ready;
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-  });
+  }, scene);
   const shot = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, width: 1200, height: 630 } });
   const png = repack(Buffer.from(shot));
   fs.writeFileSync(out, png);
@@ -116,6 +155,7 @@ try {
 } finally {
   await ctx.close();
   await browser.disconnect();
+  server?.close();
 }
 
 // Chromium's PNG encoder is quick, not small. This writes the same pixels as

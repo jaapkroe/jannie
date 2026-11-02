@@ -2,16 +2,17 @@
 // animates every server event before rendering the new state.
 import { sound } from './sound.js';
 import { app, store, toast, vibrate, watchKeyboard, DEFAULT_NAME } from './util.js';
-import { createNet } from './net.js';
-import * as table from './table.js';
+import * as game from './game.js';
 import * as panels from './panels.js';
 import * as home from './home.js';
 
-const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play', 'was', 'check', 'toep']);
+// The game of this site (its game.js, design §9 "The game module"): its
+// table and what differs per game. The shell reaches the game only here.
+const { table, PLAYING } = game;
 const ROUTE = /^\/([A-Za-z]{4})\/?$/;
 // Moves the server answers at once; silence after one means a dead socket.
 // A vote is only sent when it changes the answer, so an update follows it too.
-const ACKED = new Set(['play', 'trump', 'bid', 'auction', 'discard', 'vote', 'toep', 'answer', 'check']);
+const ACKED = game.ACKED;
 const ACK_MS = 4000;
 const START_HOLD_MS = 2500; // quick play: how long the lobby may stay hidden
 
@@ -28,11 +29,169 @@ let leaveLater = null; // {code, token, name}: a leave that could not go out yet
 let callLoad = null;   // call.js on its way
 let callState = null;  // the latest state received, for call.js once it is there
 let roomGen = 0;       // bumped by enterRoom: an update still animating belongs to a room left
-// toepen.js, the table of toepen: loaded once a room plays it (design §11).
-let toepLoad = null;
-let toepJs = null;
-const toepen = () => (toepLoad ??= import('./toepen.js').then(m => (toepJs = m)));
-const isToepen = s => s?.game === 'toepen';
+
+// ---------- websocket ----------
+
+// The connection to /ws: reconnect with backoff, keepalive and an outbox
+// for messages sent while (re)connecting.
+const PING_MS = 20000;   // client keepalive
+const OUTBOX_MAX = 8;    // messages kept while (re)connecting
+
+function createNet({ onMessage, onOpen, onClose }) {
+  let ws = null;
+  let delay = 500;
+  let timer = 0;
+  let lastRx = 0;
+  let outbox = [];
+
+  const url = () => (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  const isOpen = () => ws?.readyState === WebSocket.OPEN;
+
+  function connect() {
+    clearTimeout(timer);
+    timer = 0;
+    if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+    let sock;
+    try {
+      sock = new WebSocket(url());
+    } catch {
+      schedule();
+      return;
+    }
+    ws = sock;
+    sock.onopen = () => {
+      if (ws !== sock) return;
+      delay = 500;
+      lastRx = Date.now();
+      onOpen();
+      const queued = outbox;
+      outbox = [];
+      for (const m of queued) raw(m);
+    };
+    sock.onmessage = e => {
+      if (ws !== sock) return;
+      lastRx = Date.now();
+      let m;
+      try { m = JSON.parse(e.data); } catch { return; }
+      if (m && m.t !== 'pong') onMessage(m);
+    };
+    sock.onclose = () => {
+      if (ws !== sock) return;
+      ws = null;
+      onClose();
+      schedule();
+    };
+    sock.onerror = () => {}; // a close event always follows
+  }
+
+  function schedule(ms = delay) {
+    if (timer) return;
+    timer = setTimeout(connect, ms);
+    delay = Math.min(delay * 2, 5000);
+  }
+
+  function raw(m) {
+    try { ws.send(JSON.stringify(m)); return true; } catch { return false; }
+  }
+
+  // Sends now when open; otherwise keeps it for the next connection. The
+  // outbox stays small: together with the rejoin it is sent in one burst,
+  // and the server allows 20 messages per second.
+  function send(m) {
+    if (isOpen()) return raw(m);
+    outbox.push(m);
+    if (outbox.length > OUTBOX_MAX) outbox.shift();
+    connect();
+    return false;
+  }
+
+  // Drops queued messages (e.g. after leaving a room).
+  function flushOutbox() { outbox = []; }
+
+  // Sends `msgs` over a short-lived connection of its own, beside the main
+  // one (e.g. a leave for a room this page has already left). done(true)
+  // once they went out, done(false) when no connection could be made.
+  function oneShot(msgs, done) {
+    let sock;
+    try {
+      sock = new WebSocket(url());
+    } catch {
+      done(false);
+      return;
+    }
+    let sent = false;
+    let timer = 0;
+    const finish = () => {
+      clearTimeout(timer);
+      try { sock.close(); } catch { /* already closed */ }
+    };
+    timer = setTimeout(finish, 8000);
+    sock.onopen = () => {
+      try {
+        for (const m of msgs) sock.send(JSON.stringify(m));
+        sent = true;
+      } catch {
+        finish();
+      }
+    };
+    // The first answer shows the server has read them; the close follows them out.
+    sock.onmessage = () => { clearTimeout(timer); timer = setTimeout(finish, 300); };
+    sock.onerror = () => {};
+    sock.onclose = () => {
+      clearTimeout(timer);
+      done(sent);
+    };
+  }
+
+  // Forces a fresh connection (stale socket or server restart).
+  function reconnect(ms = 0) {
+    const old = ws;
+    ws = null;
+    if (old) {
+      old.onclose = null;
+      try { old.close(); } catch { /* already closed */ }
+      onClose();
+    }
+    clearTimeout(timer);
+    timer = 0;
+    schedule(ms);
+  }
+
+  // Dead socket: a ping of ours got no answer by the next tick. Measured
+  // from the ping, not the wall clock: a background tab's timers may fire
+  // only once a minute (Chrome's intensive wake-up throttling), and that
+  // alone must not look like a dead connection.
+  let pingAt = 0;
+  setInterval(() => {
+    if (!isOpen()) return;
+    const now = Date.now();
+    if (pingAt && lastRx < pingAt && now - pingAt > PING_MS / 2) {
+      pingAt = 0;
+      reconnect();
+      return;
+    }
+    pingAt = now;
+    raw({ t: 'ping' });
+  }, PING_MS);
+
+  const wake = () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!isOpen()) {
+      delay = 500;
+      connect();
+    } else if (Date.now() - lastRx > PING_MS) {
+      // After a phone sleep the socket may be dead without a close event.
+      const mark = Date.now();
+      raw({ t: 'ping' });
+      setTimeout(() => { if (lastRx < mark && isOpen()) reconnect(); }, 3000);
+    }
+  };
+  document.addEventListener('visibilitychange', wake);
+  addEventListener('online', wake);
+  addEventListener('pageshow', wake);
+
+  return { connect, send, reconnect, isOpen, flushOutbox, oneShot, raw: m => isOpen() && raw(m) };
+}
 
 const net = createNet({ onMessage, onOpen, onClose });
 app.send = send;
@@ -43,7 +202,7 @@ app.join = join;
 function screen(name) {
   if (document.body.dataset.screen === name) return;
   document.body.dataset.screen = name;
-  document.body.classList.toggle('in-room', name === 'lobby' || name === 'game' || name === 'toepen');
+  document.body.classList.toggle('in-room', name === 'lobby' || name === 'game');
   if (name === 'game') requestAnimationFrame(() => table.relayout());
   panels.syncHistory();
 }
@@ -143,7 +302,6 @@ function enterRoom(code) {
   queue = [];
   lastSeq = -1;
   table.resetRoom();
-  toepJs?.resetRoom();
   home.resetLobby();
   panels.closeAll();
   panels.chatReset();
@@ -175,6 +333,7 @@ function onOpen() {
     // Requests that went out over the old connection, before the queued
     // ones go out over this one.
     panels.onReconnect();
+    game.onReconnect?.();
   }
 }
 
@@ -200,14 +359,16 @@ function onMessage(m) {
     case 'update': if (inRoom) { toCall(m.s); enqueue(m); } break;
     case 'chat': if (inRoom) queueChat(m); break;
     case 'chatlog': if (inRoom) enqueue(m); break;
-    case 'tip': if (inRoom) enqueue(m); break;
     case 'refused': if (inRoom) onRefused(m.name); break;
     case 'error': onError(m); break;
     case 'saved': panels.onSaved(m); break;
-    case 'why': if (inRoom) import('./expert.js').then(x => x.onWhy(m)); break;
-    case 'handReview': if (inRoom) panels.onHandReview(m); break;
     case 'rtc': if (inRoom) app.call?.onRTC(m); break;
-    default: break;
+    default:
+      // The game's own messages: at once, or after the animations before them.
+      if (!inRoom) break;
+      if (game.queued?.[m.t]) enqueue(m);
+      else game.messages?.[m.t]?.(m);
+      break;
   }
 }
 
@@ -266,14 +427,13 @@ function onError(m) {
     joining = false;
     home.setBusy(false);
   }
-  if (table.staleVote(m) || toepJs?.staleVote(m)) return; // the question closed as we answered: no mistake
+  if (table.staleVote(m)) return; // the question closed as we answered: no mistake
   sound.play('error');
   toast(msg, { kind: 'error' });
-  table.onError();
-  toepJs?.onError();
+  // The game frees what it waits for (klaverjas: a rematch, a hand to look
+  // back at, a question to the AI, which then shows Opnieuw).
+  game.onError?.();
   panels.onError();
-  // A question to the AI still out is given up: its decision shows Opnieuw.
-  panels.whyError();
   // A refused lobby change: show the options as the server has them again.
   if (app.s?.phase === 'lobby') {
     home.resetLobby();
@@ -288,7 +448,7 @@ function onRefused(name) {
   if (!s || s.host !== s.you || s.training) return;
   const n = s.players.length;
   const humans = s.players.filter(p => p && !p.bot && !p.left).length;
-  const more = humans >= n && n < (isToepen(s) ? 6 : 4) ? `zet Spelers op ${n + 1}` : '';
+  const more = humans >= n && n < game.maxPlayers ? `zet Spelers op ${n + 1}` : '';
   let sub = '';
   if (s.phase === 'lobby') {
     if (s.players.some(p => p?.bot)) sub = 'Haal een AI-speler weg om een plaats vrij te maken.';
@@ -355,8 +515,8 @@ async function pump() {
         if (m.t === 'update') await applyUpdate(m);
         else if (m.t === 'chat') onChat(m.msg);
         else if (m.t === 'chatlog') panels.chatSet(m.msgs);
-        else if (m.t === 'tip') table.setTip(m.text);
-        else if (m.t === 'rejoin') { table.resync(); toepJs?.resync(); }
+        else if (game.queued?.[m.t]) game.queued[m.t](m);
+        else if (m.t === 'rejoin') table.resync();
       } catch (e) {
         console.error(e);
       }
@@ -390,7 +550,7 @@ async function applyUpdate(u) {
     if (starting) { holdLobby(); return; }
     screen('lobby');
     home.renderLobby(next, !!prev && prev.phase !== 'lobby');
-    panels.sync(next, ev);
+    game.sync?.(next, ev);
     if (ev && prev) await table.animate(ev, prev, next);
     return;
   }
@@ -399,19 +559,6 @@ async function applyUpdate(u) {
     setStarting(false);
     home.setBusy(false);
   }
-  if (isToepen(next)) {
-    // Toepen has a table of its own, and overlays of its own.
-    const gen = roomGen;
-    const T = toepJs || await toepen();
-    if (gen !== roomGen) return;
-    screen('toepen');
-    if (ev && isToepen(prev)) await T.animate(ev, prev, next);
-    if (gen !== roomGen) return;
-    app.s = next;
-    T.render(next);
-    turnCue(prev, next);
-    return;
-  }
   screen('game');
   const gen = roomGen;
   if (ev && prev) await table.animate(ev, prev, next);
@@ -419,7 +566,7 @@ async function applyUpdate(u) {
   app.s = next;
   table.settle(next, ev);
   table.render(next);
-  panels.sync(next, ev);
+  game.sync?.(next, ev);
   table.welcomeBack(prev, next);
   turnCue(prev, next);
 }
@@ -440,7 +587,7 @@ function holdLobby() {
     home.setBusy(false);
     screen('lobby');
     home.renderLobby(app.s);
-    panels.sync(app.s, null);
+    game.sync?.(app.s, null);
   }, START_HOLD_MS);
 }
 
@@ -466,11 +613,10 @@ function titleCue() {
   const s = app.s;
   const mine = inRoom && s && s.turn === s.you && PLAYING.has(s.phase);
   const asked = inRoom && !!s?.takeover && s.players[s.you]?.vote == null;
-  const game = inRoom && isToepen(s) ? 'Toepen' : 'Klaverjas';
-  const base = inRoom && app.code ? `${game} · ${app.code}` : 'Klaverjas';
+  const base = inRoom && app.code ? `${game.name} · ${app.code}` : game.name;
   let want = base;
-  if (document.hidden && mine) want = `● Jouw beurt · ${game}`;
-  else if (document.hidden && asked) want = `● Vraag aan tafel · ${game}`;
+  if (document.hidden && mine) want = `● Jouw beurt · ${game.name}`;
+  else if (document.hidden && asked) want = `● Vraag aan tafel · ${game.name}`;
   if (document.title !== want) document.title = want;
 }
 
@@ -478,19 +624,17 @@ function onChat(msg) {
   if (!msg) return;
   panels.chatAdd(msg, true);
   // Juf Jannie's lessons and explanations show in the coach bubble already.
-  if (app.s && msg.seat >= 0 && !msg.sys && !msg.coach) {
-    if (isToepen(app.s)) toepJs?.bubble(app.s, msg.seat, msg.text);
-    else table.bubble(app.s, msg.seat, msg.text);
-  }
+  if (app.s && msg.seat >= 0 && !msg.sys && !msg.coach) table.bubble(app.s, msg.seat, msg.text);
 }
 
 // ---------- boot ----------
 
 function boot() {
   watchKeyboard(); // before the table listens to resizes: it reads the result
+  panels.useGame(game); // before anything builds the game's tools
   panels.applyPrefs();
   table.init();
-  home.init();
+  home.init(game);
   panels.initChat();
   panels.refreshSound();
 

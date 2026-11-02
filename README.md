@@ -1,9 +1,14 @@
 # Klaverjas
 
 Klaverjassen in the browser: the Dutch trick-taking card game for four players
-in two pairs, or for three or two, with friends, with bots, or both. The same
-table also plays **toepen**, for two to six. The interface is entirely in
-Dutch. It runs at <https://klaverjas.kroes.dev>.
+in two pairs, or for three or two, with friends, with bots, or both. The
+interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
+
+The same repository builds a site for **toepen** at
+<https://toepen.kroes.dev>: one game per site, each with its own address,
+interface and pod, built from shared code ([`docs/games.md`](docs/games.md),
+[`docs/toepen.md`](docs/toepen.md)). What follows is about klaverjas, unless
+it says otherwise.
 
 ## Features
 
@@ -20,12 +25,6 @@ Dutch. It runs at <https://klaverjas.kroes.dev>.
   takes the two cards on the table, lays two away and plays alone against
   the other two; with two, each plays from eight piles of two cards on the
   table, the top ones face up for both to see. Seats nobody takes get bots.
-- **Toepen**, chosen on the home screen or in the lobby: four cards, only the
-  last trick counts, and who thinks they will take it *toept*: the stake goes
-  up and the others go along or pass. With the witte and vuile was (bluffing
-  allowed, if nobody checks), armoede, and play until 10 or 15 penalty points;
-  two to six players, bots at three strengths, and everything below about
-  tables with friends.
 - **Eight bots with a character of their own**, from Opa Dirk to Bakker Vera,
   shown as "Naam (AI)", at three strengths. The strongest counts cards, infers
   voids and gives and reads signals. They fill empty seats and chat in
@@ -82,7 +81,8 @@ The host needs only podman and make: the Go toolchain runs in a container
 (`scripts/go`).
 
 ```sh
-make dev     # the server from source, serving web/, on http://127.0.0.1:18093/
+make dev GAME=klaverjas   # the server from source, serving its site, on http://127.0.0.1:18093/
+make dev GAME=toepen      # toepen's, on http://127.0.0.1:18095/
 ```
 
 The first start compiles for a minute; Ctrl-C stops it. Other players on your
@@ -93,7 +93,7 @@ network cannot join this one, because it listens on loopback.
 ```sh
 make test       # go vet, the Go tests (-short), the JS unit tests and the deployment files
 make test-all   # also the bot arena: sterk must beat normaal must beat makkelijk
-make e2e        # full games over the websocket against the server from source
+make e2e        # full games over the websocket against each game's server from source (GAME=… for one)
 scripts/go test -run '^$' -bench . ./internal/bot ./internal/game   # CPU per bot decision and per hand
 ```
 
@@ -118,8 +118,10 @@ node app-perf.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     #
 
 `make test` also runs the JS unit tests in `test/*.test.mjs` and
 `test/ui/*.test.mjs` (the manual against the rules, sounds, cards,
-`app-util.test.mjs` for the storage fallback and text helpers, and
-`app-icons.test.mjs` for the home-screen icons and the link preview), and
+`app-util.test.mjs` for the storage fallback and text helpers,
+`app-icons.test.mjs` for every site's home-screen icons and link preview,
+`toepen.test.mjs` for toepen's pure helpers, and `test/sites.test.mjs`, which
+keeps every site to its own files, its 17 requests and its own game), and
 `scripts/deploy-test`, which puts the units through podman's quadlet generator
 and checks how `make deploy` labels, tags and refuses builds, with stubs in
 place of podman and systemd.
@@ -130,19 +132,21 @@ place of podman and systemd.
   for both rule sets, tricks, roem, scoring and the state machine of one hand.
 - `internal/bot`: the personalities, the three playing strengths (the strongest
   uses determinised Monte Carlo playouts), the training hints and chat.
-- `internal/toepen` and `internal/toepbot`: the rules of toepen and its bots.
-- `internal/server`: rooms with codes, the websocket protocol, pacing, chat and
-  limits. Each room is one goroutine; all state is in memory. A room is the
-  table every game shares; the game on it plugs in through `games.go`.
+- `internal/server`: the table every game is played at: rooms with codes, the
+  websocket protocol, pacing, chat and limits, with klaverjas built in and an
+  API for other games. Each room is one goroutine; all state is in memory.
 - `cmd/klaverjas`: the binary, which ties the bots to the server.
-- `web/`: the frontend, plain ES modules and CSS with no build step and nothing
-  loaded from other sites, so a strict Content Security Policy applies.
+- `web/shared` and `web/klaverjas`: the frontend, plain ES modules and CSS with
+  no build step and nothing loaded from other sites, so a strict Content
+  Security Policy applies. `web/shared` is the shell every game's site uses.
+- Toepen: `internal/toepen` (rules), `internal/toepbot` (bots),
+  `internal/toepenserver`, `cmd/toepen` and `web/toepen`.
 
 [`docs/design.md`](docs/design.md) is the contract between these parts: the
 rules as implemented, the Go APIs, the wire protocol, the interface and the
-deployment. [`docs/games.md`](docs/games.md) investigates how the table carries
-other card games (bridge, rikken, pesten, toepen, presidenten): what is shared,
-what each game needs, and an order to build them in.
+deployment. Toepen's is [`docs/toepen.md`](docs/toepen.md);
+[`docs/games.md`](docs/games.md) says how the sites share code, and how to
+add a game.
 
 ## Deployment
 
@@ -151,9 +155,12 @@ nginx-unprivileged with the frontend, run as one rootless podman pod from
 quadlet units, behind Nginx Proxy Manager:
 
 ```sh
-make install    # the pod and container units, for your user
-make deploy     # build both images, restart, check health
+make install GAME=klaverjas   # the pod and container units, for your user
+make deploy GAME=klaverjas    # build both images, restart, check health
 ```
+
+Every game has its own pod, units, images and game-log volume; `GAME=toepen`
+does the same for toepen, and `GAME=all` every game in turn.
 
 [`deploy/README-deploy.md`](deploy/README-deploy.md) covers the first setup,
 the proxy host, day-to-day operation and what is exposed.

@@ -325,7 +325,7 @@ const SOUNDS = {
     tone(v, { f: 150 * k, f2: 95, d: 0.08, g: 0.09, a: 0.002 });
   },
 
-  // Toepen: two knuckle knocks on the wooden table.
+  // Two knuckle knocks on the wooden table (a raise of the stake).
   knock(v) {
     for (const t of [0, 0.14]) {
       const k = vary(0.05);

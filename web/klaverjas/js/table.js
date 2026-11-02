@@ -1,14 +1,19 @@
 // The game table: top bar, seats, trick, centre stage, prompt and hand, plus
-// the animation for every server event (deal, play, trick, collect, ...).
+// the animation for every server event (deal, play, trick, collect, ...),
+// and the table's overlays (score sheet, last trick, trump info, manual,
+// hand summary, game over, Spelanalyse, replay, the AI's reasoning).
 import { createCard, createBack, cardShort } from './cards.js';
 import { sound } from './sound.js';
 import {
   app, h, clear, prefs, savePrefs, toast, wait, dur, anim, sleep, EASE, POS, posOf, seatCount, isWij, teamCls, teamName,
   scorerOrder, scorerName, myScorer, nameOf, suitSym, suitName, suitText, isRed, roemTotal, ROEM_NAMES, fillAvatar, countUp, icon,
   suitify, cap, playerName, shortLandscape, onKeyboard,
+  mySide, roemText, variantText, handHeadline, pointsText,
+  reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
 } from './util.js';
 import * as panels from './panels.js';
-import { SECTIONS } from './manual.js';
+import { openModal, byId, info, infoBtn, countdownRing, confetti, feedbackForm, focusMain } from './panels.js';
+import { SECTIONS, renderManual } from './manual.js';
 
 const E = {};             // fixed elements
 const seats = {};         // pos → seat parts
@@ -110,11 +115,11 @@ export function init() {
 function buildTopbar(bar) {
   // One part per score: Wij and Zij with four players, else every player
   // (see renderTop).
-  E.pill = h('button', { class: 'score-pill', type: 'button', title: 'Scorebord: alle potjes en de stand', onclick: () => panels.openScoreSheet() });
+  E.pill = h('button', { class: 'score-pill', type: 'button', title: 'Scorebord: alle potjes en de stand', onclick: () => openScoreSheet() });
   E.segs = [];
   E.potje = h('div', { class: 'potje', title: 'Het hoeveelste potje van het spel' },
     h('span', { class: 'potje-lbl', text: 'Potje' }), h('span', { class: 'potje-n' }, E.potjeN = h('b', { text: '1' }), '/', E.potjeT = h('span', { text: '16' })));
-  E.badge = h('button', { class: 'trump-badge', type: 'button', title: 'Troef: tik voor details over troef en spelvariant', onclick: () => panels.openTrumpInfo() },
+  E.badge = h('button', { class: 'trump-badge', type: 'button', title: 'Troef: tik voor details over troef en spelvariant', onclick: () => openTrumpInfo() },
     E.badgeSym = h('span', { class: 'tb-sym', text: '?' }),
     E.badgeLbl = h('span', { class: 'tb-lbl', text: 'Troef' }),
     E.badgeCnt = h('span', { class: 'tb-cnt', hidden: true }));
@@ -802,7 +807,7 @@ function coachBottom() {
 // going on.
 function openCoachManual() {
   E.coachMan.blur();
-  panels.openManual(E.coachMan.dataset.id);
+  openManual(E.coachMan.dataset.id);
 }
 
 function toggleCoach() {
@@ -1713,4 +1718,928 @@ export function resetRoom() {
 export function relayout() {
   measureHand();
   layoutHand();
+}
+
+// ---------- overlays ----------
+// The table's own overlays live with the table, not in the shell's
+// panels.js, so another game's site loads none of them.
+
+// ---------- mini cards and trick review ----------
+
+function mini(code, cls = '') {
+  const c = createCard(code, { size: 'sm' });
+  if (cls) c.classList.add(cls);
+  return c;
+}
+
+// One trick of finished hand `hand`: the cards in play order (the first
+// came out), each underlined in its team's colour. Tapping it shows who
+// played what at the seats, as for the last trick.
+function trickTile(s, t, i, owner, hand) {
+  const wij = isWij(s, t.winner);
+  const roem = roemTotal(t.roem);
+  const what = `Slag ${i + 1}: ${nameOf(s, t.winner)} nam de slag${roem ? `, roem: ${roemText(t.roem)}` : ''}`;
+  return h('button', {
+    class: 'mt ' + (wij ? 'wij' : 'zij'), type: 'button', title: `${what}. Tik om te zien wie wat speelde.`, 'aria-label': what,
+    onclick: () => openTrick(s, t, i, owner, hand),
+  },
+    h('span', { class: 'mt-n', text: i + 1 }),
+    h('span', { class: 'mt-cards' }, t.cards.map(pc => {
+      const c = mini(pc.card, pc.seat === t.winner ? 'winner' : '');
+      c.dataset.team = teamCls(s, pc.seat);
+      return c;
+    })),
+    h('span', { class: 'mt-pts' }, h('b', { text: t.points ?? '' }), roem ? h('i', { text: `+${roem}` }) : null));
+}
+
+function review(s, tricks, owner, hand) {
+  return h('div', { class: 'review' }, (tricks || []).map((t, i) => trickTile(s, t, i, owner, hand)));
+}
+
+// A trick laid out at the seats: whose card is whose, who came out, who won.
+function trickCross(s, t) {
+  const cross = h('div', { class: 'cross' });
+  for (const pc of t.cards) {
+    const pos = posOf(s, pc.seat);
+    cross.append(h('div', { class: `cross-slot cs-${pos} ${teamCls(s, pc.seat)}` + (pc.seat === t.winner ? ' win' : '') },
+      mini(pc.card, pc.seat === t.winner ? 'winner' : ''),
+      playerName(nameOf(s, pc.seat), { cls: 'cs-name', title: true }),
+      pc.seat === t.leader ? h('span', { class: 'cs-lead', text: 'kwam uit' }) : null));
+  }
+  const roem = roemTotal(t.roem);
+  return [cross,
+    h('p', { class: 'last-sum ' + teamCls(s, t.winner) },
+      h('b', { text: `${nameOf(s, t.winner)} nam de slag` }),
+      h('span', { text: ` · ${t.points} punten` }),
+      roem ? h('span', { class: 'gold', text: ` · roem: ${roemText(t.roem)}` }) : null)];
+}
+
+function openTrick(s, t, i, owner, hand) {
+  sound.play('click');
+  const m = openModal({ id: 'trick', title: `Slag ${i + 1}`, cls: 'm-last', body: [...trickCross(s, t), replayButton(hand, i + 1)] });
+  m.owner = owner;
+}
+
+// Under a trick of finished hand `hand`, at a table of four: the button that
+// opens that hand in the replay, just before the player's card in the
+// trick. The server sends the hand (handReview); until then the button
+// says it is loading. A reconnect asks again (onReconnect).
+let handWait = null; // {hand, trick, btn, done}: the tap waiting for its hand
+function replayButton(hand, trick) {
+  const s = app.s;
+  if (!s || seatCount(s) !== 4 || !s.scores?.some(r => r.hand === hand)) return null;
+  const label = () => [icon('history'), 'Dit potje terugkijken'];
+  const btn = h('button', {
+    class: 'btn btn-ghost btn-block last-replay', type: 'button', onclick: () => {
+      sound.play('click');
+      handWait?.done();
+      btn.disabled = true;
+      btn.replaceChildren('Laden…');
+      const w = handWait = { hand, trick, btn, done: () => { btn.disabled = false; btn.replaceChildren(...label()); } };
+      w.sent = app.send({ t: 'handReview', hand }); // false: queued until the connection is back
+    },
+  }, label());
+  return btn;
+}
+
+// ---------- score sheet ----------
+
+export function openScoreSheet() {
+  const s = app.s;
+  if (!s) return;
+  sound.play('click');
+  const m = openModal({ id: 'score', title: 'Scorebord', cls: 'm-score', body: [] });
+  m.view = 'score';
+  // Runs on every update; the review of a hand stays put until "Terug".
+  m.refresh = () => {
+    if (m.view !== 'score') return;
+    m.titleEl.textContent = 'Scorebord';
+    m.body.replaceChildren(scoreBody(app.s, m));
+  };
+  m.refresh();
+}
+
+// The side a scorer played on in a finished hand r (see util.sideOf):
+// its team with four players, itself with two, with three 0 for the
+// soloist (r.trumpBy) and 1 for the other two.
+function rowSide(s, r, k) {
+  const n = seatCount(s);
+  return n === 3 ? (k === r.trumpBy ? 0 : 1) : k;
+}
+
+// What is shown of hand r in scorer k's column: nat and pit for the side
+// that went nat or made pit; roem for a side that kept it (with three
+// players only the soloist's, as the other two share theirs).
+function rowMarks(s, r, k) {
+  const side = rowSide(s, r, k);
+  const nat = r.nat && r.playingTeam === side;
+  const pit = r.pit && (r.nat ? 1 - r.playingTeam : r.playingTeam) === side;
+  const roem = !r.nat && !(seatCount(s) === 3 && side === 1) ? r.roem?.[side] || 0 : 0;
+  return { nat, pit, roem };
+}
+
+// Who played a hand, under its trump suit: jij, Wij/Zij with four players,
+// else the player's face (as in the score pill), and the bid with three.
+function playedBy(s, r) {
+  if (r.trumpBy === s.you) return 'jij';
+  if (seatCount(s) === 4) return r.playingTeam === s.you % 2 ? 'Wij' : 'Zij';
+  return scorerName(s, r.trumpBy);
+}
+
+function scoreBody(s, m) {
+  const order = scorerOrder(s);
+  const mine = myScorer(s);
+  const three = seatCount(s) === 3;
+  const run = new Array(s.total?.length || order.length).fill(0); // the stand after each potje
+  const cls = k => (k === mine ? 'wij' : 'zij');
+  const rows = (s.scores || []).map((r, i, all) => {
+    const last = i === all.length - 1 && s.prevHand?.tricks?.length;
+    const gains = r.gains || r.score;
+    gains.forEach((g, k) => { run[k] += g; });
+    const stand = [...run];
+    const cell = k => {
+      const { nat, pit, roem } = rowMarks(s, r, k);
+      return h('td', { class: 'num ' + cls(k) + (nat ? ' is-nat' : '') + (pit ? ' is-pit' : '') },
+        nat ? h('span', { class: 'tag tag-nat', text: 'nat' }) : null,
+        pit ? h('span', { class: 'tag tag-pit', text: 'pit' }) : null,
+        h('b', { text: gains[k] }),
+        roem ? h('small', { text: `+${roem} roem` }) : null,
+        h('small', { class: 'stand', text: `stand ${stand[k]}` }));
+    };
+    const ours = seatCount(s) === 4 ? r.playingTeam === s.you % 2 : r.trumpBy === s.you;
+    return h('tr', { class: last ? 'tap' : '', onclick: last ? () => showReview(s, m, r) : null, title: last ? 'Tik om de slagen van dit potje te zien' : '' },
+      h('td', { class: 'n', text: r.hand }),
+      h('td', { class: 'tr' },
+        h('span', { class: 'suit' + (isRed(r.trump) ? ' red' : ''), text: suitSym(r.trump) }),
+        three && r.bid ? h('span', { class: 'bid', text: r.bid }) : null,
+        h('span', { class: 'by ' + (ours ? 'wij' : 'zij'), text: playedBy(s, r) })),
+      order.map(cell));
+  });
+  let live = null;
+  if (PLAYING.has(s.phase) && s.trump) {
+    const hp = s.handPoints || [0, 0];
+    const hr = s.handRoem || [0, 0];
+    const tw = s.tricksWon || [0, 0];
+    // Points so far per side; the soloist's two opponents share theirs.
+    const c = k => {
+      const t = seatCount(s) === 4 ? k : seatCount(s) === 2 ? k : (k === s.soloist ? 0 : 1);
+      return h('td', { class: 'num ' + cls(k) }, h('b', { text: hp[t] }), hr[t] ? h('small', { text: `+${hr[t]} roem` }) : null,
+        h('small', { text: `${tw[t]} ${tw[t] === 1 ? 'slag' : 'slagen'}${three && t === 1 ? ' samen' : ''}` }));
+    };
+    live = h('tr', { class: 'live' },
+      h('td', { class: 'n', text: s.handNo }),
+      h('td', { class: 'tr' }, h('span', { class: 'suit' + (isRed(s.trump) ? ' red' : ''), text: suitSym(s.trump) }), h('span', { class: 'by', text: 'bezig' })),
+      order.map(c));
+  }
+  const total = s.total || run;
+  const empty = !rows.length && !live;
+  const cols = 2 + order.length;
+  return h('div', { class: 'score-wrap' },
+    h('table', { class: 'scoresheet cols-' + order.length },
+      h('thead', {}, h('tr', {},
+        h('th', { class: 'n', text: '#' }), h('th', { text: 'Troef' }),
+        order.map(k => h('th', { class: cls(k) }, scorerName(s, k), teamNamesEl(s, k))))),
+      h('tbody', {}, rows, live,
+        empty ? h('tr', {}, h('td', { colSpan: cols, class: 'empty', text: 'Nog geen potjes gespeeld.' })) : null),
+      h('tfoot', {}, h('tr', {},
+        h('td', { colSpan: 2, text: `Totaal na ${s.scores?.length || 0} van ${s.hands || s.opts?.hands || 16}` }),
+        order.map(k => h('td', { class: 'num ' + cls(k) }, h('b', { text: total[k] })))))),
+    h('p', { class: 'legend' },
+      h('span', { class: 'tag tag-nat', text: 'nat' }),
+      three ? ' wie alleen speelde, haalde het bod niet. ' : ' de spelende partij haalde niet meer dan de helft. ',
+      h('span', { class: 'tag tag-pit', text: 'pit' }), ' alle slagen: 100 roem extra.',
+      three ? ' Wie niet alleen speelt, krijgt de helft van wat de twee samen halen.' : '',
+      s.prevHand?.tricks?.length ? ' Tik op het laatste potje om de slagen te zien.' : ''));
+}
+
+// The names behind a score, one per line, AI players as "Naam (AI)": a
+// team's two with four players, else the one player's.
+function teamNamesEl(s, k) {
+  const names = [];
+  const seats = seatCount(s) === 4 ? [k, k + 2] : [k];
+  for (const seat of seats) names.push(seat === s.you ? 'jij' : s.players[seat]?.name || 'vrij');
+  return h('small', { class: 'team-names', title: names.join(' & ') }, names.map(n => h('span', { text: n })));
+}
+
+// s as it was in the hand of result r: with three players the soloist
+// decides who played together, and the next hand has another one.
+function asInHand(s, r) {
+  return seatCount(s) === 3 && r ? { ...s, soloist: r.trumpBy } : s;
+}
+
+function showReview(s, m, r) {
+  sound.play('click');
+  m.view = 'review';
+  m.titleEl.textContent = `Potje ${r.hand}: de slagen`;
+  const res = s.prevHand.result;
+  m.body.replaceChildren(
+    h('button', { class: 'btn btn-ghost btn-sm back-btn', type: 'button', onclick: () => { m.view = 'score'; m.refresh(); } }, icon('back'), 'Terug naar scorebord'),
+    resultLine(s, res),
+    review(asInHand(s, res), s.prevHand.tricks, 'score', r.hand),
+    h('p', { class: 'legend', text: seatCount(s) === 4 ? 'De kaarten liggen in speelvolgorde, gekleurd per koppel. Tik op een slag om te zien wie wat speelde.'
+      : 'De kaarten liggen in speelvolgorde, gekleurd per kant. Tik op een slag om te zien wie wat speelde.' }));
+}
+
+function resultLine(s, r) {
+  if (!r) return null;
+  const order = scorerOrder(s);
+  const gains = r.gains || r.score;
+  const parts = order.flatMap((k, i) => [i ? ' · ' : null,
+    h('b', { class: k === myScorer(s) ? 'wij' : 'zij', text: `${scorerName(s, k)} ${gains[k]}` })]).filter(Boolean);
+  const bid = seatCount(s) === 3 && r.bid ? ` alleen voor ${r.bid}` : '';
+  return h('p', { class: 'result-line' },
+    h('span', { class: 'suit' + (isRed(r.trump) ? ' red' : ''), text: suitSym(r.trump) }),
+    ` ${nameOf(s, r.trumpBy)} speelde ${suitName(r.trump)}${bid}. `,
+    ...parts,
+    r.nat ? h('span', { class: 'tag tag-nat', text: 'nat' }) : null,
+    r.pit ? h('span', { class: 'tag tag-pit', text: 'pit' }) : null);
+}
+
+// ---------- last trick ----------
+
+// Once a hand is over, its last trick also opens the hand in the replay.
+export function openLastTrick() {
+  const s = app.s;
+  if (!s) return;
+  const t = s.lastTrick;
+  if (!t?.cards?.length) { toast('Er is nog geen slag gespeeld'); return; }
+  sound.play('click');
+  const over = s.phase === 'handEnd' || s.phase === 'gameOver';
+  openModal({ id: 'last', title: 'Laatste slag', cls: 'm-last', body: [...trickCross(s, t), over ? replayButton(s.scores?.at(-1)?.hand, 8) : null] });
+}
+
+// ---------- trump / variant info ----------
+
+// Reads what the badge shows: during the trump banner the table already
+// shows the new trump, while app.s follows once the banner is done.
+export function openTrumpInfo() {
+  const s = app.view || app.s;
+  if (!s) return;
+  sound.play('click');
+  const o = s.opts || {};
+  const n = seatCount(s);
+  const parts = [];
+  if (s.trump && s.playingTeam >= 0) {
+    const maker = `Gekozen door ${nameOf(s, s.trumpBy, false)}${s.trumpBy === s.you ? ' (jij)' : ''}.`;
+    const task = n === 3 ? `${s.trumpBy === s.you ? 'Jij speelt' : `${nameOf(s, s.trumpBy, false)} speelt`} alleen en moet minstens ${s.bid} punten halen, roem telt mee.`
+      : n === 2 ? `${s.trumpBy === s.you ? 'Jij speelt en moet' : `${nameOf(s, s.trumpBy, false)} speelt en moet`} meer dan de helft halen.`
+        : `${teamName(s, s.playingTeam)} spelen en moeten meer dan de helft halen.`;
+    parts.push(h('div', { class: 'ti-trump' + (isRed(s.trump) ? ' red' : '') },
+      h('span', { class: 'ti-sym', text: suitSym(s.trump) }),
+      h('div', {}, h('b', { text: cap(`${suitName(s.trump)} is troef`) }), h('span', { text: `${maker} ${task}` }))));
+  } else if (n === 3 && s.phase === 'auction') {
+    parts.push(h('p', { text: s.bidder >= 0 ? `Er wordt geboden. Hoogste bod: ${s.bid} van ${nameOf(s, s.bidder, false)}.` : 'Er wordt geboden. Nog geen bod.' }));
+  } else {
+    parts.push(h('p', { text: s.turned ? `Gedraaid: ${suitText(s.turned)}. Nog niemand speelt.` : 'Er is nog geen troef gekozen.' }));
+  }
+  if (PLAYING.has(s.phase) && s.trump) {
+    const hp = s.handPoints || [0, 0];
+    const hr = s.handRoem || [0, 0];
+    const w = n === 4 ? s.you % 2 : mySide(s);
+    const label = side => (n === 4 ? (side === w ? 'Wij' : 'Zij') : teamName(s, side));
+    parts.push(h('p', { class: 'ti-now' }, 'Dit potje: ',
+      h('b', { class: 'wij', text: `${label(w)} ${hp[w]}${hr[w] ? ` + ${hr[w]} roem` : ''}` }), ' · ',
+      h('b', { class: 'zij', text: `${label(1 - w)} ${hp[1 - w]}${hr[1 - w] ? ` + ${hr[1 - w]} roem` : ''}` })));
+  }
+  const rules = h('p', { text: o.rules === 'rotterdams'
+    ? 'Rotterdams: kun je niet bekennen, dan moet je altijd troeven, ook als je maat de slag heeft.'
+    : 'Amsterdams: kun je niet bekennen en heeft je maat de slag, dan hoef je niet te troeven.' });
+  const trump = h('p', { text: o.trumpMode === 'gedraaid'
+    ? 'Gedraaid (vrij): er wordt een kleur gedraaid. Om de beurt zeg je spelen of passen. Past iedereen, dan moet de voorhand een andere kleur kiezen.'
+    : 'Utrechts (verplicht): de voorhand moet troef kiezen en speelt dan.' });
+  const variant = n === 3 ? [
+    h('p', { text: 'Met z\'n drieën: ieder voor zich, tien kaarten elk en twee dicht op tafel. Wie het hoogst biedt, pakt die twee, legt er twee weg (hun punten tellen voor hem of haar), kiest troef en speelt alleen. Haalt die het bod (roem telt mee), dan krijgt ieder wat hij haalde en delen de andere twee hun punten; anders is het nat en delen zij alles.' }),
+    rules,
+  ] : n === 2 ? [
+    h('p', { text: 'Met z\'n tweeën: ieder speelt van acht stapeltjes van twee kaarten op tafel. Je speelt een open kaart; de kaart eronder gaat open als de slag af is. Roem in je acht open kaarten na de troefkeus telt voor jou.' }),
+    trump,
+  ] : [trump, rules];
+  parts.push(h('div', { class: 'ti-variant' },
+    h('h3', { text: `Variant: ${variantText(o)}` }),
+    ...variant,
+    h('p', { class: 'muted', text: `${s.hands || o.hands || 16} potjes · AI ${o.ai || 'normaal'} · tempo ${o.tempo || 'normaal'}` })));
+  openModal({ id: 'trumpinfo', title: 'Troef en variant', cls: 'm-info', body: parts });
+}
+
+
+// ---------- manual ----------
+
+export function openManual(tab) {
+  sound.play('click');
+  const content = h('div', { class: 'man-scroll' });
+  const tabs = h('div', { class: 'tabs', role: 'tablist' });
+  const btns = SECTIONS.map(sec => h('button', {
+    class: 'tab', type: 'button', role: 'tab', dataset: { id: sec.id }, onclick: () => show(sec.id),
+  }, sec.title));
+  tabs.append(...btns);
+  // On a phone only a few tabs fit: faded edges show that the bar scrolls,
+  // and every section ends with a button to the next one.
+  const edges = () => {
+    const max = tabs.scrollWidth - tabs.clientWidth;
+    tabs.classList.toggle('more-l', tabs.scrollLeft > 4);
+    tabs.classList.toggle('more-r', tabs.scrollLeft < max - 4);
+  };
+  tabs.addEventListener('scroll', edges, { passive: true });
+  function show(id) {
+    for (const b of btns) b.setAttribute('aria-selected', String(b.dataset.id === id));
+    content.replaceChildren();
+    try {
+      content.append(renderManual(id, { icon }));
+    } catch {
+      content.append(h('p', { text: 'Dit deel van de handleiding kon niet worden geladen.' }));
+    }
+    const next = SECTIONS[SECTIONS.findIndex(x => x.id === id) + 1];
+    if (next) {
+      content.append(h('div', { class: 'man-next' },
+        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => show(next.id) }, `Volgende: ${next.title}`, icon('forward'))));
+    }
+    content.scrollTop = 0;
+    prefs.tab = id;
+    savePrefs();
+    btns.find(b => b.dataset.id === id)?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    requestAnimationFrame(edges);
+  }
+  openModal({ id: 'manual', title: 'Handleiding', cls: 'm-manual', body: [tabs, content] });
+  const start = tab || prefs.tab;
+  show(SECTIONS.some(x => x.id === start) ? start : SECTIONS[0].id);
+}
+
+
+// ---------- hand summary ----------
+
+// The overlays after an update. A new deal closes the sheet of the AI's
+// reasoning (it is about the hand before). A hand looked back at (replay
+// owner 'hand') stays open through the next hand, until the lobby or a new
+// match; the review's replay belongs to game over.
+export function sync(s, ev) {
+  if (s.phase === 'handEnd') showSummary(s, ev);
+  else {
+    byId('summary')?.close(true);
+    if (byId('trick')?.owner === 'summary') byId('trick').close(true);
+  }
+  if (ev?.type === 'deal') {
+    byId('why')?.close(true);
+    expertJs?.onDeal();
+  }
+  const rp = byId('replay');
+  if (s.phase === 'gameOver') {
+    showGameOver(s, ev);
+    rp?.refresh(s);
+  } else {
+    byId('over')?.close(true);
+    byId('review')?.close(true);
+    if (rp?.owner === 'review' || s.phase === 'lobby' || (ev?.type === 'deal' && !s.scores?.length)) rp?.close(true);
+    else rp?.refresh(s);
+  }
+  if (s.phase === 'lobby') { byId('score')?.close(true); byId('last')?.close(true); byId('trick')?.close(true); }
+  byId('score')?.refresh?.();
+}
+
+// A passive overlay (hand summary, game over) comes up: the sheet of the
+// AI's reasoning closes (the top-bar button opens it again over it), and a
+// hand open in the replay stays on top of it.
+function overlayUp(m) {
+  byId('why')?.close(true);
+  byId('replay')?.root.before(m.root);
+}
+
+function showSummary(s, ev) {
+  const r = (ev?.type === 'handEnd' && ev.result) || s.prevHand?.result;
+  if (!r) return;
+  let m = byId('summary');
+  if (!m) {
+    const n = seatCount(s);
+    const w = n === 4 ? s.you % 2 : n === 2 ? s.you : r.trumpBy === s.you ? 0 : 1;
+    const T = handHeadline(r, w, s);
+    const fresh = ev?.type === 'handEnd';
+    const nums = [];
+    const num = (v, cls) => { const el = h('b', { class: cls, text: fresh ? 0 : v }); if (fresh) nums.push([el, v]); else el.dataset.n = v; return el; };
+    const tricks = s.prevHand?.tricks || [];
+    const ready = h('div', { class: 'ready-list' });
+    const ring = countdownRing();
+    const go = h('button', { class: 'btn btn-go btn-big', type: 'button', onclick: () => { sound.play('click'); app.send({ t: 'ready' }); go.disabled = true; go.lastChild.textContent = 'Wachten op de rest'; } },
+      ring.el, h('span', { text: s.handNo >= (s.opts.from || s.hands) ? 'Naar de uitslag' : 'Volgend potje' }));
+    m = openModal({
+      id: 'summary', cls: 'm-summary passive', closable: false, label: 'Uitslag van het potje', body: [
+        h('div', { class: 'sum-head ' + T.cls },
+          h('div', { class: 'sum-title' + (T.t.length > 16 ? ' long' : ''), text: T.t }),
+          h('div', { class: 'sum-sub', text: T.sub }),
+          h('div', { class: 'sum-meta' },
+            h('span', { class: 'suit' + (isRed(r.trump) ? ' red' : ''), text: suitSym(r.trump) }),
+            ` ${nameOf(s, r.trumpBy)} speelde ${suitName(r.trump)} · potje ${s.handNo} van ${s.hands}`)),
+        sumTable(s, r, w, num),
+        seatCount(s) === 3 ? discardLine(s, r) : natWhy(s, r, w),
+        tricks.length ? h('div', { class: 'sum-review' + (n !== 4 ? ` sum-review-${n}` : '') }, h('h3', {}, 'De slagen', h('small', { text: ' · tik voor wie wat speelde' })),
+          review(asInHand(s, r), tricks, 'summary', s.handNo)) : null,
+        h('div', { class: 'sum-foot' }, go, ready),
+      ],
+    });
+    overlayUp(m);
+    m.go = go;
+    m.ready = ready;
+    m.ring = ring;
+    m.onRemove = () => ring.set(0); // stops the countdown once the fade-out is over
+    if (fresh) setTimeout(() => nums.forEach(([el, v]) => countUp(el, v, 1100)), dur(350));
+    focusMain(go);
+  }
+  m.ring.set(s.nextAt);
+  m.ring.el.toggleAttribute('hidden', !s.nextAt); // training: no countdown
+  const mine = s.players[s.you]?.ready;
+  if (mine) { m.go.disabled = true; m.go.lastChild.textContent = 'Wachten op de rest'; }
+  // Who is ready, when there is anyone to wait for; alone with bots the
+  // chip would only say "Jij" and cost a phone a row of tricks. Who left
+  // is no longer at the table.
+  const chips = s.players.map((p, seat) => p && !p.bot && !p.left ? h('span', { class: 'ready-chip ' + (p.ready ? 'on ' : '') + teamCls(s, seat) },
+    p.ready ? icon('check') : null, nameOf(s, seat)) : null).filter(Boolean);
+  m.ready.replaceChildren(...(chips.length > 1 ? chips : []));
+  m.ready.hidden = chips.length < 2;
+}
+
+// The summary's numbers: per side with four and two players (Wij/Zij, Jij
+// and the other), with three per player, the two who played together
+// sharing their side's points and roem.
+function sumTable(s, r, w, num) {
+  const total = s.total || [];
+  const n = seatCount(s);
+  if (n !== 3) {
+    const lbl = side => (n === 4 ? (side === w ? 'Wij' : 'Zij') : side === w ? 'Jij' : nameOf(s, side));
+    const row = (label, a, b, cls = '') => h('tr', { class: cls }, h('th', { text: label }), h('td', { class: 'wij' }, num(a)), h('td', { class: 'zij' }, num(b)));
+    const gains = r.gains || r.score;
+    return h('table', { class: 'sum-table' },
+      h('thead', {}, h('tr', {}, h('th'), h('th', { class: 'wij' }, playerName(lbl(w))), h('th', { class: 'zij' }, playerName(lbl(1 - w))))),
+      h('tbody', {},
+        row('Punten', r.points[w], r.points[1 - w]),
+        row('Roem', r.roem[w], r.roem[1 - w]),
+        row('Erbij', gains[w], gains[1 - w], 'sum-score'),
+        row('Stand', total[w] ?? 0, total[1 - w] ?? 0, 'sum-total')));
+  }
+  const order = scorerOrder(s);
+  const cls = k => (k === myScorer(s) ? 'wij' : 'zij');
+  const side = k => (k === r.trumpBy ? 0 : 1);
+  const row = (label, val, rcls = '', shared = false) => h('tr', { class: rcls }, h('th', { text: label }),
+    order.map(k => h('td', { class: cls(k) + (shared && side(k) === 1 ? ' shared' : '') }, num(val(k)))));
+  // The players by their faces, as in the score pill: three names do not
+  // fit a phone.
+  const face = k => {
+    if (k === s.you) return 'Jij';
+    const p = s.players[k];
+    return p?.bot ? p.emoji || '🤖' : (p?.name || '?').trim().charAt(0).toUpperCase();
+  };
+  return h('table', { class: 'sum-table sum-three' },
+    h('thead', {}, h('tr', {}, h('th'), order.map(k => h('th', { class: cls(k), title: nameOf(s, k, false) },
+      h('span', { class: 'face', text: face(k) }), h('small', { class: 'role', text: side(k) === 0 ? 'alleen' : 'samen' }))))),
+    h('tbody', {},
+      row('Punten', k => r.points[side(k)], '', true),
+      row('Roem', k => r.roem[side(k)], '', true),
+      row('Erbij', k => r.gains[k], 'sum-score'),
+      row('Stand', k => total[k] ?? 0, 'sum-total')));
+}
+
+// Three players: what the soloist laid away (its points counted for the
+// soloist), with the rule for playing alone behind an ⓘ. The headline
+// already says what was bid and made.
+function discardLine(s, r) {
+  const pts = (r.discards || []).reduce((n, c) => n + cardPoints(c, r.trump), 0);
+  return h('p', { class: 'sum-why' }, infoBtn('Alleen spelen', [
+    'Wie alleen speelt, moet minstens het bod halen: punten plus roem, de weggelegde kaarten meegeteld.',
+    'Gehaald: ieder krijgt wat hij haalde, en de andere twee delen hun punten, ieder de helft. Nat: wie alleen speelde krijgt niets en de andere twee delen alle 162 punten en alle roem.',
+  ]), ' Weggelegd: ', suitify(r.discards.map(c => cardShort(c)).join(' ')), ` (${pts} ${pts === 1 ? 'punt' : 'punten'}).`);
+}
+
+// Card points (design §2), for the discards.
+function cardPoints(code, trump) {
+  const rank = code[0];
+  if (code[1] === trump) return { J: 20, 9: 14, A: 11, T: 10, K: 4, Q: 3 }[rank] ?? 0;
+  return { A: 11, T: 10, K: 4, Q: 3, J: 2 }[rank] ?? 0;
+}
+
+// Why a hand went nat, with the rule behind an ⓘ.
+function natWhy(s, r, w) {
+  if (!r.nat) return null;
+  const n = seatCount(s);
+  const we = r.playingTeam === w;
+  const sub = n === 4 ? (we ? ' Waarom nat? Wij haalden niet meer dan de helft.' : ' Zij haalden niet meer dan de helft.')
+    : we ? ' Waarom nat? Je haalde niet meer dan de helft.' : ` ${nameOf(s, 1 - w)} haalde niet meer dan de helft.`;
+  return h('p', { class: 'sum-why' }, infoBtn('Nat', [
+    n === 4 ? 'De spelende partij moet meer dan de helft van alle punten plus roem halen. Lukt dat niet, dan gaan ze nat.'
+      : 'Wie speelt, moet meer dan de helft van alle punten plus roem halen. Lukt dat niet, dan is het nat.',
+    'Bij nat krijgt de tegenpartij alle 162 punten en alle roem van beide kanten.',
+  ]), sub);
+}
+
+
+// ---------- game over ----------
+
+function showGameOver(s, ev) {
+  if (byId('over')) {
+    byId('over').refresh?.(s);
+    return;
+  }
+  const w = myScorer(s);
+  const total = (ev?.type === 'gameOver' && ev.total) || s.total || [0, 0];
+  const winner = ev?.type === 'gameOver' ? ev.winner : s.winner;
+  const won = winner === w;
+  // A shared first place is a draw for those who share it.
+  const draw = winner === -1 && total[w] === Math.max(...total);
+  const title = draw ? 'Gelijkspel' : won ? 'Gewonnen!' : 'Verloren';
+  const sub = draw ? 'Precies gelijk. Dat zie je niet vaak!' : won ? 'Wat een spel. Gefeliciteerd!' : 'Volgende keer beter. Nog een partij?';
+  const host = s.host === s.you;
+  // A rematch is a whole new partij of potjes; sent once, until it is refused.
+  // "lobby" takes the table back to Klaarzetten (same code) to change seats
+  // or rules; training and the expert mode have no lobby.
+  let sent = false;
+  const label = hst => (sent ? 'Even wachten…' : hst ? 'Nog een partij' : 'Wachten op de host');
+  const send = t => {
+    if (sent) return;
+    sent = true;
+    sound.play('click');
+    app.send({ t });
+    m.refresh(app.s);
+  };
+  const again = h('button', { class: 'btn btn-go btn-big', type: 'button', disabled: !host, onclick: () => send('rematch') }, label(host));
+  const setup = h('button', { class: 'btn btn-ghost btn-block btn-setup', type: 'button', hidden: !host || s.training || s.expert, onclick: () => send('lobby') },
+    icon('users'), 'Spelers of regels wijzigen');
+  const rv = h('button', { class: 'review-line', type: 'button', onclick: () => openReview() });
+  reviewLine(rv, s.review);
+  const m = openModal({
+    id: 'over', cls: 'm-over passive' + (won ? ' won' : draw ? ' draw' : ' lost'), closable: false, label: title, body: [
+      h('div', { class: 'over-emoji', 'aria-hidden': 'true', text: draw ? '🤝' : won ? '🏆' : '🃏' }),
+      h('div', { class: 'over-title', text: title }),
+      h('div', { class: 'over-sub', text: sub }),
+      h('div', { class: 'over-score' + (total.length > 2 ? ' many' : '') }, scorerOrder(s).flatMap((k, i) => [
+        i ? h('div', { class: 'os-vs', text: '–' }) : null,
+        h('div', { class: 'os ' + (k === w ? 'wij' : 'zij') + (winner === k ? ' top' : '') },
+          h('span', { text: scorerName(s, k) }), h('b', { text: total[k] }), seatCount(s) === 4 ? teamNamesEl(s, k) : null),
+      ]).filter(Boolean)),
+      rv,
+      s.prevHand?.result ? h('div', { class: 'over-last' }, h('small', { text: 'Laatste potje' }), resultLine(s, s.prevHand.result)) : null,
+      h('div', { class: 'btn-col' },
+        again,
+        setup,
+        h('div', { class: 'btn-row' },
+          h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => openScoreSheet() }, icon('score'), 'Scorebord'),
+          h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => app.leave() }, icon('leave'), 'Naar start'))),
+    ],
+  });
+  m.refresh = st => {
+    const hst = st.host === st.you;
+    again.disabled = !hst || sent;
+    again.textContent = label(hst);
+    setup.hidden = !hst || st.training || st.expert;
+    setup.disabled = sent;
+    reviewLine(rv, st.review);
+    m.root.classList.toggle('with-review', !!st.review);
+  };
+  m.root.classList.toggle('with-review', !!s.review);
+  m.reset = () => {
+    sent = false;
+    if (app.s) m.refresh(app.s);
+  };
+  overlayUp(m);
+  if (won && ev?.type === 'gameOver') confetti(m.root);
+  if (host) focusMain(again);
+}
+
+// ---------- spelanalyse ----------
+
+// What the review counts as points left and as a strong move (the
+// Spelanalyse, and the line over a hand in the replay).
+const LOST_INFO = 'Laten liggen: wat een betere keuze gemiddeld meer had opgeleverd. Verschillen van minder dan 5 punten, of binnen de onzekerheid van de berekening, tellen niet mee.';
+const STRONG_INFO = 'Sterke zet: de beste keuze, terwijl de voor de hand liggende keuze minstens 10 punten minder opleverde.';
+
+// The line under the final score that opens the review of the player's
+// own play; the grades of the last choices may still be on their way.
+function reviewLine(btn, r) {
+  btn.hidden = !r;
+  if (!r) return;
+  btn.disabled = r.pending;
+  if (r.pending) {
+    btn.replaceChildren(h('span', { text: 'Jouw spelanalyse wordt berekend…' }));
+    return;
+  }
+  reviewHistory(r);
+  btn.replaceChildren(h('span', {}, 'Jouw spel volgens Juf Jannie: ', h('b', { text: `${r.pct}%` }), ` (${reviewVerdict(r.pct)})`), icon('forward'));
+}
+
+// The review (design §9 Spelanalyse): numbers and facts about the
+// player's own play, for them alone, as Juf Jannie (the engine of the hints)
+// sees it.
+function openReview() {
+  const s = app.s;
+  const r = s?.review;
+  if (!r || r.pending) return;
+  sound.play('click');
+  const prev = reviewHistory(r);
+  const row = (label, value, ib = null) => h('tr', {}, h('th', {}, label, ib), h('td', { text: value }));
+  const zetten = n => `${n}\u00a0${n === 1 ? 'zet' : 'zetten'}`;
+  const moments = (title, list, total, line) => (list?.length ? h('section', { class: 'rv-sec' },
+    h('h3', {}, title, total > list.length ? h('small', { text: ` · de ${list.length > 1 ? list.length + ' ' : ''}grootste van ${total}` }) : null),
+    h('ul', { class: 'rv-list' }, list.map(m => h('li', {},
+      h('button', {
+        class: 'rv-moment', type: 'button', disabled: !r.replay?.some(x => x.hand === m.hand),
+        title: 'Tik om dit potje terug te kijken', onclick: () => openReplay(s, { hands: r.replay, moment: m, owner: 'review' }),
+      }, h('span', { class: 'rv-where', text: momentWhere(m) }), line(m),
+      h('span', { class: 'rv-sum' }, suitify(outcomeLine(m))), icon('forward')))))) : null);
+  const sp = r.speed;
+  openModal({
+    id: 'review', title: 'Jouw spelanalyse', cls: 'm-review', body: [
+      h('div', { class: 'rv-head' },
+        h('small', { class: 'rv-who', text: 'Volgens Juf Jannie' }),
+        h('div', { class: 'rv-pct' }, h('b', { text: `${r.pct}%` }), h('span', { text: `(${reviewVerdict(r.pct)})` }), infoBtn('Spelanalyse', [
+          'Juf Jannie is de game engine van dit spel: dezelfde die de AI-spelers laat spelen en bij Oefenen de tips geeft. Dit is haar berekening, met alleen wat jij op dat moment wist.',
+          'Bij elke keuze speelt ze het potje honderden keren uit, voor elke kaart, troefkleur of elk bod dat je had, telkens met een andere verdeling van de kaarten die je niet kon zien. Wat een keuze gemiddeld oplevert, is haar waarde.',
+          'Punten zijn het verschil tussen de score van jullie koppel en die van de tegenstanders aan het eind van het potje. Een punt dat naar de tegenstanders gaat in plaats van naar jullie, telt dus twee keer. Gaat een potje nat, dan krijgen de tegenstanders alle punten: een keuze die de kans op nat groter maakt, kost gemiddeld veel, ook als de kaart zelf weinig punten waard is.',
+          'Het blijft een schatting: Juf Jannie speelt de rest van het potje met eenvoudige regels uit.',
+          'Het percentage zegt hoeveel van de punten die met je keuzes te winnen waren, je ook haalde. Je kaarten tellen niet mee: ook met slechte kaarten kun je 100% halen.',
+          LOST_INFO,
+          STRONG_INFO,
+        ])),
+        h('small', { text: (r.hands ? `${r.hands} ${r.hands === 1 ? 'potje' : 'potjes'} · ` : '') + `${r.choices} ${r.choices === 1 ? 'keuze' : 'keuzes'}` +
+          (r.seed ? ` · seed ${r.seed}` : '') })),
+      h('table', { class: 'rv-table' }, h('tbody', {},
+        // A player who took a seat over during a hand has no dealt hand measured.
+        r.hands ? row('Jouw kaarten', luckText(r.luck), infoBtn('Jouw kaarten', [
+          'Wat je kaarten bij het delen gemiddeld per potje waard waren voor jouw koppel, vergeleken met een gemiddelde hand op dezelfde plaats aan tafel.',
+        ])) : null,
+        row('Sterke zetten', String(r.strongN)),
+        row('Laten liggen', r.lostN ? `${pointsText(r.lost)} in ${zetten(r.lostN)}` : '0 punten'),
+        r.leads[1] ? row('Uitkomen', `${r.leads[0]} van ${r.leads[1]} keer de beste kaart`) : null,
+        r.trumps[1] ? row('Troefkeuze', `${r.trumps[0]} van ${r.trumps[1]} keer de beste keuze`) : null,
+        row('Roem weggegeven', r.roem[1] ? `${r.roem[0]} (${r.roem[1]} keer)` : '0', infoBtn('Roem weggegeven', [
+          'Roem die jouw kaart toevoegde aan de kaarten die al op tafel lagen, terwijl je een kaart had die minder roem gaf, in slagen die de tegenstanders haalden.',
+        ])))),
+      r.risky[0] ? h('p', { class: 'rv-risky', text: `Gespeeld met meer dan 40% kans op nat: ${r.risky[0]} keer, ${r.risky[1]} keer nat` }) : null,
+      sp ? h('section', { class: 'rv-sec' }, h('h3', {}, 'Snelheid'),
+        h('table', { class: 'rv-table' }, h('tbody', {},
+          row('Bedenktijd per zet', timeText(sp.median), infoBtn('Bedenktijd', [
+            'De tijd van het moment dat je aan de beurt was tot je kaart, troefkeuze of bod. Per zet staat de middelste van je tijden: de helft van je zetten ging sneller, de helft langzamer. Zo telt één lange pauze niet zwaar mee.',
+            'Een beurt waarin je verbinding even weg was, telt niet mee. De AI-spelers tellen niet mee bij de anderen.',
+          ])),
+          row('Langste bedenktijd', `${timeText(sp.slowest.ms)} (${momentWhere(sp.slowest).toLowerCase()})`),
+          row('De tafel wachtte op jou', timeText(sp.total)),
+          sp.others ? row('Anderen per zet', timeText(sp.others.median)) : null,
+          sp.others ? row('Jij wachtte op de anderen', timeText(sp.others.total)) : null))) : null,
+      moments('Sterke zetten', r.strong, r.strongN, m => {
+        const l = strongLine(m);
+        return h('span', { class: 'rv-text' }, h('b', {}, suitify(l.what)), suitify(l.rest));
+      }),
+      moments('Laten liggen', r.missed, r.lostN, m => h('span', { class: 'rv-text' }, suitify(missedLine(m)))),
+      r.replay?.length ? h('button', { class: 'btn btn-ghost btn-block rv-replay', type: 'button', onclick: () => openReplay(s, { hands: r.replay, owner: 'review' }) },
+        icon('history'), 'Potjes terugkijken') : null,
+      prev.length ? h('p', { class: 'rv-prev' }, 'Vorige partijen ', h('b', { text: prev.map(p => `${p}%`).join(' · ') })) : null,
+      h('p', { class: 'legend', text: 'Disclaimer: Dit is slechts de mening van Juf Jannie.' }),
+      h('section', { class: 'rv-sec' }, h('h3', {}, 'Opmerkingen'),
+        feedbackForm(() => ({}), 'Opmerking over dit spel of de analyse'),
+        h('p', { class: 'legend', text: 'Je opmerking wordt met je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor statistieken en om het spel te verbeteren.' })),
+    ],
+  });
+}
+
+// ---------- replay ----------
+
+// The replay (design §9 Terugkijken): a finished hand card by card with
+// every hand open, and at each graded decision of the player what Juf
+// Jannie thinks of it (the hand's choices). hands are the hands to step
+// through: one hand from handReview (owner 'hand'; pending: its grades
+// still out), or every hand of the review at game over (owner 'review').
+// It starts at the first hand's deal, at {hand, step}, or just before the
+// player's card of a moment {hand, trick} (at the deal for a trump choice
+// or bid). A step is the number of cards played: at 4 × n trick n lies
+// complete.
+export function openReplay(s, { hands, moment = null, owner = 'review' }) {
+  if (!hands?.length) return null;
+  sound.play('click');
+  const seats = [0, 1, 2, 3].map(k => (s.you + k) % 4);
+  const cardsOf = rh => rh.tricks.flatMap(t => t.cards);
+  const indexOf = n => Math.max(0, hands.findIndex(x => x.hand === n));
+  // The step just before the player's card in trick d.trick of hand rh:
+  // for a lead the trick before still lies complete; the deal (0) for a
+  // trump choice or bid.
+  const before = (rh, d) => {
+    const t = d.trick ? rh?.tricks[d.trick - 1] : null;
+    return t ? 4 * (d.trick - 1) + Math.max(0, t.cards.findIndex(pc => pc.seat === s.you)) : 0;
+  };
+  let hand = indexOf(moment?.hand);
+  let step = moment ? before(hands[hand], moment) : 0;
+  const m = openModal({ id: 'replay', title: 'Terugkijken', cls: 'm-replay', body: [] });
+  m.owner = owner;
+  // A hand looked back at during the next one: your turn at the table. To
+  // the table closes the views that led here too, top down, so the focus
+  // goes back to the table. The text comes a frame after the line shows,
+  // so a screen reader announces it.
+  const turnText = h('span');
+  const turn = h('p', { class: 'rp-turn', role: 'status', hidden: true }, turnText,
+    h('button', {
+      class: 'btn btn-sm', type: 'button', onclick: () => {
+        m.close();
+        for (const id of ['trick', 'last', 'score']) byId(id)?.close();
+      },
+    }, 'Naar tafel'));
+  m.body.before(turn);
+  const showTurn = () => {
+    const on = s.turn === s.you && PLAYING.has(s.phase);
+    if (on === !turn.hidden) return;
+    turn.hidden = !on;
+    turnText.textContent = '';
+    if (on) requestAnimationFrame(() => { turnText.textContent = 'Aan tafel ben je aan de beurt.'; });
+  };
+  showTurn();
+  // A later state: the turn at the table, and at game over the review's
+  // hands again.
+  m.refresh = st => {
+    s = st;
+    showTurn();
+    if (owner !== 'review' || !st.review?.replay?.length) return;
+    const shown = hands[hand].hand;
+    hands = st.review.replay;
+    hand = indexOf(shown);
+    redraw();
+  };
+  // A fresh handReview of a hand shown: its grades so far.
+  m.update = rh => {
+    if (!hands.some(x => x.hand === rh.hand)) return;
+    hands = hands.map(x => (x.hand === rh.hand ? rh : x));
+    redraw();
+  };
+  // The steps stay in view below the scrolling body.
+  const bar = h('div', { class: 'rp-bar' });
+  m.dlg.append(bar);
+  const go = (hd, st) => {
+    hand = Math.max(0, Math.min(hands.length - 1, hd));
+    step = Math.max(0, Math.min(cardsOf(hands[hand]).length, st));
+    const key = document.activeElement?.dataset?.key;
+    render();
+    if (key) m.dlg.querySelector(`[data-key="${key}"]:not(:disabled)`)?.focus({ preventScroll: true });
+  };
+  const redraw = () => go(hand, step);
+  m.dlg.addEventListener('keydown', e => {
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.target.closest?.('textarea, input')) {
+      e.preventDefault();
+      go(hand, step + (e.key === 'ArrowLeft' ? -1 : 1));
+    }
+  });
+
+  function render() {
+    const rh = hands[hand];
+    const row = s.scores?.find(x => x.hand === rh.hand);
+    const played = cardsOf(rh);
+    const n = played.length;
+    step = Math.min(step, n);
+    const gone = new Set(played.slice(0, step).map(pc => pc.card));
+    const ti = Math.ceil(step / 4) - 1; // the trick on the table; -1 before the first card
+    const trick = rh.tricks[ti];
+    const shown = trick ? trick.cards.slice(0, step - 4 * ti) : [];
+    const complete = shown.length === 4;
+    const next = step < n ? played[step].seat : -1;
+    const trump = row ? { suit: row.trump, by: row.trumpBy } : null;
+    // The player's graded decisions at this step (at the deal maybe a bid,
+    // a trump choice and the lead of the first trick), else the latest one
+    // before it.
+    const choices = rh.choices || [];
+    const now = choices.filter(d => before(rh, d) === step);
+    const last = now.length ? null : choices.filter(d => before(rh, d) < step).at(-1);
+    // The player's card and the option it is measured against, marked in
+    // their hand at the decision itself: the stronger of the two in gold.
+    // A card that lost and gained nothing is not marked.
+    const mo = now.find(d => d.played?.card && (d.better || d.points > 0));
+    const playedCls = mo?.better ? 'rp-played' : 'rp-better';
+    const alt = mo && (mo.better || mo.alt);
+    const marks = new Map();
+    if (mo) marks.set(mo.played.card, playedCls);
+    if (alt?.card) marks.set(alt.card, mo.better ? 'rp-better' : 'rp-alt');
+
+    const stand = [0, 0];
+    rh.tricks.slice(0, Math.max(0, complete ? ti + 1 : ti)).forEach(t => { stand[t.winner % 2] += t.points + roemTotal(t.roem); });
+    const wij = s.you % 2;
+
+    const cross = h('div', { class: 'cross rp-cross' }, seats.map(seat => {
+      const pc = shown.find(x => x.seat === seat);
+      const win = complete && trick.winner === seat;
+      return h('div', { class: `cross-slot cs-${posOf(s, seat)} ${teamCls(s, seat)}` + (win ? ' win' : '') + (seat === next && !complete ? ' turn' : '') },
+        pc ? mini(pc.card, win ? 'winner' : '') : h('div', { class: 'rp-slot' }),
+        playerName(nameOf(s, seat), { cls: 'cs-name', title: true }));
+    }));
+    const what = complete
+      ? h('p', { class: 'last-sum rp-what ' + teamCls(s, trick.winner) },
+        h('b', { text: `${nameOf(s, trick.winner)} neemt de slag` }),
+        h('span', { text: ` · ${trick.points} punten` }),
+        roemTotal(trick.roem) ? h('span', { class: 'gold', text: ` · roem: ${roemText(trick.roem)}` }) : null)
+      : next >= 0 ? h('p', { class: 'last-sum rp-what' }, next === s.you ? 'Jij bent aan de beurt' : `${nameOf(s, next)} is aan de beurt`) : null;
+
+    // A graded decision as in the review: points left, a strong move, or
+    // neither; away from it, a button back to it.
+    const rated = d => d.better || d.points > 0;
+    const choice = (d, here) => h('div', { class: 'rp-moment' + (here ? ' now' : '') },
+      h('span', { class: 'rv-where', text: momentWhere({ hand: rh.hand, trick: d.trick }) }),
+      h('span', { class: 'rv-text' }, suitify(d.better ? missedLine(d) : d.points > 0 ? Object.values(strongLine(d)).join('') : fineLine(d))),
+      rated(d) ? h('span', { class: 'rv-sum' }, suitify(outcomeLine(d))) : null,
+      here ? null : h('button', { class: 'btn btn-ghost btn-sm', type: 'button', dataset: { key: 'choice' }, onclick: () => go(hand, before(rh, d)) }, 'Naar deze keuze'));
+    const box = now.length ? now.map(d => choice(d, true)) : last ? [choice(last, false)] : [];
+    const sum = handSum(choices, rh.pending);
+    const hand4 = seat => h('div', { class: 'rp-hand ' + teamCls(s, seat) + (seat === next && !complete ? ' turn' : '') },
+      playerName(nameOf(s, seat), { cls: 'rp-name', title: true }),
+      h('div', { class: 'rp-cards' }, rh.cards[seat].filter(c => !gone.has(c)).map(c => mini(c, marks.get(c) || ''))));
+    // replaceChildren would show a null as text.
+    m.body.replaceChildren(...[
+      h('div', { class: 'rp-head' },
+        h('button', { class: 'icon-btn', type: 'button', dataset: { key: 'hand-prev' }, 'aria-label': 'Vorig potje', title: 'Vorig potje', disabled: hand === 0, onclick: () => go(hand - 1, 0) }, icon('back')),
+        h('div', { class: 'rp-title' }, h('b', { text: `Potje ${rh.hand} van ${s.hands}` }),
+          trump ? h('small', {}, suitify(`${suitSym(trump.suit)} troef · ${nameOf(s, trump.by)} speelt`)) : null),
+        h('button', { class: 'icon-btn', type: 'button', dataset: { key: 'hand-next' }, 'aria-label': 'Volgend potje', title: 'Volgend potje', disabled: hand === hands.length - 1, onclick: () => go(hand + 1, 0) }, icon('forward')),
+        sum ? h('p', { class: 'rp-sum' }, sum, infoBtn('Volgens Juf Jannie', [LOST_INFO, STRONG_INFO])) : null),
+      h('div', { class: 'rp-table' },
+        cross,
+        what,
+        h('p', { class: 'rp-stand' }, step === 32 && row
+          ? `Uitslag: Wij ${row.score[wij]} – Zij ${row.score[1 - wij]}` + (row.nat ? ` · ${row.playingTeam === wij ? 'Wij' : 'Zij'} nat` : row.pit ? ' · pit' : '')
+          : `Stand in dit potje: Wij ${stand[wij]} – Zij ${stand[1 - wij]}`)),
+      // Under the table, so the table stays put as the box changes.
+      box.length ? h('div', { class: 'rp-choices' }, box) : null,
+      h('div', { class: 'rp-hands' },
+        hand4(s.you),
+        mo && marks.size ? h('p', { class: 'rp-legend' },
+          h('span', {}, h('span', { class: 'rp-key ' + playedCls }), suitify(`${cardShort(mo.played.card)} gespeeld`)),
+          alt?.card ? h('span', {}, h('span', { class: 'rp-key ' + (mo.better ? 'rp-better' : 'rp-alt') }),
+            suitify(`${cardShort(alt.card)} ${mo.better ? 'beter volgens Juf Jannie' : 'voor de hand liggend'}`)) : null) : null,
+        seats.slice(1).map(hand4)),
+      h('p', { class: 'legend', text: 'Alle kaarten liggen open. Bij een keuze wist de speler alleen de eigen kaarten en wat er gespeeld was.' }),
+    ].filter(Boolean));
+    // The player's card in a trick that lost points has a light dot, a
+    // strong one a gold dot.
+    const dot = d => (d?.better ? 'missed' : d?.points > 0 ? 'strong' : '');
+    bar.replaceChildren(
+      h('div', { class: 'rp-steps' },
+        h('button', { class: 'btn btn-ghost', type: 'button', dataset: { key: 'prev' }, 'aria-label': 'Een kaart terug', title: 'Een kaart terug (←)', disabled: step === 0, onclick: () => go(hand, step - 1) }, icon('back')),
+        h('span', { class: 'rp-pos', text: step === 0 ? 'Voor de eerste kaart' : `Slag ${ti + 1} · ${shown.length} van 4 kaarten` }),
+        h('button', { class: 'btn btn-ghost', type: 'button', dataset: { key: 'next' }, 'aria-label': 'Een kaart verder', title: 'Een kaart verder (→)', disabled: step === n, onclick: () => go(hand, step + 1) }, icon('forward'))),
+      h('div', { class: 'rp-tricks', role: 'group', 'aria-label': 'Slagen' }, rh.tricks.map((t, k) => {
+        const d = dot(choices.find(x => x.trick === k + 1));
+        const note = d === 'missed' ? ', punten laten liggen' : d === 'strong' ? ', sterke zet' : '';
+        return h('button', {
+          class: 'rp-tn ' + teamCls(s, t.winner) + (d ? ' ' + d : '') + (k === ti ? ' on' : ''), type: 'button', dataset: { key: `t${k}` },
+          'aria-label': `Slag ${k + 1}${note}`, title: `Slag ${k + 1}: ${nameOf(s, t.winner)} nam de slag${note}`,
+          onclick: () => go(hand, Math.min(4 * (k + 1), n)),
+        }, String(k + 1));
+      })));
+  }
+  render();
+  return m;
+}
+
+// A hand from the server (handReview): opened in the replay for the tap
+// that asked for it, while that tap's trick is still open; else the grades
+// so far for the hand the replay shows.
+export function onHandReview(msg) {
+  const rh = { ...msg.replay, pending: msg.pending };
+  const w = handWait;
+  if (w?.hand === msg.hand) {
+    handWait = null;
+    w.done();
+    if (w.btn.closest('.modal.open') && app.s) {
+      openReplay(app.s, { hands: [rh], moment: { hand: msg.hand, trick: w.trick }, owner: 'hand' });
+      return;
+    }
+  }
+  const rp = byId('replay');
+  if (rp?.owner === 'hand') rp.update(rh);
+}
+
+// The sheet Redenering van de AI (expert.js, loaded when first needed; the
+// expert mode and training); sync tells it about every new deal,
+// onReconnect about a new connection, whyError about a refusal.
+let expertJs = null;
+export function openWhy() {
+  import('./expert.js').then(x => { expertJs = x; x.openWhy(); })
+    .catch(() => toast('Laden lukte niet', { sub: 'Controleer je internet en probeer het nog eens.', kind: 'error' }));
+}
+
+// The server refused something: a question to the AI still out is given up.
+export function whyError() { expertJs?.onError(); }
+
+// The server refused something: a rematch in flight can be tried again,
+// and so can a hand to look back at (the shell's panels.onError frees
+// feedback; whyError a question to the AI).
+export function overlayError() {
+  byId('over')?.reset?.();
+  handWait?.done();
+  handWait = null;
+}
+
+// The connection is back (see the shell's panels.onReconnect): a hand asked
+// over the old connection is asked again, while its trick view is open (a
+// second answer only refreshes the replay). The expert's question likewise.
+export function overlayReconnect() {
+  expertJs?.onReconnect();
+  const w = handWait;
+  if (!w) return;
+  if (!w.sent) {
+    w.sent = true;
+    return;
+  }
+  if (w.btn.closest('.modal.open')) {
+    app.send({ t: 'handReview', hand: w.hand });
+    return;
+  }
+  handWait = null;
+  w.done();
 }

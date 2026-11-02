@@ -63,11 +63,7 @@ export const CONTENT = {
     { h4: 'Spelregels bij Nieuw spel' },
     {
       dl: [
-        ['Spel', '**Klaverjassen** (standaard) of **Toepen**: vier kaarten, alleen de laatste slag telt, en wie te veel strafpunten heeft, ligt eruit. De spelregels van toepen staan aan tafel onder het vraagteken. Oefenen is altijd klaverjassen. Welk spel Snel spelen start, kies je op het beginscherm.'],
-        ['Spelers', 'Met hoeveel spelers je klaverjast, jij meegerekend: **2**, **3** of **4** (standaard). Met z’n vieren speel je in koppels; met z’n drieën en tweeën gaat het anders, zie Met 2 of 3. Toepen kan met **2** tot **6**, ieder voor zich. Een plaats waar bij de start niemand zit, krijgt een AI-speler.'],
-        ['Eruit bij', 'Toepen: bij **10** (standaard) of **15** strafpunten lig je eruit. Wie als laatste over is, wint.'],
-        ['Was', 'Toepen, **met was** (standaard) of zonder: vier plaatjes (witte was) of drie plaatjes en een 7 (vuile was) mag je na het delen ruilen voor nieuwe kaarten. Een ander mag controleren.'],
-        ['Armoede', 'Toepen, **aan** (standaard) of uit: staat iemand op één strafpunt van eruit, dan begint het potje met inzet 2.'],
+        ['Spelers', 'Met hoeveel spelers je klaverjast, jij meegerekend: **2**, **3** of **4** (standaard). Met z’n vieren speel je in koppels; met z’n drieën en tweeën gaat het anders, zie Met 2 of 3. Een plaats waar bij de start niemand zit, krijgt een AI-speler.'],
         ['Potjes', '4 tot 24 (standaard **16**, een boom).'],
         ['Troef', '**Utrechts** (standaard): voorhand moet troef kiezen. **Gedraaid**: spelen of passen op een gedraaide kleur. Met z’n drieën wordt er geboden; dan staat deze keus er niet.'],
         ['Regels', '**Amsterdams** (standaard) of **Rotterdams**: wanneer je moet troeven. De standaardvariant is dus Utrechts/Amsterdams. Met z’n tweeën heb je geen maat; dan staat deze keus er niet.'],

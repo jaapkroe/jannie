@@ -1,9 +1,9 @@
-// web/js/toepen-rules.js without a browser: node --test test/ui/toepen.test.mjs
+// web/toepen/js/rules.js without a browser: node --test test/ui/toepen.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   strength, wasKind, seatAngle, onEllipse, seatStatus, prompt, roundHeadline, standings, variantText, rules, isOut,
-} from '../../web/js/toepen-rules.js';
+} from '../../web/toepen/js/rules.js';
 
 const player = name => ({ name, bot: false, connected: true });
 const bot = name => ({ name: `${name} (AI)`, bot: true, connected: true });
@@ -11,7 +11,7 @@ const bot = name => ({ name: `${name} (AI)`, bot: true, connected: true });
 // A table of four in phase play, you at seat 0 on turn.
 function table(over = {}) {
   return {
-    game: 'toepen', phase: 'play', you: 0, turn: 0, stake: 1, toeper: -1, claimant: -1, nextAt: 0, tricks: 0,
+    phase: 'play', you: 0, turn: 0, stake: 1, toeper: -1, claimant: -1, nextAt: 0, tricks: 0,
     opts: { limit: 10, was: true, armoede: true },
     players: [player('Jaap'), bot('Opa Dirk'), bot('Sjaak'), bot('Truus')],
     points: [0, 0, 0, 0], status: ['in', 'in', 'in', 'in'], answered: [false, false, false, false],

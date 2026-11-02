@@ -1,4 +1,6 @@
-/* Klaverjas app styles: layout, table, overlays. Cards: cards.css; manual: manual.css. */
+/* The shell's styles, shared by every site: layout, home, lobby, table chrome,
+   overlays, chat. (It still holds klaverjas's table styles until they move to
+   klaverjas's own stylesheet; docs/games.md.) Cards: cards.css. */
 
 :root {
   color-scheme: dark;
@@ -1007,36 +1009,6 @@ body.busy::after {
   width: 116px;
   display: flex;
   justify-content: center;
-}
-
-/* Toepen: up to six seats around the table (home.js places them), nobody
-   anyone's partner. */
-.mini-table.tp .lseat {
-  width: 96px;
-  translate: -50% -50%;
-}
-
-.mini-table.tp .ls-main {
-  min-width: 80px;
-}
-
-.mini-table.tp .ls-main .avatar {
-  width: 44px;
-  height: 44px;
-  font-size: 22px;
-}
-
-.lseat.tp-opp {
-  --team: rgba(255, 255, 255, 0.4);
-}
-
-/* The game the home screen starts: klaverjassen or toepen. */
-.home-game .seg {
-  width: 100%;
-}
-
-.home-game .seg-btn {
-  flex: 1;
 }
 
 .ls-bottom { bottom: 0; left: 50%; translate: -50% 0; }

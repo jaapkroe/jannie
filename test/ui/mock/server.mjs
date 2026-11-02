@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Mock klaverjas server for frontend development and UI tests: serves web/
+// Mock klaverjas server for frontend development and UI tests: serves
+// klaverjas's site (web/shared and web/klaverjas, test/ui/site.mjs)
 // (with the /ABCD → index.html rule) and speaks the websocket protocol of
 // docs/design.md §7 with a compact rules engine and simple bots, for tables
 // of four only (opts.players other than 4 is ignored).
@@ -23,8 +24,8 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
+import { siteFile } from '../site.mjs'; // klaverjas's site: web/shared and web/klaverjas
 
 const args = process.argv.slice(2);
 const arg = (name, def) => {
@@ -35,7 +36,6 @@ const PORT = Number(arg('port', 18100));
 const SCALE = arg('fast', false) ? 0.15 : Number(arg('scale', 1));
 const RIG = !!arg('rig', false);
 let seed = Number(arg('seed', Date.now() % 100000));
-const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../web');
 
 // ---------- deterministic rng ----------
 
@@ -1017,8 +1017,8 @@ const server = http.createServer((req, res) => {
   }
   let p = url.pathname;
   if (p === '/' || /^\/[A-Za-z]{4}$/.test(p)) p = '/index.html';
-  const file = path.join(WEB, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
-  if (!file.startsWith(WEB)) { res.writeHead(403); return res.end(); }
+  const file = siteFile('klaverjas', p);
+  if (!file) { res.writeHead(404, { 'content-type': 'text/plain' }); return res.end('Niet gevonden'); }
   fs.readFile(file, (e, buf) => {
     if (e) { res.writeHead(404, { 'content-type': 'text/plain' }); return res.end('Niet gevonden'); }
     res.writeHead(200, {
