@@ -1,15 +1,19 @@
 #!/bin/sh
-# Checks a running pod from the host, without NPM: the page, a join link, a
-# 404, the server through nginx, the websocket upgrade and its Origin check, the
-# link preview (og:image for SITE, the image itself), the version in the page
-# (the server's), and that every kind of path
-# carries each security header exactly once (a location with an add_header of
-# its own would drop them all; see deploy/nginx.conf).
-#   scripts/pod-check [127.0.0.1:8093 [klaverjas.kroes.dev]]   `make check`; `make deploy` runs it too
+# Checks a game's running pod from the host, without NPM: the page and its
+# title, a join link, a 404 (with the game's name), the server through nginx,
+# the websocket upgrade and its Origin check, the link preview (og:image for
+# SITE, the image itself), the manifest's name, the version in the page (the
+# server's), that the CSP allows the websocket of SITE and of no other site,
+# and that every kind of path carries each security header exactly once (a
+# location with an add_header of its own would drop them all; see
+# deploy/nginx.conf).
+#   scripts/pod-check ADDR SITE TITLE     the settings of deploy/games/<game>.mk, e.g.
+#   scripts/pod-check 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas
+# `make check [GAME=<game>]` runs it with them; `make deploy GAME=<game>` too.
 # Prints the failures and a summary; exits 1 if anything failed.
 set -u
-addr=${1:-127.0.0.1:8093}
-site=${2:-klaverjas.kroes.dev}
+[ $# -eq 3 ] || { echo "usage: pod-check ADDR SITE TITLE, e.g. 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas" >&2; exit 2; }
+addr=$1 site=$2 title=$3
 base=http://$addr
 n=0 failed=0
 
@@ -37,10 +41,12 @@ if [ "$(code "$base/")" = 000 ]; then
 fi
 expect "/api/health through nginx" 200 "$(code "$base/api/health")"
 expect "/ status" 200 "$(code "$base/")"
-expect "/ title" '<title>Klaverjas</title>' "$(curl -s --max-time 5 "$base/" | grep -o '<title>[^<]*</title>')"
+expect "/ title" "<title>$title</title>" "$(curl -s --max-time 5 "$base/" | grep -o '<title>[^<]*</title>')"
 expect "join link /KQXB status" 200 "$(code "$base/KQXB")"
 expect "/bestaat-niet status" 404 "$(code "$base/bestaat-niet")"
 expect "/bestaat-niet.png, a 404 page" '404 text/html; charset=utf-8' "$(typed /bestaat-niet.png)"
+expect "/bestaat-niet title" "<title>Niet gevonden - $title</title>" \
+  "$(curl -s --max-time 5 "$base/bestaat-niet" | grep -o '<title>[^<]*</title>')"
 expect "og:image of the link preview" "https://$site/og.png" \
   "$(curl -s --max-time 5 "$base/KQXB" | sed -n 's/.*<meta property="og:image" content="\([^"]*\)">.*/\1/p')"
 expect "/og.png" '200 image/png' "$(typed /og.png)"
@@ -48,6 +54,9 @@ expect "the version in the page, the server's" \
   "$(curl -s --max-time 5 "$base/api/health" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')" \
   "$(curl -s --max-time 5 "$base/" | sed -n 's/.*<meta name="version" content="\([^"]*\)">.*/\1/p')"
 expect "/apple-touch-icon.png" '200 image/png' "$(typed /apple-touch-icon.png)"
+expect "the manifest's name" "$title" \
+  "$(curl -s --max-time 5 "$base/manifest.webmanifest" | tr -d '\n' | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+    | head -n 1 | sed 's/.*"\([^"]*\)"$/\1/')"
 expect "websocket from the page's own origin" 101 "$(upgrade "$base")"
 expect "websocket from another site" 403 "$(upgrade https://example.com)"
 
@@ -58,6 +67,11 @@ for path in / /KQXB /js/main.js /favicon.svg /api/health /bestaat-niet; do
     expect "$h on $path, times sent" 1 "$(printf '%s\n' "$headers" | grep -ci "^$h:")"
   done
 done
+# The websocket of this site, and of no other: a web image built with another
+# game's SITE shows here (its pages would not connect).
+expect "the CSP's wss: sources" "wss://$site" \
+  "$(curl -s -D - -o /dev/null --max-time 5 "$base/" | tr -d '\r' | sed -n 's/^[Cc]ontent-[Ss]ecurity-[Pp]olicy: //p' \
+    | grep -o 'wss://[^ ;]*' | tr '\n' ' ' | sed 's/ $//')"
 # The call (issue #43) needs the camera and microphone for the page itself.
 expect "Permissions-Policy lets the page call" "camera=(self) microphone=(self)" \
   "$(curl -s -D - -o /dev/null --max-time 5 "$base/" | tr -d '\r' | sed -n 's/^[Pp]ermissions-[Pp]olicy: //p' \

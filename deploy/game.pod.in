@@ -1,13 +1,13 @@
-# Rendered by `make install` into ~/.config/containers/systemd/klaverjas.pod.
+# Rendered by `make install` into ~/.config/containers/systemd/@GAME@.pod.
 # Change the settings at the top of the Makefile, not the rendered file.
-# One network namespace for both containers: nginx (klaverjas-web) on :8080 is
+# One network namespace for both containers: nginx (@GAME@-web) on :8080 is
 # the only published port; the game server listens on 127.0.0.1:8081 inside.
-#   restart: systemctl --user restart klaverjas-pod     logs: make logs
+#   restart: systemctl --user restart @GAME@-pod     logs: make logs
 [Unit]
-Description=Klaverjas pod, https://@SITE@/
+Description=@TITLE@ pod, https://@SITE@/
 
 [Pod]
-PodName=klaverjas
+PodName=@GAME@
 # Only the reverse proxy may reach this address.
 PublishPort=@ADDR@:8080
 # pasta delivers connections from the host's loopback (NPM) from 127.0.0.1

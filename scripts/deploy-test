@@ -1,12 +1,26 @@
 #!/bin/sh
 # Tests the deployment files without building, installing or starting anything:
-# - the three units, as `make install` renders them, pass podman's own quadlet
-#   generator and come out with the settings the pod depends on;
+# - every game's settings (deploy/games/<game>.mk) are complete and in the form
+#   the Makefile and the Containerfile take; host names, addresses and ports are
+#   each game's own, every address is on loopback and follows the port rule;
+#   klaverjas's are pinned, since its site must not change;
+# - the units of every game, as `make install GAME=all` renders them side by
+#   side, pass podman's quadlet generator and come out with the settings the
+#   pods depend on, each with its own game's names and none of another's;
+#   klaverjas's with the values its running pod has;
+# - GAME: the targets that need it refuse without it and do nothing; one game's
+#   deploy, install and uninstall touch no other game; GAME=all goes game by
+#   game under one build tag and stops at the first one that fails; dev, e2e,
+#   check, status, logs and quadlet take each game's own settings;
 # - `make deploy` refuses a working tree with uncommitted changes, and every
 #   image build gets a tag of its own, with the commit (-dirty when the tree is
-#   not one) as its revision.
+#   not one) as its revision;
+# - the Containerfile has a server target per game with the game's binary, and
+#   a web target that refuses an empty GAME; cmd/<game>, web/<game> and the
+#   game's E2E_SIM are checked where they are there (each comes with its game).
 # The Makefile runs in a throwaway git repository with podman, systemctl,
-# loginctl, curl and pod-check replaced by stubs that only record their calls.
+# loginctl, journalctl, curl, node, sleep, scripts/dev-server and
+# scripts/pod-check replaced by stubs that only record their calls.
 #   scripts/deploy-test       `make test` runs it
 # Prints the failures and a summary; exits 1 if anything failed.
 set -eu
@@ -25,43 +39,169 @@ expect() { # what, wanted, got
 }
 # 1 when the text $1 is in file $2, else 0.
 has() { if grep -qF -- "$1" "$2"; then echo 1; else echo 0; fi; }
+# 1 when file $2 has the line $1, else 0.
+hasline() { if grep -qxF -- "$1" "$2"; then echo 1; else echo 0; fi; }
+# The number of lines of file $2 that name $1 as a word (a game, say).
+words() { grep -cw -- "$1" "$2" || true; }
+# 1 when the command "$@" succeeds, else 0.
+holds() { if "$@"; then echo 1; else echo 0; fi; }
+note() { echo "deploy-test: $*" >&2; }
 
 # ---- the throwaway repository and the stubs ---------------------------------
 repo=$tmp/repo calls=$tmp/calls
-mkdir -p "$repo/deploy" "$repo/scripts" "$tmp/bin"
-cp "$root/Makefile" "$repo/"
+mkdir -p "$repo/deploy/games" "$repo/scripts" "$tmp/bin" "$tmp/set"
+cp "$root/Makefile" "$root/Containerfile" "$repo/"
 cp "$root"/deploy/*.in "$repo/deploy/"
-for stub in podman systemctl curl scripts/pod-check; do
+cp "$root"/deploy/games/*.mk "$repo/deploy/games/"
+for stub in podman systemctl journalctl node scripts/pod-check; do
   case $stub in scripts/*) f=$repo/$stub ;; *) f=$tmp/bin/$stub ;; esac
   printf '#!/bin/sh\necho "%s $*" >> "%s"\n' "${stub#scripts/}" "$calls" > "$f"
   chmod +x "$f"
 done
+# The server from source, with the game it was asked for.
+printf '#!/bin/sh\necho "GAME=${GAME:-} dev-server $*" >> "%s"\n' "$calls" > "$repo/scripts/dev-server"
+# curl fails when its arguments hold $FAIL_CURL (an address that does not answer).
+printf '#!/bin/sh\necho "curl $*" >> "%s"\ncase "${FAIL_CURL:-}" in ?*) case "$*" in *"$FAIL_CURL"*) exit 7 ;; esac ;; esac\n' \
+  "$calls" > "$tmp/bin/curl"
 printf '#!/bin/sh\necho Linger=yes\n' > "$tmp/bin/loginctl"
-chmod +x "$tmp/bin/loginctl"
+# The waits for /api/health do not wait.
+printf '#!/bin/sh\n' > "$tmp/bin/sleep"
+chmod +x "$repo/scripts/dev-server" "$tmp/bin/curl" "$tmp/bin/loginctl" "$tmp/bin/sleep"
 git() { command git -C "$repo" -c init.defaultBranch=main -c user.name=deploy-test \
   -c user.email=deploy-test@localhost -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
+# Runs make in the repository with the stubs first on PATH; $calls holds what it
+# called, $tmp/out what it said, $status its exit status.
+mk() { : > "$calls"; PATH=$tmp/bin:$PATH make -s -C "$repo" "$@" > "$tmp/out" 2>&1; }
+run() { if mk "$@"; then status=0; else status=$?; fi; }
+# Make's own answer: $(GAMES), and setting $2 of game $1.
+games=$(make -s -C "$repo" --no-print-directory --eval='deploy-test-games: ; @echo $(GAMES)' deploy-test-games)
+setting() {
+  make -s -C "$repo" --no-print-directory GAME="$1" V="$2" \
+    --eval='deploy-test-setting: ; @printf "%s\n" "$($(V))"' deploy-test-setting
+}
+settings='TITLE VERB SITE ADDR DEV_PORT E2E_PORT E2E_SIM'
+for g in $games; do
+  # A file make cannot read leaves its settings empty, which fails below.
+  for v in $settings; do setting "$g" "$v" > "$tmp/set/$g.$v" || true; done
+done
+val() { cat "$tmp/set/$1.$2"; }
+# The tag given to image $1 (<game>-server or <game>-web) by the last build.
+tag() { sed -n "s|^podman build .* -t localhost/$1:\([^ ]*\) \.\$|\1|p" "$calls"; }
+# The line of $calls where text $1 first appears, 0 if nowhere.
+line() { grep -n -F -m 1 -- "$1" "$calls" | cut -d: -f1 | grep . || echo 0; }
+# $calls without curl's, which only wait for health.
+steps() { grep -v '^curl ' "$calls" || true; }
+stamp='[0-9]\{8\}-[0-9]\{6\}'
+# What `make e2e` plays must be there; the stub node runs nothing.
+for g in $games; do
+  mkdir -p "$repo/$(dirname "$(val "$g" E2E_SIM)")"
+  touch "$repo/$(val "$g" E2E_SIM)"
+done
 git init -q
 git add -A
 git commit -q --no-verify -m test
 head=$(git rev-parse HEAD)
-# Runs make in the repository with the stubs first on PATH; $calls holds what it called.
-mk() { : > "$calls"; PATH=$tmp/bin:$PATH make -s -C "$repo" "$@" > "$tmp/out" 2>&1; }
-# The tag given to image $1 by the last build.
-tag() { sed -n "s|^podman build .* -t localhost/klaverjas-$1:\([^ ]*\) \.\$|\1|p" "$calls"; }
-# The line of $calls where text $1 first appears, 0 if nowhere.
-line() { grep -n -F -m 1 -- "$1" "$calls" | cut -d: -f1 | grep . || echo 0; }
-stamp='[0-9]\{8\}-[0-9]\{6\}'
+first=$(echo $games | cut -d' ' -f1)
+others() { for h in $games; do [ "$h" = "$1" ] || echo "$h"; done; }
+
+# ---- the settings of every game ---------------------------------------------
+expect "games, the names of deploy/games/*.mk" 1 "$(holds [ -n "$games" ])"
+for g in $games; do
+  expect "$g: a name that fits units, images and URLs" 1 "$(printf '%s\n' "$g" | grep -c '^[a-z][a-z0-9-]*$' || true)"
+  expect "$g: not all, which means every game" 1 "$(holds [ "$g" != all ])"
+  # Only `NAME = value` lines, with plain `=` (the environment cannot change them)
+  # and nothing after the value, whose spaces would end up in units and URLs.
+  expect "deploy/games/$g.mk: settings only, as NAME = value" "" \
+    "$(grep -v -E '^(#.*)?$' "$root/deploy/games/$g.mk" \
+      | grep -v -E "^($(echo $settings | tr ' ' '|')) = ([^ ].*)?[^ ]\$" || true)"
+  for v in $settings; do
+    expect "$g: $v is set" 1 "$(holds [ -n "$(val "$g" "$v")" ])"
+  done
+  # sed, the units, nginx and the Containerfile take TITLE and VERB as they are.
+  for v in TITLE VERB; do
+    expect "$g: $v without ' \" \\ | & @ \$ \`" 0 "$(val "$g" $v | grep -c "['\"\\\\|&@\$\`]" || true)"
+  done
+  expect "$g: SITE a host name" 1 "$(val "$g" SITE | grep -c '^[a-z0-9.-]*\.[a-z]*$' || true)"
+  expect "$g: E2E_SIM a path" 1 "$(val "$g" E2E_SIM | grep -c '^[A-Za-z0-9_./-]*$' || true)"
+  # Only NPM, on the same machine, may reach a pod.
+  addr=$(val "$g" ADDR) p=${addr##*:}
+  case $p in '' | *[!0-9]*) p=0 ;; esac
+  expect "$g: ADDR on loopback" 1 "$(printf '%s\n' "$addr" | grep -c '^127\.0\.0\.1:[1-9][0-9]*$' || true)"
+  # The port rule: an odd port P, then 10000+P for `make dev`, 10001+P for `make e2e`.
+  expect "$g: ADDR's port odd" 1 "$(holds [ $((p % 2)) -eq 1 ])"
+  expect "$g: DEV_PORT 10000 + ADDR's port" $((10000 + p)) "$(val "$g" DEV_PORT)"
+  expect "$g: E2E_PORT 10001 + ADDR's port" $((10001 + p)) "$(val "$g" E2E_PORT)"
+done
+for v in SITE ADDR TITLE; do
+  expect "every game's own $v" "" "$(for g in $games; do val "$g" $v; done | sort | uniq -d)"
+done
+expect "every game's own ports" "" \
+  "$(for g in $games; do a=$(val "$g" ADDR); echo "${a##*:}"; val "$g" DEV_PORT; val "$g" E2E_PORT; done | sort | uniq -d)"
+# klaverjas's site must not change: its settings as they were before the other games.
+for kv in 'TITLE Klaverjas' 'VERB klaverjassen' 'SITE klaverjas.kroes.dev' 'ADDR 127.0.0.1:8093' \
+          'DEV_PORT 18093' 'E2E_PORT 18094' 'E2E_SIM test/e2e/sim.mjs'; do
+  expect "klaverjas: ${kv%% *}" "${kv#* }" "$(val klaverjas "${kv%% *}" 2>/dev/null || true)"
+done
+
+# ---- the units of every game, side by side --------------------------------------
+units=$tmp/units
+run install GAME=all QUADLET_DIR="$units"
+expect "make install GAME=all, exit status" 0 "$status"
+expect "make install GAME=all: three units per game" "$(for g in $games; do
+    echo "$g-server.container"; echo "$g-web.container"; echo "$g.pod"; done | sort | tr '\n' ' ')" \
+  "$(ls "$units" 2>/dev/null | sort | tr '\n' ' ')"
+for g in $games; do
+  site=$(val "$g" SITE) title=$(val "$g" TITLE)
+  for u in "$g.pod" "$g-web.container" "$g-server.container"; do
+    f=$units/$u
+    [ -f "$f" ] || continue
+    expect "$u: every placeholder filled in" 0 "$(grep -c '@[A-Z_]*@' "$f" || true)"
+    for h in $(others "$g"); do
+      expect "$u: nothing of $h" 0 "$(words "$h" "$f")"
+    done
+  done
+  for l in "Description=$title pod, https://$site/" "PodName=$g" "PublishPort=$(val "$g" ADDR):8080" \
+           'Network=pasta:--host-lo-to-ns-lo' 'ExitPolicy=continue'; do
+    expect "$g.pod: $l" 1 "$(hasline "$l" "$units/$g.pod")"
+  done
+  for c in web server; do
+    for l in "Image=localhost/$g-$c:current" "ContainerName=$g-$c" "Pod=$g.pod" 'Pull=never'; do
+      expect "$g-$c.container: $l" 1 "$(hasline "$l" "$units/$g-$c.container")"
+    done
+  done
+  expect "$g-web.container: Description" 1 \
+    "$(hasline "Description=$title web (nginx), https://$site/" "$units/$g-web.container")"
+  # The binary of the game's server image (see the Containerfile), and its game log.
+  for l in "Description=$title game server, https://$site/" "HealthCmd=[\"/$g\",\"-healthcheck\"]" \
+           "Volume=$g-games:/data:U" 'Exec=-addr 127.0.0.1:8081 -games /data'; do
+    expect "$g-server.container: $l" 1 "$(hasline "$l" "$units/$g-server.container")"
+  done
+done
+expect "no game log volume shared" "" "$(cat "$units"/*-server.container | grep '^Volume=' | sort | uniq -d)"
+# klaverjas's units as its running pod has them (their full text: make quadlet GAME=klaverjas).
+for l in 'Description=Klaverjas pod, https://klaverjas.kroes.dev/' 'PodName=klaverjas' \
+         'PublishPort=127.0.0.1:8093:8080'; do
+  expect "klaverjas.pod: $l" 1 "$(hasline "$l" "$units/klaverjas.pod")"
+done
+for l in 'Description=Klaverjas web (nginx), https://klaverjas.kroes.dev/' \
+         'Image=localhost/klaverjas-web:current' 'ContainerName=klaverjas-web' 'Pod=klaverjas.pod'; do
+  expect "klaverjas-web.container: $l" 1 "$(hasline "$l" "$units/klaverjas-web.container")"
+done
+for l in 'Description=Klaverjas game server, https://klaverjas.kroes.dev/' \
+         'Image=localhost/klaverjas-server:current' 'ContainerName=klaverjas-server' 'Pod=klaverjas.pod' \
+         'HealthCmd=["/klaverjas","-healthcheck"]' 'Volume=klaverjas-games:/data:U'; do
+  expect "klaverjas-server.container: $l" 1 "$(hasline "$l" "$units/klaverjas-server.container")"
+done
 
 # ---- the units, through podman's quadlet generator ----------------------------
-units=$tmp/units
-if mk install QUADLET_DIR="$units"; then status=0; else status=$?; fi
-expect "make install, exit status" 0 "$status"
+# All games' units in one directory, as on shrek: a unit naming another game's
+# pod would pass the generator alone, but not the checks of its game below.
 quadlet=
 for q in /usr/lib/podman/quadlet /usr/libexec/podman/quadlet; do
   [ -x "$q" ] && { quadlet=$q; break; }
 done
 if [ -z "$quadlet" ]; then
-  echo "deploy-test: podman's quadlet generator not found; the unit checks are skipped" >&2
+  note "podman's quadlet generator not found; the unit checks are skipped"
 else
   if QUADLET_UNIT_DIRS=$units "$quadlet" -dryrun -user > "$tmp/gen" 2> "$tmp/gen.err"; then
     status=0
@@ -70,71 +210,291 @@ else
     sed -n 's/^quadlet-generator[^:]*: //p' "$tmp/gen.err" | grep -v '^Loading' >&2 || true
   fi
   expect "quadlet generator, exit status" 0 "$status"
-  for svc in klaverjas-pod klaverjas-web klaverjas-server; do
-    awk -v s="---$svc.service---" '$0 == s { p = 1; next } /^---.*---$/ { p = 0 } p' \
-      "$tmp/gen" > "$tmp/$svc"
-    expect "$svc: Restart=on-failure" 1 "$(has 'Restart=on-failure' "$tmp/$svc")"
-  done
-  pod=$tmp/klaverjas-pod
-  # With podman's default (stop), both containers dying at once stops the pod for good.
-  expect "pod: --exit-policy continue" 1 "$(has ' --exit-policy continue ' "$pod")"
-  expect "pod: published on loopback only" 1 "$(has ' --publish 127.0.0.1:8093:8080 ' "$pod")"
-  expect "pod: NPM's connections arrive from 127.0.0.1" 1 \
-    "$(has ' --network pasta:--host-lo-to-ns-lo ' "$pod")"
-  for c in web server; do
-    f=$tmp/klaverjas-$c
-    for flag in ' --pod klaverjas ' ' --pull never ' ' --read-only ' ' --cap-drop all ' \
-                'no-new-privileges' ' --health-on-failure kill ' " localhost/klaverjas-$c:current"; do
-      expect "klaverjas-$c:$flag" 1 "$(has "$flag" "$f")"
+  for g in $games; do
+    for svc in $g-pod $g-web $g-server; do
+      awk -v s="---$svc.service---" '$0 == s { p = 1; next } /^---.*---$/ { p = 0 } p' \
+        "$tmp/gen" > "$tmp/$svc"
+      expect "$svc: Restart=on-failure" 1 "$(has 'Restart=on-failure' "$tmp/$svc")"
     done
-    expect "klaverjas-$c: BindsTo the pod" 1 "$(has 'BindsTo=klaverjas-pod.service' "$f")"
+    pod=$tmp/$g-pod
+    # With podman's default (stop), both containers dying at once stops the pod for good.
+    expect "$g-pod: --exit-policy continue" 1 "$(has ' --exit-policy continue ' "$pod")"
+    expect "$g-pod: published on loopback only" 1 "$(has " --publish $(val "$g" ADDR):8080 " "$pod")"
+    expect "$g-pod: NPM's connections arrive from 127.0.0.1" 1 \
+      "$(has ' --network pasta:--host-lo-to-ns-lo ' "$pod")"
+    for c in web server; do
+      f=$tmp/$g-$c
+      for flag in " --pod $g " ' --pull never ' ' --read-only ' ' --cap-drop all ' \
+                  'no-new-privileges' ' --health-on-failure kill ' " localhost/$g-$c:current"; do
+        expect "$g-$c:$flag" 1 "$(has "$flag" "$f")"
+      done
+      expect "$g-$c: BindsTo its pod" 1 "$(has "BindsTo=$g-pod.service" "$f")"
+      for h in $(others "$g"); do
+        expect "$g-$c: nothing of $h" 0 "$(words "$h" "$f")"
+      done
+    done
+    # The game log: a volume of its own, owned by the server's user, and the flag.
+    f=$tmp/$g-server
+    expect "$g-server: the game log volume" 1 "$(has " -v $g-games:/data:U " "$f")"
+    expect "$g-server: -games /data" 1 "$(has ' -games /data' "$f")"
   done
-  # The game log: a volume of its own, owned by the server's user, and the flag.
-  f=$tmp/klaverjas-server
-  expect "klaverjas-server: the game log volume" 1 "$(has ' -v klaverjas-games:/data:U ' "$f")"
-  expect "klaverjas-server: -games /data" 1 "$(has ' -games /data' "$f")"
 fi
+
+# ---- one game's install and uninstall leave the others' units alone -------------
+# The other games' units are made old, as a running pod's would be; neither may
+# be written again or removed.
+mkdir "$tmp/before"
+for g in $games; do
+  touch -t 200001010000 "$units"/*
+  touch -t 200001020000 "$tmp/ref"
+  cp -p "$units"/* "$tmp/before/"
+  run uninstall GAME="$g" QUADLET_DIR="$units"
+  expect "make uninstall GAME=$g, exit status" 0 "$status"
+  expect "make uninstall GAME=$g stops its pod" 1 "$(has "systemctl --user stop $g-pod.service" "$calls")"
+  expect "make uninstall GAME=$g removes its units" "" "$(ls "$units" | grep "^$g[.-]" || true)"
+  run install GAME="$g" QUADLET_DIR="$units"
+  expect "make install GAME=$g, exit status" 0 "$status"
+  expect "make install GAME=$g writes its units" 3 "$(ls "$units" | grep -c "^$g[.-]" || true)"
+  for h in $(others "$g"); do
+    for u in "$h.pod" "$h-web.container" "$h-server.container"; do
+      expect "make uninstall and install GAME=$g leave $u as it was" 1 "$(holds cmp -s "$tmp/before/$u" "$units/$u")"
+      expect "make uninstall and install GAME=$g do not write $u" "" "$(find "$units" -name "$u" -newer "$tmp/ref")"
+    done
+  done
+done
 
 # ---- make deploy and the image tags -------------------------------------------
 # A committed tree: deployed, labelled with the commit, tagged with it and the time.
-if mk deploy; then status=0; else status=$?; fi
-expect "make deploy from a committed tree, exit status" 0 "$status"
-expect "revision of a committed tree" 2 "$(grep -c -- "--build-arg GIT_SHA=$head --build-arg" "$calls")"
-first=$(tag server)
-expect "tag of the server image" 1 "$(printf '%s\n' "$first" | grep -c "^$head-$stamp\$")"
-expect "web image, same tag as the server image" "$first" "$(tag web)"
+run deploy GAME=klaverjas
+expect "make deploy GAME=klaverjas from a committed tree, exit status" 0 "$status"
+expect "revision of a committed tree" 2 "$(grep -c -- "--build-arg GIT_SHA=$head " "$calls")"
+first_tag=$(tag klaverjas-server)
+expect "tag of the server image" 1 "$(printf '%s\n' "$first_tag" | grep -c "^$head-$stamp\$")"
+expect "web image, same tag as the server image" "$first_tag" "$(tag klaverjas-web)"
 expect "make deploy restarts the pod" 1 "$(has 'systemctl --user restart klaverjas-pod.service' "$calls")"
 for c in server web; do
-  t=$(line "podman tag localhost/klaverjas-$c:$first localhost/klaverjas-$c:current")
+  t=$(line "podman tag localhost/klaverjas-$c:$first_tag localhost/klaverjas-$c:current")
   expect "make deploy points klaverjas-$c:current at the build, before the restart" 1 \
     "$(if [ "$t" -gt 0 ] && [ "$t" -lt "$(line 'systemctl --user restart')" ]; then echo 1; else echo 0; fi)"
 done
-expect "make deploy runs pod-check" 1 "$(has 'pod-check 127.0.0.1:8093' "$calls")"
+expect "make deploy runs pod-check" 1 "$(hasline 'pod-check 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas' "$calls")"
+# klaverjas's images, as they were before the other games.
+expect "klaverjas's server image" 1 \
+  "$(has "podman build --target server-klaverjas --pull=newer --build-arg GIT_SHA=$head -t localhost/klaverjas-server:" "$calls")"
+expect "klaverjas's web image" 1 "$(has "podman build --target web --pull=newer --build-arg GIT_SHA=$head \
+--build-arg GAME=klaverjas --build-arg SITE=klaverjas.kroes.dev --build-arg TITLE=Klaverjas \
+--build-arg VERB=klaverjassen -t localhost/klaverjas-web:" "$calls")"
 # A rebuild of the same commit (a Trivy finding) keeps the build before it.
 sleep 1
-mk image || true
+mk image GAME=klaverjas || true
 expect "a rebuild of the same commit gets a tag of its own" 1 \
-  "$(if [ -n "$(tag server)" ] && [ "$(tag server)" != "$first" ]; then echo 1; else echo 0; fi)"
+  "$(if [ -n "$(tag klaverjas-server)" ] && [ "$(tag klaverjas-server)" != "$first_tag" ]; then echo 1; else echo 0; fi)"
 # A build alone must not change what the running pod restarts into.
 expect "make image leaves :current alone" 0 "$(has ':current' "$calls")"
 
+# Each game's deploy: its own images, settings and pod, nothing of another game.
+for g in $games; do
+  run deploy GAME="$g"
+  expect "make deploy GAME=$g, exit status" 0 "$status"
+  expect "make deploy GAME=$g builds its server" 1 "$(grep -c "^podman build --target server-$g " "$calls" || true)"
+  expect "make deploy GAME=$g builds its web image" 1 "$(has "podman build --target web --pull=newer \
+--build-arg GIT_SHA=$head --build-arg GAME=$g --build-arg SITE=$(val "$g" SITE) --build-arg TITLE=$(val "$g" TITLE) \
+--build-arg VERB=$(val "$g" VERB) -t localhost/$g-web:" "$calls")"
+  expect "make deploy GAME=$g tags only its images" "localhost/$g-server localhost/$g-web " \
+    "$(sed -n 's|^podman tag localhost/\([^:]*\):[^ ]* localhost/\1:current$|localhost/\1|p' "$calls" | sort | tr '\n' ' ')"
+  expect "make deploy GAME=$g restarts only its pod" "$g-pod.service" \
+    "$(sed -n 's/^systemctl --user restart //p' "$calls" | tr '\n' ' ' | sed 's/ $//')"
+  expect "make deploy GAME=$g checks its pod" 1 \
+    "$(hasline "pod-check $(val "$g" ADDR) $(val "$g" SITE) $(val "$g" TITLE)" "$calls")"
+  for h in $(others "$g"); do
+    expect "make deploy GAME=$g: nothing of $h" 0 "$(words "$h" "$calls")"
+  done
+done
+
+# GAME=all: game after game, in the order of their names, under one build tag.
+run deploy GAME=all
+expect "make deploy GAME=all, exit status" 0 "$status"
+expect "make deploy GAME=all: two builds per game" $((2 * $(echo $games | wc -w))) \
+  "$(grep -c '^podman build ' "$calls" || true)"
+expect "make deploy GAME=all: one build tag" 1 \
+  "$(sed -n 's|^podman build .* -t localhost/[^:]*:\([^ ]*\) \.$|\1|p' "$calls" | sort -u | grep -c "^$head-$stamp\$" || true)"
+expect "make deploy GAME=all: the pods in turn" "$(echo $games)" \
+  "$(sed -n 's/^systemctl --user restart \(.*\)-pod\.service$/\1/p' "$calls" | tr '\n' ' ' | sed 's/ $//')"
+prev=
+for g in $games; do
+  if [ -n "$prev" ]; then
+    expect "make deploy GAME=all: $g's builds after $prev's check" 1 \
+      "$(holds [ "$(line "pod-check $(val "$prev" ADDR) ")" -lt "$(line "podman build --target server-$g ")" ])"
+  fi
+  prev=$g
+done
+# The first game's pod does not answer: the games after it are left alone.
+FAIL_CURL="$(val "$first" ADDR)/"
+export FAIL_CURL
+run deploy GAME=all
+unset FAIL_CURL
+expect "make deploy GAME=all with $first failing, exit status" 2 "$status"
+expect "make deploy GAME=all with $first failing says where to look" 1 "$(has "make status GAME=$first" "$tmp/out")"
+for h in $(others "$first"); do
+  expect "make deploy GAME=all with $first failing: nothing of $h" 0 "$(words "$h" "$calls")"
+done
+
+# ---- GAME -----------------------------------------------------------------------
+for t in install deploy uninstall dev image image-server image-web; do
+  run $t
+  expect "make $t without GAME, exit status" 2 "$status"
+  expect "make $t without GAME names the games" 1 "$(has "the games are $games" "$tmp/out")"
+  expect "make $t without GAME does nothing" "" "$(cat "$calls")"
+done
+# A GAME left in the environment is not the one asked for on the command line.
+GAME=$first
+export GAME
+run deploy
+unset GAME
+expect "make deploy with GAME only in the environment, exit status" 2 "$status"
+expect "make deploy with GAME only in the environment does nothing" "" "$(cat "$calls")"
+run deploy GAME=bogus
+expect "make deploy GAME=bogus, exit status" 2 "$status"
+expect "make deploy GAME=bogus names the games" 1 "$(has "the games are $games" "$tmp/out")"
+expect "make deploy GAME=bogus does nothing" "" "$(cat "$calls")"
+# The settings: the environment's change nothing, the command line's do, for one game.
+SITE=elsewhere.example TITLE=Elders ADDR=0.0.0.0:80
+export SITE TITLE ADDR
+run image GAME=klaverjas
+unset SITE TITLE ADDR
+expect "a SITE in the environment changes no build" 0 "$(has 'elsewhere' "$calls")"
+expect "a TITLE in the environment changes no build" 0 "$(has 'Elders' "$calls")"
+run quadlet GAME=klaverjas SITE=elsewhere.example
+expect "SITE on the command line, for one game" 3 "$(grep -c '^Description=.*https://elsewhere\.example/$' "$tmp/out" || true)"
+run quadlet GAME=all SITE=elsewhere.example
+expect "SITE on the command line for every game, exit status" 2 "$status"
+expect "SITE on the command line for every game renders nothing" 0 "$(has 'elsewhere' "$tmp/out")"
+
+# ---- the targets for every game when GAME is left out ---------------------------
+run quadlet
+expect "make quadlet: every game's units, in turn" "$(for g in $games; do
+    printf '# ---- %s ' "$g.pod" "$g-web.container" "$g-server.container"; done)" \
+  "$(grep '^# ---- ' "$tmp/out" | tr '\n' ' ')"
+run check
+expect "make check: every game's pod, in turn" "$(for g in $games; do
+    echo "pod-check $(val "$g" ADDR) $(val "$g" SITE) $(val "$g" TITLE)"; done)" "$(steps)"
+run logs
+expect "make logs: every game's containers" "journalctl --user$(for g in $games; do
+    printf ' -u %s-web.service -u %s-server.service' "$g" "$g"; done) -f" "$(steps)"
+run status
+expect "make status, exit status" 0 "$status"
+for g in $games; do
+  for c in web server; do
+    expect "make status: $g-$c's revision" 1 "$(grep -c "^$g-$c  *revision " "$tmp/out" || true)"
+  done
+  expect "make status: $g's address" 1 "$(grep -c "^http://$(val "$g" ADDR) " "$tmp/out" || true)"
+done
+run e2e
+expect "make e2e: every game's simulation against its server from source" "$(for g in $games; do
+    p=$(val "$g" E2E_PORT)
+    echo "GAME=$g dev-server $p -fast"; echo "node $(val "$g" E2E_SIM) http://127.0.0.1:$p"
+    echo "podman stop -t 3 kj-dev-$p"; done)" "$(steps)"
+run dev GAME="$first"
+p=$(val "$first" DEV_PORT)
+expect "make dev GAME=$first" "$(printf '%s\n' "GAME=$first dev-server $p" "podman logs -f kj-dev-$p" \
+  "podman stop -t 3 kj-dev-$p")" "$(steps)"
+expect "make dev GAME=$first says where" 1 "$(has "Open http://127.0.0.1:$p/ for $first" "$tmp/out")"
+run dev GAME=all
+expect "make dev GAME=all: every game's server, then their logs" "$(for g in $games; do
+    echo "GAME=$g dev-server $(val "$g" DEV_PORT)"; done
+  printf 'podman logs -f --names'; for g in $games; do printf ' kj-dev-%s' "$(val "$g" DEV_PORT)"; done; echo
+  for g in $games; do echo "podman stop -t 3 kj-dev-$(val "$g" DEV_PORT)"; done)" "$(steps)"
+run dev-stop
+expect "make dev-stop: every game's" "$(for g in $games; do
+    echo "podman stop -t 3 kj-dev-$(val "$g" DEV_PORT)"; done)" "$(steps)"
+# help, test and test-all do not take GAME.
+run help
+cp "$tmp/out" "$tmp/help"
+run help GAME="$first"
+expect "make help, the same for a game" "$(cat "$tmp/help")" "$(cat "$tmp/out")"
+expect "make help lists deploy" 1 "$(grep -c "^deploy$(printf '\t')" "$tmp/out" || true)"
+
+# ---- a tree that is not a commit ------------------------------------------------
 # An untracked file: the build would copy it, so the tree is not the commit.
 touch "$repo/untracked"
-if mk deploy; then status=0; else status=$?; fi
+run deploy GAME=klaverjas
 expect "make deploy with an untracked file, exit status" 2 "$status"
 expect "make deploy with an untracked file says why" 1 "$(has 'ALLOW_DIRTY=1' "$tmp/out")"
 expect "make deploy with an untracked file builds nothing" 0 "$(has 'podman ' "$calls")"
 expect "make deploy with an untracked file restarts nothing" 0 "$(has 'systemctl' "$calls")"
-if mk deploy ALLOW_DIRTY=1; then status=0; else status=$?; fi
+run deploy GAME=all
+expect "make deploy GAME=all with an untracked file builds nothing" 0 "$(has 'podman ' "$calls")"
+run deploy GAME=klaverjas ALLOW_DIRTY=1
 expect "make deploy ALLOW_DIRTY=1, exit status" 0 "$status"
-expect "revision with ALLOW_DIRTY=1" 2 "$(grep -c -- "--build-arg GIT_SHA=$head-dirty --build-arg" "$calls")"
-expect "tag with ALLOW_DIRTY=1" 1 "$(tag server | grep -c "^$head-dirty-$stamp\$")"
+expect "revision with ALLOW_DIRTY=1" 2 "$(grep -c -- "--build-arg GIT_SHA=$head-dirty " "$calls")"
+expect "tag with ALLOW_DIRTY=1" 1 "$(tag klaverjas-server | grep -c "^$head-dirty-$stamp\$")"
 rm "$repo/untracked"
 
 # A changed file that is tracked.
-echo '# changed' >> "$repo/deploy/klaverjas.pod.in"
-mk image || true
-expect "revision of a tree with a changed file" 2 "$(grep -c -- "--build-arg GIT_SHA=$head-dirty --build-arg" "$calls")"
+echo '# changed' >> "$repo/deploy/game.pod.in"
+mk image GAME=klaverjas || true
+expect "revision of a tree with a changed file" 2 "$(grep -c -- "--build-arg GIT_SHA=$head-dirty " "$calls")"
+
+# ---- a new game is a new deploy/games/<game>.mk --------------------------------
+# presidenten-server, the longest name to come, still fits make status's column.
+sed -e 's/^TITLE = .*/TITLE = Presidenten/' -e 's/^VERB = .*/VERB = presidenten/' \
+  -e 's/^SITE = .*/SITE = presidenten.example/' -e 's/^ADDR = .*/ADDR = 127.0.0.1:8199/' \
+  -e 's/^DEV_PORT = .*/DEV_PORT = 18199/' -e 's/^E2E_PORT = .*/E2E_PORT = 18200/' \
+  "$repo/deploy/games/klaverjas.mk" > "$repo/deploy/games/presidenten.mk"
+run quadlet GAME=presidenten
+expect "make quadlet GAME=presidenten, a new game" 1 "$(hasline 'PodName=presidenten' "$tmp/out")"
+run status
+expect "make status: the new game too" 1 "$(grep -c '^presidenten-server  *revision ' "$tmp/out" || true)"
+expect "make status: one column for every name" "" \
+  "$(grep -v '^http://' "$tmp/out" | awk 'substr($0, 19, 1) != " " || substr($0, 20, 1) == " "')"
+
+# ---- the Containerfile ------------------------------------------------------------
+cf=$root/Containerfile
+for g in $games; do
+  awk -v s="server-$g" '$1 == "FROM" { p = ($NF == s) } p' "$cf" > "$tmp/stage"
+  expect "Containerfile: a target server-$g" 1 "$(grep -c "^FROM scratch AS server-$g\$" "$tmp/stage" || true)"
+  for l in "COPY --from=build /out/$g /$g" "ENTRYPOINT [\"/$g\"]" 'USER 65532:65532'; do
+    expect "server-$g: $l" 1 "$(hasline "$l" "$tmp/stage")"
+  done
+  expect "server-$g: its label" 1 "$(has "org.opencontainers.image.title=\"$g server\"" "$tmp/stage")"
+done
+expect "Containerfile: one target web" 1 "$(grep -c '^FROM .* AS web$' "$cf" || true)"
+expect "web: labelled with its game" 1 "$(has 'org.opencontainers.image.title="${GAME} web"' "$cf")"
+expect "web-conf: an empty GAME refused before web/\${GAME}/ is copied" 1 \
+  "$(holds [ "$(grep -n -m 1 'test -n "$GAME"' "$cf" | cut -d: -f1)" -lt \
+           "$(grep -n -m 1 'COPY web/${GAME}/' "$cf" | cut -d: -f1)" ])"
+expect "web: nothing copied from web/ but what web-conf checked" "COPY web/shared/ /tmp/shared/ COPY web/\${GAME}/ /tmp/game/ " \
+  "$(grep '^COPY web' "$cf" | tr '\n' ' ')"
+
+# ---- each game's code, pages and simulation, once they are there ----------------
+for g in $games; do
+  if [ -d "$root/cmd/$g" ]; then
+    expect "cmd/$g: a main package" 1 "$(holds grep -qx 'package main' "$root/cmd/$g"/*.go)"
+  else
+    note "GAME=$g: no cmd/$g yet; not checked"
+  fi
+  html=$root/web/$g/index.html
+  if [ -f "$html" ]; then
+    expect "web/$g/index.html: the title, TITLE" 1 "$(has "<title>$(val "$g" TITLE)</title>" "$html")"
+    for ph in @SITE@ @VERSION@; do
+      expect "web/$g/index.html: $ph, which the build fills in" 1 "$(has "$ph" "$html")"
+    done
+    expect "web/$g/manifest.webmanifest: the name, TITLE" "\"$(val "$g" TITLE)\"" \
+      "$(tr -d '\n' < "$root/web/$g/manifest.webmanifest" 2>/dev/null \
+        | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n 1 | sed 's/^[^:]*:[[:space:]]*//')"
+    if [ -d "$root/web/shared" ]; then
+      expect "no path in both web/shared and web/$g" "" "$( {
+        (cd "$root/web/shared" && find . ! -type d; cd "$root/web/$g" && find .) | sort | uniq -d
+        (cd "$root/web/$g" && find . ! -type d; cd "$root/web/shared" && find .) | sort | uniq -d
+      } | sort -u | tr '\n' ' ')"
+    fi
+  else
+    note "GAME=$g: no web/$g/index.html yet; not checked"
+  fi
+  if [ ! -f "$root/$(val "$g" E2E_SIM)" ]; then
+    note "GAME=$g: no $(val "$g" E2E_SIM) yet; make e2e GAME=$g cannot run"
+  fi
+done
 
 if [ "$failed" -gt 0 ]; then
   echo "deploy-test: $failed of $n checks failed" >&2
