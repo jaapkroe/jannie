@@ -783,6 +783,10 @@ type explainAI struct {
 	asked atomic.Int32
 }
 
+// NewBrain gives plain bots: they never toep, so the test's own turn to
+// play comes without a question first.
+func (a *explainAI) NewBrain(string, string, uint64) Brain { return plainBrain{} }
+
 func (a *explainAI) Explain(v toepen.View, seed uint64) Explanation {
 	a.asked.Add(1)
 	return Explanation{Decision: string(v.Phase), Advice: "Speel maar", Why: "Omdat het kan.", Chance: 0.5,
