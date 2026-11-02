@@ -17,19 +17,22 @@ import (
 // cards, the last trick wins, toepen raises the stake, and the match goes
 // on until one player is left. In the lobby it only gives the state.
 type play struct {
-	t         *server.Table
-	m         *toepen.Match
-	d         *toepen.Deal
-	handNo    int
-	last      *toepen.Trick // the trick just taken, on the table until collected
-	collected bool          // the trick just taken has been collected
-	rounds    []round       // the score sheet
-	total     []int         // the penalty points after the last round
-	winner    int           // game over: the seat left
-	acts      string        // the round's decisions, for the game log
-	wasGen    int           // bumped when the time for a was opens: late bot answers are dropped
-	told      int           // the settled claims of the round told the table (wasDone)
-	poorAt    int           // the round whose armoede was announced
+	t          *server.Table
+	ai         AI
+	explaining bool       // a why is being worked out
+	why        *whyAnswer // the last one, for its asker while the decision stands
+	m          *toepen.Match
+	d          *toepen.Deal
+	handNo     int
+	last       *toepen.Trick // the trick just taken, on the table until collected
+	collected  bool          // the trick just taken has been collected
+	rounds     []round       // the score sheet
+	total      []int         // the penalty points after the last round
+	winner     int           // game over: the seat left
+	acts       string        // the round's decisions, for the game log
+	wasGen     int           // bumped when the time for a was opens: late bot answers are dropped
+	told       int           // the settled claims of the round told the table (wasDone)
+	poorAt     int           // the round whose armoede was announced
 }
 
 // Room phases of toepen, besides the table's (lobby, handEnd, gameOver).
@@ -304,6 +307,8 @@ func (p *play) Move(i game.Seat, m server.Msg) error {
 		a = action{kind: actToep}
 	case "overtoep":
 		a = action{kind: actOvertoep}
+	case "why":
+		return p.askWhy(i)
 	case "answer", "was", "check":
 		if msg.Play == nil {
 			return errors.New(map[string]string{
@@ -609,6 +614,74 @@ func (p *play) chatCheck(res *toepen.Check) {
 			t.BotSay(res.Checker, server.ChatEvent{Kind: "checkRight", Mine: true}, 900*time.Millisecond)
 		}
 	}
+}
+
+// ---- the reasoning of the AI (docs/toepen.md §8) ----
+
+// whyAnswer is an explanation for seat's decision key.
+type whyAnswer struct {
+	seat game.Seat
+	key  string
+	e    Explanation
+}
+
+// yours reports whether the round awaits a decision of seat i: its turn,
+// or its answer in the time for a was.
+func (p *play) yours(i game.Seat) bool {
+	t, d := p.t, p.d
+	switch {
+	case d == nil || !t.InHand():
+		return false
+	case d.Phase() == toepen.PhaseWas:
+		return t.Pending() == stepWas && d.Status(i) == toepen.StatusIn && !d.Answered(i)
+	}
+	return d.Turn() == i
+}
+
+// decisionKey names the decision the round awaits now.
+func (p *play) decisionKey(i game.Seat) string {
+	d := p.d
+	return fmt.Sprintf("%d/%d/%s/%d/%d/%d/%d/%d", p.handNo, i, d.Phase(), d.WasRound(), len(d.Tricks()), len(d.Current().Cards),
+		d.Stake(), len(d.Asking()))
+}
+
+// askWhy works out the reasoning for seat i's decision now, in the
+// background, and puts it in that player's state. Only for a player alone
+// with bots: at a table with friends it would be help nobody else has.
+func (p *play) askWhy(i game.Seat) error {
+	t := p.t
+	ex, ok := p.ai.(Explainer)
+	switch {
+	case !ok:
+		return errors.New("Aan deze tafel kan de AI geen redenering geven.")
+	case t.HumanCount() > 1:
+		return errors.New("De redenering van de AI kun je alleen opvragen als je zonder andere mensen speelt.")
+	case !p.yours(i):
+		return errors.New("Je bent nu niet aan zet.")
+	case p.explaining:
+		return errors.New("Even geduld: de AI denkt nog na over je vorige vraag.")
+	}
+	v, key := p.d.View(i), p.decisionKey(i)
+	seed := uint64(p.handNo)<<32 ^ uint64(len(p.acts))
+	p.explaining = true
+	t.Background(func() any { return ex.Explain(v, seed) }, func(a any) {
+		p.explaining = false
+		e, ok := a.(Explanation)
+		if !ok {
+			e = Explanation{Chance: -1, Why: "De AI kon hier niets over zeggen.", Options: []WhyOption{}}
+		}
+		p.why = &whyAnswer{seat: i, key: key, e: e}
+		t.Emit(nil)
+	})
+	return server.ErrIgnore // the answer comes in the state
+}
+
+// whyFor is the explanation for seat i's decision now, if it asked.
+func (p *play) whyFor(i game.Seat) *Explanation {
+	if w := p.why; w != nil && w.seat == i && p.yours(i) && w.key == p.decisionKey(i) {
+		return &w.e
+	}
+	return nil
 }
 
 // safeLay is the cards to lay away without any thought: the weakest.

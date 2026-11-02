@@ -295,8 +295,10 @@ The shell of design §9 with toepen's `game.js`:
 - The manual (*Spelregels toepen*, from the table and the home screen): the
   shell's tabs and scrolling pane (as klaverjas's handleiding) with
   *Spelregels*, *Extra regels* (each option: at a table how it is played
-  there, from the home screen what it is and its default), *Begrippen*
-  and *Bediening*.
+  there, from the home screen what it is and its default), *Tips* (the
+  bots' rules of thumb), *Begrippen* and *Bediening*.
+- Expert mode: the robot in the top bar and the sheet *Redenering van de
+  AI* (§8).
 - Game over → *Spelers of regels wijzigen*: the overlays close when the
   room is back in the lobby (`game.sync`).
 - Its look: blue café felt (`css/toepen.css` overrides the shell's
@@ -313,3 +315,34 @@ dev port 18095, e2e port 18096 (`test/e2e/toepen.mjs`), volume
 (deploy/README-deploy.md). Outside the repo: the NPM proxy host
 toepen.kroes.dev → `http://127.0.0.1:8095` with websockets on, and the
 name's rate tier in shrek-infra before the link goes out.
+
+## 8. Redenering van de AI (expert mode)
+
+Five taps on the version under the home screen switch the expert mode on
+or off for this device (`kj.expert`). In it, alone with bots (nobody else
+at the table is a person, so it is help nobody else lacks), a robot in the
+top bar asks the reasoning for your own decision now: `why` (no fields).
+The server works it out in the background (`Table.Background`; one at a
+time per table) and puts it in your state only, as `why`, while that
+decision stands; with other people at the table, out of turn, or without
+an AI that explains, `why` is refused (`ongeldig`).
+
+The reasoning (`toepbot.Explain`, from your view only, so it gives none of
+the others' cards away) is sterk's at average boldness, with the rule of
+thumb of normaal: `{decision, advice, why, rule, ruleCard, chance,
+options, worlds}`, `options` each `{label | cards, value, points, best}`:
+
+- **kaart**: per legal card the share of 240 sampled deals in which you
+  take the last trick with it, and, when you may, *Toepen* against the
+  bar for a toep;
+- **antwoord**: *Meegaan* (expected penalty points: the stake times the
+  chance to lose, going out counting five more), *Overtoepen* (the chance
+  against its bar) and *Passen* (the stake before the toep);
+- **was**: whether the hand is a real vuile was, and the chance with it;
+- **controle**: the chance that the claim is a bluff, from the hands the
+  cards you do not see make, against the bar (50%; 85% when a wrong check
+  puts you out);
+- **wegleggen**: the five best choices of cards to lay away in the
+  koningsspel, each with its share of 48 deals.
+
+The rules of thumb are also the manual's tab *Tips*.

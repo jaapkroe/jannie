@@ -815,7 +815,8 @@ type Shared struct{ Code, Phase string; Opts any; You, Host int; Roster; Players
 `BotPlays`, `HumanCount`, `InHand`, `Pending`, `PauseEnds`, `Pace`,
 `Logger`, `Shared`) and the moves of the table (`SetPhase`, `SetHand`,
 `Pause`, `EndPause`, `OpenTurn`, `Emit`, `Later`, `Think` for a question
-everyone answers at once, `Trick`, `Summary`, `GameOver`, `SysChat`,
+everyone answers at once, `Background` for an analysis off the room
+goroutine, `Trick`, `Summary`, `GameOver`, `SysChat`,
 `BotSay`, `BotsReact`, `Log`), every duration scaled by the room's tempo.
 The table drives the match after every call into the game and every
 callback; a game never schedules itself. For another game the table reads

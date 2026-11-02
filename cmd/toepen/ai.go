@@ -1,11 +1,13 @@
 package main
 
 import (
+	"math"
 	"math/rand/v2"
 
 	"klaverjas/internal/persona"
 	"klaverjas/internal/server"
 	"klaverjas/internal/toepbot"
+	"klaverjas/internal/toepen"
 	"klaverjas/internal/toepenserver"
 )
 
@@ -34,6 +36,24 @@ func (toepAI) NewBrain(personaID, level string, seed uint64) toepenserver.Brain 
 		p = neutral
 	}
 	return toepbot.New(p.Aggression, toepbot.ParseLevel(level), seed)
+}
+
+// Explain is toepbot's reasoning for a decision, rounded for the wire:
+// shares to thousandths, points to tenths.
+func (toepAI) Explain(v toepen.View, seed uint64) toepenserver.Explanation {
+	e := toepbot.Explain(v, seed)
+	out := toepenserver.Explanation{Decision: e.Decision, Advice: e.Advice, Why: e.Why, Rule: e.Rule, RuleCard: e.RuleCard,
+		Chance: math.Round(1000*e.Chance) / 1000, Worlds: e.Worlds, Options: []toepenserver.WhyOption{}}
+	for _, o := range e.Options {
+		x := math.Round(1000*o.Value) / 1000
+		if o.Value < 0 {
+			x = -1
+		} else if o.Points {
+			x = math.Round(10*o.Value) / 10
+		}
+		out.Options = append(out.Options, toepenserver.WhyOption{Label: o.Label, Cards: o.Cards, Value: x, Points: o.Points, Best: o.Best})
+	}
+	return out
 }
 
 func (toepAI) Chat(personaID string, ev server.ChatEvent, rng *rand.Rand) string {

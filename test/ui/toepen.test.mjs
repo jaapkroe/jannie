@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  strength, wasKind, seatAngle, onEllipse, seatStatus, prompt, roundHeadline, standings, variantText, manual, isOut, washes,
+  strength, wasKind, seatAngle, onEllipse, seatStatus, prompt, roundHeadline, standings, variantText, manual, isOut, washes, yours, alone, cardLabel, whyRows,
 } from '../../web/toepen/js/rules.js';
 
 const player = name => ({ name, bot: false, connected: true });
@@ -141,7 +141,8 @@ test('variant and manual follow the options', () => {
   assert.equal(variantText({ limit: 10, was: true, armoede: true, koning: true, boer: true, lijntoep: true }),
     'Toepen tot 10 strafpunten, met vuile was, armoede, koningsspel, boer eraf en anti-lijntoep');
   const tabs = manual({ limit: 15, was: false, armoede: true, koning: true, boer: false, lijntoep: true });
-  assert.deepEqual(tabs.map(t => t.title), ['Spelregels', 'Extra regels', 'Begrippen', 'Bediening']);
+  assert.deepEqual(tabs.map(t => t.title), ['Spelregels', 'Extra regels', 'Tips', 'Begrippen', 'Bediening']);
+  assert.ok(tabs.find(t => t.id === 'tips').parts.flatMap(([, ps]) => ps).some(p => /hoogste kaart voor de laatste slag/.test(p)));
   const part = (id, title) => Object.fromEntries(tabs.find(t => t.id === id).parts)[title];
   assert.deepEqual(part('extra', 'Vuile was'), ['Aan deze tafel speel je zonder vuile was.']);
   assert.match(part('extra', 'Armoede')[0], /14 strafpunten/);
@@ -159,4 +160,30 @@ test('variant and manual follow the options', () => {
   assert.equal(home['Anti-lijntoep'].at(-1), 'Dit kies je bij een nieuw spel; standaard staat het uit.');
   assert.equal(home.Koningsspel.at(-1), 'Dit kies je bij een nieuw spel; standaard staat het aan.');
   assert.ok(home['Vuile was'].some(p => /open uit/.test(p)));
+});
+
+test('the reasoning of the AI: your decision, alone, and the sheet', () => {
+  assert.ok(yours(table()));
+  assert.ok(!yours(table({ turn: 1 })));
+  assert.ok(yours(table({ phase: 'was', turn: -1, nextAt: 9 })));
+  assert.ok(!yours(table({ phase: 'was', turn: -1, nextAt: 9, answered: [true, false, false, false] })));
+  assert.ok(!yours(table({ status: ['gepast', 'in', 'in', 'in'] })));
+  assert.ok(alone(table()));
+  assert.ok(!alone(table({ players: [player('Jaap'), player('Kees'), bot('Sjaak'), bot('Truus')] })));
+  assert.equal(cardLabel('TH'), '♥10');
+  assert.equal(cardLabel('JS'), '♠B');
+  const r = whyRows({ decision: 'kaart', advice: 'Speel ♥10', why: 'Omdat.', rule: 'Kom laag uit.', ruleCard: '7C', worlds: 240,
+    options: [{ cards: ['TH'], value: 0.62, best: true }, { cards: ['7C'], value: 0.3 }, { label: 'Toepen', value: 0.62 }] });
+  assert.deepEqual(r.options, [
+    { label: '♥10', value: '62% kans op de laatste slag', best: true },
+    { label: '♣7', value: '30% kans op de laatste slag', best: false },
+    { label: 'Toepen', value: '62% kans op de laatste slag', best: false }]);
+  assert.equal(r.rule, 'Vuistregel: Kom laag uit.');
+  assert.equal(r.ruleCard, 'De vuistregel speelt ♣7.');
+  assert.match(r.note, /^240 verdelingen/);
+  const a = whyRows({ decision: 'antwoord', options: [{ label: 'Meegaan', value: 1.5, points: true }, { label: 'Passen', value: 1, points: true, best: true }] });
+  assert.deepEqual(a.options.map(o => o.value), ['1,5 strafpunten verwacht', '1 strafpunt verwacht']);
+  const c = whyRows({ decision: 'controle', options: [{ label: 'Controleren', value: 0.7, best: true }, { label: 'Laten gaan', value: 0.3 }] });
+  assert.deepEqual(c.options.map(o => o.value), ['70% kans op bluf', '30% kans op echt']);
+  assert.equal(whyRows({ decision: 'wegleggen', options: [{ cards: ['7C', '8C', 'JD'], value: 0.5, best: true }] }).options[0].label, '♣7 ♣8 ♦B');
 });

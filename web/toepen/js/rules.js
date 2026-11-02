@@ -166,6 +166,49 @@ export function prompt(s) {
 
 const cap = t => (t ? t[0].toUpperCase() + t.slice(1) : t);
 
+// ---------- the reasoning of the AI (expert mode) ----------
+
+// Whether the round awaits a decision of yours now: your turn, or your
+// answer in the time for a vuile was.
+export function yours(s) {
+  if (!IN_HAND.has(s.phase) || s.status?.[s.you] !== 'in') return false;
+  if (s.phase === 'was') return !!s.nextAt && !s.answered?.[s.you];
+  return s.turn === s.you;
+}
+
+// Alone with bots: nobody else at the table is a person.
+export const alone = s => s.players.filter(p => p && !p.bot).length === 1;
+
+const SUIT = { C: '♣', D: '♦', H: '♥', S: '♠' };
+const RANK = { J: 'B', Q: 'V', K: 'H', A: 'A', T: '10', 7: '7', 8: '8', 9: '9' };
+// A card as the table writes it: "♥10", "♠B".
+export const cardLabel = code => `${SUIT[code?.[1]] || '?'}${RANK[code?.[0]] || '?'}`;
+
+const share = x => `${Math.round(100 * x)}%`;
+const pointsNL = x => `${String(Math.round(10 * x) / 10).replace('.', ',')} ${x === 1 ? 'strafpunt' : 'strafpunten'}`;
+
+// The explanation (s.why) as the sheet shows it: the advice, why, the
+// options with their values, the rule of thumb and a footnote.
+export function whyRows(w) {
+  if (!w) return null;
+  const what = w.decision === 'controle' ? ['kans op bluf', 'kans op echt'] : ['kans op de laatste slag'];
+  const options = (w.options || []).map((o, k) => ({
+    label: o.cards?.length ? o.cards.map(cardLabel).join(' ') : o.label,
+    value: o.value < 0 ? '' : o.points ? `${pointsNL(o.value)} verwacht` : `${share(o.value)} ${what[Math.min(k, what.length - 1)]}`,
+    best: !!o.best,
+  }));
+  const note = w.worlds ? `${w.worlds} verdelingen nagespeeld van de kaarten die jij niet ziet, steeds anders: alleen wat jij weet telt.`
+    : 'Uitgerekend uit de kaarten die jij ziet.';
+  return {
+    advice: w.advice || '',
+    why: w.why || '',
+    options,
+    rule: w.rule ? `Vuistregel: ${w.rule}` : '',
+    ruleCard: w.ruleCard ? `De vuistregel speelt ${cardLabel(w.ruleCard)}.` : '',
+    note,
+  };
+}
+
 // Why you may not toep on your turn.
 function noToep(s) {
   const me = s.you;
@@ -269,6 +312,30 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
         'Lijntoepen is steeds passen en alleen meegaan met topkaarten. Daarom mag je hoogstens twee keer achter elkaar passen op een toep: bij de derde ga je verplicht mee (of je overtoept).',
         'Meegaan of overtoepen telt opnieuw af. Het meegaan op armoede telt niet mee.', ...choice('lijntoep')] : [
         'Aan deze tafel mag je zo vaak passen als je wilt. Met de regel anti-lijntoep mag je hoogstens twee keer achter elkaar passen op een toep.']],
+    ] },
+    { id: 'tips', title: 'Tips', parts: [
+      ['Kaarten spelen', [
+        'Bewaar je hoogste kaart voor de laatste slag: alleen die telt.',
+        'Kom laag uit, met een andere kleur dan je beste kaart.',
+        'De voorlaatste slag neem je het liefst met een andere kaart dan je beste: dan kom je in de laatste slag uit met je beste.',
+        'Kun je niet bekennen, gooi dan je zwakste kaart weg; die wint toch niet.',
+        'Beken je wel, speel dan je laagste kaart van die kleur, tenzij je de voorlaatste slag wilt halen.']],
+      ['Toepen', [
+        'Toep als je een goede kans hebt op de laatste slag: ruwweg zes op de tien. Met minder spelers moet je zekerder zijn: tegen één ander is het gauw kop of munt om meer punten.',
+        'Een bluf met een kansloze hand kan, het liefst bij een lage inzet: wie past, betaalt toch.',
+        'Overtoep alleen met een (bijna) zekere laatste slag, en hoe hoger de inzet, hoe zekerder: heen en weer toepen kost al snel meer dan het potje waard is.']],
+      ['Meegaan of passen', [
+        'Vergelijk wat passen kost (de inzet van vóór de toep) met wat meegaan gemiddeld kost: de nieuwe inzet maal je kans om te verliezen.',
+        'Eruit gaan weegt extra zwaar. Zet passen je er net zo goed uit als verliezen, ga dan mee.',
+        'Wie bij een hoge inzet nog toept, heeft meestal echt iets.']],
+      ['Vuile was', [
+        'Lever een echte vuile was altijd in: vier nieuwe kaarten zijn bijna altijd beter, en wie controleert, krijgt zelf een strafpunt.',
+        'Bluf af en toe met een kansloze hand, maar nooit op armoede: daar mag het niet.']],
+      ['Controleren', [
+        'Heb je zelf veel plaatjes en zevens, dan is een echte vuile was bij een ander minder waarschijnlijk: controleren loont dan eerder.',
+        'Wees voorzichtig als een verkeerde controle je eruit zet.']],
+      ['Koningsspel', [
+        'Leg je zwakste kaarten weg en houd je hoogste kaarten; met acht slagen telt nog steeds alleen de laatste.']],
     ] },
     { id: 'begrippen', title: 'Begrippen', parts: [
       ['Armoede', [`Op ${limit - 1} strafpunten staan: één van eruit.`]],

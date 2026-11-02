@@ -4,7 +4,7 @@
 // toep), the takeover question, and the overlays of the game: the round
 // summary, game over, the standings and the manual. The shell (main.js, home.js, panels.js) does the
 // rest; game.js ties the two together. Pure parts: rules.js.
-import { app, h, clear, icon, toast, avatar, fillAvatar, playerName, wait, anim, dur, vibrate } from './util.js';
+import { app, h, clear, icon, toast, avatar, fillAvatar, playerName, wait, anim, dur, vibrate, store } from './util.js';
 import { createCard, createBack, cardName } from './cards.js';
 import { sound } from './sound.js';
 import * as panels from './panels.js';
@@ -37,7 +37,8 @@ export function init() {
     E.stakeTop = h('div', { class: 'tp-stake-top', title: 'De inzet: zoveel strafpunten krijgt wie de laatste slag niet haalt' },
       h('span', { class: 'tp-st-lbl', text: 'Inzet' }), E.stakeN = h('b', { text: '1' })),
     h('span', { class: 'spacer' }),
-    ...panels.toolButtons(['chat', 'help', 'settings', 'sound', 'menu']));
+    ...panels.toolButtons(['chat', 'why', 'help', 'settings', 'sound', 'menu']));
+  E.why = E.top.querySelector('.tb-why');
   E.table = h('div', { class: 'tp-table' }, h('div', { class: 'tp-felt', 'aria-hidden': 'true' }));
   E.seats = h('div', { class: 'tp-seats' });
   E.trick = h('div', { class: 'tp-trick', role: 'group', 'aria-label': 'Slag op tafel' });
@@ -79,6 +80,7 @@ export function render(s) {
   renderPrompt(s);
   renderHand(s);
   syncOverlays(s);
+  renderWhy(s);
   renderCall();
 }
 
@@ -559,6 +561,46 @@ export function openRules(tab) {
   }
   panels.openModal({ id: 'tp-rules', title: 'Spelregels toepen', cls: 'm-manual tp-rules', body: [bar, content] });
   show(tab || lastTab);
+}
+
+// ---------- the reasoning of the AI (expert mode) ----------
+
+const expert = () => store.get('expert', '') === '1';
+
+// The robot in the top bar: in expert mode, alone with bots, in a round.
+// An open sheet follows the state: the answer arrives in s.why, and a
+// decision made closes it.
+function renderWhy(s) {
+  E.why.hidden = !(expert() && R.alone(s) && R.IN_HAND.has(s.phase));
+  const m = panels.byId('tp-why');
+  if (!m) return;
+  if (s.why) m.show(s.why);
+  else if (!R.yours(s)) m.close();
+}
+
+export function openWhy() {
+  const s = app.view;
+  if (!s) return;
+  sound.play('click');
+  const m = panels.openModal({ id: 'tp-why', title: 'Redenering van de AI', cls: 'm-sheet tp-why', body: [] });
+  m.show = w => {
+    const r = R.whyRows(w);
+    m.body.replaceChildren(
+      h('p', { class: 'tp-why-advice', text: r.advice }),
+      h('p', { class: 'tp-why-text', text: r.why }),
+      r.options.length ? h('table', { class: 'tp-why-table' }, h('tbody', {}, r.options.map(o =>
+        h('tr', { class: o.best ? 'best' : '' }, h('th', { scope: 'row', text: o.label }), h('td', { text: o.value }),
+          h('td', { class: 'tp-why-mark', text: o.best ? 'beste' : '' }))))) : null,
+      r.rule ? h('p', { class: 'tp-why-rule', text: r.rule + (r.ruleCard ? ` ${r.ruleCard}` : '') }) : null,
+      h('p', { class: 'sheet-note', text: r.note }));
+  };
+  if (!R.yours(s)) {
+    m.body.replaceChildren(h('p', { text: 'Je bent nu niet aan zet: vraag het op je beurt.' }));
+    return;
+  }
+  if (s.why) { m.show(s.why); return; }
+  m.body.replaceChildren(h('p', { class: 'tp-why-wait', text: 'De AI speelt je kansen na…' }));
+  app.send({ t: 'why' });
 }
 
 // ---------- animation ----------

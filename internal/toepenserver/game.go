@@ -29,6 +29,38 @@ type Brain interface {
 	Play(v toepen.View) game.Card      // one of v.Legal
 }
 
+// Explainer is an AI that gives the reasoning for a player's decision
+// (the expert's sheet Redenering van de AI; cmd/toepen's does). seed makes
+// it repeatable.
+type Explainer interface {
+	Explain(v toepen.View, seed uint64) Explanation
+}
+
+// Explanation is the reasoning for one decision of a player, from what it
+// knows: what the strongest bot would do and why, every option's value,
+// and the rule of thumb (docs/toepen.md §8).
+type Explanation struct {
+	Decision string      `json:"decision"` // kaart, antwoord, was, controle, wegleggen
+	Advice   string      `json:"advice"`
+	Why      string      `json:"why"`
+	Rule     string      `json:"rule"`
+	RuleCard *game.Card  `json:"ruleCard,omitempty"`
+	Chance   float64     `json:"chance"` // of the last trick, 0..1; -1 when not asked
+	Options  []WhyOption `json:"options"`
+	Worlds   int         `json:"worlds"` // deals sampled
+}
+
+// WhyOption is one choice of an explanation and its value: a share of
+// deals (of the last trick; for a check, of a bluff) or, with points,
+// expected penalty points.
+type WhyOption struct {
+	Label  string      `json:"label,omitempty"`
+	Cards  []game.Card `json:"cards,omitempty"`
+	Value  float64     `json:"value"`
+	Points bool        `json:"points,omitempty"`
+	Best   bool        `json:"best,omitempty"`
+}
+
 // AI is what tables of toepen need from the bots.
 type AI interface {
 	// Personas are the bots, with their toepen bios; at least five.
@@ -51,11 +83,11 @@ func New(ai AI) server.Game {
 
 type toepGame struct{ ai AI }
 
-func (toepGame) Name() string                    { return "toepen" }
-func (toepGame) Seats() (int, int, int)          { return 2, 6, 4 }
-func (g toepGame) Personas() []server.Persona    { return g.ai.Personas() }
-func (toepGame) NewOptions() server.GameOptions  { return defaultOptions() }
-func (toepGame) New(t *server.Table) server.Play { return &play{t: t, poorAt: -1} }
+func (toepGame) Name() string                      { return "toepen" }
+func (toepGame) Seats() (int, int, int)            { return 2, 6, 4 }
+func (g toepGame) Personas() []server.Persona      { return g.ai.Personas() }
+func (toepGame) NewOptions() server.GameOptions    { return defaultOptions() }
+func (g toepGame) New(t *server.Table) server.Play { return &play{t: t, ai: g.ai, poorAt: -1} }
 
 func (g toepGame) NewBrain(personaID, level string, seed uint64) any {
 	return g.ai.NewBrain(personaID, level, seed)

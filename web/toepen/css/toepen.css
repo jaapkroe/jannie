@@ -845,6 +845,58 @@ body {
   }
 }
 
+/* The reasoning of the AI (expert mode). */
+.tp-why .dialog {
+  width: min(520px, calc(100vw - 24px));
+}
+
+.tp-why-advice {
+  margin: 4px 0 6px;
+  color: var(--gold);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.tp-why-text,
+.tp-why-rule {
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+
+.tp-why-rule {
+  color: var(--ink-2);
+}
+
+.tp-why-table {
+  width: 100%;
+  margin: 0 0 12px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.tp-why-table th,
+.tp-why-table td {
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.tp-why-table th {
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.tp-why-table tr.best th,
+.tp-why-table tr.best td {
+  color: var(--gold);
+}
+
+.tp-why-mark {
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+
 .btn-col {
   display: flex;
   flex-direction: column;

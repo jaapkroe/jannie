@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -337,9 +338,9 @@ func TestToepenLobby(t *testing.T) {
 	if s := toepS(t, m); s.Phase != phaseWas && s.Phase != phasePlay || len(s.Hand) != 4 || s.Players[4] == nil || !s.Players[4].Bot {
 		t.Errorf("started: phase %s hand %v", s.Phase, s.Hand)
 	}
-	// The messages of klaverjas are none of toepen's (discard is toepen's
-	// too, for the koningsspel).
-	for _, typ := range []string{"trump", "why", "handReview", "tipRead", "feedback", "bid", "auction"} {
+	// The messages of klaverjas are none of toepen's (discard and why are
+	// toepen's too: the koningsspel, the reasoning of the AI).
+	for _, typ := range []string{"trump", "handReview", "tipRead", "feedback", "bid", "auction"} {
 		h.Send(map[string]any{"t": typ, "suit": "H", "hand": 1, "trick": 1})
 		if m := h.WaitError("ongeldig"); m.ErrMsg() != "Dat bericht ken ik niet." {
 			t.Errorf("%s in toepen: %q", typ, m.ErrMsg())
@@ -774,4 +775,61 @@ func btoi(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// explainAI explains every decision the same way, and counts the asks.
+type explainAI struct {
+	testAI
+	asked atomic.Int32
+}
+
+func (a *explainAI) Explain(v toepen.View, seed uint64) Explanation {
+	a.asked.Add(1)
+	return Explanation{Decision: string(v.Phase), Advice: "Speel maar", Why: "Omdat het kan.", Chance: 0.5,
+		Options: []WhyOption{{Label: "Iets", Value: 0.5, Best: true}}}
+}
+
+// The reasoning of the AI: for your own decision now, alone with bots,
+// in your state only; never at a table with other people.
+func TestToepenWhy(t *testing.T) {
+	ai := &explainAI{}
+	srv := servertest.Start(t, New(ai))
+	c := srv.Dial()
+	c.Create("Jaap", map[string]any{"players": 3, "was": false, "armoede": false, "seed": 12}, true)
+	s := untilToep(t, c, "a turn of someone", func(s *state) bool { return s.Phase == phasePlay && s.Turn >= 0 })
+	if s.Turn != s.You {
+		c.Send(map[string]any{"t": "why"})
+		if m := c.WaitError("ongeldig"); m.ErrMsg() != "Je bent nu niet aan zet." {
+			t.Errorf("not your turn: %q", m.ErrMsg())
+		}
+		s = untilToep(t, c, "my turn", func(s *state) bool { return s.Phase == phasePlay && s.Turn == s.You })
+	}
+	if s.Why != nil {
+		t.Fatal("a why unasked")
+	}
+	c.Send(map[string]any{"t": "why"})
+	s = untilToep(t, c, "the why", func(s *state) bool { return s.Why != nil })
+	if s.Why.Advice != "Speel maar" || s.Why.Decision != "play" || len(s.Why.Options) != 1 || ai.asked.Load() != 1 {
+		t.Errorf("why %+v", s.Why)
+	}
+	c.Send(map[string]any{"t": "play", "card": s.Legal[0].String()})
+	if s = untilToep(t, c, "the card played", func(s *state) bool { return s.Turn != s.You || s.Tricks > 0 }); s.Why != nil {
+		t.Error("the why outlives its decision")
+	}
+	// With another person at the table: no reasoning.
+	h, g := twoHumans(t, srv, map[string]any{"was": false, "armoede": false})
+	clients := []*servertest.Client{h, g}
+	s = untilToep(t, h, "a turn", func(s *state) bool { return s.Phase == phasePlay && s.Turn >= 0 })
+	clients[s.Turn].Send(map[string]any{"t": "why"})
+	if m := clients[s.Turn].WaitError("ongeldig"); m.ErrMsg() != "De redenering van de AI kun je alleen opvragen als je zonder andere mensen speelt." {
+		t.Errorf("with friends: %q", m.ErrMsg())
+	}
+	// Without an AI that explains.
+	plain := servertest.Start(t, New(nil)).Dial()
+	plain.Create("Jaap", map[string]any{"players": 2, "was": false}, true)
+	untilToep(t, plain, "my turn", func(s *state) bool { return s.Phase == phasePlay && s.Turn == s.You })
+	plain.Send(map[string]any{"t": "why"})
+	if m := plain.WaitError("ongeldig"); m.ErrMsg() != "Aan deze tafel kan de AI geen redenering geven." {
+		t.Errorf("plain: %q", m.ErrMsg())
+	}
 }

@@ -1,7 +1,7 @@
 // Toepen at toepen.kroes.dev: what the shell (main.js, home.js, panels.js)
 // needs from the game of this site (design §9, "The game module";
 // docs/toepen.md). No side effects when imported: node tests read it.
-import { h, store, countWord, cap } from './util.js';
+import { h, store, countWord, cap, toast } from './util.js';
 import * as table from './table.js';
 import * as R from './rules.js';
 
@@ -18,6 +18,8 @@ export const ACKED = new Set(['play', 'toep', 'overtoep', 'answer', 'check', 'di
 export const TOOLS = {
   help: ['help', 'Spelregels', 'Spelregels van toepen en bediening', () => table.openRules()],
   score: ['score', 'Stand', 'Stand: de strafpunten van iedereen', () => table.openStand()],
+  // Expert mode, alone with bots: the reasoning for your own decision.
+  why: ['bot', 'Redenering van de AI', 'Redenering van de AI bij jouw zet', () => table.openWhy(), { hidden: true }],
 };
 export const menuTitle = 'Meer: stand, spelregels, instellingen';
 export const menu = item => [
@@ -136,6 +138,14 @@ export const home = {
   // The next new game starts from what the room has.
   remember: ({ players, limit, was, armoede, koning, boer, lijntoep, bluf, ai, tempo }) => ({ players, limit, was, armoede, koning, boer, lijntoep, bluf, ai, tempo }),
   help: { label: 'Spelregels en bediening', open: () => table.openRules() },
+  // Five taps on the version: the expert mode on or off (on this device).
+  egg: () => {
+    const on = store.get('expert', '') !== '1';
+    if (on) store.set('expert', '1');
+    else store.del('expert');
+    toast(on ? 'Expertmodus aan: speel je zonder andere mensen, dan geeft het robotje bovenin de redenering van de AI bij je eigen zet.'
+      : 'Expertmodus uit.', { ms: 4000 });
+  },
   footer: 'Toepen zoals aan de keukentafel.',
   support: 'Toepen is gratis en zonder reclame. Met een vrijwillige bijdrage help je de server en de ontwikkeling te betalen, zodat dat zo blijft.',
   shareText: code => `Kom je toepen? Doe mee met code ${code}:`,

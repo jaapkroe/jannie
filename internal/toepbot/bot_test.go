@@ -306,3 +306,74 @@ func TestDiscard(t *testing.T) {
 		t.Errorf("sterk lays away worse than the rule: %v", won)
 	}
 }
+
+// The reasoning for every kind of decision: an option marked best, an
+// advice and a reason in Dutch, and the rule of thumb.
+func TestExplain(t *testing.T) {
+	rules := toepen.DefaultRules
+	best := func(e Explanation) int {
+		n := 0
+		for _, o := range e.Options {
+			if o.Best {
+				n++
+			}
+		}
+		return n
+	}
+	// A card, on a turn that may toep: every legal card and Toepen.
+	d := toepen.NewDeal(3, toepen.Rules{Limit: 10}, 2, [toepen.MaxPlayers]int{}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S"))
+	e := Explain(d.View(0), 1)
+	if e.Decision != "kaart" || len(e.Options) != 5 || e.Options[4].Label != "Toepen" || e.Advice == "" || e.Why == "" || e.Rule == "" || e.RuleCard == nil {
+		t.Fatalf("card: %+v", e)
+	}
+	if !e.Options[4].Best || !strings.HasPrefix(e.Advice, "Toep") || e.Chance < 0.9 {
+		t.Errorf("the four best hearts toep: %+v", e)
+	}
+	// Asked about a toep with nothing: pass.
+	must := func(err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(d.Toep(0))
+	e = Explain(d.View(1), 1)
+	if e.Decision != "antwoord" || e.Advice != "Pas" || best(e) != 1 || len(e.Options) != 3 {
+		t.Errorf("answer: %+v", e)
+	}
+	// The vuile was: a real one is handed in; a hopeless bluff may be.
+	d = toepen.NewDeal(3, rules, 2, [toepen.MaxPlayers]int{}, deck("JH QS KD 7C", "TH 9H 8H 7H", "TS 9S 8S 7S"))
+	if e = Explain(d.View(0), 1); e.Decision != "was" || !e.Options[0].Best || !strings.HasPrefix(e.Advice, "Lever in") {
+		t.Errorf("was: %+v", e)
+	}
+	// A check: holding four pictures, a real one is unlikely.
+	must(d.Was(0, true))
+	must(d.Was(1, false))
+	must(d.Was(2, false))
+	v := d.View(1)
+	v.Hand = cards("JD QH KS AC")
+	if e = Explain(v, 1); e.Decision != "controle" || e.Advice != "Controleer" || e.Chance != -1 {
+		t.Errorf("check: %+v", e)
+	}
+	// Laying away in the koningsspel: the five best choices.
+	d = toepen.NewDeal(2, rules, 1, [toepen.MaxPlayers]int{9, 9}, toepen.Shuffle(rand.New(rand.NewPCG(3, 4))))
+	if e = Explain(d.View(0), 1); e.Decision != "wegleggen" || len(e.Options) != 5 || len(e.Options[0].Cards) != 3 || !e.Options[0].Best ||
+		e.Options[0].Value < e.Options[4].Value {
+		t.Errorf("discard: %+v", e)
+	}
+}
+
+// deck lays out a deck for NewDeal: the hands in dealing order, then the
+// other cards in deck order.
+func deck(hands ...string) []game.Card {
+	var out []game.Card
+	for _, h := range hands {
+		out = append(out, cards(h)...)
+	}
+	for _, c := range game.NewDeck() {
+		if !slices.Contains(out, c) {
+			out = append(out, c)
+		}
+	}
+	return out
+}

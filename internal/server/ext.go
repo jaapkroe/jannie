@@ -393,6 +393,33 @@ func (t *Table) Later(d time.Duration, f func()) {
 	})
 }
 
+// Background runs f off the room goroutine, for work that takes a while
+// (an analysis for a player), and then gets f's answer on the room
+// goroutine at once, unless the match is over by then. A panic in f gives
+// nil.
+func (t *Table) Background(f func() any, then func(any)) {
+	r, x := t.r, t.r.x
+	gen := x.gen
+	go func() {
+		var a any
+		func() {
+			defer func() {
+				if p := recover(); p != nil {
+					r.log.Error("background work panicked", "panic", fmt.Sprint(p))
+				}
+			}()
+			a = f()
+		}()
+		r.post(func() {
+			if x.gen != gen {
+				return
+			}
+			then(a)
+			r.drive()
+		})
+	}()
+}
+
 // Think lets the bot (or substitute) of seat i decide now, while others
 // decide too: the time in which everyone answers at once. f runs off the
 // room goroutine with the seat's brain, one call into it at a time (a

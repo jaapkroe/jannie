@@ -205,6 +205,20 @@ func weakestN(hand []game.Card, n int) []game.Card {
 }
 
 func (p *Player) bestDiscard(v *toepen.View, n int) []game.Card {
+	lays, wins := p.discardScores(v, n, 24)
+	best := 0
+	for k := range lays {
+		if wins[k] > wins[best] {
+			best = k
+		}
+	}
+	return lays[best]
+}
+
+// discardScores plays every choice of n cards to lay away out in the same
+// sampled deals (the others holding as many cards as v.Seat keeps) and
+// counts the deals in which v.Seat takes the last trick.
+func (p *Player) discardScores(v *toepen.View, n, worlds int) ([][]game.Card, []int) {
 	all := *v
 	for o := range game.Seat(v.Players) {
 		if v.In(o) {
@@ -212,25 +226,22 @@ func (p *Player) bestDiscard(v *toepen.View, n int) []game.Card {
 		}
 	}
 	s := newSampler(&all)
-	worlds := make([]world, 24)
-	for k := range worlds {
-		worlds[k] = s.draw(p.rng)
+	ws := make([]world, worlds)
+	for k := range ws {
+		ws[k] = s.draw(p.rng)
 	}
-	best, bestWins := weakestN(v.Hand, n), -1
-	for _, lay := range combinations(v.Hand, n) {
+	lays := combinations(v.Hand, n)
+	wins := make([]int, len(lays))
+	for i, lay := range lays {
 		kept := all
 		kept.Hand = without(v.Hand, lay...)
-		wins := 0
-		for k := range worlds {
-			if playout(&kept, &worlds[k], noCard) == v.Seat {
-				wins++
+		for k := range ws {
+			if playout(&kept, &ws[k], noCard) == v.Seat {
+				wins[i]++
 			}
 		}
-		if wins > bestWins {
-			best, bestWins = lay, wins
-		}
 	}
-	return best
+	return lays, wins
 }
 
 // combinations lists every choice of n cards of hand.

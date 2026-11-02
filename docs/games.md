@@ -141,7 +141,9 @@ Which shared capabilities each uses:
   game modules and stylesheet in a change of their own (the stylesheet
   order app → klaverjas → cards keeps equal-specificity ties as they are).
 - **The extras.** Hints, lessons, the review after a match and the expert
-  mode are klaverjas's. A game that wants them brings its own.
+  mode are klaverjas's; toepen has a reasoning sheet of its own for the
+  expert alone with bots (toepen.md §8). A game that wants them brings its
+  own; the table offers `Table.Background` for the analysis.
 - **The manual.** Klaverjas has its handleiding, toepen a rules sheet; a
   shared renderer with per-game sections and a common *Bediening* would
   suit more games.

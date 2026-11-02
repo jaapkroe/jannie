@@ -48,8 +48,9 @@ type state struct {
 	CanToep     bool            `json:"canToep"`
 	Trick       *toepen.Trick   `json:"trick"`
 	LastTrick   *toepen.Trick   `json:"lastTrick"`
-	Tricks      int             `json:"tricks"` // taken this round
-	Rounds      []round         `json:"rounds"` // the score sheet
+	Tricks      int             `json:"tricks"`        // taken this round
+	Rounds      []round         `json:"rounds"`        // the score sheet
+	Why         *Explanation    `json:"why,omitempty"` // the reasoning you asked for your decision now (alone with bots)
 }
 
 // round is one line of the score sheet: how a round ended.
@@ -153,6 +154,7 @@ func (p *play) State(i game.Seat) any {
 	if s.Turn == int(i) && d.Phase() == toepen.PhaseToep {
 		s.CanRaise, s.MustStay = d.CanRaise(i), d.MustStay(i)
 	}
+	s.Why = p.whyFor(i)
 	return s
 }
 
