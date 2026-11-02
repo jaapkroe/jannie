@@ -156,7 +156,7 @@ func playToepen(t *testing.T, c *servertest.Client, rng *rand.Rand) (map[string]
 	sent, wasIn := "", -1 // the state last acted on, the round whose was we answered
 	for {
 		m := c.Next(10 * time.Second)
-		if m.T == "error" {
+		if m.T == "error" && m.ErrMsg() != toepen.ErrNoStock.Error() { // a claim the bots' claims beat to the last cards
 			t.Fatalf("error %s: %s", m.Code, m.ErrMsg())
 		}
 		if m.T != "update" {

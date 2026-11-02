@@ -108,6 +108,7 @@ func (p *toyPlay) rounds() int { return p.t.Options().(*toyOpts).Rounds }
 func (p *toyPlay) Start() {
 	p.points = make([]int, p.t.Players())
 	p.t.SysChat("Hoogste kaart (%d) begint: %d rondes.", p.t.Seed(), p.rounds())
+	p.t.Later(p.t.Pace().Deal, func() { p.t.SysChat("Succes!") })
 	p.deal()
 }
 
@@ -249,7 +250,7 @@ func top(points []int) int {
 
 var toyKeys = append(slices.Clone(servertest.SharedKeys), "round", "hand", "table", "points", "winner")
 
-// toyState decodes the toy state of an update.
+// decodeToy decodes the toy state of an update.
 func decodeToy(t *testing.T, m *servertest.Msg) toyState {
 	t.Helper()
 	var s toyState
@@ -270,6 +271,9 @@ func playToy(t *testing.T, h, g *servertest.Client) (toyState, map[string]int) {
 		m := h.Next(5 * time.Second)
 		if m.T == "error" {
 			t.Fatalf("error %s: %s", m.Code, m.ErrMsg())
+		}
+		if _, _, text, _, sys := m.Chat(); m.T == "chat" && sys && text == "Succes!" {
+			events["later"]++ // Table.Later
 		}
 		if m.T != "update" {
 			continue
@@ -326,7 +330,7 @@ func TestToyGame(t *testing.T) {
 	if sum(over.Points) != 3 || over.Round != 3 || over.Winner != top(over.Points) {
 		t.Errorf("game over: %+v", over)
 	}
-	for _, ev := range []string{"deal", "play", "handEnd", "gameOver"} {
+	for _, ev := range []string{"deal", "play", "handEnd", "gameOver", "later"} {
 		if events[ev] == 0 {
 			t.Errorf("no event %s: %v", ev, events)
 		}
