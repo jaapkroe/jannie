@@ -111,7 +111,7 @@ type updateMsg struct {
 	T   string `json:"t"`
 	Seq int    `json:"seq"`
 	Ev  any    `json:"ev"`
-	S   *state `json:"s"`
+	S   any    `json:"s"` // *state, or *toepState at a table of toepen
 }
 
 type chatMsg struct {
@@ -257,6 +257,7 @@ type evSeat struct {
 // without omitempty are always present; roster, legal and rule only when
 // they apply.
 type state struct {
+	Game        string              `json:"game"` // "klaverjas"
 	Code        string              `json:"code"`
 	Phase       string              `json:"phase"`
 	Opts        Options             `json:"opts"`

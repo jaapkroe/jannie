@@ -9,10 +9,12 @@ import (
 	"unicode/utf8"
 
 	"klaverjas/internal/game"
+	"klaverjas/internal/toepen"
 )
 
 // Options are the room settings chosen by the host (design §3).
 type Options struct {
+	Game      string         `json:"game"` // "klaverjas" or "toepen" (games.go)
 	Players   int            `json:"players"`
 	Hands     int            `json:"hands"`
 	TrumpMode game.TrumpMode `json:"trumpMode"`
@@ -25,10 +27,16 @@ type Options struct {
 	Signals   game.Signals   `json:"signals"` // the table's agreements on signals (design §8)
 	Seed      int            `json:"seed"`    // 1..maxSeed: every match deals the same cards; 0: a new seed per match
 	From      int            `json:"from"`    // expert: 1..maxHands: the match is that one hand of the seed's deals; 0: the whole match
+	// Toepen (design §11): the penalty points that put a player out, and
+	// whether the witte and vuile was and armoede are played.
+	Limit   int  `json:"limit"`
+	Was     bool `json:"was"`
+	Armoede bool `json:"armoede"`
 }
 
 func defaultOptions() Options {
 	return Options{
+		Game:      gameKlaverjas,
 		Players:   4,
 		Hands:     16,
 		TrumpMode: game.Utrechts,
@@ -37,6 +45,9 @@ func defaultOptions() Options {
 		Tempo:     "normaal",
 		Tips:      true,
 		Signals:   game.DefaultSignals,
+		Limit:     toepen.DefaultLimit,
+		Was:       true,
+		Armoede:   true,
 	}
 }
 
@@ -52,6 +63,10 @@ var (
 
 // optsPatch is a partial options update; nil fields are unchanged.
 type optsPatch struct {
+	Game      *string
+	Limit     *int
+	Was       *bool
+	Armoede   *bool
 	Players   *int
 	Hands     *int
 	TrumpMode *game.TrumpMode
@@ -90,10 +105,34 @@ func parseOpts(raw json.RawMessage, lenient bool) (optsPatch, error) {
 	for key, val := range fields {
 		var err error
 		switch key {
+		case "game":
+			var s string
+			if json.Unmarshal(val, &s) != nil || s != gameKlaverjas && s != gameToepen {
+				err = fail("Dat spel ken ik niet.")
+			} else {
+				p.Game = &s
+			}
+		case "limit":
+			var n int
+			if json.Unmarshal(val, &n) != nil || n != 10 && n != 15 {
+				err = fail("Speel tot 10 of tot 15 strafpunten.")
+			} else {
+				p.Limit = &n
+			}
+		case "was", "armoede":
+			var b *bool
+			switch {
+			case json.Unmarshal(val, &b) != nil || b == nil:
+				err = fail("Ongeldige waarde voor " + key + ".")
+			case key == "was":
+				p.Was = b
+			default:
+				p.Armoede = b
+			}
 		case "players":
 			var n int
-			if json.Unmarshal(val, &n) != nil || n < 2 || n > 4 {
-				err = fail("Kies 2, 3 of 4 spelers.")
+			if json.Unmarshal(val, &n) != nil || n < 2 || n > maxSeats {
+				err = fail("Kies 2 tot en met 6 spelers.")
 			} else {
 				p.Players = &n
 			}
@@ -193,6 +232,18 @@ func parseOpts(raw json.RawMessage, lenient bool) (optsPatch, error) {
 
 // apply sets the fields of p on o, except Players (rooms handle seats).
 func (p optsPatch) apply(o *Options) {
+	if p.Game != nil {
+		o.Game = *p.Game
+	}
+	if p.Limit != nil {
+		o.Limit = *p.Limit
+	}
+	if p.Was != nil {
+		o.Was = *p.Was
+	}
+	if p.Armoede != nil {
+		o.Armoede = *p.Armoede
+	}
 	if p.Hands != nil {
 		o.Hands = *p.Hands
 	}
@@ -241,15 +292,18 @@ func (o Options) variantNL() string {
 	return o.TrumpMode.NameNL() + "/" + o.Rules.NameNL()
 }
 
-// pacing holds the unscaled delays of one tempo (design §6).
+// pacing holds the unscaled delays of one tempo (design §6); was and
+// round are toepen's (§11): the time to say whether you have a was, and
+// the summary of a round.
 type pacing struct {
 	think, deal, announce, trick, summary time.Duration
+	was, round                            time.Duration
 }
 
 var pacings = map[string]pacing{
-	"rustig":  {1500 * time.Millisecond, 2000 * time.Millisecond, 1200 * time.Millisecond, 2200 * time.Millisecond, 15 * time.Second},
-	"normaal": {900 * time.Millisecond, 1500 * time.Millisecond, 900 * time.Millisecond, 1500 * time.Millisecond, 12 * time.Second},
-	"snel":    {450 * time.Millisecond, 900 * time.Millisecond, 500 * time.Millisecond, 800 * time.Millisecond, 8 * time.Second},
+	"rustig":  {1500 * time.Millisecond, 2000 * time.Millisecond, 1200 * time.Millisecond, 2200 * time.Millisecond, 15 * time.Second, 10 * time.Second, 6 * time.Second},
+	"normaal": {900 * time.Millisecond, 1500 * time.Millisecond, 900 * time.Millisecond, 1500 * time.Millisecond, 12 * time.Second, 8 * time.Second, 4500 * time.Millisecond},
+	"snel":    {450 * time.Millisecond, 900 * time.Millisecond, 500 * time.Millisecond, 800 * time.Millisecond, 8 * time.Second, 6 * time.Second, 3 * time.Second},
 }
 
 const (

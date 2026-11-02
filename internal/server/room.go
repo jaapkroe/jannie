@@ -22,6 +22,9 @@ const (
 	phaseTrump    = "trump"
 	phaseBid      = "bid"
 	phasePlay     = "play"
+	phaseWas      = "was"   // toepen: right after the deal, everyone says whether they have a was
+	phaseCheck    = "check" // toepen: a claimed was; the others are asked in turn whether they check it
+	phaseToep     = "toep"  // toepen: after a toep, the others say in turn whether they go along
 	phaseHandEnd  = "handEnd"
 	phaseGameOver = "gameOver"
 )
@@ -88,9 +91,10 @@ type room struct {
 	rng       *rand.Rand
 	opts      Options
 	training  bool
-	expert    bool    // the expert mode (expert.go): alone against three bots, looking back at any moment
-	alwaysOn  bool    // tests: bots play on without a connected human
-	seats     [4]seat // seats 0..opts.Players-1; the others stay empty
+	expert    bool           // the expert mode (expert.go): alone against three bots, looking back at any moment
+	alwaysOn  bool           // tests: bots play on without a connected human
+	seats     [maxSeats]seat // seats 0..opts.Players-1; the others stay empty
+	gp        gameplay       // the game on the table (games.go)
 	host      game.Seat
 	phase     string
 	seq       int
@@ -164,7 +168,7 @@ type dealtCards struct {
 func newRoom(s *Server, code string) *room {
 	var seed [16]byte
 	crand.Read(seed[:])
-	return &room{
+	r := &room{
 		srv:     s,
 		code:    code,
 		log:     s.log.With("room", code),
@@ -178,6 +182,8 @@ func newRoom(s *Server, code string) *room {
 		votesOn: game.NoSeat,
 		winner:  -1,
 	}
+	r.setGame()
+	return r
 }
 
 // loop runs the room's commands until it stops.
@@ -369,6 +375,9 @@ func (r *room) newBot(p Persona) seat {
 }
 
 func (r *room) newBrain(personaID, level string) *brainBox {
+	if r.toepen() {
+		return &brainBox{tb: r.srv.toepAI().NewToepBrain(personaID, level, r.rng.Uint64()), log: r.log}
+	}
 	return &brainBox{b: r.srv.cfg.AI.NewBrain(personaID, level, r.rng.Uint64()), log: r.log}
 }
 
@@ -527,14 +536,14 @@ func (r *room) emitTo(ev any, fresh *client) {
 		if st.client == fresh {
 			e = nil
 		}
-		st.client.send(mustJSON(updateMsg{T: "update", Seq: r.seq, Ev: e, S: r.stateFor(game.Seat(i))}))
+		st.client.send(mustJSON(updateMsg{T: "update", Seq: r.seq, Ev: e, S: r.gp.state(game.Seat(i))}))
 	}
 	r.chatLesson()
 }
 
 // resync sends c its full state without an event.
 func (r *room) resync(c *client, i game.Seat) {
-	c.send(mustJSON(updateMsg{T: "update", Seq: r.seq, Ev: nil, S: r.stateFor(i)}))
+	c.send(mustJSON(updateMsg{T: "update", Seq: r.seq, Ev: nil, S: r.gp.state(i)}))
 }
 
 // welcome sends joined and the chat log.
@@ -580,11 +589,16 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	if patch.Players != nil {
 		r.opts.Players = *patch.Players
 	}
+	if r.training || r.expert {
+		r.opts.Game = gameKlaverjas // the lessons and the engine's reasoning are klaverjas
+	}
+	r.opts.Players = min(r.opts.Players, maxPlayers(r.opts.Game))
 	if r.expert {
 		r.opts.Players = 4 // the engine reasons for four
 	}
 	r.trainingOpts()
 	r.expertOpts()
+	r.setGame()
 	var i game.Seat // the expert sits where they chose; anyone else at seat 0
 	if r.expert && m.Seat != nil && *m.Seat >= 0 && *m.Seat < 4 {
 		i = game.Seat(*m.Seat)
@@ -595,7 +609,7 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	if r.training {
 		r.seatTraining()
 	}
-	r.log.Info("room created", "training", r.training, "expert", r.expert, "players", r.opts.Players, "start", m.Start)
+	r.log.Info("room created", "game", r.opts.Game, "training", r.training, "expert", r.expert, "players", r.opts.Players, "start", m.Start)
 	r.welcome(c, i)
 	r.emitTo(evLobby{Type: "lobby"}, c)
 	if m.Start || r.expert { // an expert game has no lobby
@@ -839,7 +853,7 @@ func (r *room) disconnected(c *client) {
 	// The others may all have been waiting for this player: to be ready,
 	// or to answer the question.
 	if r.phase == phaseHandEnd && r.allReady() {
-		r.nextHand()
+		r.gp.next()
 		return
 	}
 	if r.tally() {
@@ -876,7 +890,7 @@ func (r *room) leave(c *client, i game.Seat) {
 	// The others may all have been waiting for this player: to be ready,
 	// or to answer the question.
 	if r.phase == phaseHandEnd && r.allReady() {
-		r.nextHand()
+		r.gp.next()
 		return
 	}
 	if r.tally() {
@@ -993,52 +1007,8 @@ func (r *room) handle(c *client, m *inMsg) {
 		if r.lobbyHost(c, i) {
 			r.startMatch()
 		}
-	case "auction":
-		if m.Bid == nil {
-			c.sendError(errInvalid, "Bied een aantal punten of pas.")
-			return
-		}
-		r.humanAct(c, i, action{kind: actAuction, bid: *m.Bid})
-	case "discard":
-		var a action
-		if len(m.Cards) != 2 {
-			c.sendError(errInvalid, game.ErrBadDiscard.Error())
-			return
-		}
-		for k, code := range m.Cards {
-			card, err := game.ParseCard(code)
-			if err != nil {
-				c.sendError(errInvalid, "Die kaart bestaat niet.")
-				return
-			}
-			a.cards[k] = card
-		}
-		a.kind = actDiscard
-		r.humanAct(c, i, a)
-	case "trump":
-		s, err := game.ParseSuit(m.Suit)
-		if err != nil {
-			c.sendError(errInvalid, "Kies een kleur: klaveren, ruiten, harten of schoppen.")
-			return
-		}
-		r.humanAct(c, i, action{kind: actTrump, suit: s})
-	case "bid":
-		if m.Play == nil {
-			c.sendError(errInvalid, "Kies spelen of passen.")
-			return
-		}
-		r.humanAct(c, i, action{kind: actBid, play: *m.Play})
-	case "play":
-		card, err := game.ParseCard(m.Card)
-		if err != nil {
-			c.sendError(errInvalid, "Die kaart bestaat niet.")
-			return
-		}
-		r.humanAct(c, i, action{kind: actPlay, card: card})
 	case "ready":
 		r.cmdReady(c, i)
-	case "tipRead":
-		r.cmdTipRead(m.N)
 	case "vote":
 		r.cmdVote(c, i, m)
 	case "chat":
@@ -1053,14 +1023,11 @@ func (r *room) handle(c *client, m *inMsg) {
 		r.cmdLobby(c, i)
 	case "leave":
 		r.leave(c, i)
-	case "handReview":
-		r.cmdHandReview(c, i, m)
-	case "why":
-		r.cmdWhy(c, i, m)
-	case "feedback":
-		r.cmdFeedback(c, i, m)
 	default:
-		c.sendError(errInvalid, "Dat bericht ken ik niet.")
+		// The decisions of a hand, and what else belongs to the game.
+		if !r.gp.move(c, i, m) {
+			c.sendError(errInvalid, "Dat bericht ken ik niet.")
+		}
 	}
 }
 
@@ -1186,19 +1153,42 @@ func (r *room) cmdOpts(c *client, i game.Seat, m *inMsg) {
 		c.sendError(errInvalid, err.Error())
 		return
 	}
-	if n := patch.Players; n != nil && *n != r.opts.Players {
+	g := r.opts.Game
+	if patch.Game != nil && *patch.Game != g {
+		if r.training || r.expert {
+			c.sendError(errInvalid, "Hier speel je klaverjas.")
+			return
+		}
+		g = *patch.Game
+	}
+	n := r.opts.Players
+	if patch.Players != nil {
+		n = *patch.Players
+	}
+	if n > maxPlayers(g) {
+		if patch.Players != nil {
+			c.sendError(errInvalid, "Kies 2, 3 of 4 spelers.")
+			return
+		}
+		n = maxPlayers(g) // to klaverjas from a larger table of toepen
+	}
+	if n != r.opts.Players {
 		if r.training {
 			c.sendError(errInvalid, "In de oefenmodus speel je altijd met z'n vieren, samen met Juf Jannie.")
 			return
 		}
-		if err := r.setPlayers(*n); err != nil {
+		if err := r.setPlayers(n); err != nil {
 			c.sendError(errInvalid, err.Error())
 			return
 		}
 	}
+	changed := g != r.opts.Game
 	patch.apply(&r.opts)
 	r.trainingOpts()
 	r.expertOpts()
+	if changed {
+		r.setGame()
+	}
 	r.emit(evLobby{Type: "lobby"})
 }
 
@@ -1216,7 +1206,7 @@ func (r *room) cmdReady(c *client, i game.Seat) {
 	r.seats[i].ready = true
 	if r.allReady() {
 		r.pending = stepNone
-		r.nextHand()
+		r.gp.next()
 		return
 	}
 	r.emitState()
@@ -1324,6 +1314,7 @@ func (r *room) cmdLobby(c *client, i game.Seat) {
 	r.phase = phaseLobby
 	r.handNo = 0
 	r.deal = nil
+	r.setGame()
 	r.pending = stepNone
 	r.scores = nil
 	r.total = nil

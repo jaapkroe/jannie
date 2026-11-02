@@ -57,6 +57,7 @@ func main() {
 func run(log *slog.Logger, addr, static, games string, fast bool, allowed []string) error {
 	game := server.New(server.Config{
 		AI:             botAI{},
+		Toepen:         toepAI{},
 		Fast:           fast,
 		AllowedOrigins: allowed,
 		Version:        version,

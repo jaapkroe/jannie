@@ -9,6 +9,7 @@ import (
 // stateFor builds the full state `s` for the player at seat i (design §7).
 func (r *room) stateFor(i game.Seat) *state {
 	s := &state{
+		Game:        gameKlaverjas,
 		Code:        r.code,
 		Phase:       r.phase,
 		Opts:        r.opts,
@@ -157,8 +158,8 @@ func (r *room) shownTrick() *game.Trick {
 func (r *room) playerState(i game.Seat) *playerState {
 	st := &r.seats[i]
 	cards := 0
-	if r.inHand() && r.deal != nil {
-		cards = r.deal.HandLen(i)
+	if r.inHand() {
+		cards = r.gp.handLen(i)
 	}
 	switch st.kind {
 	case seatHuman:

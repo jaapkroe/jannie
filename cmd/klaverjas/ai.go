@@ -6,6 +6,7 @@ import (
 	"klaverjas/internal/bot"
 	"klaverjas/internal/game"
 	"klaverjas/internal/server"
+	"klaverjas/internal/toepbot"
 )
 
 // botAI adapts package bot to server.AI.
@@ -92,4 +93,25 @@ func (botAI) Chat(personaID string, ev server.ChatEvent, rng *rand.Rand) string 
 	}
 	return bot.Chat(p, bot.ChatEvent{Kind: ev.Kind, Mine: ev.Mine, Text: ev.Text, Points: ev.Points,
 		InHand: ev.InHand, Playing: ev.Playing}, rng)
+}
+
+// toepAI adapts package toepbot to server.ToepAI, with the personas of
+// package bot: their aggression is how boldly they toep, go along and
+// bluff a was.
+type toepAI struct{}
+
+func (toepAI) NewToepBrain(personaID, level string, seed uint64) server.ToepBrain {
+	p, ok := bot.ByID(personaID)
+	if !ok {
+		p = neutral
+	}
+	return toepbot.New(p.Aggression, toepbot.ParseLevel(level), seed)
+}
+
+func (toepAI) ToepChat(personaID string, ev server.ChatEvent, rng *rand.Rand) string {
+	p, ok := bot.ByID(personaID)
+	if !ok {
+		return ""
+	}
+	return toepbot.Chat(p.ID, p.Chattiness, toepbot.ChatEvent{Kind: ev.Kind, Mine: ev.Mine, Text: ev.Text, Points: ev.Points}, rng)
 }

@@ -192,7 +192,7 @@ func (r *room) reviewOf(i game.Seat) *review {
 }
 
 // reviewing reports whether this match is reviewed: a table of four.
-func (r *room) reviewing() bool { return r.players() == 4 }
+func (r *room) reviewing() bool { return r.players() == 4 && !r.toepen() }
 
 // startReviews starts a review for every human at the start of a match.
 func (r *room) startReviews() {

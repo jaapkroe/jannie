@@ -4,6 +4,7 @@ import (
 	"math/rand/v2"
 
 	"klaverjas/internal/game"
+	"klaverjas/internal/toepen"
 )
 
 // Persona is a bot character as the server needs it. Name is without "(AI)";
@@ -110,6 +111,26 @@ type ChatEvent struct {
 	Text            string
 	Points          int
 	InHand, Playing bool // for "reply": tricks are being played; the bot's team made trump
+}
+
+// ToepBrain makes the decisions of one bot seat at a table of toepen
+// (toepen.go). The server calls one brain from one goroutine at a time.
+type ToepBrain interface {
+	Was(v toepen.View) bool       // right after the deal: claim a was (only asked when v.CanClaim)?
+	Check(v toepen.View) bool     // check the claimed was of v.Claimant?
+	Toep(v toepen.View) bool      // on its turn to play: toep first (only asked when v.CanToep)?
+	Answer(v toepen.View) bool    // go along with the toep (else pass)?
+	Play(v toepen.View) game.Card // one of v.Legal
+}
+
+// ToepAI is what tables of toepen need from the bots (Config.Toepen);
+// cmd/klaverjas adapts package toepbot to it. The personas are AI's.
+type ToepAI interface {
+	// NewToepBrain returns a player for a persona at level "makkelijk",
+	// "normaal" or "sterk"; an empty personaID asks for a neutral one.
+	NewToepBrain(personaID, level string, seed uint64) ToepBrain
+	// ToepChat is a line of the persona about ev, "" for silence.
+	ToepChat(personaID string, ev ChatEvent, rng *rand.Rand) string
 }
 
 // AI is what the server needs from the bot package; cmd/klaverjas adapts

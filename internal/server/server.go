@@ -26,6 +26,7 @@ import (
 // Config configures a Server.
 type Config struct {
 	AI             AI
+	Toepen         ToepAI   // the bots at tables of toepen; nil: plainToep, which plays the first legal card
 	Fast           bool     // scale all delays by 0.05 (tests)
 	MaxRooms       int      // default 1500
 	AllowedOrigins []string // websocket Origin patterns besides same-host
@@ -545,4 +546,12 @@ func (s *Server) Shutdown(ctx context.Context) {
 	// A match cut short here has no end or close record in the game log.
 	s.games.close()
 	s.log.Info("server stopped", "rooms", len(rooms), "connections", len(clients))
+}
+
+// toepAI is the bots at tables of toepen.
+func (s *Server) toepAI() ToepAI {
+	if s.cfg.Toepen != nil {
+		return s.cfg.Toepen
+	}
+	return plainToep{}
 }

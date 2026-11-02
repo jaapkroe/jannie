@@ -102,6 +102,9 @@ func (r *room) aiChat(id string, ev ChatEvent) (text string) {
 			text = ""
 		}
 	}()
+	if r.toepen() {
+		return r.srv.toepAI().ToepChat(id, ev, r.rng)
+	}
 	return r.srv.cfg.AI.Chat(id, ev, r.rng)
 }
 
@@ -225,6 +228,9 @@ func (r *room) botReply(from game.Seat, text string) {
 		playing = r.deal.PlayingTeam()
 	}
 	r.botsReact(1, 1400*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
+		if r.toepen() { // everyone for themselves
+			return ChatEvent{Kind: "reply", Text: text, InHand: r.inHand()}, i != from
+		}
 		partner := i.Team() == from.Team()
 		side := i.Team()
 		if r.players() != 4 {

@@ -22,6 +22,7 @@ const (
 	stepAnnounced      // trump was announced: then voorhand leads
 	stepCollect        // a complete trick lies on the table: then it is collected
 	stepNextHand       // the hand summary: then the next hand (or game over)
+	stepWas            // toepen: the time for a was, in which everyone answers at once
 )
 
 type actKind uint8
@@ -48,7 +49,8 @@ type action struct {
 // brainBox serialises calls into one Brain and guards against bad answers.
 type brainBox struct {
 	mu  sync.Mutex
-	b   Brain
+	b   Brain     // klaverjas
+	tb  ToepBrain // toepen (toepen.go)
 	log *slog.Logger
 }
 
@@ -150,16 +152,12 @@ func turnedBarred(v game.View) bool { return v.Forced && v.Players != 3 }
 
 // inHand reports whether a hand is being played (auction, discard, trump,
 // bid or play).
-func (r *room) inHand() bool {
-	switch r.phase {
-	case phaseAuction, phaseDiscard, phaseTrump, phaseBid, phasePlay:
-		return true
-	}
-	return false
-}
+func (r *room) inHand() bool { return inPlay(r.phase) }
 
-// startMatch fills the empty seats and deals the first hand.
+// startMatch fills the empty seats and deals the first hand of the game
+// on the table.
 func (r *room) startMatch() {
+	r.setGame() // a fresh match
 	r.fillSeats()
 	for i := range r.seats {
 		st := &r.seats[i]
@@ -167,14 +165,16 @@ func (r *room) startMatch() {
 		// The others let an AI play for an absent player in the match that
 		// ended: in this one they are waited for and asked again.
 		st.away, st.asked = false, false
-		if st.kind == seatBot {
+		switch st.kind {
+		case seatBot:
 			st.brain = r.newBrain(st.persona.ID, r.opts.AI)
+		case seatHuman:
+			st.brain = nil // a substitute's, maybe for another game
 		}
 	}
 	r.handNo = 0
 	r.deal = nil
 	r.scores = nil
-	r.total = make([]int, game.Scorers(r.players()))
 	r.prev = nil
 	r.lastTrick = nil
 	r.winner = -1
@@ -189,6 +189,13 @@ func (r *room) startMatch() {
 	r.handNo = r.firstHand - 1
 	r.handActs, r.handDealt = nil, nil
 	r.taught = nil // a rematch repeats the lesson from the start
+	r.gp.start()
+	r.greet()
+}
+
+// startKlaverjas deals the first hand of a match of klaverjas.
+func (r *room) startKlaverjas() {
+	r.total = make([]int, game.Scorers(r.players()))
 	// The seed from the start, so nobody has to play to the end to see it.
 	if r.opts.From > 0 {
 		r.sysChat("Spel (%d) begint: potje %d, %s. Veel plezier!", r.seed, r.firstHand, r.opts.variantNL())
@@ -201,7 +208,6 @@ func (r *room) startMatch() {
 		"trumpMode", r.opts.TrumpMode.String(), "rules", r.opts.Rules.String(), "ai", r.opts.AI, "training", r.training,
 		"expert", r.expert)
 	r.startHand()
-	r.greet()
 }
 
 // signalChat puts the table's agreements on signals in the chat at the
@@ -291,7 +297,7 @@ func (r *room) pause(s step, d time.Duration) {
 func (r *room) openTurn() {
 	r.turnAt = time.Now()
 	r.openedAt = r.turnAt
-	turn := r.deal.Turn()
+	turn := r.gp.turn()
 	r.openedOn = turn != game.NoSeat && r.seats[turn].client != nil
 	r.step++
 	r.think = r.thinkTime(turn)
@@ -307,7 +313,7 @@ func (r *room) thinkTime(i game.Seat) time.Duration {
 		speed = st.persona.Speed
 	}
 	f := speed * (0.7 + 0.6*r.rng.Float64())
-	if r.deal.Phase() == game.PhasePlay && len(r.deal.Legal()) == 1 {
+	if r.gp.single() {
 		f *= 0.6
 	}
 	return r.scaled(time.Duration(float64(r.pace().think) * f))
@@ -341,7 +347,7 @@ func (r *room) drive() {
 	if !live || !r.inHand() {
 		return
 	}
-	turn := r.deal.Turn()
+	turn := r.gp.turn()
 	if turn == game.NoSeat {
 		return
 	}
@@ -375,6 +381,11 @@ func (r *room) runPending() {
 	}
 	s := r.pending
 	r.pending = stepNone
+	r.gp.resume(s)
+}
+
+// resumeKlaverjas goes on after pause s of a hand of klaverjas.
+func (r *room) resumeKlaverjas(s step) {
 	switch s {
 	case stepDealt:
 		r.openTurn()
@@ -422,9 +433,9 @@ func (r *room) viewFor(i game.Seat) game.View {
 type botTurn struct {
 	step  int // r.step of the turn; 0: none
 	seat  game.Seat
-	ready bool      // the decision is in
-	act   action    // the decision, once ready
-	view  game.View // what it was decided on, for the fallback
+	ready bool   // the decision is in
+	act   action // the decision, once ready
+	safe  action // a legal decision, should act come out illegal
 }
 
 // botMove makes sure seat i, played by a bot, moves at due: it starts the
@@ -447,10 +458,11 @@ func (r *room) decide(i game.Seat) {
 	if st.brain == nil { // the substitute of a human
 		st.brain = r.newBrain("", "normaal")
 	}
-	bb, v, step := st.brain, r.viewFor(i), r.step
-	r.bot = botTurn{step: step, seat: i, view: v}
+	think, safe := r.gp.decision(i, st.brain)
+	step := r.step
+	r.bot = botTurn{step: step, seat: i, safe: safe}
 	go func() {
-		a := bb.decide(v)
+		a := think()
 		r.post(func() {
 			if b := &r.bot; b.step == step && b.seat == i && !b.ready {
 				b.act, b.ready = a, true
@@ -465,12 +477,12 @@ func (r *room) decide(i game.Seat) {
 func (r *room) applyBot(i game.Seat) {
 	b := r.bot
 	if !b.ready || b.step != r.step || b.seat != i || r.pending != stepNone || !r.inHand() ||
-		r.deal.Turn() != i || !r.botPlays(i) || !r.live() {
+		r.gp.turn() != i || !r.botPlays(i) || !r.live() {
 		return
 	}
-	if err := r.act(i, b.act); err != nil {
+	if err := r.gp.apply(i, b.act); err != nil {
 		r.log.Error("bot move rejected", "seat", int(i), "err", err.Error())
-		if err := r.act(i, fallback(b.view)); err != nil {
+		if err := r.gp.apply(i, b.safe); err != nil {
 			r.log.Error("fallback move rejected", "seat", int(i), "err", err.Error())
 		}
 	}
@@ -850,10 +862,16 @@ func (r *room) endHand() {
 // with ready.
 func (r *room) timeSummary(from time.Time) {
 	r.pendingAt, r.nextAt = time.Time{}, time.Time{}
-	if r.training || r.humanCount() == 1 {
+	d := r.pace().summary
+	switch {
+	case r.toepen():
+		// A round of toepen is short and so is its summary: it moves on
+		// by itself also for one player alone.
+		d = r.pace().round
+	case r.training || r.humanCount() == 1:
 		return
 	}
-	r.pendingAt = from.Add(r.scaled(r.pace().summary))
+	r.pendingAt = from.Add(r.scaled(d))
 	r.nextAt = r.pendingAt
 }
 
