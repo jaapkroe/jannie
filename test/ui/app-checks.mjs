@@ -1002,6 +1002,31 @@ CHECKS.expert = async browser => {
     if (await P.page.$('.m-why .why-out .btn')) throw new Error('a button in the reasoning');
     const before = await reasoning();
     if (String(before.lines) !== 'Normaal:,Sterk:,Tip:' || (before.rows && String(before.played) !== 'gespeeld') || before.next !== false || !sterkOk(before)) throw new Error(`reasoning before ${JSON.stringify(before)}`);
+    // A card's row, tapped, is outlined, and the line under the table says
+    // why the best brings more; the best's own row says it is the best.
+    if (before.rows) {
+      const picked = () => P.page.evaluate(() => {
+        const rows = [...document.querySelectorAll('.m-why .xp-table tbody tr')];
+        return {
+          sel: rows.findIndex(r => r.classList.contains('xp-sel')),
+          other: rows.findIndex(r => !r.classList.contains('xp-best')),
+          best: rows.findIndex(r => r.classList.contains('xp-best')),
+          card: document.querySelector('.m-why .xp-table tr.xp-best .xp-pick')?.textContent,
+          said: document.querySelector('.m-why .xp-said')?.textContent || '',
+        };
+      });
+      const start = await picked();
+      const pickRow = async k => pressEl(P, (await P.page.$$('.m-why .xp-table tbody tr'))[k]);
+      if (start.other >= 0) {
+        await pickRow(start.other);
+        const got = await picked();
+        if (got.sel !== start.other || !(got.said.startsWith(`${got.card}: volgens de berekening`) || got.said.includes('even goed'))) throw new Error(`a row picked ${JSON.stringify(got)}`);
+        await shot(P, 'why-row');
+      }
+      await pickRow(start.best);
+      const top = await picked();
+      if (top.sel !== start.best || top.said !== `${top.card} heeft de hoogste waarde.`) throw new Error(`the best row picked ${JSON.stringify(top)}`);
+    }
     await press(P, '.m-why details.xp-fb > summary');
     await type(P, '.m-why .fb-text', 'Waarom deze kaart?');
     await press(P, '.m-why .fb .btn');

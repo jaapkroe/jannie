@@ -5297,6 +5297,32 @@ body.busy::after {
   color: var(--gold-hi);
 }
 
+/* A row tapped says under the table why the best brings more; the row is
+   the touch target. */
+.xp-pickable tbody tr {
+  height: 44px;
+  cursor: pointer;
+}
+
+.xp-table tr.xp-sel {
+  outline: 2px solid var(--gold-hi);
+  outline-offset: -2px;
+}
+
+.xp-pick {
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.xp-said {
+  min-height: 2.8em;
+}
+
 .xp-fb summary,
 .train-opts summary {
   min-height: 44px;

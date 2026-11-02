@@ -190,6 +190,18 @@ type playResult struct {
 	// candidate is played out in the same worlds, see pairSE.
 	diffSq [8]int64
 	parts  [numParts]int64 // with cfg.points: the value summed per part
+	ev     []playEvent     // with cfg.points: what each playout did, in the order of the worlds (the same for every card)
+}
+
+// playEvent is what one playout of a card did, in the terms of a hint's
+// reason (see diffWhy): which of the player's cards (in hand at the
+// decision) their team won, whether they won the last trick, and the roem
+// in the card's own trick, ours minus theirs. It is kept per world, so that
+// two cards can be compared in the same deals.
+type playEvent struct {
+	ours cardSet
+	roem int16
+	last bool
 }
 
 // The parts of a card's value that a hint names (see searchWhy): in a hand
@@ -291,6 +303,8 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 	var outs [chunks][8]outcome
 	var counts [chunks]int
 	var parts [chunks][8][numParts]int64
+	var evs [chunks][8][]playEvent
+	hand := setOf(v.Hand)
 	appetite := cfg.appetite(aggr)
 	cfg.runChunks(func(ch int) {
 		n := perChunk(cfg.playWorlds, ch)
@@ -301,6 +315,11 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 		var hands [4][]game.Card
 		for s := range hands {
 			hands[s] = make([]game.Card, 0, 8)
+		}
+		if cfg.points {
+			for i := range legal {
+				evs[ch][i] = make([]playEvent, 0, n)
+			}
 		}
 		var vals [8]int64
 		var base game.Deal
@@ -327,6 +346,8 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 				outs[ch][i].add(&r, team)
 				if cfg.points {
 					addParts(&parts[ch][i], start, mid, [2][2]int{s.d.HandPoints(), s.d.HandRoem()}, &r, int(vals[i]), team)
+					roem := mid[1][team] - mid[1][1-team] - start[1][team] + start[1][1-team]
+					evs[ch][i] = append(evs[ch][i], playEvent{ours: s.t.taken[team] & hand, roem: int16(roem), last: s.t.leader.Team() == team})
 				}
 				for j := range i {
 					d := vals[j] - vals[i]
@@ -336,6 +357,11 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 			counts[ch]++
 		}
 	})
+	if cfg.points {
+		for i := range res {
+			res[i].ev = make([]playEvent, 0, cfg.playWorlds)
+		}
+	}
 	for ch := range chunks {
 		for i := range res {
 			res[i].total += sums[ch][i]
@@ -344,6 +370,7 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 			for k := range numParts {
 				res[i].parts[k] += parts[ch][i][k]
 			}
+			res[i].ev = append(res[i].ev, evs[ch][i]...)
 			for j := range i {
 				res[i].diffSq[j] += sq[ch][j][i]
 				res[j].diffSq[i] += sq[ch][j][i]

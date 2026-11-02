@@ -73,6 +73,7 @@ type optionJSON struct {
 	NatUs   float64   `json:"natUs"`   // share of deals
 	NatThem float64   `json:"natThem"` // share of deals
 	Parts   []float64 `json:"parts,omitempty"`
+	Why     string    `json:"why,omitempty"` // a card below the best: why the best brings more
 }
 
 // savedMsg confirms that something the player sent was kept (feedback).

@@ -324,11 +324,20 @@ func (m *mover) signalNote(c game.Card) string {
 }
 
 // searchWhy is the reason for res[i], the card the search rates clearly
-// above res[j], the rule-based card: how much more it brings, and in which
-// part of the value mainly (two parts when the largest is under 60% of the
-// gap, or when nat brings at least 40% of it: the points in this trick and
-// in the later ones partly cancel, so either can look larger than nat).
+// above res[j], the rule-based card: how much more it brings, in which part
+// of the value mainly and what the playouts of the two do differently (see
+// gainWhy), and what res[i] signals.
 func (m *mover) searchWhy(res []playResult, i, j int) string {
+	return m.gainWhy(res, i, j) + m.signalNote(res[i].card)
+}
+
+// gainWhy says how much more res[i] brings than res[j], and in which part of
+// the value mainly (two parts when the largest is under 60% of the gap, or
+// when nat brings at least 40% of it: the points in this trick and in the
+// later ones partly cancel, so either can look larger than nat), followed by
+// what the playouts of the two cards do differently in the same deals
+// (diffWhy), when something stands out.
+func (m *mover) gainWhy(res []playResult, i, j int) string {
 	b, r := res[i], res[j]
 	gap := b.mean() - r.mean()
 	var d [numParts]float64
@@ -355,8 +364,28 @@ func (m *mover) searchWhy(res []playResult, i, j int) string {
 	if k2 >= 0 {
 		where += " en " + m.partWhere(k2, b, r)
 	}
-	return "volgens de berekening levert dat gemiddeld " + count(int(math.Round(gap)), "punt", "punten") + " meer op dan " +
-		game.CardShortNL(r.card) + ", vooral " + where + "." + m.signalNote(b.card)
+	text := "volgens de berekening levert dat gemiddeld " + count(int(math.Round(gap)), "punt", "punten") + " meer op dan " +
+		game.CardShortNL(r.card) + ", vooral " + where + "."
+	if diff := diffWhy(b.card, r.card, gap, b.ev, r.ev, nil, m.hand, m.t.trump); diff != "" {
+		text += " " + diff
+	}
+	return text
+}
+
+// optionWhy is the reason in the reasoning's row of res[i], a card the
+// search values below res[best]: how much more the best brings, where and
+// what differs (gainWhy), and whether that may be noise.
+func (m *mover) optionWhy(res []playResult, best, i int) string {
+	gap := res[best].mean() - res[i].mean()
+	b, o := game.CardShortNL(res[best].card), game.CardShortNL(res[i].card)
+	if math.Round(gap) == 0 {
+		return b + " en " + o + " zijn volgens de berekening even goed: het verschil is minder dan een half punt."
+	}
+	text := b + ": " + m.gainWhy(res, best, i)
+	if gap < 2*pairSE(res, best, i) {
+		text += " Dat verschil is kleiner dan twee keer de standaardfout en kan toeval zijn."
+	}
+	return text
 }
 
 // partWhere names part k of the value, where card b gains over card r. A
