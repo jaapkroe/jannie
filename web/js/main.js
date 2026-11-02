@@ -7,11 +7,11 @@ import * as table from './table.js';
 import * as panels from './panels.js';
 import * as home from './home.js';
 
-const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
+const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play', 'was', 'check', 'toep']);
 const ROUTE = /^\/([A-Za-z]{4})\/?$/;
 // Moves the server answers at once; silence after one means a dead socket.
 // A vote is only sent when it changes the answer, so an update follows it too.
-const ACKED = new Set(['play', 'trump', 'bid', 'auction', 'discard', 'vote']);
+const ACKED = new Set(['play', 'trump', 'bid', 'auction', 'discard', 'vote', 'toep', 'answer', 'check']);
 const ACK_MS = 4000;
 const START_HOLD_MS = 2500; // quick play: how long the lobby may stay hidden
 
@@ -28,6 +28,11 @@ let leaveLater = null; // {code, token, name}: a leave that could not go out yet
 let callLoad = null;   // call.js on its way
 let callState = null;  // the latest state received, for call.js once it is there
 let roomGen = 0;       // bumped by enterRoom: an update still animating belongs to a room left
+// toepen.js, the table of toepen: loaded once a room plays it (design §11).
+let toepLoad = null;
+let toepJs = null;
+const toepen = () => (toepLoad ??= import('./toepen.js').then(m => (toepJs = m)));
+const isToepen = s => s?.game === 'toepen';
 
 const net = createNet({ onMessage, onOpen, onClose });
 app.send = send;
@@ -38,7 +43,7 @@ app.join = join;
 function screen(name) {
   if (document.body.dataset.screen === name) return;
   document.body.dataset.screen = name;
-  document.body.classList.toggle('in-room', name === 'lobby' || name === 'game');
+  document.body.classList.toggle('in-room', name === 'lobby' || name === 'game' || name === 'toepen');
   if (name === 'game') requestAnimationFrame(() => table.relayout());
   panels.syncHistory();
 }
@@ -138,6 +143,7 @@ function enterRoom(code) {
   queue = [];
   lastSeq = -1;
   table.resetRoom();
+  toepJs?.resetRoom();
   home.resetLobby();
   panels.closeAll();
   panels.chatReset();
@@ -260,10 +266,11 @@ function onError(m) {
     joining = false;
     home.setBusy(false);
   }
-  if (table.staleVote(m)) return; // the question closed as we answered: no mistake
+  if (table.staleVote(m) || toepJs?.staleVote(m)) return; // the question closed as we answered: no mistake
   sound.play('error');
   toast(msg, { kind: 'error' });
   table.onError();
+  toepJs?.onError();
   panels.onError();
   // A question to the AI still out is given up: its decision shows Opnieuw.
   panels.whyError();
@@ -281,7 +288,7 @@ function onRefused(name) {
   if (!s || s.host !== s.you || s.training) return;
   const n = s.players.length;
   const humans = s.players.filter(p => p && !p.bot && !p.left).length;
-  const more = humans >= n && n < 4 ? `zet Spelers op ${n + 1}` : '';
+  const more = humans >= n && n < (isToepen(s) ? 6 : 4) ? `zet Spelers op ${n + 1}` : '';
   let sub = '';
   if (s.phase === 'lobby') {
     if (s.players.some(p => p?.bot)) sub = 'Haal een AI-speler weg om een plaats vrij te maken.';
@@ -349,7 +356,7 @@ async function pump() {
         else if (m.t === 'chat') onChat(m.msg);
         else if (m.t === 'chatlog') panels.chatSet(m.msgs);
         else if (m.t === 'tip') table.setTip(m.text);
-        else if (m.t === 'rejoin') table.resync();
+        else if (m.t === 'rejoin') { table.resync(); toepJs?.resync(); }
       } catch (e) {
         console.error(e);
       }
@@ -391,6 +398,19 @@ async function applyUpdate(u) {
   if (starting) {
     setStarting(false);
     home.setBusy(false);
+  }
+  if (isToepen(next)) {
+    // Toepen has a table of its own, and overlays of its own.
+    const gen = roomGen;
+    const T = toepJs || await toepen();
+    if (gen !== roomGen) return;
+    screen('toepen');
+    if (ev && isToepen(prev)) await T.animate(ev, prev, next);
+    if (gen !== roomGen) return;
+    app.s = next;
+    T.render(next);
+    turnCue(prev, next);
+    return;
   }
   screen('game');
   const gen = roomGen;
@@ -446,10 +466,11 @@ function titleCue() {
   const s = app.s;
   const mine = inRoom && s && s.turn === s.you && PLAYING.has(s.phase);
   const asked = inRoom && !!s?.takeover && s.players[s.you]?.vote == null;
-  const base = inRoom && app.code ? `Klaverjas · ${app.code}` : 'Klaverjas';
+  const game = inRoom && isToepen(s) ? 'Toepen' : 'Klaverjas';
+  const base = inRoom && app.code ? `${game} · ${app.code}` : 'Klaverjas';
   let want = base;
-  if (document.hidden && mine) want = '● Jouw beurt · Klaverjas';
-  else if (document.hidden && asked) want = '● Vraag aan tafel · Klaverjas';
+  if (document.hidden && mine) want = `● Jouw beurt · ${game}`;
+  else if (document.hidden && asked) want = `● Vraag aan tafel · ${game}`;
   if (document.title !== want) document.title = want;
 }
 
@@ -457,7 +478,10 @@ function onChat(msg) {
   if (!msg) return;
   panels.chatAdd(msg, true);
   // Juf Jannie's lessons and explanations show in the coach bubble already.
-  if (app.s && msg.seat >= 0 && !msg.sys && !msg.coach) table.bubble(app.s, msg.seat, msg.text);
+  if (app.s && msg.seat >= 0 && !msg.sys && !msg.coach) {
+    if (isToepen(app.s)) toepJs?.bubble(app.s, msg.seat, msg.text);
+    else table.bubble(app.s, msg.seat, msg.text);
+  }
 }
 
 // ---------- boot ----------

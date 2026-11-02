@@ -361,7 +361,7 @@ export function scorerOrder(s) {
 }
 
 // Dutch number words for counts at the table ("drie AI-spelers").
-export const countWord = n => ['geen', 'één', 'twee', 'drie', 'vier'][n] ?? String(n);
+export const countWord = n => ['geen', 'één', 'twee', 'drie', 'vier', 'vijf', 'zes'][n] ?? String(n);
 
 // The name for whoever gave none: Snel spelen and Oefenen do not ask for
 // one (nobody else sees it), and the server calls a nameless player so too.

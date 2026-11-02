@@ -7,26 +7,44 @@ import * as panels from './panels.js';
 const E = {};
 const CODE_RE = /^[A-HJ-NP-Z]{4}$/;
 const SIGNALS = { aas: true, kleintjeBoer: true, hoogLaag: true, boerOverBoer: false };
-const DEFAULTS = { players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', signals: SIGNALS };
+const DEFAULTS = { game: 'klaverjas', players: 4, hands: 16, trumpMode: 'utrechts', rules: 'amsterdams', ai: 'normaal', tempo: 'normaal', signals: SIGNALS };
+// Toepen (design §11): its options are kept apart (kj.toepen), so the two
+// games each remember their own number of players.
+const TDEFAULTS = { game: 'toepen', players: 4, limit: 10, was: true, armoede: true, ai: 'normaal', tempo: 'normaal' };
+const GAMES = [['klaverjas', 'Klaverjassen'], ['toepen', 'Toepen']];
+const MAX_PLAYERS = { klaverjas: 4, toepen: 6 };
+const gameOf = o => (o?.game === 'toepen' ? 'toepen' : 'klaverjas');
 
-// Option rows shared by the new-game sheet and the lobby.
+// Option rows shared by the new-game sheet and the lobby; a row with a
+// game shows for that game only (id: a second row for the same key).
 const OPTS = [
-  { key: 'players', label: 'Spelers', choices: [[2, '2'], [3, '3'], [4, '4']],
+  { key: 'game', label: 'Spel', choices: GAMES,
+    info: ['Klaverjassen: het slagenspel met troef en roem, met z\'n vieren in twee paren, of met z\'n drieën of tweeën.',
+      'Toepen: vier kaarten, alleen de laatste slag telt. Wie denkt die te halen, toept: de inzet gaat omhoog en de anderen gaan mee of passen. Wie te veel strafpunten heeft, ligt eruit.'] },
+  { key: 'players', label: 'Spelers', game: 'klaverjas', choices: [[2, '2'], [3, '3'], [4, '4']],
     info: ['Met hoeveel spelers je klaverjast, jij meegerekend. Een plaats waar bij de start niemand zit, krijgt een AI-speler.',
       'Met z\'n vieren: twee tegen twee, maten tegenover elkaar.',
       'Met z\'n drieën: ieder voor zich. Je krijgt tien kaarten, twee liggen dicht op tafel. Wie het hoogst biedt, pakt die twee, legt er twee weg, kiest troef en speelt alleen tegen de andere twee.',
       'Met z\'n tweeën: je speelt van acht stapeltjes van twee kaarten op tafel, de bovenste open. Ook de kaarten van de ander zie je.'] },
-  { key: 'hands', label: 'Potjes', choices: [[4, '4'], [8, '8'], [12, '12'], [16, '16'], [20, '20'], [24, '24']],
+  { id: 'tplayers', key: 'players', label: 'Spelers', game: 'toepen', choices: [[2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6']],
+    info: ['Met hoeveel spelers je toept, jij meegerekend: ieder speelt voor zich. Een plaats waar bij de start niemand zit, krijgt een AI-speler.'] },
+  { key: 'limit', label: 'Eruit bij', game: 'toepen', choices: [[10, '10 punten'], [15, '15 punten']],
+    info: ['Hoeveel strafpunten je mag oplopen: wie dat aantal haalt, ligt eruit. Wie als laatste over is, wint.'] },
+  { key: 'was', label: 'Was', game: 'toepen', choices: [[true, 'Met was'], [false, 'Zonder']],
+    info: ['Witte was: vier plaatjes (boer, vrouw, heer, aas). Vuile was: drie plaatjes en een 7.', 'Met was mag je zo\'n hand meteen na het delen ruilen voor vier nieuwe kaarten. Een ander mag controleren: klopt het niet, dan krijg jij een strafpunt; klopt het wel, dan die ander.'] },
+  { key: 'armoede', label: 'Armoede', game: 'toepen', choices: [[true, 'Aan'], [false, 'Uit']],
+    info: ['Staat iemand op één strafpunt van eruit, dan begint het potje meteen met inzet 2. De anderen kiezen of ze meegaan; passen kost een punt.'] },
+  { key: 'hands', label: 'Potjes', game: 'klaverjas', choices: [[4, '4'], [8, '8'], [12, '12'], [16, '16'], [20, '20'], [24, '24']],
     info: ['Hoeveel potjes (handen) het spel duurt. Zestien potjes heet een boom.', 'Wie na het laatste potje de meeste punten heeft, wint.'] },
-  { key: 'trumpMode', label: 'Troef', choices: [['utrechts', 'Utrechts'], ['gedraaid', 'Gedraaid']], players: [2, 4],
+  { key: 'trumpMode', label: 'Troef', game: 'klaverjas', choices: [['utrechts', 'Utrechts'], ['gedraaid', 'Gedraaid']], players: [2, 4],
     info: ['Utrechts (verplicht): de voorhand moet troef kiezen en speelt.', 'Gedraaid (vrij): er wordt een kleur gedraaid. Om de beurt zeg je spelen of passen. Past iedereen, dan kiest de voorhand een andere kleur.', 'Met z\'n drieën wordt er om troef geboden.'] },
-  { key: 'rules', label: 'Regels', choices: [['amsterdams', 'Amsterdams'], ['rotterdams', 'Rotterdams']], players: [3, 4],
+  { key: 'rules', label: 'Regels', game: 'klaverjas', choices: [['amsterdams', 'Amsterdams'], ['rotterdams', 'Rotterdams']], players: [3, 4],
     info: ['Amsterdams: kun je niet bekennen en heeft je maat de slag, dan hoef je niet te troeven.', 'Rotterdams: kun je niet bekennen, dan moet je altijd troeven (en overtroeven als het kan).', 'Met z\'n drieën zijn de twee tegenspelers van wie alleen speelt elkaars maat. Met z\'n tweeën heb je geen maat.'] },
   { key: 'ai', label: 'AI-sterkte', choices: [['makkelijk', 'Makkelijk'], ['normaal', 'Normaal'], ['sterk', 'Sterk']],
     info: ['Makkelijk: speelt los en maakt fouten.', 'Normaal: speelt degelijk volgens de vuistregels en telt kaarten. Met z’n vieren geeft en leest Normaal ook de seinen van de tafel.', 'Sterk: speelt bij elke keuze het potje honderden keren uit, kiest wat gemiddeld het meest oplevert en kent ook de seinen.'] },
   { key: 'tempo', label: 'Tempo', choices: [['rustig', 'Rustig'], ['normaal', 'Normaal'], ['snel', 'Snel']],
     info: 'Hoe snel de AI-spelers spelen en hoe lang de pauzes tussen de slagen duren.' },
-  { key: 'signals', label: 'Seinen', players: [4], multi: true,
+  { key: 'signals', label: 'Seinen', game: 'klaverjas', players: [4], multi: true,
     choices: [['aas', 'Met de aas seinen'], ['hoogLaag', 'Op- en afseinen'], ['kleintjeBoer', 'Kleintje boer'], ['boerOverBoer', 'Boer over boer']],
     info: ['De afspraken aan deze tafel: welke kaarten je maat iets vertellen. De AI-spelers op Normaal en Sterk en de tips houden zich eraan. Bij de start van een spel staan ze in de chat.',
       'Met de aas seinen: gooi je op een slag van je maat een aas bij van een bijkleur die nog niet gespeeld is, dan heb je de 10 van die kleur ook.',
@@ -40,7 +58,8 @@ const OPTS = [
       'De seed van een partij staat bij de start in de chat, en in de spelanalyse.'] },
 ];
 
-const LABELS = Object.fromEntries(OPTS.map(o => [o.key, Object.fromEntries(o.choices)]));
+const LABELS = Object.fromEntries(OPTS.filter(o => !o.id).map(o => [o.key, Object.fromEntries(o.choices)]));
+const rowId = o => o.id || o.key;
 // The sheet Oefenen: Juf Jannie's lessons, each one match, and vrij, the
 // game with hints only (option lesson empty).
 const LESSONS = [
@@ -61,17 +80,19 @@ const START_GUARD_MS = 800;
 // (nobody has a partner). onChange hears every choice; more adds a line to
 // a row's info, for this form only.
 function optionsForm(opts, onChange, keys = OPTS.map(o => o.key), more = {}) {
+  const cur = { players: opts.players ?? DEFAULTS.players, game: gameOf(opts) };
   const form = h('div', { class: 'opts' }, OPTS.filter(o => keys.includes(o.key)).map(o =>
-    h('div', { class: 'opt-row', dataset: { key: o.key } },
+    h('div', { class: 'opt-row', dataset: { key: rowId(o) } },
       h('div', { class: 'opt-lbl' }, h('span', { text: o.label }), panels.infoBtn(o.label, more[o.key] ? [o.info, more[o.key]].flat() : o.info)),
       o.input ? seedField(opts[o.key], v => onChange(o.key, v))
       : o.multi
         ? panels.toggles(o.choices, signalsOf(opts[o.key]), v => onChange(o.key, v), o.label)
-        : panels.segmented(o.choices, opts[o.key] ?? DEFAULTS[o.key], v => {
+        : panels.segmented(o.choices, opts[o.key] ?? (o.game === 'toepen' ? TDEFAULTS : DEFAULTS)[o.key], v => {
+          if (o.key === 'players' || o.key === 'game') cur[o.key] = v;
           onChange(o.key, v);
-          if (o.key === 'players') showRows(form, v);
+          showRows(form, cur.players, cur.game);
         }, o.label))));
-  showRows(form, opts.players ?? DEFAULTS.players);
+  showRows(form, cur.players, cur.game);
   return form;
 }
 
@@ -95,14 +116,20 @@ function numberField(value, fn, { max, placeholder, label }) {
   return el;
 }
 
-function showRows(form, players) {
+function showRows(form, players, game = 'klaverjas') {
   for (const row of form.querySelectorAll('.opt-row')) {
-    const o = OPTS.find(x => x.key === row.dataset.key);
-    row.hidden = !!o?.players && !o.players.includes(players);
+    const o = OPTS.find(x => rowId(x) === row.dataset.key);
+    row.hidden = !!o?.game && o.game !== game || !!o?.players && !o.players.includes(players);
   }
 }
 
 function optsSummary(o) {
+  if (gameOf(o) === 'toepen') {
+    const out = ['Toepen', `eruit bij ${o.limit || 10} punten`, o.was ? 'met was' : 'zonder was', o.armoede ? 'met armoede' : 'zonder armoede',
+      `AI ${LABELS.ai[o.ai]?.toLowerCase() || o.ai}`, `tempo ${LABELS.tempo[o.tempo]?.toLowerCase() || o.tempo}`];
+    if (o.seed) out.push(`seed ${o.seed}`);
+    return out;
+  }
   const out = [`${o.hands} potjes`, variantText(o), `AI ${LABELS.ai[o.ai]?.toLowerCase() || o.ai}`, `tempo ${LABELS.tempo[o.tempo]?.toLowerCase() || o.tempo}`];
   if (o.players === 4) out.push(signalsText(o.signals));
   if (o.seed) out.push(`seed ${o.seed}`);
@@ -118,8 +145,9 @@ function signalsText(sig) {
 // Snel spelen uses the options last chosen for a new game (kj.opts), the
 // number of players included, alone with bots.
 function quickOpts() {
+  if (homeGame() === 'toepen') return toepOpts();
   const stored = store.json('opts', {});
-  const o = {};
+  const o = { game: 'klaverjas' };
   for (const key of ['players', 'hands', 'trumpMode', 'rules', 'ai', 'tempo']) {
     if (stored?.[key] != null && LABELS[key][stored[key]] !== undefined) o[key] = stored[key];
   }
@@ -127,8 +155,34 @@ function quickOpts() {
   return o;
 }
 
+// The game chosen on the home screen (kj.game): Snel spelen and Nieuw spel
+// start it.
+const homeGame = () => (store.get('game', 'klaverjas') === 'toepen' ? 'toepen' : 'klaverjas');
+
+// The options of toepen last chosen (kj.toepen), each value checked.
+function toepOpts() {
+  const stored = store.json('toepen', {});
+  const o = { ...TDEFAULTS };
+  if ([2, 3, 4, 5, 6].includes(stored?.players)) o.players = stored.players;
+  if ([10, 15].includes(stored?.limit)) o.limit = stored.limit;
+  for (const k of ['was', 'armoede']) if (typeof stored?.[k] === 'boolean') o[k] = stored[k];
+  for (const k of ['ai', 'tempo']) if (LABELS[k][stored?.[k]] !== undefined) o[k] = stored[k];
+  return o;
+}
+
 // The quick-play subtitle names whatever differs from the defaults.
 function quickSub() {
+  if (homeGame() === 'toepen') {
+    const o = toepOpts();
+    const bots = o.players - 1;
+    const parts = ['Toepen'];
+    if (o.limit !== TDEFAULTS.limit) parts.push(`eruit bij ${o.limit}`);
+    if (!o.was) parts.push('zonder was');
+    if (!o.armoede) parts.push('zonder armoede');
+    if (o.ai !== TDEFAULTS.ai) parts.push(`AI ${LABELS.ai[o.ai].toLowerCase()}`);
+    if (o.tempo !== TDEFAULTS.tempo) parts.push(`tempo ${LABELS.tempo[o.tempo].toLowerCase()}`);
+    return `${parts.join(' · ')} met ${countWord(bots)} ${bots === 1 ? 'AI-speler' : 'AI-spelers'}`;
+  }
   const o = { ...DEFAULTS, ...quickOpts() };
   const bots = o.players - 1;
   const parts = [];
@@ -146,6 +200,8 @@ function quickSub() {
 // Shows the quick-play subtitle with "AI-spelers" kept whole: a narrow
 // phone would break the line after "AI-".
 function showQuickSub() {
+  // Oefenen teaches klaverjas, whatever game is chosen.
+  if (E.trainSub) E.trainSub.textContent = homeGame() === 'toepen' ? 'Klaverjassen leren' : 'Leren met tips';
   E.quickSub.replaceChildren(...quickSub().split(/(AI-spelers?)/).filter(Boolean)
     .map(part => (part.startsWith('AI-speler') ? h('span', { class: 'nobreak', text: part }) : part)));
 }
@@ -190,6 +246,10 @@ export function init() {
 
   E.invite = h('div', { class: 'invite', hidden: true });
   E.main = h('div', { class: 'home-main' },
+    h('div', { class: 'home-game' }, panels.segmented(GAMES, homeGame(), v => {
+      store.set('game', v);
+      showQuickSub();
+    }, 'Spel')),
     h('button', { class: 'btn btn-hero', type: 'button', id: 'btn-quick', onclick: quick },
       h('span', { class: 'hero-ico', 'aria-hidden': 'true' }, icon('bolt')),
       h('span', { class: 'hero-txt' }, h('b', { text: 'Snel spelen' }), E.quickSub = h('small', { id: 'quick-sub' }))),
@@ -197,7 +257,7 @@ export function init() {
       h('button', { class: 'btn btn-tile', type: 'button', id: 'btn-new', onclick: openNewGame },
         icon('users'), h('b', { text: 'Nieuw spel' }), h('small', { text: 'Speel met vrienden' })),
       h('button', { class: 'btn btn-tile', type: 'button', id: 'btn-train', onclick: openTraining },
-        icon('school'), h('b', { text: 'Oefenen' }), h('small', { text: 'Leren met tips' }))),
+        icon('school'), h('b', { text: 'Oefenen' }), E.trainSub = h('small', { text: 'Leren met tips' }))),
     h('div', { class: 'join' },
       h('label', { class: 'join-lbl', for: 'join-code' }, 'Meedoen met een code'),
       h('div', { class: 'join-row' }, E.code,
@@ -302,12 +362,28 @@ function openNewGame() {
   sound.unlock();
   sound.play('click');
   if (!currentName()) return; // friends will see it: ask before the options
-  const opts = { ...DEFAULTS, ...store.json('opts', {}) };
+  const optsFor = g => (g === 'toepen' ? { ...toepOpts() } : { ...DEFAULTS, ...store.json('opts', {}), game: 'klaverjas' });
+  let opts = optsFor(homeGame());
   delete opts.open;
+  const holder = h('div');
+  // A seed holds for this game only: a remembered one would deal the same cards forever.
+  const remember = () => store.setJSON(gameOf(opts) === 'toepen' ? 'toepen' : 'opts', { ...opts, seed: undefined });
+  const draw = () => holder.replaceChildren(optionsForm(opts, (k, v) => {
+    if (k === 'game') {
+      store.set('game', v);
+      opts = { ...optsFor(v), seed: opts.seed };
+      draw();
+      for (const b of E.main.querySelectorAll('.home-game .seg-btn')) b.setAttribute('aria-checked', String(b.textContent === GAMES.find(g => g[0] === v)[1]));
+    } else {
+      opts[k] = v;
+      remember();
+    }
+    showQuickSub();
+  }));
+  draw();
   const m = panels.openModal({
     id: 'new', title: 'Nieuw spel', cls: 'm-sheet m-new', body: [
-      // A seed holds for this game only: a remembered one would deal the same cards forever.
-      optionsForm(opts, (k, v) => { opts[k] = v; store.setJSON('opts', { ...opts, seed: undefined }); showQuickSub(); }),
+      holder,
       h('p', { class: 'sheet-note', text: 'Je krijgt een code en een link om te delen. Lege plaatsen worden aangevuld met AI-spelers.' }),
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-create', onclick: () => {
         if (!currentName()) { m.close(); return; }
@@ -487,6 +563,9 @@ function buildLobby() {
   E.lbTable = h('div', { class: 'mini-table' }, h('div', { class: 'mini-felt' }));
   E.lbSeats = {};
   for (const pos of POS) E.lbTable.append(E.lbSeats[pos] = h('div', { class: 'lseat ls-' + pos }));
+  // Toepen: up to six seats around the table, nobody's partner.
+  E.lbTp = Array.from({ length: MAX_PLAYERS.toepen }, () => h('div', { class: 'lseat ls-tp', hidden: true }));
+  E.lbTable.append(...E.lbTp);
   E.lbCount = h('p', { class: 'lb-count' });
   E.lbCall = h('div', { class: 'call-dock lb-call', role: 'group', 'aria-label': 'Bellen', hidden: true });
   E.lbAv = [];
@@ -520,7 +599,8 @@ async function shareLink() {
   sound.play('click');
   if (navigator.share) {
     try {
-      await navigator.share({ title: 'Klaverjas', text: `Kom je klaverjassen? Doe mee met code ${app.code}:`, url: link() });
+      const what = app.s?.game === 'toepen' ? 'toepen' : 'klaverjassen';
+      await navigator.share({ title: 'Klaverjas', text: `Kom je ${what}? Doe mee met code ${app.code}:`, url: link() });
       return;
     } catch (e) {
       if (e?.name === 'AbortError') return;
@@ -547,7 +627,9 @@ export function renderLobby(s, fresh = false) {
   E.lbCode.replaceChildren(...[...s.code].map(ch => h('span', { text: ch })));
   const n = seatCount(s);
   E.lbTable.dataset.players = n;
+  E.lbTable.classList.toggle('tp', gameOf(s.opts) === 'toepen');
   for (const pos of POS) E.lbSeats[pos].hidden = true;
+  for (const el of E.lbTp) el.hidden = true;
   E.lbAv = [];
   for (let seat = 0; seat < n; seat++) renderLobbySeat(s, seat, host);
   renderCall();
@@ -566,8 +648,14 @@ export function renderLobby(s, fresh = false) {
     if (host) {
       // The next new game starts from what the room has: a change the
       // server refused (more people than seats) is not remembered.
-      const { players, hands, trumpMode, rules, ai, tempo, signals } = s.opts;
-      store.setJSON('opts', { ...store.json('opts', {}), players, hands, trumpMode, rules, ai, tempo, signals });
+      if (gameOf(s.opts) === 'toepen') {
+        const { players, limit, was, armoede, ai, tempo } = s.opts;
+        store.setJSON('toepen', { ...store.json('toepen', {}), players, limit, was, armoede, ai, tempo });
+      } else {
+        const { players, hands, trumpMode, rules, ai, tempo, signals } = s.opts;
+        store.setJSON('opts', { ...store.json('opts', {}), players, hands, trumpMode, rules, ai, tempo, signals });
+      }
+      store.set('game', gameOf(s.opts));
       E.lbOpts.replaceChildren(h('div', { class: 'lb-lbl', text: 'Spelregels' }),
         optionsForm(s.opts, (k, v) => app.send({ t: 'opts', opts: { [k]: v } })));
     } else {
@@ -604,18 +692,28 @@ function codeHint(s, host, free, bots) {
   if (free) return 'Stuur de link of de code naar wie mee wil doen.';
   if (!host) return 'Alle plaatsen zijn bezet.';
   if (bots) return 'Alle plaatsen zijn bezet. Haal een AI-speler weg als er nog iemand mee wil doen.';
-  if (seatCount(s) < 4) return 'Alle plaatsen zijn bezet. Zet Spelers hoger als er nog iemand mee wil doen.';
-  return 'Alle vier de plaatsen zijn bezet.';
+  if (seatCount(s) < MAX_PLAYERS[gameOf(s.opts)]) return 'Alle plaatsen zijn bezet. Zet Spelers hoger als er nog iemand mee wil doen.';
+  return `Alle ${countWord(seatCount(s))} plaatsen zijn bezet.`;
 }
 
 function renderLobbySeat(s, seat, host) {
-  const pos = posOf(s, seat);
-  const el = E.lbSeats[pos];
+  const tp = gameOf(s.opts) === 'toepen';
+  const pos = tp ? 'tp' : posOf(s, seat);
+  const el = tp ? E.lbTp[seat] : E.lbSeats[pos];
   const p = s.players[seat];
   const me = seat === s.you;
   el.hidden = false;
-  el.className = `lseat ls-${pos} ${teamCls(s, seat)}` + (p ? '' : ' empty') + (me ? ' me' : '') + (p?.bot ? ' bot' : '');
-  const role = me ? 'jij' : isWij(s, seat) ? 'maat' : 'tegenstander';
+  el.className = `lseat ls-${pos} ${tp ? (me ? 'wij' : 'tp-opp') : teamCls(s, seat)}` + (p ? '' : ' empty') + (me ? ' me' : '') + (p?.bot ? ' bot' : '');
+  if (tp) {
+    // Around the table as at toepen.js: you at the bottom, the others
+    // clockwise from your left over the top.
+    const n = seatCount(s);
+    const k = (seat - s.you + n) % n;
+    const a = ((k === 0 ? 270 : 210 - (k * 240) / n) * Math.PI) / 180;
+    el.style.left = `${50 + 38 * Math.cos(a)}%`;
+    el.style.top = `${50 - 36 * Math.sin(a)}%`;
+  }
+  const role = me ? 'jij' : tp ? 'tegenspeler' : isWij(s, seat) ? 'maat' : 'tegenstander';
   const tag = [p && !p.bot && !p.connected ? 'weg' : role, seat === s.host ? 'host' : ''].filter(Boolean).join(' · ');
   const kids = [];
   if (p) {
@@ -630,7 +728,7 @@ function renderLobbySeat(s, seat, host) {
       class: 'ls-main', type: 'button',
       title: host ? 'AI-speler neerzetten of zelf hier gaan zitten' : 'Hier gaan zitten',
       onclick: () => { if (host) panels.openBotPicker(seat, s, { canSit: true }); else { sound.play('click'); app.send({ t: 'sit', seat }); } },
-    }, h('span', { class: 'avatar empty-av' }, icon('plus')), h('span', { class: 'ls-name', text: host ? 'AI-speler' : 'Hier zitten' }), h('span', { class: 'ls-tag', text: isWij(s, seat) ? 'maat · vrij' : 'vrij' })));
+    }, h('span', { class: 'avatar empty-av' }, icon('plus')), h('span', { class: 'ls-name', text: host ? 'AI-speler' : 'Hier zitten' }), h('span', { class: 'ls-tag', text: !tp && isWij(s, seat) ? 'maat · vrij' : 'vrij' })));
   }
   el.replaceChildren(...kids);
 }

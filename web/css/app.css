@@ -1009,6 +1009,36 @@ body.busy::after {
   justify-content: center;
 }
 
+/* Toepen: up to six seats around the table (home.js places them), nobody
+   anyone's partner. */
+.mini-table.tp .lseat {
+  width: 96px;
+  translate: -50% -50%;
+}
+
+.mini-table.tp .ls-main {
+  min-width: 80px;
+}
+
+.mini-table.tp .ls-main .avatar {
+  width: 44px;
+  height: 44px;
+  font-size: 22px;
+}
+
+.lseat.tp-opp {
+  --team: rgba(255, 255, 255, 0.4);
+}
+
+/* The game the home screen starts: klaverjassen or toepen. */
+.home-game .seg {
+  width: 100%;
+}
+
+.home-game .seg-btn {
+  flex: 1;
+}
+
 .ls-bottom { bottom: 0; left: 50%; translate: -50% 0; }
 .ls-top { top: 0; left: 50%; translate: -50% 0; }
 .ls-left { left: 0; top: 50%; translate: 0 -50%; }

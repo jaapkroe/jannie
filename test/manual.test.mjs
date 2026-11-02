@@ -481,7 +481,8 @@ test('bediening names the game options exactly as the new-game sheet does', { sk
   // OPTS in home.js holds the option rows of both the new-game sheet and the lobby.
   const home = readFileSync(homePath, 'utf8');
   const start = home.indexOf('const OPTS');
-  const labels = [...home.slice(start, home.indexOf('\n];', start)).matchAll(/\blabel: '([^']+)'/g)].map((m) => m[1]);
+  // A label that two games' rows share (Spelers) is one entry.
+  const labels = [...new Set([...home.slice(start, home.indexOf('\n];', start)).matchAll(/\blabel: '([^']+)'/g)].map((m) => m[1]))];
   assert.ok(labels.length >= 6, `option labels in home.js: ${labels.join()}`);
   const blocks = CONTENT.bediening;
   const at = blocks.findIndex((b) => b.h4 === 'Spelregels bij Nieuw spel');

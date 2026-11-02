@@ -6,11 +6,11 @@ import assert from 'node:assert/strict';
 
 const MODULE = new URL('../web/js/sound.js', import.meta.url).href;
 const NAMES = ['card', 'deal', 'shuffle', 'trick', 'trickWon', 'roem', 'trump', 'turn', 'chat',
-  'nat', 'pit', 'handWon', 'handLost', 'win', 'lose', 'click', 'error', 'join'];
+  'nat', 'pit', 'handWon', 'handLost', 'win', 'lose', 'click', 'error', 'join', 'knock'];
 const MAX_LENGTH = {
   card: 0.15, deal: 0.1, shuffle: 0.85, trick: 0.4, trickWon: 0.75, roem: 0.9,
   trump: 1.4, turn: 0.6, chat: 0.2, nat: 1.4, pit: 1.4, handWon: 1.2,
-  handLost: 1.1, win: 1.6, lose: 1.15, click: 0.06, error: 0.35, join: 0.6,
+  handLost: 1.1, win: 1.6, lose: 1.15, click: 0.06, error: 0.35, join: 0.6, knock: 0.3,
 };
 
 // ---- strict fake WebAudio --------------------------------------------------

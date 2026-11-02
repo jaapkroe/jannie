@@ -1,8 +1,9 @@
 # Klaverjas
 
 Klaverjassen in the browser: the Dutch trick-taking card game for four players
-in two pairs, or for three or two, with friends, with bots, or both. The
-interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
+in two pairs, or for three or two, with friends, with bots, or both. The same
+table also plays **toepen**, for two to six. The interface is entirely in
+Dutch. It runs at <https://klaverjas.kroes.dev>.
 
 ## Features
 
@@ -19,6 +20,12 @@ interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
   takes the two cards on the table, lays two away and plays alone against
   the other two; with two, each plays from eight piles of two cards on the
   table, the top ones face up for both to see. Seats nobody takes get bots.
+- **Toepen**, chosen on the home screen or in the lobby: four cards, only the
+  last trick counts, and who thinks they will take it *toept*: the stake goes
+  up and the others go along or pass. With the witte and vuile was (bluffing
+  allowed, if nobody checks), armoede, and play until 10 or 15 penalty points;
+  two to six players, bots at three strengths, and everything below about
+  tables with friends.
 - **Eight bots with a character of their own**, from Opa Dirk to Bakker Vera,
   shown as "Naam (AI)", at three strengths. The strongest counts cards, infers
   voids and gives and reads signals. They fill empty seats and chat in
@@ -123,15 +130,19 @@ place of podman and systemd.
   for both rule sets, tricks, roem, scoring and the state machine of one hand.
 - `internal/bot`: the personalities, the three playing strengths (the strongest
   uses determinised Monte Carlo playouts), the training hints and chat.
+- `internal/toepen` and `internal/toepbot`: the rules of toepen and its bots.
 - `internal/server`: rooms with codes, the websocket protocol, pacing, chat and
-  limits. Each room is one goroutine; all state is in memory.
+  limits. Each room is one goroutine; all state is in memory. A room is the
+  table every game shares; the game on it plugs in through `games.go`.
 - `cmd/klaverjas`: the binary, which ties the bots to the server.
 - `web/`: the frontend, plain ES modules and CSS with no build step and nothing
   loaded from other sites, so a strict Content Security Policy applies.
 
 [`docs/design.md`](docs/design.md) is the contract between these parts: the
 rules as implemented, the Go APIs, the wire protocol, the interface and the
-deployment.
+deployment. [`docs/games.md`](docs/games.md) investigates how the table carries
+other card games (bridge, rikken, pesten, toepen, presidenten): what is shared,
+what each game needs, and an order to build them in.
 
 ## Deployment
 

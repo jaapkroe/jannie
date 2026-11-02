@@ -325,6 +325,15 @@ const SOUNDS = {
     tone(v, { f: 150 * k, f2: 95, d: 0.08, g: 0.09, a: 0.002 });
   },
 
+  // Toepen: two knuckle knocks on the wooden table.
+  knock(v) {
+    for (const t of [0, 0.14]) {
+      const k = vary(0.05);
+      tone(v, { t, f: 190 * k, f2: 95, d: 0.09, g: 0.5, a: 0.002 });
+      noise(v, { t, d: 0.05, g: 0.3, type: 'lowpass', f: 950 * k, q: 0.7 });
+    }
+  },
+
   // One soft flick of a dealt card.
   deal(v) {
     const k = vary(0.1);

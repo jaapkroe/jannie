@@ -25,7 +25,10 @@ go.mod                     module klaverjas (Go 1.27), one dependency: github.co
 cmd/klaverjas/main.go      flags, HTTP server, graceful shutdown, -healthcheck
 internal/game/             pure rules engine: cards, legal moves, tricks, roem, scoring, deal state machine
 internal/bot/              bot personalities, play levels, hints/advice, chat lines
-internal/server/           rooms, codes, websocket protocol, pacing, chat, limits
+internal/toepen/           toepen's rules engine (§11): a round as a state machine, the match
+internal/toepbot/          toepen's bots and chat lines (§11)
+internal/server/           rooms, codes, websocket protocol, pacing, chat, limits; games.go the seam
+                           between the table and the game on it, toepen.go the second game
 web/                       static frontend, vanilla ES modules, no build step
   index.html  favicon.svg  manifest.webmanifest  og.png (link preview)
   icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
@@ -33,6 +36,7 @@ web/                       static frontend, vanilla ES modules, no build step
   js/main.js … (app modules)  js/cards.js  js/sound.js  js/manual.js
   js/expert.js               the sheet *Redenering van de AI* (expert mode, training), loaded only when first opened
   js/call.js                 the call with the others at the table, loaded once another person sits there
+  js/toepen.js js/toepen-rules.js css/toepen.css   the table of toepen (§11), loaded once one shows
 test/e2e/                  node scripts that play full games over the websocket
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
                            app-perf.mjs, a benchmark of the frontend on two emulated phones,
@@ -217,7 +221,9 @@ Set by the host in the lobby; JSON keys on the wire:
 
 | Key | Values | Default | Meaning |
 |---|---|---|---|
-| `players` | 2, 3, 4 | 4 | Seats at the table: the game of §2 for four, three or two players. Empty seats at the start get random bots. Training is always 4 |
+| `game` | `klaverjas`, `toepen` | `klaverjas` | The game at the table: klaverjas (§2), or toepen (§11). Training and expert are klaverjas |
+| `players` | 2, 3, 4; toepen 2–6 | 4 | Seats at the table: the game of §2 for four, three or two players. Empty seats at the start get random bots. Training is always 4 |
+| `limit`, `was`, `armoede` | 10 or 15; bool; bool | 10, true, true | Toepen only (§11): penalty points that put a player out; witte and vuile was; armoede |
 | `hands` | 4, 8, 12, 16, 20, 24 | 16 | Hands in the match; a lesson has its own, 8 (`lessonLength`, §6 Lessons) |
 | `trumpMode` | `utrechts`, `gedraaid` | `utrechts` | §2 |
 | `rules` | `amsterdams`, `rotterdams` | `amsterdams` | §2 |
@@ -686,8 +692,14 @@ smaller tables.
 
 ### 4.3 `internal/server`
 
-`internal/server` does **not** import `internal/bot`: it defines the interface
-it needs, and `cmd/klaverjas/ai.go` adapts package `bot` to it. Server tests
+`internal/server` does **not** import `internal/bot` or `internal/toepbot`: it
+defines the interfaces it needs (`AI`; for toepen `ToepAI` and `ToepBrain`, set
+as `Config.Toepen`, §11), and `cmd/klaverjas/ai.go` adapts the bot packages to
+them. A room is the table every game shares; the game on it is a `gameplay`
+(`games.go`: deal the first hand, whose turn, a seat's cards, the state for a
+seat, the game's messages, a bot's decision and applying it, resuming after a
+pause, the next hand), klaverjas on the match code below, toepen in
+`toepen.go`. Server tests
 use a fake AI (first legal card), so the two packages build independently.
 `perf_test.go` measures the server's own cost: fake humans, connections
 without a socket, play whole matches in process with random legal
@@ -1295,12 +1307,17 @@ persona on a seat its player left). `away` comes once per lost connection.
 
 ### State `s`
 
+At a table of toepen the state is another one, with its own phases, keys and
+events (§11); `game` tells them apart.
+
 ```jsonc
 {
+  "game": "klaverjas",
   "code": "KQXB", "phase": "lobby|auction|discard|trump|bid|play|handEnd|gameOver",
-  "opts": { "players":4, "hands":16, "trumpMode":"utrechts", "rules":"amsterdams",
+  "opts": { "game":"klaverjas", "players":4, "hands":16, "trumpMode":"utrechts", "rules":"amsterdams",
             "ai":"normaal", "tempo":"normaal", "open":false, "lesson":"", "tips":false,
-            "signals":{"aas":true,"kleintjeBoer":true,"hoogLaag":true,"boerOverBoer":false}, "seed":0, "from":0 },
+            "signals":{"aas":true,"kleintjeBoer":true,"hoogLaag":true,"boerOverBoer":false}, "seed":0, "from":0,
+            "limit":10, "was":true, "armoede":true },
   "training": false, "you": 0, "host": 0,
   "expert": false,                 // true in an expert match (§3)
   "roster": [ {"id":"dirk","name":"Opa Dirk","emoji":"👴","color":"#8a5a2b","bio":"…"} ],  // lobby only: bot picker
@@ -1496,8 +1513,9 @@ text. At most 17 requests per page load in total, the websocket included
 (NPM's rate limit for the name is in shrek-infra, `docs/services/klaverjas.md`):
 html, 3 css, favicon, manifest, one PNG icon (Chrome's install check),
 ≤ 6 app modules, cards.js, sound.js, manual.js, the websocket; `expert.js` is
-imported only when its sheet is first opened (expert mode, training), and `call.js` once another
-person sits at the table, so a page load never fetches them. No service
+imported only when its sheet is first opened (expert mode, training), `call.js` once another
+person sits at the table, and `toepen.js`, `toepen-rules.js` and `toepen.css` once a table of
+toepen shows (§11), so a page load never fetches them. No service
 worker. System font stack.
 `localStorage` access wrapped in try/catch (keys prefixed `kj.`).
 Icons: `favicon.svg` (tab; manifest `any`), `icon-192.png` and `icon-512.png`
@@ -1555,7 +1573,8 @@ export function createBack(opts={})       // → HTMLElement .card.back
 export const sound = {
   unlock(),            // call on the first user gesture (also self-armed on any gesture); Promise, never rejects
   play(name),          // 'card','deal','shuffle','trick','trickWon','roem','trump','turn','chat',
-                       // 'nat','pit','handWon','handLost','win','lose','click','error','join'
+                       // 'nat','pit','handWon','handLost','win','lose','click','error','join',
+                       // 'knock' (a toep, §11)
   setMuted(bool), isMuted(), setVolume(0..1), getVolume()   // persisted in localStorage kj.sound
   setCall(bool),       // call.js holds the iOS audio session ('play-and-record', else 'ambient')
 };
@@ -2280,3 +2299,181 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   Exploits, **Websockets Support ON**, no access list, HTTP/2 off (either
   works); Advanced empty and NPM's HSTS box off, since HSTS comes from
   `deploy/nginx.conf` (recorded in `deploy/npm-advanced.conf`).
+
+## 11. Toepen
+
+A second game on the same table (`opts.game: "toepen"`; how the games share
+it: [`games.md`](games.md)). Sources: <https://nl.wikipedia.org/wiki/Toepen>
+and the common house rules; where groups differ, the choice is written
+down here and the commonest variants are options.
+
+### Rules as implemented (`internal/toepen`)
+
+- The 32 cards of klaverjas, under the same codes. Within a suit, low to
+  high: boer, vrouw, heer, aas, 7, 8, 9, 10 (`Strength`). No trump. Two to
+  six players at the table (the engine takes up to eight), each for
+  themselves.
+- Everyone starts at 0 penalty points (*strafpunten*); who reaches `limit`
+  (10 or 15) is out (*eruit*). The match goes on until one player is left:
+  the winner.
+- The first dealer is drawn from the match's seed; then the deal passes
+  clockwise to the next player still in. Everyone still in gets four cards,
+  in order from **voorhand** (the first player still in after the dealer);
+  the rest of the deck is the **stock**.
+- **Was** (option `was`): right after the deal everyone in the round says,
+  all at once, whether they claim a was: a **witte was** is four pictures
+  (boer, vrouw, heer or aas), a **vuile was** three pictures and a 7. A
+  claim stays secret until everyone has answered or the time is up (no
+  answer: no claim). The claims are settled one by one from voorhand: the
+  others still in, in turn from the claimant's left, are asked whether they
+  check it. The first to check settles it: a real was costs the checker a
+  point and the claimant gets four new cards from the stock; a bluff costs
+  the claimant a point and sits them out of the round (*betrapt*). If
+  nobody checks, the claimant gets four new cards whatever the hand was.
+  Every claim needs four cards in the stock (with six players: two claims;
+  eight players: no was).
+- **Armoede** (option `armoede`): when someone still in the round has
+  `limit − 1` points, the stake starts at 2 and everyone else still in, in
+  order from voorhand, goes along or passes (passing: 1 point). Nobody is
+  the toeper then, so anyone may toep afterwards.
+- **Play**: voorhand leads (the next player still in, when voorhand is
+  out of the round). Follow suit when you can; otherwise any card, which
+  cannot win. The highest card of the suit led takes the trick; its
+  winner leads the next.
+- **Toepen**: on your turn to play, before your card, you may toep: the
+  stake goes up by one, and the others still in, from your left, say
+  whether they go along (*meegaan*) or pass (*passen*). Who passes takes
+  the stake from before the toep as penalty points and is out of the round
+  (*gepast*). Nobody may toep twice in a row: after a toep someone else
+  must toep first. When everyone else has passed, the toeper wins the
+  round.
+- A player who passes after playing to the current trick leaves the card
+  on the table, but it no longer counts: the trick goes to the highest card
+  of the suit led among the players still in, or, when none of them
+  followed, of the suit of the first card of a player still in.
+- **The round**: who takes the fourth trick wins it; every other player
+  still in takes the stake as penalty points. Penalty points that reach the
+  limit during the round (a check, a pass) take that player out of the
+  round at once.
+- Choices where the sources differ: a toep only on your own turn (the
+  "more official" rule; others allow it any time); the answers are going
+  along or passing only (a raise comes on your own turn); a caught bluff
+  sits the round out (rather than playing on with the old cards); the deal
+  passes clockwise (rather than to the winner); there is no *blind toepen*
+  and no cap on toepen.
+
+`Deal` is a pure state machine (`NewDeal`, `Was`, `CloseWas`, `Check`,
+`Toep`, `Answer`, `Play`, `View`, `Result`), `Match` the points and the
+dealer. Tests: every rule above, table-driven, and 3,000 random matches at
+2–8 players and every rule set checking that each round ends, points only
+grow, the 32 cards are always somewhere exactly once, and the match ends
+with one player left.
+
+### Options
+
+`players` 2–6; `limit` 10 (default) or 15; `was` and `armoede` booleans,
+both on by default; `ai`, `tempo` and `seed` as for klaverjas. `hands`,
+`trumpMode`, `rules`, `signals`, `lesson`, `tips`, `open` and `from` do not
+apply. Training and the expert mode are klaverjas: a `create` with either
+plays klaverjas. In the lobby the host switches the game with `opts`
+`{"game": …}`; a table of more than four going to klaverjas becomes one of
+four (`setPlayers`), and `players` above 4 for klaverjas is refused
+("Kies 2, 3 of 4 spelers.").
+
+### Server (`internal/server/toepen.go`)
+
+`toepPlay` is the gameplay (§4.3, `games.go`). Room phases: `was`, `check`,
+`toep`, `play`, `handEnd`, `gameOver`.
+
+- After the deal pause, the **time for a was** opens (`stepWas`, the pace's
+  `was`: rustig 10 s, normaal 8 s, snel 6 s; `nextAt` says when it ends;
+  `turn` is -1). Every human in the round answers with `was`; every bot (or
+  substitute) in the round decides at once in the background and answers
+  after its think time. The time ends when everyone has answered or it runs
+  out. A late or repeated `was` is ignored without a reply. An absent
+  player is not waited for here: not claiming is no decision made for them.
+- Pauses: the claims and a toep are announced for `announce`, armoede for
+  twice that, a checked was (its hand shown) for three times that; a
+  completed trick lies for `trick`. The round summary moves on after the
+  pace's `round` (rustig 6 s, normaal 4.5 s, snel 3 s), also for one
+  player alone; `ready` from everyone connected moves on at once.
+- Bots decide once per turn as in klaverjas (§6). The takeover question
+  works as in §6 in `check`, `toep` and `play`.
+- No hints, review, lessons, `why`, `feedback` or `handReview`: those are
+  klaverjas's, and its messages are unknown here ("Dat bericht ken ik
+  niet."), as toepen's are in klaverjas.
+- Chat: bots greet, react to a toep (the toeper, or someone else), pass,
+  claim a was, are caught, check rightly or wrongly, win or lose a round, go
+  out, and win or lose the match (`toepbot.Chat`, per persona; the limits
+  of §5).
+- Game log (§6): `match` as for klaverjas (its `opts` say the game), then
+  per round `{"t":"round", "hand", "dealer", "cards" (per seat as dealt,
+  "" for a seat out), "acts", "result"}` with `acts` the seat and then `w`
+  (claimed a was), `c1`/`c0` (checked or not), `t` (toep), `a1`/`a0` (went
+  along or passed) or a card; then `end` (`total`: the points, `winner`:
+  the seat).
+
+### Protocol
+
+Client → server, besides the table's messages of §7: `play` `{card}`,
+`toep`, `answer` `{play}` (true: go along), `was` `{play}` (true: claim)
+and `check` `{play}` (true: check). Errors as §7 (`niet-jouw-beurt`,
+`ongeldig` with the engine's Dutch text).
+
+The state `s` (`toepState`): `game` "toepen", `code`, `phase`, `opts`,
+`training`, `expert`, `you`, `host`, `roster` (lobby), `players` (as §7;
+`cards` 0 for a seat out of the round), `turn`, `takeover`, `nextAt` (the
+end of the time for a was, or of the summary), `winner` (the seat left);
+`handNo` (the round), `dealer`, `voorhand`, `stake`, `toeper` (-1),
+`armoedeToep`, `points` (per seat, now), `status` (per seat: `in`,
+`gepast`, `betrapt`, `eruit`, `uit` for out of the match), `armoede` (per
+seat), `washed`, `answered` (the time for a was), `claims` (once that time
+is over), `canClaim`, `claimant` (-1), `asking` (who still answers, in
+order), `checks` (the settled claims: `{claimant, checker, kind, cards}`),
+`stock`, `hand` (yours, sorted), `legal` and `rule` (your turn to play),
+`canToep`, `trick` (`{leader, cards, winner}`; the trick just taken until
+`collect`), `lastTrick`, `tricks` (taken this round) and `rounds` (the
+score sheet: `{hand, dealer, winner, stake, tricks, gains, points, out}`).
+
+Events: `deal` `{handNo, dealer}`; `claims` `{seats}`; `check` `{seat,
+claimant, check}`; `wasDone` `{claimant, checker, kind, cards, genuine,
+washed}`; `toep` `{seat, stake}`; `answer` `{seat, stay, points}`;
+`armoede` `{seats, stake}`; `play` `{seat, card}`; `trick` `{winner,
+last}`; `collect` `{winner}`; `handEnd` `{result}` (a score row);
+`gameOver` `{total, winner}`; and the seat events of §7.
+
+### Bots (`internal/toepbot`)
+
+All levels play their cards by the same rules of thumb: keep the best card
+for the last trick, lead low from another suit, take the third trick with a
+card other than the best, throw the weakest card when you cannot follow.
+**Sterk** plays every legal card out in sampled deals of the hidden cards
+(240; within the suits each player showed it lacks, and weighted towards a
+strong hand for whoever toept) and keeps the one that wins most. Toepen,
+going along and claiming a was follow the chance to take the last trick
+(sampled: makkelijk 12 deals, normaal 48, sterk 240) against what is at
+stake: passing costs the stake before the toep, losing the stake, and going
+out counts as five points more (so who is out either way goes along). A
+real was is always claimed (makkelijk 70%); a hopeless hand is a bluff now
+and then. Checking weighs the chance of a real was among the cards unseen
+against a bluff rate. The persona's aggression lowers the bar for toepen
+and raises the bluffs. The arena test (2 × 1,500 and 2 × 700 duplicate
+rounds at four) has sterk take fewer points than normaal, and normaal than
+makkelijk. A sterk decision takes about 4 ms.
+
+### Frontend
+
+The home screen chooses the game (`kj.game`) for *Snel spelen* and *Nieuw
+spel*; the new-game sheet and the lobby have the row *Spel* and toepen's
+rows (*Spelers* 2–6, *Eruit bij*, *Was*, *Armoede*); toepen's options are
+remembered apart (`kj.toepen`). The lobby places up to six seats on an
+ellipse. A table of toepen loads `toepen.js`, `toepen-rules.js` and
+`toepen.css` the first time one shows (a page load fetches none of them):
+the seats on an ellipse over the top of the felt (you at the bottom, the
+others clockwise from your left), the trick around the stake chip, your
+four cards, and above them the question of the moment with its buttons
+(*Was!* / *Geen was* with the countdown, *Controleren* / *Laten gaan*,
+*Meegaan* / *Passen* with what passing costs, *Toep!* on your turn), the
+takeover question, a summary after every round, game over, *Stand* (the
+points and every round) and *Spelregels toepen*. Keys: 1–4 play a card,
+T toeps. Sound `knock` for a toep.
