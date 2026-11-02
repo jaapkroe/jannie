@@ -97,7 +97,8 @@ func (a *fakeAI) HandLuck(v game.View) float64 {
 }
 
 // Explain names the advised option as everyone's choice and values every
-// legal card, suit or bid at 0 but the advised one at 10.
+// legal card, suit or bid at 0 but the advised one at 10; a card below it
+// says why.
 func (a *fakeAI) Explain(v game.View) Explanation {
 	a.reasoned.Add(1)
 	adv := a.Advise(v)
@@ -110,6 +111,9 @@ func (a *fakeAI) Explain(v game.View) Explanation {
 	opt := func(o Choice, best bool) Option {
 		if best {
 			return Option{Choice: o, Value: 10, Outcome: Outcome{Us: 10}}
+		}
+		if o.Card != nil {
+			return Option{Choice: o, SE: 1, Why: "waarom de beste"}
 		}
 		return Option{Choice: o, SE: 1}
 	}

@@ -62,7 +62,7 @@ func (botAI) Explain(v game.View) server.Explanation {
 	}
 	for _, o := range e.Options {
 		out.Options = append(out.Options, server.Option{
-			Choice: choice(o.Choice), Value: o.Value, SE: o.SE, Outcome: server.Outcome(o.Outcome), Parts: o.Parts,
+			Choice: choice(o.Choice), Value: o.Value, SE: o.SE, Outcome: server.Outcome(o.Outcome), Parts: o.Parts, Why: o.Why,
 		})
 	}
 	return out

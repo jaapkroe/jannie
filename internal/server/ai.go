@@ -83,12 +83,14 @@ type Explanation struct {
 // Option is what the search found one option worth (see bot.Option):
 // Value is the expected score difference, SE the standard error of its
 // difference with the best option, Parts a card's value per part (points
-// in its trick and later, roem in its trick and later, nat and pit).
+// in its trick and later, roem in its trick and later, nat and pit), and
+// Why, for a card below the best, why the best brings more.
 type Option struct {
 	Choice
 	Value, SE float64
 	Outcome
 	Parts []float64
+	Why   string
 }
 
 // Signal is a card that told the partner something at this table (design

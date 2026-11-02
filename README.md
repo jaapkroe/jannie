@@ -55,7 +55,9 @@ it says otherwise.
   home screen): replay a game, or one hand of it, from its seed (the chat
   names it at the start of every game), at a seat of choice; ask the
   engine's reasoning for your move on your turn, or for any of your moves
-  in the hand (the rule, the hint and the value of every option), and leave
+  in the hand (the rule, the hint and the value of every option, and for
+  each option why the best brings more: which of your cards goes to the
+  opponents, who takes the last trick or who makes roem), and leave
   a comment on it, kept in the game log to improve the bots.
 - **Handleiding**: the controls, the rules (also for two and three players),
   card values, roem, signals (*seinen*, also called *voorkaarten*), tips, how

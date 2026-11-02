@@ -2,6 +2,7 @@ package bot
 
 import (
 	"math"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -33,22 +34,26 @@ func TestPairSE(t *testing.T) {
 }
 
 // TestSearchPairStats: searchPlay's squared differences are symmetric and
-// consistent with the totals (Σd² ≥ (Σd)²/n), and do not depend on the
-// number of goroutines.
+// consistent with the totals (Σd² ≥ (Σd)²/n), and they, the parts and the
+// playouts' events (one per world) do not depend on the number of
+// goroutines.
 func TestSearchPairStats(t *testing.T) {
 	_, v := benchViews()
 	tab := tableFromView(&v)
 	var runs [2][]playResult
 	for k, workers := range []int{1, 4} {
-		runs[k] = searchPlay(&v, &tab, searchConfig{playWorlds: 64, workers: workers}, 99, 0.5)
+		runs[k] = searchPlay(&v, &tab, searchConfig{playWorlds: 64, workers: workers, points: true}, 99, 0.5)
 	}
 	res := runs[0]
 	if len(res) < 3 {
 		t.Fatalf("want a view with at least 3 legal cards, got %d", len(res))
 	}
 	for i := range res {
-		if res[i] != runs[1][i] {
+		if !reflect.DeepEqual(res[i], runs[1][i]) {
 			t.Errorf("result %d differs with 4 workers: %+v vs %+v", i, res[i], runs[1][i])
+		}
+		if len(res[i].ev) != res[i].n {
+			t.Errorf("result %d: %d events for %d worlds", i, len(res[i].ev), res[i].n)
 		}
 		if res[i].diffSq[i] != 0 {
 			t.Errorf("diffSq[%d][%d] = %d", i, i, res[i].diffSq[i])

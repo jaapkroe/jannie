@@ -219,7 +219,7 @@ func (msg *whyMsg) fill(e Explanation) {
 	msg.Hint, msg.HintText, msg.Worlds = choiceJSON(e.Hint), e.HintText, e.Worlds
 	for _, o := range e.Options {
 		oj := optionJSON{choiceJSON: choiceJSON(o.Choice), Value: tenths(o.Value), SE: tenths(o.SE),
-			Us: tenths(o.Us), Them: tenths(o.Them), NatUs: share(o.NatUs), NatThem: share(o.NatThem)}
+			Us: tenths(o.Us), Them: tenths(o.Them), NatUs: share(o.NatUs), NatThem: share(o.NatThem), Why: o.Why}
 		for _, p := range o.Parts {
 			oj.Parts = append(oj.Parts, tenths(p))
 		}
