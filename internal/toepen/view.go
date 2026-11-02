@@ -16,13 +16,15 @@ type View struct {
 	Dealer   game.Seat
 	Voorhand game.Seat
 	Stake    int
-	Toeper   game.Seat // the last to toep, NoSeat before anyone did
-	Toeps    []Toep    // every raise so far
-	CanToep  bool      // Seat may toep now
-	CanRaise bool      // PhaseToep: Seat may toep again instead of answering (Overtoep)
-	MustStay bool      // PhaseToep: Seat may not pass (anti-lijntoep)
-	Koning   bool      // the koningsspel
-	Size     int       // cards dealt to each
+	Toeper   game.Seat   // the last to toep, NoSeat before anyone did
+	Toeps    []Toep      // every raise so far
+	CanToep  bool        // Seat may toep now
+	CanRaise bool        // PhaseToep: Seat may toep again instead of answering (Overtoep)
+	MustStay bool        // PhaseToep: Seat may not pass (anti-lijntoep)
+	Koning   bool        // the koningsspel
+	Size     int         // cards each plays with (eight in the koningsspel)
+	Lay      int         // PhaseDiscard: how many cards Seat lays away now
+	Laid     []game.Card // the cards Seat laid away (the koningsspel)
 	Hand     []game.Card
 	Legal    []game.Card // Seat's turn in PhasePlay
 
@@ -63,6 +65,8 @@ func (d *Deal) View(seat game.Seat) View {
 		MustStay: d.MustStay(seat),
 		Koning:   d.koning,
 		Size:     d.size,
+		Lay:      d.Lay(seat),
+		Laid:     d.Laid(seat),
 		WasRound: d.window,
 		Hand:     slices.Clone(d.hands[seat]),
 		Points:   d.points,
@@ -127,6 +131,7 @@ func (v *View) Seen() []game.Card {
 	for _, c := range v.Checks {
 		out = append(out, c.Cards...)
 	}
+	out = append(out, v.Laid...)
 	for s := range v.Players {
 		if s != int(v.Seat) {
 			out = append(out, v.Open[s]...)

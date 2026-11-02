@@ -54,10 +54,13 @@ variants are options.
   no overtoepen on this question. Nobody is the toeper then; who is on
   armoede may not toep at all.
 - **Koningsspel** (option `koning`, on by default): when everyone still in
-  the match stands on `limit − 1`, each gets eight cards (with five or six
-  players as many as the deck holds for all: six, five), and there is no
-  vuile was, no armoede and no toep (nobody may raise a stake that puts
-  them out). Who takes the last trick wins the match; the others go out.
+  the match stands on `limit − 1`, each gets eleven cards and, in turn from
+  voorhand, lays three away face down (`PhaseDiscard`, `Discard`), playing
+  with eight. With three players the deck holds ten each (two laid away),
+  with four eight (none), with five or six as many as it holds (six, five).
+  There is no vuile was, no armoede and no toep (nobody may raise a stake
+  that puts them out). Who takes the last trick wins the match; the others
+  go out.
 - **Play**: voorhand leads (the next player still in, when voorhand is
   out of the round). Follow suit when you can; otherwise any card, which
   cannot win. The highest card of the suit led takes the trick; its
@@ -92,14 +95,16 @@ variants are options.
   take that player out of the round at once.
 - Choices where the sources differ: a toep only on your own turn (the
   "more official" rule; others allow it any time); the deal passes
-  clockwise (rather than to the winner); the koningsspel with eight cards
-  for everyone left (rather than eleven and three laid away for two); the
-  boer takes one point off (rather than doubling the stake); anti-lijntoep
+  clockwise (rather than to the winner); the koningsspel's eleven cards
+  and three laid away, which the deck holds for two, is ten and two for
+  three and eight for four; laying away goes in turn (so a player who is
+  away gets the takeover question, as for any turn); the boer takes one
+  point off (rather than doubling the stake); anti-lijntoep
   counts every toep (rather than only the first of a round); there is no
   *blind toepen* and no cap on toepen.
 
-`Deal` is a pure state machine (`NewDeal`, `Was`, `CloseWas`, `Check`,
-`Toep`, `Overtoep`, `Answer`, `Play`, `View`, `Result`), `Match` the
+`Deal` is a pure state machine (`NewDeal`, `Discard`, `Was`, `CloseWas`,
+`Check`, `Toep`, `Overtoep`, `Answer`, `Play`, `View`, `Result`), `Match` the
 points, the passes in a row and the dealer. Tests: every rule above,
 table-driven, and 3,000 random matches at 2–8 players and every rule set
 checking that each round ends, points only grow (but for the boer), the
@@ -139,12 +144,13 @@ ordinary game.
 Toepen implements the table's `server.Game` (design §4.3) on its exported
 `*Table`: `toepenserver.New(ai)` with seats (2, 6, 4), `Options{Limit, Was,
 Armoede, Koning, Boer, Lijntoep, Bluf}` and toepen's own pacing; its `AI`
-gives the personas, a `Brain` per bot seat (`Was`, `Check`, `Toep`,
-`Overtoep`, `Answer`, `Play`) and the chat, and
+gives the personas, a `Brain` per bot seat (`Discard`, `Was`, `Check`,
+`Toep`, `Overtoep`, `Answer`, `Play`) and the chat, and
 nil plays plain bots. `cmd/toepen` runs it with toepen's bots
 (`internal/toepbot`) and the shared personas (`internal/persona`) with
 toepen's bios; it does not import klaverjas's packages. Room phases:
-`lobby`, `was`, `check`, `toep`, `play`, `handEnd`, `gameOver`.
+`lobby`, `discard` (the koningsspel), `was`, `check`, `toep`, `play`,
+`handEnd`, `gameOver`.
 
 - After the deal pause, the **time for a was** opens (the was window:
   rustig 10 s, normaal 8 s, snel 6 s; `nextAt` says when it ends; `turn` is
@@ -176,7 +182,8 @@ toepen's bios; it does not import klaverjas's packages. Room phases:
   "toepen", and `opts` the eleven of §2; no `training` or `expert`), then
   per round `{"t":"round", "hand", "dealer", "cards" (per seat as dealt,
   before any vuile was; "" for a seat out), "acts", "result"}` with `acts`
-  the seat and then `w` (claimed a vuile was), `c1`/`c0` (checked or not),
+  the seat and then `x` and the cards laid away (the koningsspel), `w`
+  (claimed a vuile was), `c1`/`c0` (checked or not),
   `t` (toep), `o` (overtoep), `a1`/`a0` (went along or passed) or a card;
   then `end` (`total`: the points, `winner`: the seat).
 
@@ -185,7 +192,8 @@ toepen's bios; it does not import klaverjas's packages. Room phases:
 Client → server, besides the table's messages of design §7 (`create`,
 `join`, `sit`, `bot`, `unbot`, `opts`, `start`, `ready`, `vote`, `chat`,
 `call`, `rtc`, `rematch`, `lobby`, `leave`, `ping`): `play` `{card}`,
-`toep`, `overtoep` (asked about a toep), `answer` `{play}` (true: go
+`discard` `{cards}` (the koningsspel: exactly `lay` cards), `toep`,
+`overtoep` (asked about a toep), `answer` `{play}` (true: go
 along), `was` `{play}` (true: claim) and `check` `{play}` (true: check). Klaverjas's messages (`trump`, `bid`,
 `why`, …) are unknown here ("Dat bericht ken ik niet."). Errors as design
 §7 (`niet-jouw-beurt`, `ongeldig` with the engine's Dutch text).
@@ -195,7 +203,9 @@ The state `s`: `code`, `phase`, `opts`, `you`, `host`, `roster` (lobby),
 `takeover`, `nextAt` (the end of the time for a was, or of the summary),
 `winner` (the seat left); `handNo` (the round), `dealer`, `voorhand`,
 `stake`, `toeper` (-1; the last to raise), `armoedeToep`, `koning`, `size`
-(cards dealt to each: 4, 8 in the koningsspel), `wasRound` (the time for a
+(cards each plays with: 4, 8 in the koningsspel), `lay` (the koningsspel,
+your turn: how many to lay away), `laid` (per seat, how many it laid
+away), `wasRound` (the time for a
 was: 1, 2, …), `canRaise` and `mustStay` (asked about a toep: you may
 overtoep; you may not pass), `open` (per seat: its hand when played face
 up after a bluff, else empty), `points` (per seat, now; the boer takes one
@@ -210,7 +220,7 @@ just taken until `collect`), `lastTrick`, `tricks` (taken this round) and
 `rounds` (the score sheet: `{hand, dealer, winner, stake, tricks, boer,
 koning, gains, points, out}`, `gains` -1 for the boer).
 
-Events: `deal` `{handNo, dealer, koning}`; `claims` `{seats}`; `check`
+Events: `deal` `{handNo, dealer, koning}`; `discard` `{seat, n}`; `claims` `{seats}`; `check`
 `{seat, claimant, check}`; `wasDone` `{claimant, checker, kind, cards,
 genuine, washed, shown}`; `toep` `{seat, stake, over}` (over: an
 overtoep); `answer` `{seat, stay, points}`;
@@ -232,7 +242,11 @@ a vuile was follow the chance to take the last trick
 (sampled: makkelijk 12 deals, normaal 48, sterk 240) against what is at
 stake: passing costs the stake before the toep, losing the stake, and going
 out counts as five points more (so who is out either way goes along).
-Overtoepen asks for a surer hand than a toep, and more so the higher the
+In the koningsspel sterk tries every choice of cards to lay away in the
+same 24 sampled deals and keeps the eight that take the last trick most
+often (against normaal it wins 102 of 150 koningsspellen where the
+weakest-cards rule wins 74); normaal lays away its weakest cards,
+makkelijk now and then any. Overtoepen asks for a surer hand than a toep, and more so the higher the
 stake (never at 5 or more; makkelijk only with a near-certain last trick),
 so two bots do not raise each other without end. Under anti-lijntoep a bot
 goes along when it must. A real vuile was is always claimed (makkelijk
@@ -263,14 +277,17 @@ The shell of design §9 with toepen's `game.js`:
   ellipse over the top of the felt (you at the bottom, the others clockwise
   from your left), the trick around the stake chip, your cards (four;
   eight overlapping in the koningsspel), and above them the question of
-  the moment with its buttons (*Vuile was!* / *Geen* with the countdown,
+  the moment with its buttons (in the koningsspel first *Wegleggen*, once
+  the cards to lay away are tapped; *Vuile was!* / *Geen* with the countdown,
   only *Geen* on armoede without a real one; *Controleren* / *Laten
   gaan*; *Meegaan* / *Overtoepen* / *Passen* with what passing costs,
   *Passen* gone under anti-lijntoep; *Toep!* on your turn, and when you
-  may not toep, why), the takeover question, a summary after every round
+  may not toep, why: on armoede, out at the stake already, the
+  koningsspel, or you raised last), the takeover question, a summary after every round
   (the boer's point off as 🏆 -1), game over, *Stand* (the points and every
   round) and the manual. A vuile was handed in flies face down to a small
-  pile beside the claimant's seat (×n when more than once) and four new
+  pile beside the claimant's seat (×n when more than once; the cards laid
+  away in the koningsspel lie there too) and four new
   cards come from the middle; on armoede the hand is shown in the middle
   first; a caught bluffer's cards lie face up at its seat (*speelt
   open*). Keys: 1–4 (1–8) play a card, T toeps or overtoeps. Sound

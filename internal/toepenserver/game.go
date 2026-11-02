@@ -20,12 +20,13 @@ import (
 // Brain makes the decisions of one bot seat. The table calls one brain
 // from one goroutine at a time.
 type Brain interface {
-	Was(v toepen.View) bool       // right after the deal: claim a was (only asked when v.CanClaim)?
-	Check(v toepen.View) bool     // check the claimed was of v.Claimant?
-	Toep(v toepen.View) bool      // on its turn to play: toep first (only asked when v.CanToep)?
-	Overtoep(v toepen.View) bool  // asked about a toep: toep again (only asked when v.CanRaise)?
-	Answer(v toepen.View) bool    // go along with the toep (else pass; true when v.MustStay)?
-	Play(v toepen.View) game.Card // one of v.Legal
+	Was(v toepen.View) bool            // right after the deal: claim a was (only asked when v.CanClaim)?
+	Discard(v toepen.View) []game.Card // the koningsspel: the v.Lay cards to lay away
+	Check(v toepen.View) bool          // check the claimed was of v.Claimant?
+	Toep(v toepen.View) bool           // on its turn to play: toep first (only asked when v.CanToep)?
+	Overtoep(v toepen.View) bool       // asked about a toep: toep again (only asked when v.CanRaise)?
+	Answer(v toepen.View) bool         // go along with the toep (else pass; true when v.MustStay)?
+	Play(v toepen.View) game.Card      // one of v.Legal
 }
 
 // AI is what tables of toepen need from the bots.

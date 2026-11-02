@@ -1,6 +1,8 @@
 package toepbot
 
 import (
+	"slices"
+
 	"klaverjas/internal/game"
 	"klaverjas/internal/toepen"
 )
@@ -83,11 +85,12 @@ func weakest(cs []game.Card) game.Card {
 	return low
 }
 
-// without is cs less c, or cs itself when that would leave nothing.
-func without(cs []game.Card, c game.Card) []game.Card {
+// without is cs less the cards drop, or cs itself when that would leave
+// nothing.
+func without(cs []game.Card, drop ...game.Card) []game.Card {
 	var out []game.Card
 	for _, x := range cs {
-		if x != c {
+		if !slices.Contains(drop, x) {
 			out = append(out, x)
 		}
 	}

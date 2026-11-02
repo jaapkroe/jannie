@@ -641,6 +641,11 @@ body {
   margin-left: calc(var(--card-w) * -0.36);
 }
 
+/* Eleven (the koningsspel, before laying away): more overlap. */
+.tp-hand.lots .card + .card {
+  margin-left: calc(var(--card-w) * -0.52);
+}
+
 .tp-hand .card {
   cursor: default;
   transition: translate 0.15s var(--ease), filter 0.2s;

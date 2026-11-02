@@ -66,7 +66,9 @@ func TestToepAI(t *testing.T) {
 }
 
 // decide applies the decision of the brain whose answer the round of d
-// awaits (or of every seat in the time for a was).
+// awaits (or of every seat in the time for a was): the cards laid away in
+// the koningsspel, a vuile was, a check, an overtoep or an answer, a toep
+// or a card.
 func decide(d *toepen.Deal, brains []toepenserver.Brain) error {
 	switch d.Phase() {
 	case toepen.PhaseWas:
@@ -83,8 +85,14 @@ func decide(d *toepen.Deal, brains []toepenserver.Brain) error {
 		s := d.Turn()
 		_, err := d.Check(s, brains[s].Check(d.View(s)))
 		return err
+	case toepen.PhaseDiscard:
+		s := d.Turn()
+		return d.Discard(s, brains[s].Discard(d.View(s)))
 	case toepen.PhaseToep:
 		s := d.Turn()
+		if v := d.View(s); v.CanRaise && brains[s].Overtoep(v) {
+			return d.Overtoep(s)
+		}
 		return d.Answer(s, brains[s].Answer(d.View(s)))
 	case toepen.PhasePlay:
 		s := d.Turn()

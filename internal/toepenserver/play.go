@@ -3,6 +3,7 @@ package toepenserver
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -33,10 +34,11 @@ type play struct {
 
 // Room phases of toepen, besides the table's (lobby, handEnd, gameOver).
 const (
-	phaseWas   = "was"   // right after the deal, everyone says whether they have a was
-	phaseCheck = "check" // a claimed was; the others are asked in turn whether they check it
-	phaseToep  = "toep"  // after a toep, the others say in turn whether they go along
-	phasePlay  = "play"
+	phaseWas     = "was"     // right after the deal, everyone says whether they have a was
+	phaseCheck   = "check"   // a claimed was; the others are asked in turn whether they check it
+	phaseToep    = "toep"    // after a toep, the others say in turn whether they go along
+	phaseDiscard = "discard" // the koningsspel: in turn each lays its extra cards away
+	phasePlay    = "play"
 )
 
 // The decisions of toepen.
@@ -49,13 +51,15 @@ const (
 	actAnswer                      // play: go along with the toep, else pass
 	actWas                         // play: claim a was, else not
 	actCheck                       // play: check the claimed was, else let it go
+	actDiscard                     // cards: laid away in the koningsspel
 )
 
 // action is one decision of a seat.
 type action struct {
-	kind actKind
-	play bool
-	card game.Card
+	kind  actKind
+	play  bool
+	card  game.Card
+	cards []game.Card
 }
 
 func (p *play) opts() *Options { return p.t.Options().(*Options) }
@@ -91,9 +95,13 @@ func (p *play) deal() {
 	t.SetPhase(p.phase())
 	t.Pause(stepDealt, t.Pace().Deal)
 	t.Emit(evDeal{Type: "deal", HandNo: p.handNo, Dealer: p.d.Dealer(), Koning: p.d.Koning()})
-	if p.d.Koning() {
-		t.SysChat("Koningsspel: iedereen die nog meedoet, staat op armoede. %d kaarten elk, zonder vuile was en zonder toepen: wie de laatste slag haalt, wint het spel.",
-			p.d.Size())
+	if d := p.d; d.Koning() {
+		lay := ""
+		if d.DealtSize() > d.Size() {
+			lay = fmt.Sprintf(" Leg er eerst %d dicht weg.", d.DealtSize()-d.Size())
+		}
+		t.SysChat("Koningsspel: iedereen die nog meedoet, staat op armoede. %d kaarten elk; je speelt met %d, zonder vuile was en zonder toepen: wie de laatste slag haalt, wint het spel.%s",
+			d.DealtSize(), d.Size(), lay)
 		t.BotsReact(1, 1200*time.Millisecond, func(i game.Seat) (server.ChatEvent, bool) {
 			return server.ChatEvent{Kind: "koning", Mine: true}, p.d.Status(i) == toepen.StatusIn
 		})
@@ -109,6 +117,8 @@ func (p *play) phase() string {
 		return phaseCheck
 	case toepen.PhaseToep:
 		return phaseToep
+	case toepen.PhaseDiscard:
+		return phaseDiscard
 	}
 	return phasePlay
 }
@@ -265,8 +275,9 @@ func (p *play) afterWas() {
 
 // The messages of toepen (design §11).
 type toepMsg struct {
-	Card string `json:"card"`
-	Play *bool  `json:"play"`
+	Card  string   `json:"card"`
+	Cards []string `json:"cards"`
+	Play  *bool    `json:"play"`
 }
 
 func (p *play) Move(i game.Seat, m server.Msg) error {
@@ -280,6 +291,15 @@ func (p *play) Move(i game.Seat, m server.Msg) error {
 			return errors.New("Die kaart bestaat niet.")
 		}
 		a = action{kind: actPlay, card: card}
+	case "discard":
+		a = action{kind: actDiscard}
+		for _, s := range msg.Cards {
+			c, err := game.ParseCard(s)
+			if err != nil {
+				return errors.New("Die kaart bestaat niet.")
+			}
+			a.cards = append(a.cards, c)
+		}
 	case "toep":
 		a = action{kind: actToep}
 	case "overtoep":
@@ -323,6 +343,8 @@ func (p *play) Decision(i game.Seat, brain any) (func() any, any) {
 // decide asks the brain for the decision of view v.
 func decide(b Brain, v toepen.View) action {
 	switch v.Phase {
+	case toepen.PhaseDiscard:
+		return action{kind: actDiscard, cards: b.Discard(v)}
 	case toepen.PhaseWas:
 		return action{kind: actWas, play: v.CanClaim && b.Was(v)}
 	case toepen.PhaseCheck:
@@ -345,6 +367,8 @@ func decide(b Brain, v toepen.View) action {
 // along, the first legal card.
 func safe(v toepen.View) action {
 	switch v.Phase {
+	case toepen.PhaseDiscard:
+		return action{kind: actDiscard, cards: safeLay(v)}
 	case toepen.PhaseWas:
 		return action{kind: actWas}
 	case toepen.PhaseCheck:
@@ -380,6 +404,14 @@ func (p *play) Apply(i game.Seat, a any) error {
 	}
 	pace := t.Pace()
 	switch act.kind {
+	case actDiscard:
+		if err := d.Discard(i, act.cards); err != nil {
+			return err
+		}
+		p.act(i, "x"+cardsString(act.cards))
+		t.SetPhase(p.phase())
+		t.OpenTurn()
+		t.Emit(evDiscard{Type: "discard", Seat: i, N: len(act.cards)})
 	case actToep:
 		if err := d.Toep(i); err != nil {
 			return err
@@ -482,9 +514,10 @@ func (p *play) Apply(i game.Seat, a any) error {
 	return nil
 }
 
-// act adds a decision to the round's log: the seat, then "w" (a was
-// claimed), "c1"/"c0" (checked or not), "t" (toep), "o" (overtoep),
-// "a1"/"a0" (went along or passed) or a card.
+// act adds a decision to the round's log: the seat, then "x" and the
+// cards laid away (the koningsspel), "w" (a was claimed), "c1"/"c0"
+// (checked or not), "t" (toep), "o" (overtoep), "a1"/"a0" (went along or
+// passed) or a card.
 func (p *play) act(i game.Seat, what string) {
 	if p.acts != "" {
 		p.acts += " "
@@ -576,6 +609,16 @@ func (p *play) chatCheck(res *toepen.Check) {
 			t.BotSay(res.Checker, server.ChatEvent{Kind: "checkRight", Mine: true}, 900*time.Millisecond)
 		}
 	}
+}
+
+// safeLay is the cards to lay away without any thought: the weakest.
+func safeLay(v toepen.View) []game.Card {
+	if v.Lay <= 0 || v.Lay > len(v.Hand) {
+		return nil
+	}
+	h := slices.Clone(v.Hand)
+	slices.SortStableFunc(h, func(a, b game.Card) int { return toepen.Strength(a.Rank) - toepen.Strength(b.Rank) })
+	return h[:v.Lay]
 }
 
 // tellShown tells the table of the claims settled without a question: on

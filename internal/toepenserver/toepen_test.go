@@ -72,11 +72,12 @@ func (b *testBrain) chance(p float64) bool {
 	return b.rng.Float64() < p
 }
 
-func (b *testBrain) Was(v toepen.View) bool    { return b.chance(0.2) }
-func (b *testBrain) Check(v toepen.View) bool  { return b.chance(0.4) }
-func (b *testBrain) Toep(v toepen.View) bool   { return b.chance(0.15) }
-func (b *testBrain) Overtoep(toepen.View) bool { return b.chance(0.1) }
-func (b *testBrain) Answer(v toepen.View) bool { return b.chance(0.7) }
+func (b *testBrain) Was(v toepen.View) bool            { return b.chance(0.2) }
+func (b *testBrain) Check(v toepen.View) bool          { return b.chance(0.4) }
+func (b *testBrain) Toep(v toepen.View) bool           { return b.chance(0.15) }
+func (b *testBrain) Overtoep(toepen.View) bool         { return b.chance(0.1) }
+func (b *testBrain) Discard(v toepen.View) []game.Card { return v.Hand[len(v.Hand)-v.Lay:] }
+func (b *testBrain) Answer(v toepen.View) bool         { return b.chance(0.7) }
 func (b *testBrain) Play(v toepen.View) game.Card {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -110,6 +111,12 @@ func toepTurn(c *servertest.Client, s *state, rng *rand.Rand) bool {
 		return false
 	case s.Phase == phaseCheck:
 		c.Send(map[string]any{"t": "check", "play": rng.IntN(2) == 0})
+	case s.Phase == phaseDiscard && s.Lay > 0:
+		var cards []string
+		for _, k := range rng.Perm(len(s.Hand))[:s.Lay] {
+			cards = append(cards, s.Hand[k].String())
+		}
+		c.Send(map[string]any{"t": "discard", "cards": cards})
 	case s.Phase == phaseToep && s.CanRaise && rng.IntN(6) == 0:
 		c.Send(map[string]any{"t": "overtoep"})
 	case s.Phase == phaseToep:
@@ -128,7 +135,7 @@ func toepTurn(c *servertest.Client, s *state, rng *rand.Rand) bool {
 // toepen's, without klaverjas's game, training and expert.
 var toepKeys = append(slices.Clone(servertest.SharedKeys),
 	"winner", "handNo", "dealer", "voorhand", "stake", "toeper", "armoedeToep", "koning", "size", "wasRound",
-	"canRaise", "mustStay", "open", "points",
+	"canRaise", "mustStay", "open", "lay", "laid", "points",
 	"status", "armoede", "washed", "answered", "claims", "canClaim", "claimant", "asking", "checks",
 	"stock", "hand", "canToep", "trick", "lastTrick", "tricks", "rounds",
 )
@@ -330,8 +337,9 @@ func TestToepenLobby(t *testing.T) {
 	if s := toepS(t, m); s.Phase != phaseWas && s.Phase != phasePlay || len(s.Hand) != 4 || s.Players[4] == nil || !s.Players[4].Bot {
 		t.Errorf("started: phase %s hand %v", s.Phase, s.Hand)
 	}
-	// The messages of klaverjas are none of toepen's.
-	for _, typ := range []string{"trump", "why", "handReview", "tipRead", "feedback", "bid", "auction", "discard"} {
+	// The messages of klaverjas are none of toepen's (discard is toepen's
+	// too, for the koningsspel).
+	for _, typ := range []string{"trump", "why", "handReview", "tipRead", "feedback", "bid", "auction"} {
 		h.Send(map[string]any{"t": typ, "suit": "H", "hand": 1, "trick": 1})
 		if m := h.WaitError("ongeldig"); m.ErrMsg() != "Dat bericht ken ik niet." {
 			t.Errorf("%s in toepen: %q", typ, m.ErrMsg())
@@ -634,22 +642,24 @@ func TestToepenBadBots(t *testing.T) {
 
 type panicBrain struct{}
 
-func (panicBrain) Was(toepen.View) bool         { panic("was") }
-func (panicBrain) Check(toepen.View) bool       { panic("check") }
-func (panicBrain) Toep(toepen.View) bool        { panic("toep") }
-func (panicBrain) Overtoep(toepen.View) bool    { panic("overtoep") }
-func (panicBrain) Answer(toepen.View) bool      { panic("answer") }
-func (panicBrain) Play(v toepen.View) game.Card { panic("play") }
+func (panicBrain) Was(toepen.View) bool            { panic("was") }
+func (panicBrain) Check(toepen.View) bool          { panic("check") }
+func (panicBrain) Toep(toepen.View) bool           { panic("toep") }
+func (panicBrain) Overtoep(toepen.View) bool       { panic("overtoep") }
+func (panicBrain) Discard(toepen.View) []game.Card { panic("discard") }
+func (panicBrain) Answer(toepen.View) bool         { panic("answer") }
+func (panicBrain) Play(v toepen.View) game.Card    { panic("play") }
 
 // illegalBrain claims every was it may, checks every claim, never toeps
 // and plays a card it does not hold.
 type illegalBrain struct{}
 
-func (illegalBrain) Was(toepen.View) bool      { return true }
-func (illegalBrain) Check(toepen.View) bool    { return true }
-func (illegalBrain) Toep(toepen.View) bool     { return false }
-func (illegalBrain) Overtoep(toepen.View) bool { return true }
-func (illegalBrain) Answer(toepen.View) bool   { return true }
+func (illegalBrain) Was(toepen.View) bool              { return true }
+func (illegalBrain) Check(toepen.View) bool            { return true }
+func (illegalBrain) Toep(toepen.View) bool             { return false }
+func (illegalBrain) Overtoep(toepen.View) bool         { return true }
+func (illegalBrain) Discard(v toepen.View) []game.Card { return v.Hand[:1] }
+func (illegalBrain) Answer(toepen.View) bool           { return true }
 func (illegalBrain) Play(v toepen.View) game.Card {
 	for _, c := range game.NewDeck() {
 		if !slices.Contains(v.Hand, c) {

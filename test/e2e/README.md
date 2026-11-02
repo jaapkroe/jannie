@@ -41,8 +41,9 @@ messages with "Dat bericht ken ik niet.", and the other way round.
 With only a URL it plays five matches: tables of 2 to 6 with one to four
 humans, every AI level, a limit of 10 or 15, and the extra rules on and
 off (vuile was, armoede, koningsspel, boer, anti-lijntoep, open after a
-bluff). Simulated players claim a vuile was now and then (bluffs
-included, again with new cards), check, toep, overtoep, go along or pass
+bluff). Simulated players lay away random cards in the koningsspel, claim
+a vuile was now and then (bluffs included, again with new cards), check,
+toep, overtoep, go along or pass
 at random (going along when anti-lijntoep says so), play a random legal
 card, and press *ready* after half the rounds (the others wait for the
 summary's own time). Any option plays that one configuration instead:

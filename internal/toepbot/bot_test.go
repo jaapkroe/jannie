@@ -34,6 +34,11 @@ func decide(t testing.TB, d *toepen.Deal, bots []*Player) {
 		if _, err := d.Check(s, bots[s].Check(d.View(s))); err != nil {
 			t.Fatal(err)
 		}
+	case toepen.PhaseDiscard:
+		s := d.Turn()
+		if err := d.Discard(s, bots[s].Discard(d.View(s))); err != nil {
+			t.Fatal(err)
+		}
 	case toepen.PhaseToep:
 		s := d.Turn()
 		if v := d.View(s); bots[s].Overtoep(v) {
@@ -271,5 +276,33 @@ func TestChat(t *testing.T) {
 	}
 	if Chat("dirk", 1, ChatEvent{Kind: "nope"}, rng) != "" {
 		t.Error("a line for an unknown kind")
+	}
+}
+
+// In the koningsspel every level lays away legal cards, and sterk's eight
+// take the last trick at least as often as the weakest-cards rule's.
+func TestDiscard(t *testing.T) {
+	rng := rand.New(rand.NewPCG(5, 6))
+	rules := toepen.DefaultRules
+	won := map[Level]int{}
+	for k := range 150 {
+		deck := toepen.Shuffle(rng)
+		for _, lvl := range []Level{Makkelijk, Normaal, Sterk} {
+			d := toepen.NewDeal(2, rules, 1, [toepen.MaxPlayers]int{9, 9}, deck)
+			if d.Phase() != toepen.PhaseDiscard {
+				t.Fatalf("no laying away: %v", d.Phase())
+			}
+			bots := []*Player{New(0.5, lvl, uint64(k)), New(0.5, Normaal, uint64(k)+1)}
+			for d.Phase() != toepen.PhaseDone {
+				decide(t, d, bots)
+			}
+			if d.Result().Winner == 0 {
+				won[lvl]++
+			}
+		}
+	}
+	t.Logf("koningsspel won against normaal of 150: %v", won)
+	if won[Sterk] < won[Normaal] {
+		t.Errorf("sterk lays away worse than the rule: %v", won)
 	}
 }

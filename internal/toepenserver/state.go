@@ -24,7 +24,9 @@ type state struct {
 	Toeper      int             `json:"toeper"`      // the last to toep this round, -1
 	ArmoedeToep bool            `json:"armoedeToep"` // the stake went up for armoede
 	Koning      bool            `json:"koning"`      // the koningsspel: eight cards each, the last trick wins the match
-	Size        int             `json:"size"`        // cards dealt to each this round
+	Size        int             `json:"size"`        // cards each plays with this round (8 in the koningsspel)
+	Lay         int             `json:"lay"`         // the koningsspel, your turn: how many cards you lay away
+	Laid        []int           `json:"laid"`        // the koningsspel: per seat, how many cards it laid away
 	WasRound    int             `json:"wasRound"`    // the time for a was: 1, more when new cards may be washed again
 	CanRaise    bool            `json:"canRaise"`    // asked about a toep: you may toep again (overtoep)
 	MustStay    bool            `json:"mustStay"`    // asked about a toep: you may not pass (anti-lijntoep)
@@ -72,6 +74,7 @@ func (p *play) State(i game.Seat) any {
 		Dealer: -1, Voorhand: -1, Toeper: -1, Claimant: -1,
 		Points: make([]int, n), Status: make([]toepen.Status, n), Armoede: make([]bool, n),
 		Washed: make([]bool, n), Answered: make([]bool, n), Claims: make([]bool, n), Open: make([][]game.Card, n),
+		Laid:   make([]int, n),
 		Asking: []int{}, Checks: []toepen.Check{}, Hand: []game.Card{}, Rounds: nonNil(p.rounds),
 	}
 	for k := range s.Open {
@@ -103,6 +106,7 @@ func (p *play) State(i game.Seat) any {
 		s.Washed[k] = d.Washed(k)
 		s.Answered[k] = d.Answered(k)
 		s.Claims[k] = d.Claimed(k)
+		s.Laid[k] = len(d.Laid(k))
 	}
 	if ts := d.Tricks(); len(ts) > 0 {
 		last := ts[len(ts)-1]
@@ -142,6 +146,9 @@ func (p *play) State(i game.Seat) any {
 		}
 		s.Rule = d.Constraint()
 		s.CanToep = d.CanToep(i)
+	}
+	if s.Turn == int(i) && d.Phase() == toepen.PhaseDiscard {
+		s.Lay = d.Lay(i)
 	}
 	if s.Turn == int(i) && d.Phase() == toepen.PhaseToep {
 		s.CanRaise, s.MustStay = d.CanRaise(i), d.MustStay(i)
@@ -206,6 +213,13 @@ type evWasDone struct {
 
 // evToep: seat raised the stake to stake, on its turn, or as the answer
 // to a toep (over: an overtoep).
+// evDiscard: in the koningsspel seat laid n cards away, face down.
+type evDiscard struct {
+	Type string    `json:"type"` // "discard"
+	Seat game.Seat `json:"seat"`
+	N    int       `json:"n"`
+}
+
 type evToep struct {
 	Type  string    `json:"type"` // "toep"
 	Seat  game.Seat `json:"seat"`

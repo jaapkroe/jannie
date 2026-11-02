@@ -40,6 +40,9 @@ const (
 	// they go along, pass (Answer) or, after a toep, toep again
 	// (Overtoep).
 	PhaseToep Phase = "toep"
+	// PhaseDiscard: the koningsspel; in turn from voorhand each lays the
+	// cards it holds beyond the hand played away, face down (Discard).
+	PhaseDiscard Phase = "discard"
 	// PhasePlay: tricks; on their turn a player plays a card or toeps.
 	PhasePlay Phase = "play"
 	PhaseDone Phase = "done"
@@ -82,19 +85,20 @@ func (s *Status) UnmarshalText(b []byte) error {
 
 // Errors, in Dutch: safe to show.
 var (
-	ErrWrongPhase  = errors.New("Dat kan nu niet.")
-	ErrNotYourTurn = errors.New("Je bent niet aan de beurt.")
-	ErrNotIn       = errors.New("Je speelt dit potje niet (meer) mee.")
-	ErrNotInHand   = errors.New("Die kaart heb je niet.")
-	ErrIllegal     = errors.New("Die kaart mag niet.")
-	ErrToepAgain   = errors.New("Je toepte zelf het laatst: eerst moet een ander toepen.")
-	ErrAnswered    = errors.New("Je hebt al gezegd of je een vuile was hebt.")
-	ErrNoStock     = errors.New("De stapel is op: er kan niemand meer wassen.")
-	ErrToepArmoede = errors.New("Op armoede kun je niet toepen.")
-	ErrToepDead    = errors.New("Met deze inzet lig je er bij verlies al uit: dan kun je niet toepen.")
-	ErrNoRaise     = errors.New("Overtoepen kan alleen op een toep.")
-	ErrMustStay    = errors.New("Anti-lijntoep: je paste al twee keer achter elkaar, nu moet je mee.")
-	ErrPoorBluff   = errors.New("Op armoede mag je alleen een echte vuile was inleveren.")
+	ErrWrongPhase   = errors.New("Dat kan nu niet.")
+	ErrNotYourTurn  = errors.New("Je bent niet aan de beurt.")
+	ErrNotIn        = errors.New("Je speelt dit potje niet (meer) mee.")
+	ErrNotInHand    = errors.New("Die kaart heb je niet.")
+	ErrIllegal      = errors.New("Die kaart mag niet.")
+	ErrToepAgain    = errors.New("Je toepte zelf het laatst: eerst moet een ander toepen.")
+	ErrAnswered     = errors.New("Je hebt al gezegd of je een vuile was hebt.")
+	ErrNoStock      = errors.New("De stapel is op: er kan niemand meer wassen.")
+	ErrToepArmoede  = errors.New("Op armoede kun je niet toepen.")
+	ErrToepDead     = errors.New("Met deze inzet lig je er bij verlies al uit: dan kun je niet toepen.")
+	ErrNoRaise      = errors.New("Overtoepen kan alleen op een toep.")
+	ErrMustStay     = errors.New("Anti-lijntoep: je paste al twee keer achter elkaar, nu moet je mee.")
+	ErrPoorBluff    = errors.New("Op armoede mag je alleen een echte vuile was inleveren.")
+	ErrDiscardTwice = errors.New("Leg elke kaart maar één keer weg.")
 )
 
 // IllegalError is a card that may not be played, with the reason.
@@ -163,9 +167,11 @@ type Deal struct {
 	armoedeT bool      // the stake was raised for armoede
 	poorAsk  bool      // PhaseToep: the question is armoede's, not a toep's
 	toeps    []Toep
-	koning   bool            // the koningsspel
-	size     int             // cards dealt to each
-	streak   [MaxPlayers]int // passes on a toep in a row, also in rounds before (anti-lijntoep)
+	koning   bool                    // the koningsspel
+	size     int                     // cards each plays with
+	dealt    int                     // cards dealt to each: size, or more in the koningsspel
+	laid     [MaxPlayers][]game.Card // the koningsspel: the cards each laid away, face down
+	streak   [MaxPlayers]int         // passes on a toep in a row, also in rounds before (anti-lijntoep)
 
 	start   [MaxPlayers]int // penalty points at the deal
 	points  [MaxPlayers]int // penalty points now
@@ -198,8 +204,9 @@ type Deal struct {
 // order from voorhand, the first seat in the match after dealer, which
 // must be in it. The rest of the deck is the stock for a was. When
 // everyone left stands one point from out and the rules have the
-// koningsspel, each gets eight cards instead (fewer when the deck does not
-// hold eight for all), and there is no was and no armoede.
+// koningsspel, each gets eleven cards instead (as many as the deck holds
+// for all), lays away down to eight (PhaseDiscard) and plays those; there
+// is no was and no armoede.
 func NewDeal(players int, rules Rules, dealer game.Seat, points [MaxPlayers]int, deck []game.Card) *Deal {
 	d := &Deal{
 		players: players,
@@ -223,19 +230,30 @@ func NewDeal(players int, rules Rules, dealer game.Seat, points [MaxPlayers]int,
 		}
 	}
 	d.koning = rules.Koning && in >= 2 && poor == in
-	d.size = HandSize
+	d.size, d.dealt = HandSize, HandSize
 	if d.koning {
-		d.size = min(KoningSize, len(deck)/in)
+		d.dealt = min(KoningDeal, len(deck)/in)
+		d.size = min(KoningSize, d.dealt)
 	}
 	d.voorhand = d.nextIn(dealer)
 	at := 0
 	for k, s := 0, d.voorhand; k < players; k, s = k+1, d.next(s) {
 		if d.status[s] == StatusIn {
-			d.hands[s] = slices.Clone(deck[at : at+d.size])
-			at += d.size
+			d.hands[s] = slices.Clone(deck[at : at+d.dealt])
+			at += d.dealt
 		}
 	}
 	d.stock = slices.Clone(deck[at:])
+	if d.dealt > d.size {
+		for k, s := 0, d.voorhand; k < players; k, s = k+1, d.next(s) {
+			if d.status[s] == StatusIn {
+				d.asking = append(d.asking, s)
+			}
+		}
+		d.phase = PhaseDiscard
+		d.turn = d.asking[0]
+		return d
+	}
 	if rules.Was && !d.koning && len(d.stock) >= HandSize {
 		d.phase = PhaseWas
 		d.window = 1
@@ -536,6 +554,53 @@ func (d *Deal) startPlay() {
 	d.turn = d.current.Leader
 }
 
+// ---- the koningsspel: laying away ----
+
+// Lay is how many cards seat must lay away now: in PhaseDiscard on its
+// turn, what it holds beyond the hand played; else 0.
+func (d *Deal) Lay(seat game.Seat) int {
+	if d.phase != PhaseDiscard || seat != d.turn {
+		return 0
+	}
+	return len(d.hands[seat]) - d.size
+}
+
+// Discard lays cards of seat away, face down: exactly Lay(seat) of them.
+// In turn from voorhand; after the last, voorhand leads.
+func (d *Deal) Discard(seat game.Seat, cards []game.Card) error {
+	switch {
+	case d.phase != PhaseDiscard:
+		return ErrWrongPhase
+	case seat != d.turn:
+		return ErrNotYourTurn
+	case len(cards) != d.Lay(seat):
+		return fmt.Errorf("Leg precies %d kaarten weg.", d.Lay(seat))
+	}
+	hand := slices.Clone(d.hands[seat])
+	for k, c := range cards {
+		if slices.Contains(cards[:k], c) {
+			return ErrDiscardTwice
+		}
+		i := slices.Index(hand, c)
+		if i < 0 {
+			return ErrNotInHand
+		}
+		hand = slices.Delete(hand, i, i+1)
+	}
+	d.hands[seat] = hand
+	d.laid[seat] = slices.Clone(cards)
+	d.asking = d.asking[1:]
+	if len(d.asking) > 0 {
+		d.turn = d.asking[0]
+		return nil
+	}
+	d.startPlay()
+	return nil
+}
+
+// Laid is the cards seat laid away in the koningsspel.
+func (d *Deal) Laid(seat game.Seat) []game.Card { return slices.Clone(d.laid[seat]) }
+
 // ---- toepen ----
 
 // CanToep reports whether seat may toep now: on its turn to play, unless
@@ -804,7 +869,7 @@ func (d *Deal) Dealt(seat game.Seat) []game.Card {
 	if d.washed[seat] {
 		return slices.Clone(d.given[seat][:HandSize])
 	}
-	h := slices.Clone(d.hands[seat])
+	h := append(slices.Clone(d.hands[seat]), d.laid[seat]...)
 	for _, t := range d.tricks {
 		for _, p := range t.Cards {
 			if p.Seat == seat {
@@ -839,9 +904,10 @@ func (d *Deal) Constraint() string {
 // Koning reports whether this round is the koningsspel.
 func (d *Deal) Koning() bool { return d.koning }
 
-// Size is the number of cards each was dealt: four, or eight in the
-// koningsspel.
-func (d *Deal) Size() int { return d.size }
+// Size is the number of cards each plays with: four, or eight in the
+// koningsspel; DealtSize what each was dealt (eleven in the koningsspel).
+func (d *Deal) Size() int      { return d.size }
+func (d *Deal) DealtSize() int { return d.dealt }
 
 // WasRound is the time for a was this is or was last: 1, then one more
 // each time a claim got new cards and may be washed again; 0 without one.
@@ -892,6 +958,7 @@ func (d *Deal) Clone() *Deal {
 	for s := range d.hands {
 		c.hands[s] = slices.Clone(d.hands[s])
 		c.given[s] = slices.Clone(d.given[s])
+		c.laid[s] = slices.Clone(d.laid[s])
 	}
 	c.stock = slices.Clone(d.stock)
 	c.claims = slices.Clone(d.claims)

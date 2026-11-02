@@ -12,7 +12,7 @@ export const maxPlayers = 6;
 // once (main.js: silence means a dead socket). A was is not among them: a
 // late one is ignored without an answer.
 export const PLAYING = R.IN_HAND;
-export const ACKED = new Set(['play', 'toep', 'overtoep', 'answer', 'check', 'vote']);
+export const ACKED = new Set(['play', 'toep', 'overtoep', 'answer', 'check', 'discard', 'vote']);
 
 // The table's own tools in the top bars (panels.toolButtons), and the menu.
 export const TOOLS = {
@@ -53,7 +53,7 @@ const OPTS = [
     info: ['Staat iemand op één strafpunt van eruit, dan begint het potje meteen met inzet 2. De anderen kiezen of ze meegaan; passen kost een punt.',
       'Op armoede kun je zelf niet toepen.'] },
   { key: 'koning', label: 'Koningsspel', choices: [[true, 'Aan'], [false, 'Uit']],
-    info: ['Staat iedereen die nog meedoet op armoede, dan volgt het koningsspel: iedereen krijgt acht kaarten, er wordt niet getoept en wie de laatste slag haalt, wint het spel.'] },
+    info: ['Staat iedereen die nog meedoet op armoede, dan volgt het koningsspel: iedereen krijgt elf kaarten en legt er drie dicht weg, er wordt niet getoept en wie de laatste slag haalt, wint het spel.'] },
   { key: 'boer', label: 'Boer', choices: [[true, 'Punt eraf'], [false, 'Gewoon']],
     info: ['Punt eraf: haal je de laatste slag met een boer, de laagste kaart, dan gaat er een strafpunt van je af.'] },
   { key: 'lijntoep', label: 'Anti-lijntoep', choices: [[false, 'Uit'], [true, 'Aan']],

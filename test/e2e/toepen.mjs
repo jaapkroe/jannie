@@ -10,12 +10,12 @@
 import { parseArgs } from 'node:util';
 
 const STALL_MS = 30000;
-const IN_HAND = new Set(['was', 'check', 'toep', 'play']);
+const IN_HAND = new Set(['discard', 'was', 'check', 'toep', 'play']);
 const PHASES = new Set(['lobby', ...IN_HAND, 'handEnd', 'gameOver']);
 // The keys of toepen's state (docs/toepen.md); legal and rule on your turn
 // to play, roster in the lobby.
 const KEYS = ['code', 'phase', 'opts', 'you', 'host', 'players', 'turn', 'takeover', 'nextAt', 'winner', 'handNo',
-  'dealer', 'voorhand', 'stake', 'toeper', 'armoedeToep', 'koning', 'size', 'wasRound', 'canRaise', 'mustStay', 'open', 'points',
+  'dealer', 'voorhand', 'stake', 'toeper', 'armoedeToep', 'koning', 'size', 'wasRound', 'canRaise', 'mustStay', 'open', 'lay', 'laid', 'points',
   'status', 'armoede', 'washed', 'answered', 'claims', 'canClaim', 'claimant', 'asking', 'checks', 'stock', 'hand',
   'canToep', 'trick', 'lastTrick', 'tricks', 'rounds'];
 const OPTS = ['players', 'ai', 'tempo', 'seed', 'limit', 'was', 'armoede', 'koning', 'boer', 'lijntoep', 'bluf'];
@@ -98,7 +98,9 @@ class Player {
     if (keys.join() !== [...KEYS].sort().join()) this.fail(`state keys ${keys.join()}`);
     if (Object.keys(s.opts).sort().join() !== [...OPTS].sort().join()) this.fail(`opts keys ${Object.keys(s.opts).join()}`);
     if (!PHASES.has(s.phase)) this.fail(`phase ${s.phase}`);
-    if (s.hand.length > (s.koning ? 8 : 4)) this.fail(`hand of ${s.hand.length}`);
+    if (s.hand.length > (s.koning ? s.phase === 'discard' ? 11 : 8 : 4)) this.fail(`hand of ${s.hand.length} in ${s.phase}`);
+    if (s.lay && (s.phase !== 'discard' || s.turn !== s.you || s.hand.length - s.lay !== s.size)) this.fail(`lay ${s.lay} with ${s.hand.length} cards`);
+    if (s.koning && s.phase === 'play' && s.handNo && this.koning !== s.handNo) this.koning = s.handNo, this.konings = (this.konings || 0) + 1;
     if (s.koning && !s.opts.koning) this.fail('a koningsspel without the rule');
     if (s.canRaise && s.phase !== 'toep') this.fail(`canRaise in ${s.phase}`);
     if (s.mustStay && !s.opts.lijntoep) this.fail('mustStay without anti-lijntoep');
@@ -139,6 +141,11 @@ class Player {
     }
     if (s.turn !== me || key === this.acted) return;
     this.acted = key;
+    if (s.phase === 'discard' && s.lay) {
+      const hand = [...s.hand].sort(() => rng() - 0.5);
+      this.send({ t: 'discard', cards: hand.slice(0, s.lay) });
+      return;
+    }
     if (s.phase === 'check') this.send({ t: 'check', play: rng() < 0.4 });
     else if (s.phase === 'toep' && s.canRaise && rng() < 0.12) this.send({ t: 'overtoep' });
     else if (s.phase === 'toep') this.send({ t: 'answer', play: s.mustStay || rng() < 0.75 });
@@ -189,7 +196,8 @@ async function play(cfg, n) {
     console.log(`FAIL ${game}: ${errors.slice(0, 5).join('; ')}`);
     return false;
   }
-  console.log(`ok   ${game}: ${s.handNo} potjes, winner seat ${s.winner}, points ${s.points.join('/')}, ${secs} s`);
+  const koning = host.konings ? `, koningsspel` : '';
+  console.log(`ok   ${game}: ${s.handNo} potjes${koning}, winner seat ${s.winner}, points ${s.points.join('/')}, ${secs} s`);
   return true;
 }
 

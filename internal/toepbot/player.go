@@ -9,6 +9,7 @@ package toepbot
 import (
 	"math"
 	"math/rand/v2"
+	"slices"
 
 	"klaverjas/internal/game"
 	"klaverjas/internal/toepen"
@@ -172,6 +173,81 @@ func (p *Player) winChance(v *toepen.View) float64 {
 		return 0
 	}
 	return won / total
+}
+
+// ---- the koningsspel ----
+
+// Discard lays v.Lay cards away in the koningsspel. Sterk tries every
+// choice in the same sampled deals (the others holding eight of the cards
+// it does not) and keeps the eight that take the last trick most often;
+// the others lay away their weakest cards, makkelijk now and then any.
+func (p *Player) Discard(v toepen.View) []game.Card {
+	n := v.Lay
+	if n <= 0 || n >= len(v.Hand) {
+		return nil
+	}
+	switch {
+	case p.lvl == Makkelijk && p.rng.Float64() < 0.3:
+		hand := slices.Clone(v.Hand)
+		p.rng.Shuffle(len(hand), func(i, j int) { hand[i], hand[j] = hand[j], hand[i] })
+		return hand[:n]
+	case p.lvl == Sterk:
+		return p.bestDiscard(&v, n)
+	}
+	return weakestN(v.Hand, n)
+}
+
+// weakestN is the n weakest cards of hand.
+func weakestN(hand []game.Card, n int) []game.Card {
+	h := slices.Clone(hand)
+	slices.SortStableFunc(h, func(a, b game.Card) int { return toepen.Strength(a.Rank) - toepen.Strength(b.Rank) })
+	return h[:n]
+}
+
+func (p *Player) bestDiscard(v *toepen.View, n int) []game.Card {
+	all := *v
+	for o := range game.Seat(v.Players) {
+		if v.In(o) {
+			all.Cards[o] = v.Size // everyone plays with eight
+		}
+	}
+	s := newSampler(&all)
+	worlds := make([]world, 24)
+	for k := range worlds {
+		worlds[k] = s.draw(p.rng)
+	}
+	best, bestWins := weakestN(v.Hand, n), -1
+	for _, lay := range combinations(v.Hand, n) {
+		kept := all
+		kept.Hand = without(v.Hand, lay...)
+		wins := 0
+		for k := range worlds {
+			if playout(&kept, &worlds[k], noCard) == v.Seat {
+				wins++
+			}
+		}
+		if wins > bestWins {
+			best, bestWins = lay, wins
+		}
+	}
+	return best
+}
+
+// combinations lists every choice of n cards of hand.
+func combinations(hand []game.Card, n int) [][]game.Card {
+	var out [][]game.Card
+	var pick func(from int, got []game.Card)
+	pick = func(from int, got []game.Card) {
+		if len(got) == n {
+			out = append(out, slices.Clone(got))
+			return
+		}
+		for k := from; k < len(hand); k++ {
+			pick(k+1, append(got, hand[k]))
+		}
+	}
+	pick(0, nil)
+	return out
 }
 
 // ---- the stake ----

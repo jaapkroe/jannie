@@ -587,17 +587,44 @@ func TestBoer(t *testing.T) {
 	}
 }
 
-// Everyone left one point from out: the koningsspel, eight cards each
-// (fewer when the deck runs short), no was, no armoede, no toep; it ends
-// the match.
+// Everyone left one point from out: the koningsspel. Eleven cards each
+// (as many as the deck holds for all), laid away down to eight in turn
+// from voorhand; no was, no armoede, no toep; it ends the match.
 func TestKoningsspel(t *testing.T) {
 	rules := DefaultRules
-	d := NewDeal(4, rules, 3, [MaxPlayers]int{9, 9, 10, 9}, game.NewDeck())
-	if !d.Koning() || d.Size() != 8 || d.HandLen(0) != 8 || d.HandLen(2) != 0 || d.Phase() != PhasePlay || d.Stake() != 1 {
-		t.Fatalf("koningsspel: %v size %d phase %v stake %d", d.Koning(), d.Size(), d.Phase(), d.Stake())
+	d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 10, 9}, game.NewDeck())
+	if !d.Koning() || d.DealtSize() != 11 || d.Size() != 8 || d.HandLen(0) != 11 || d.HandLen(1) != 0 || d.Phase() != PhaseDiscard || d.Stake() != 1 {
+		t.Fatalf("koningsspel: %v dealt %d size %d phase %v", d.Koning(), d.DealtSize(), d.Size(), d.Phase())
 	}
-	if d.CanToep(d.Turn()) {
-		t.Error("a toep in the koningsspel")
+	if d.Turn() != 0 || d.Lay(0) != 3 || d.Lay(2) != 0 || d.Stock() != 10 {
+		t.Fatalf("turn %d lay %d stock %d", d.Turn(), d.Lay(0), d.Stock())
+	}
+	h := d.Hand(0)
+	if err := d.Discard(0, h[:2]); err == nil || err.Error() != "Leg precies 3 kaarten weg." {
+		t.Errorf("two: %v", err)
+	}
+	if !errors.Is(d.Discard(0, []game.Card{h[0], h[0], h[1]}), ErrDiscardTwice) || !errors.Is(d.Discard(2, h[:3]), ErrNotYourTurn) {
+		t.Error("a card twice, or out of turn")
+	}
+	if !errors.Is(d.Discard(0, append(h[:2:2], d.stock[0])), ErrNotInHand) {
+		t.Error("a card not held")
+	}
+	must(t, d.Discard(0, h[:3]))
+	if d.HandLen(0) != 8 || !slices.Equal(d.Laid(0), h[:3]) || d.Turn() != 2 || d.Phase() != PhaseDiscard {
+		t.Fatalf("after seat 0: %d cards, turn %d", d.HandLen(0), d.Turn())
+	}
+	if v := d.View(0); !slices.Equal(v.Laid, h[:3]) || len(v.Seen()) != 3 {
+		t.Errorf("own laid cards are seen: %v", v.Seen())
+	}
+	if v := d.View(2); v.Lay != 3 || len(v.Laid) != 0 {
+		t.Errorf("seat 2 view: lay %d", v.Lay)
+	}
+	must(t, d.Discard(2, d.Hand(2)[5:8]))
+	if d.Phase() != PhasePlay || d.Turn() != 0 || d.CanToep(0) {
+		t.Fatalf("then voorhand leads, no toep: %v %d", d.Phase(), d.Turn())
+	}
+	if len(d.Dealt(0)) != 11 {
+		t.Errorf("dealt %v", d.Dealt(0))
 	}
 	rng := rand.New(rand.NewPCG(1, 2))
 	playRandom(t, rng, d)
@@ -605,13 +632,22 @@ func TestKoningsspel(t *testing.T) {
 	if !r.Koning || len(d.Tricks()) != 8 {
 		t.Fatalf("result %+v after %d tricks", r, len(d.Tricks()))
 	}
-	for s := range 4 {
+	for s := range 3 {
 		if out := r.Out[s]; out == (game.Seat(s) == r.Winner) {
 			t.Errorf("seat %d out %v", s, out)
 		}
 	}
-	if d := NewDeal(6, rules, 5, [MaxPlayers]int{9, 9, 9, 9, 9, 9}, game.NewDeck()); !d.Koning() || d.Size() != 5 {
-		t.Errorf("six on armoede: size %d", d.Size())
+	// Three left: ten each, two laid away; four: eight, none; six: five.
+	for _, tc := range []struct{ n, dealt, size int }{{3, 10, 8}, {4, 8, 8}, {6, 5, 5}} {
+		var pts [MaxPlayers]int
+		for s := range tc.n {
+			pts[s] = 9
+		}
+		d := NewDeal(tc.n, rules, game.Seat(tc.n-1), pts, game.NewDeck())
+		discard := d.Phase() == PhaseDiscard
+		if !d.Koning() || d.DealtSize() != tc.dealt || d.Size() != tc.size || discard != (tc.dealt > tc.size) {
+			t.Errorf("%d on armoede: dealt %d size %d phase %v", tc.n, d.DealtSize(), d.Size(), d.Phase())
+		}
 	}
 	if d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 9, 8}, game.NewDeck()); d.Koning() || d.Size() != 4 {
 		t.Error("one not on armoede: no koningsspel")
@@ -772,6 +808,14 @@ func playRandom(t *testing.T, rng *rand.Rand, d *Deal) {
 			if _, err := d.Check(d.Turn(), rng.IntN(3) == 0); err != nil {
 				t.Fatal(err)
 			}
+		case PhaseDiscard:
+			s := d.Turn()
+			hand := d.Hand(s)
+			rng.Shuffle(len(hand), func(i, j int) { hand[i], hand[j] = hand[j], hand[i] })
+			must(t, d.Discard(s, hand[:d.Lay(s)]))
+			if d.HandLen(s) != d.Size() {
+				t.Fatalf("after laying away: %d cards", d.HandLen(s))
+			}
 		case PhaseToep:
 			s := d.Turn()
 			if d.CanRaise(s) && rng.IntN(5) == 0 {
@@ -820,6 +864,11 @@ func checkCards(t *testing.T, d *Deal) {
 	}
 	for _, c := range d.stock {
 		seen[c]++
+	}
+	for s := range d.Players() {
+		for _, c := range d.laid[s] {
+			seen[c]++
+		}
 	}
 	for _, tr := range d.tricks {
 		for _, p := range tr.Cards {

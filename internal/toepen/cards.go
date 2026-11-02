@@ -19,9 +19,11 @@ const (
 	// HandSize is the number of cards dealt to each player, and so the
 	// number of tricks in a round; and the cards of a was.
 	HandSize = 4
-	// KoningSize is the hand of the koningsspel, when the deck holds it
-	// for everyone left.
+	// KoningSize is the hand played in the koningsspel, KoningDeal the
+	// cards dealt for it (each lays the rest away, face down), both when
+	// the deck holds them for everyone left.
 	KoningSize = 8
+	KoningDeal = 11
 	// DefaultLimit is the number of penalty points that puts a player out.
 	DefaultLimit = 10
 )

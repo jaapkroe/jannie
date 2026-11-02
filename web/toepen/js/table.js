@@ -17,6 +17,7 @@ let slotOf = new Map();  // seat → its trick slot element
 let pileOf = new Map();  // seat → its pile of cards handed in for a vuile was
 let pending = null;      // {t, at, key}: a decision sent, awaiting the server
 let selected = '';       // a lifted card (touch: the first tap lifts, the second plays)
+let chosen = new Set();  // the koningsspel: the cards picked to lay away
 let pendingVote = null;  // our answer to the takeover question, awaiting the server
 let summaryFor = 0;      // the round whose summary is up
 let shownCheck = 0;      // the number of settled claims shown
@@ -70,6 +71,7 @@ export function render(s) {
   app.view = s;
   if (pending && (pending.key !== stateKey(s) || performance.now() - pending.at > STUCK_MS)) pending = null;
   if (!R.IN_HAND.has(s.phase)) selected = '';
+  if (s.phase !== 'discard' || !s.lay) chosen.clear();
   E.table.dataset.players = s.players.length;
   renderTop(s);
   renderSeats(s);
@@ -177,10 +179,32 @@ function renderSeats(s) {
   E.me.classList.toggle('turn', s.turn === s.you && R.IN_HAND.has(s.phase));
 }
 
-// The cards a seat handed in for a vuile was this round, face down in
-// front of it on the felt: one small pile, with ×n for more than one.
+// The stake, in the top bar and on the chip.
+function showStake(n) {
+  E.stakeN.textContent = n;
+  E.chipN.textContent = n;
+  E.stakeTop.classList.toggle('hot', n > 1);
+  E.chip.classList.toggle('hot', n > 1);
+}
+
+// The cards a seat handed in for a vuile was this round, or laid away in
+// the koningsspel, face down beside it on the felt: one small pile, with ×n
+// for more than one vuile was.
 function renderPile(s, seat, at) {
   const pile = pileOf.get(seat);
+  const laid = R.IN_HAND.has(s.phase) ? s.laid?.[seat] ?? 0 : 0;
+  if (laid) {
+    pile.style.left = at.x + '%';
+    pile.style.top = at.y + '%';
+    pile.hidden = false;
+    if (pile.dataset.n === `laid${laid}`) return;
+    pile.dataset.n = `laid${laid}`;
+    const who = seat === s.you ? 'Jij legde' : `${s.players[seat]?.name || 'Speler'} legde`;
+    pile.setAttribute('aria-label', `${who} ${laid} kaarten weg`);
+    pile.title = pile.getAttribute('aria-label');
+    pile.replaceChildren(...Array.from({ length: Math.min(laid, 3) }, () => createBack({ size: 'sm' })));
+    return;
+  }
   const n = R.IN_HAND.has(s.phase) ? R.washes(s, seat) : 0;
   pile.style.left = at.x + '%';
   pile.style.top = at.y + '%';
@@ -232,8 +256,9 @@ function renderPrompt(s) {
   E.textSub.hidden = !q?.sub;
   E.ringBox.hidden = !q?.countdown;
   E.ring.set(q?.countdown || 0);
-  E.actions.replaceChildren(...(q?.actions || []).map(a => h('button', {
-    class: `btn tp-act tp-${a.kind}`, type: 'button', disabled: !!pending,
+  const acts = q?.lay ? [{ t: 'discard', label: 'Wegleggen', kind: 'go', sub: `${chosen.size} van ${q.lay}`, off: chosen.size !== q.lay }] : q?.actions || [];
+  E.actions.replaceChildren(...acts.map(a => h('button', {
+    class: `btn tp-act tp-${a.kind}`, type: 'button', disabled: !!pending || !!a.off,
     onclick: () => decide(a),
   }, h('b', { text: a.label }), a.sub ? h('small', { text: a.sub }) : null)));
 }
@@ -244,6 +269,7 @@ function decide(a) {
   sound.play(a.t === 'toep' || a.t === 'overtoep' ? 'knock' : 'click');
   const m = { t: a.t };
   if (a.play !== undefined) m.play = a.play;
+  if (a.t === 'discard') m.cards = [...chosen];
   send(m);
 }
 
@@ -257,6 +283,7 @@ function send(m) {
 
 function renderHand(s) {
   const hand = R.IN_HAND.has(s.phase) ? s.hand || [] : [];
+  if (s.phase === 'discard' && s.lay) return renderDiscard(s, hand);
   const legal = new Set(s.legal || []);
   const mine = s.turn === s.you && s.phase === 'play' && !pending;
   if (!hand.includes(selected)) selected = '';
@@ -275,6 +302,38 @@ function renderHand(s) {
   E.hand.replaceChildren(...kids);
   E.hand.classList.toggle('mine', mine);
   E.hand.classList.toggle('many', hand.length > 4); // the koningsspel: the cards overlap
+  E.hand.classList.toggle('lots', hand.length > 8);
+}
+
+// The koningsspel, your turn to lay away: tap cards to pick them (again to
+// put one back); the button under the table lays them away.
+function renderDiscard(s, hand) {
+  for (const c of chosen) if (!hand.includes(c)) chosen.delete(c);
+  E.hand.replaceChildren(...hand.map(code => {
+    const c = createCard(code, { size: 'lg' });
+    c.classList.add('legal');
+    c.classList.toggle('selected', chosen.has(code));
+    c.tabIndex = 0;
+    c.setAttribute('role', 'button');
+    c.setAttribute('aria-pressed', String(chosen.has(code)));
+    c.setAttribute('aria-label', `${cardName(code)}${chosen.has(code) ? ' (wegleggen)' : ''}`);
+    c.addEventListener('click', () => pick(code));
+    return c;
+  }));
+  E.hand.classList.add('mine');
+  E.hand.classList.toggle('many', hand.length > 4);
+  E.hand.classList.toggle('lots', hand.length > 8);
+}
+
+function pick(code) {
+  const s = app.view;
+  if (!s?.lay || pending) return;
+  if (chosen.has(code)) chosen.delete(code);
+  else if (chosen.size < s.lay) chosen.add(code);
+  else { sound.play('error'); return; }
+  sound.play('click');
+  renderHand(s);
+  renderPrompt(s);
 }
 
 function tap(code) {
@@ -601,10 +660,20 @@ export async function animate(ev, prev, next) {
       sound.play('knock');
       vibrate(20);
       bubble(next, ev.seat, ev.over ? 'Overtoep!' : 'Toep!', 'toep');
-      render({ ...prev, stake: ev.stake });
+      showStake(ev.stake); // only the stake: the buttons wait for the next state
       flash(`${ev.seat === next.you ? '' : `${NAME(next, ev.seat)}: `}${ev.over ? 'overtoep' : 'toep'}!`.replace(/^./, c => c.toUpperCase()), 'toep');
       await wait(650);
       break;
+    case 'discard': {
+      const from = ev.seat === next.you ? E.hand : seatEls[ev.seat]?.ring;
+      const pile = pileOf.get(ev.seat);
+      if (pile) pile.hidden = false;
+      const flights = [];
+      for (let k = 0; k < ev.n; k++) { flights.push(fly('', from, pile, { ms: 340, back: true })); await wait(70); }
+      sound.play('shuffle');
+      await Promise.all(flights);
+      break;
+    }
     case 'answer':
       bubble(next, ev.seat, ev.stay ? 'Ik ga mee' : `Pas (+${ev.points})`, ev.stay ? 'go' : 'pass');
       if (!ev.stay) sound.play('click');

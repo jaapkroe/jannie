@@ -91,7 +91,16 @@ test('the prompt asks what the round awaits', () => {
   assert.equal(prompt(table({ canToep: false, armoede: [true, false, false, false], points: [9, 0, 0, 0] })).sub, 'Op armoede kun je niet toepen.');
   assert.match(prompt(table({ canToep: false, points: [8, 0, 0, 0], stake: 2 })).sub, /lig je er bij verlies al uit/);
   assert.equal(prompt(table({ canToep: false, koning: true, size: 8, tricks: 3 })).sub, 'Koningsspel: er wordt niet getoept.');
-  assert.equal(prompt(table({ canToep: false, koning: true, size: 8, tricks: 7 })).sub, 'De laatste slag: wie die haalt, wint het potje.');
+  assert.equal(prompt(table({ canToep: false, koning: true, size: 8, tricks: 7 })).sub,
+    'De laatste slag: wie die haalt, wint het potje. Koningsspel: er wordt niet getoept.');
+  // You raised last: someone else first.
+  assert.equal(prompt(table({ canToep: false, toeper: 0, stake: 5, points: [1, 6, 0, 0], tricks: 3 })).sub,
+    'De laatste slag: wie die haalt, wint het potje. Jij toepte het laatst: eerst moet een ander toepen.');
+  // The koningsspel: lay away.
+  q = prompt(table({ phase: 'discard', koning: true, size: 8, lay: 3, hand: Array(11).fill('7H') }));
+  assert.equal(q.text, 'Koningsspel: leg 3 kaarten dicht weg.');
+  assert.equal(q.lay, 3);
+  assert.equal(prompt(table({ phase: 'discard', turn: 1, lay: 0 })).text, 'Koningsspel: Opa Dirk (AI) legt kaarten weg…');
   // A was again, with the new cards.
   q = prompt(table({ phase: 'was', turn: -1, nextAt: 99, canClaim: true, wasRound: 2, hand: ['JH', 'QS', 'KD', '7C'] }));
   assert.equal(q.text, 'Je hebt weer een vuile was: ruil je hem voor vier nieuwe kaarten?');
