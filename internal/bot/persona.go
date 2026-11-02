@@ -19,7 +19,11 @@
 // gives every persona its own voice.
 package bot
 
-import "errors"
+import (
+	"errors"
+
+	"klaverjas/internal/persona"
+)
 
 // Level is the playing strength of a bot.
 type Level int
@@ -56,7 +60,8 @@ func ParseLevel(s string) (Level, error) {
 	return Normaal, errors.New("onbekend niveau: " + s)
 }
 
-// Persona is a bot character.
+// Persona is a bot character: its identity (package persona) with its
+// klaverjas bio.
 type Persona struct {
 	ID, Name, Emoji, Color, Bio string // Name without "(AI)"; Bio is Dutch, one line
 
@@ -65,48 +70,28 @@ type Persona struct {
 	Speed      float64 // multiplier on think time (0.6 fast .. 1.4 slow)
 }
 
-var roster = []Persona{
-	{
-		ID: "dirk", Name: "Opa Dirk", Emoji: "👴", Color: "#8a5a2b",
-		Bio:        "Speelt al zestig jaar in café De Klaver; voorzichtig, degelijk en altijd een spreekwoord paraat.",
-		Aggression: 0.25, Chattiness: 0.45, Speed: 1.3,
-	},
-	{
-		ID: "truus", Name: "Tante Truus", Emoji: "👵", Color: "#c2477a",
-		Bio:        "Kletst honderduit, is dol op roem en ziet altijd de zonnige kant.",
-		Aggression: 0.5, Chattiness: 0.9, Speed: 1.1,
-	},
-	{
-		ID: "sjaak", Name: "Sjaak", Emoji: "🎲", Color: "#e07b24",
-		Bio:        "Gokker in hart en nieren: speelt op dunne handen en gaat altijd voor de pit.",
-		Aggression: 0.9, Chattiness: 0.6, Speed: 0.8,
-	},
-	{
-		ID: "fatima", Name: "Fatima", Emoji: "🧠", Color: "#5b6ee1",
-		Bio:        "Wiskundestudent die elke kaart telt en weinig woorden nodig heeft.",
-		Aggression: 0.45, Chattiness: 0.25, Speed: 0.9,
-	},
-	{
-		ID: "kees", Name: "Kees de Visser", Emoji: "🎣", Color: "#2a8c9c",
-		Bio:        "Mopperkont met een hart van goud; eerlijk, maar wee je gebeente als hij nat gaat.",
-		Aggression: 0.35, Chattiness: 0.6, Speed: 1.0,
-	},
-	{
-		ID: "jannie", Name: "Juf Jannie", Emoji: "👩‍🏫", Color: "#3f9b5a",
-		Bio:        "Geduldige juf die graag uitlegt waarom een kaart goed valt.",
-		Aggression: 0.4, Chattiness: 0.5, Speed: 1.2,
-	},
-	{
-		ID: "bram", Name: "Bram", Emoji: "🛹", Color: "#9b59b6",
-		Bio:        "Jong en snel, speelt op gevoel en praat het liefst in emoji.",
-		Aggression: 0.7, Chattiness: 0.7, Speed: 0.6,
-	},
-	{
-		ID: "vera", Name: "Bakker Vera", Emoji: "🥐", Color: "#c9a227",
-		Bio:        "Staat om vijf uur op voor het brood en speelt scherp, maar altijd vriendelijk.",
-		Aggression: 0.55, Chattiness: 0.4, Speed: 0.85,
-	},
+// bios are what the personas say about themselves at a table of
+// klaverjas.
+var bios = map[string]string{
+	"dirk":   "Speelt al zestig jaar in café De Klaver; voorzichtig, degelijk en altijd een spreekwoord paraat.",
+	"truus":  "Kletst honderduit, is dol op roem en ziet altijd de zonnige kant.",
+	"sjaak":  "Gokker in hart en nieren: speelt op dunne handen en gaat altijd voor de pit.",
+	"fatima": "Wiskundestudent die elke kaart telt en weinig woorden nodig heeft.",
+	"kees":   "Mopperkont met een hart van goud; eerlijk, maar wee je gebeente als hij nat gaat.",
+	"jannie": "Geduldige juf die graag uitlegt waarom een kaart goed valt.",
+	"bram":   "Jong en snel, speelt op gevoel en praat het liefst in emoji.",
+	"vera":   "Staat om vijf uur op voor het brood en speelt scherp, maar altijd vriendelijk.",
 }
+
+// roster is the personas of package persona, with their bios.
+var roster = func() []Persona {
+	var out []Persona
+	for _, p := range persona.All() {
+		out = append(out, Persona{ID: p.ID, Name: p.Name, Emoji: p.Emoji, Color: p.Color, Bio: bios[p.ID],
+			Aggression: p.Aggression, Chattiness: p.Chattiness, Speed: p.Speed})
+	}
+	return out
+}()
 
 // Roster returns the eight personas.
 func Roster() []Persona {
