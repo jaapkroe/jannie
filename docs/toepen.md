@@ -86,25 +86,35 @@ with one player left.
 | `tempo` | `rustig`, `normaal`, `snel` | `normaal` | Pacing (§3) |
 | `seed` | 1..999999999, or 0 / null | 0 | As klaverjas's (design §3): the same seed deals the same cards |
 
-`s.opts` has exactly these seven keys. Keys of klaverjas are not options
-here (a `create` ignores them; `opts` refuses none of them by itself, they
-are simply unknown), and `players` outside 2–6 is refused ("Kies 2 tot en
-met 6 spelers."). There is no training and no expert mode: a `create` that
-asks for either plays an ordinary game.
+`s.opts` has exactly these seven keys (default `{"players":4, "ai":
+"normaal", "tempo": "normaal", "seed": 0, "limit": 10, "was": true,
+"armoede": true}`). Keys of klaverjas are not options here: `create` and
+`opts` ignore them. In the lobby a change is all or nothing, and refused
+with "Kies 2 tot en met 6 spelers.", "Speel tot 10 of tot 15 strafpunten.",
+"Ongeldige waarde voor was." or "Ongeldige waarde voor armoede." (`null`
+too); a `create` skips a bad value and keeps the default. There is no
+training and no expert mode: a `create` that asks for either plays an
+ordinary game.
 
 ## 3. Server (`internal/toepenserver`, `cmd/toepen`)
 
 Toepen implements the table's `server.Game` (design §4.3) on its exported
-`*Table`; `cmd/toepen` runs it with toepen's bots (`internal/toepbot`) and
-the shared personas with toepen's bios. Room phases: `lobby`, `was`,
-`check`, `toep`, `play`, `handEnd`, `gameOver`.
+`*Table`: `toepenserver.New(ai)` with seats (2, 6, 4), `Options{Limit, Was,
+Armoede}` and toepen's own pacing; its `AI` gives the personas, a `Brain`
+per bot seat (`Was`, `Check`, `Toep`, `Answer`, `Play`) and the chat, and
+nil plays plain bots. `cmd/toepen` runs it with toepen's bots
+(`internal/toepbot`) and the shared personas (`internal/persona`) with
+toepen's bios; it does not import klaverjas's packages. Room phases:
+`lobby`, `was`, `check`, `toep`, `play`, `handEnd`, `gameOver`.
 
 - After the deal pause, the **time for a was** opens (the was window:
   rustig 10 s, normaal 8 s, snel 6 s; `nextAt` says when it ends; `turn` is
   -1). Every human in the round answers with `was`; every bot (or
   substitute) in the round decides in the background (`Table.Think`) and
   answers after its think time. The time ends when everyone has answered
-  or it runs out. A late or repeated `was` is ignored without a reply. An
+  or it runs out. A late or repeated `was` is ignored without a reply; a
+  claim when the stock has no four cards left for it is refused ("De
+  stapel is op: er kan niemand meer wassen."). An
   absent player is not waited for here: not claiming is no decision made
   for them.
 - Pauses: the claims and a toep are announced for the pace's `announce`,
@@ -118,8 +128,8 @@ the shared personas with toepen's bios. Room phases: `lobby`, `was`,
   claim a was, are caught, check rightly or wrongly, win or lose a round, go
   out, and win or lose the match (`toepbot.Chat`, per persona; the limits
   of design §5).
-- Game log (design §6, its own volume `toepen-games`): `match` (its `opts`
-  are the seven of §2), then per round `{"t":"round", "hand", "dealer",
+- Game log (design §6, its own volume `toepen-games`): `match` (`game`:
+  "toepen", and `opts` the seven of §2; no `training` or `expert`), then per round `{"t":"round", "hand", "dealer",
   "cards" (per seat as dealt, "" for a seat out), "acts", "result"}` with
   `acts` the seat and then `w` (claimed a was), `c1`/`c0` (checked or not),
   `t` (toep), `a1`/`a0` (went along or passed) or a card; then `end`
@@ -143,8 +153,8 @@ The state `s`: `code`, `phase`, `opts`, `you`, `host`, `roster` (lobby),
 (per seat: `in`, `gepast`, `betrapt`, `eruit`, `uit` for out of the
 match), `armoede` (per seat), `washed`, `answered` (the time for a was),
 `claims` (once that time is over), `canClaim`, `claimant` (-1), `asking`
-(who still answers, in order), `checks` (the settled claims: `{claimant,
-checker, kind, cards}`), `stock`, `hand` (yours, sorted), `legal` and
+(who still answers, in order), `checks` (the settled claims, always an
+array: `{claimant, checker, kind, cards}`), `stock`, `hand` (yours, sorted), `legal` and
 `rule` (your turn to play), `canToep`, `trick` (`{leader, cards, winner}`;
 the trick just taken until `collect`), `lastTrick`, `tricks` (taken this
 round) and `rounds` (the score sheet: `{hand, dealer, winner, stake,

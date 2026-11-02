@@ -69,8 +69,11 @@ class Player {
   onMessage(m) {
     if (m.t === 'joined') { this.seat = m.seat; this.code = m.code; return; }
     if (m.t === 'error') {
-      // A refusal of a move that crossed a change of turn is harmless.
-      if (m.code !== 'niet-jouw-beurt' && !/Die vraag staat niet/.test(m.msg)) this.fail(`error ${m.code}: ${m.msg}`);
+      // A refusal of a move that crossed a change of turn is harmless, as is
+      // that of a ready that crossed the last summary moving on by itself
+      // into game over (the table answers it as it does for klaverjas).
+      const crossed = m.msg === 'Dat kan nu niet.' && this.readyIn === this.s?.handNo && this.s?.phase === 'gameOver';
+      if (m.code !== 'niet-jouw-beurt' && !/Die vraag staat niet/.test(m.msg) && !crossed) this.fail(`error ${m.code}: ${m.msg}`);
       return;
     }
     if (m.t !== 'update') return;
@@ -101,7 +104,11 @@ class Player {
   act(s) {
     const me = s.you;
     const key = `${s.handNo}/${s.phase}/${s.turn}/${s.tricks}/${s.trick?.cards?.length}/${s.stake}/${s.claimant}`;
-    if (s.phase === 'handEnd') { if (rng() < 0.5 && !s.players[me]?.ready) this.send({ t: 'ready' }); return; }
+    // Half the time ready, else the summary's own time moves on.
+    if (s.phase === 'handEnd') {
+      if (rng() < 0.5 && !s.players[me]?.ready) { this.readyIn = s.handNo; this.send({ t: 'ready' }); }
+      return;
+    }
     if (s.takeover && s.players[me]?.vote == null) { this.send({ t: 'vote', seat: s.takeover.seat, ai: true, left: s.takeover.left }); return; }
     if (s.phase === 'was') {
       if (!s.nextAt || s.status[me] !== 'in' || s.answered[me] || this.wasIn === s.handNo) return;

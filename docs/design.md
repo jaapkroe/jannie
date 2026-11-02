@@ -707,9 +707,14 @@ smaller tables.
 
 ### 4.3 `internal/server`
 
-`internal/server` does **not** import `internal/bot`: it defines the interface
-it needs, and `cmd/klaverjas/ai.go` adapts package `bot` to it. Server tests
-use a fake AI (first legal card), so the two packages build independently.
+`internal/server` is the table every game is played at, and klaverjas, the
+built-in game. One server plays one game (`Config.Game`): `cmd/klaverjas`
+passes `server.Klaverjas(ai)`, `cmd/toepen` toepen's `server.Game`
+(`internal/toepenserver`, [`toepen.md`](toepen.md)). `internal/server` does
+**not** import `internal/bot` nor any other game: it defines the interfaces
+it needs, and `cmd/klaverjas/ai.go` adapts package `bot` to klaverjas's.
+Server tests use a fake AI (first legal card), so the packages build
+independently.
 `perf_test.go` measures the server's own cost: fake humans, connections
 without a socket, play whole matches in process with random legal
 decisions. `go test -run '^$' -bench . ./internal/server` runs
@@ -754,21 +759,82 @@ type AI interface {
     Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
 }
 type Config struct {
-    AI   AI
+    Game Game           // the game the server plays: Klaverjas(ai), or another (required)
     Fast bool           // scale all delays by 0.05 (tests)
     MaxRooms int        // default 1500
     AllowedOrigins []string // websocket Origin patterns besides same-host
     Version  string     // reported by /api/health {ok, version, rooms, players}
     Logger   *slog.Logger // nil: slog.Default()
+    GameLog  string     // directory of the game log (§6); "" keeps none
 }
+func Klaverjas(ai AI) Game                // the built-in game, on the code of this package
 func New(cfg Config) *Server
 func (s *Server) Handler() http.Handler   // /ws, /api/health
 func (s *Server) Shutdown(ctx context.Context)
 ```
 
-`cmd/klaverjas` flags: `-addr 127.0.0.1:8081`, `-static DIR` (dev only: also
-serve the frontend, with the same `/^[A-Za-z]{4}$/` → index.html rule as nginx,
-`Cache-Control: no-cache` and the nginx CSP),
+**Other games** play on an exported API (`api.go`, `ext.go`): the table owns
+codes and links, seats and the lobby, bots and their chat, calls,
+reconnects, the takeover question, pacing, the hand summary, game over, the
+game log and the limits; the game brings its rules, options, bots and
+personas. Klaverjas runs on the table's own match code behind an unexported
+seam (`games.go`), so its wire format and behaviour are exactly those of
+this document; nothing of another game reaches it.
+
+```go
+type Game interface {
+    Name() string
+    Seats() (min, max, def int)             // at most 8
+    Personas() []Persona                    // the game's bios; at least max − 1
+    NewOptions() GameOptions                // the game's own options, at their defaults
+    NewBrain(personaID, level string, seed uint64) any
+    Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
+    New(t *Table) Play                      // one match at table t
+}
+type GameOptions interface {
+    Set(fields map[string]json.RawMessage, lenient bool) error // the game's keys; Dutch errors
+    Wire(TableOpts) any                     // the state's opts and the game log's: table's and game's
+}
+type TableOpts struct{ Players int; AI, Tempo string; Seed int }   // what every game has (§3)
+type Play interface {
+    Start(); Next()                         // deal the first hand; the next one, or Table.GameOver
+    Turn() game.Seat; HandLen(i game.Seat) int; Single() bool
+    State(i game.Seat) any                  // Table.Shared(i) embedded, and the game's own keys
+    Move(i game.Seat, m Msg) error          // a human's message: ErrUnknownMsg, ErrIgnore,
+                                            // NotYourTurn(err) or ErrPaused, or ongeldig
+    Decision(i game.Seat, brain any) (think func() any, safe any) // a bot's, off the room goroutine
+    Apply(i game.Seat, a any) error
+    Resume(s Step)                          // after the game's pause s
+    Variant() string                        // for the server log
+}
+type Shared struct{ Code, Phase string; Opts any; You, Host int; Roster; Players; Turn int; Takeover; NextAt int64 }
+```
+
+`*Table` is the game's handle on its room: reads (`Code`, `Opts`,
+`Options`, `Players`, `Deals`, `Seed`, `MatchID`, `DisplayName`,
+`BotPlays`, `HumanCount`, `InHand`, `Pending`, `PauseEnds`, `Pace`,
+`Logger`, `Shared`) and the moves of the table (`SetPhase`, `SetHand`,
+`Pause`, `EndPause`, `OpenTurn`, `Emit`, `Later`, `Think` for a question
+everyone answers at once, `Trick`, `Summary`, `GameOver`, `SysChat`,
+`BotSay`, `BotsReact`, `Log`), every duration scaled by the room's tempo.
+The table drives the match after every call into the game and every
+callback; a game never schedules itself. For another game the table reads
+`players`, `ai`, `tempo` and `seed` ("Kies N tot en met M spelers.") and
+hands the other keys to `Set`; `training` and `expert` are klaverjas's and
+ignored. `servertest` is a test kit for a game's server tests (`Start`, a
+client with `Create`, `Join`, `Until`, `WaitEvent`, …), and `toy_test.go`
+a toy game ("hoogste kaart") that is the template for the next one.
+
+Personas: their identities (name, emoji, colour, chattiness, speed) are
+`internal/persona`'s, the same at every game; bios and chat are per game
+(`internal/bot` for klaverjas, `internal/toepbot` for toepen).
+
+`internal/serve` is what every binary shares: `serve.Main(Site{Game, Title,
+Verb}, version, game)` with the flags `-addr 127.0.0.1:8081`, `-games DIR`
+(the game log), `-static DIR` (dev only: also serve the frontend, the union
+of `DIR/shared` and `DIR/<game>`, a path in both or a missing directory
+being a start-up error; the same `/^[A-Za-z]{4}$/` → index.html rule as
+nginx, `Cache-Control: no-cache`, the nginx CSP and the game's 404 page),
 `-fast`, `-origin PATTERN` (repeatable), `-healthcheck` (GET
 `http://127.0.0.1:8081/api/health`, exit 0/1; the scratch image has no curl).
 Logs with `log/slog` to stdout. Never log chat text or tokens.

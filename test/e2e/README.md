@@ -36,6 +36,28 @@ podman stop kj-dev-18200
 A simulation plays only its own game: a klaverjas server answers toepen's
 messages with "Dat bericht ken ik niet.", and the other way round.
 
+## toepen.mjs
+
+With only a URL it plays five matches: tables of 2 to 6 with one to four
+humans, every AI level, a limit of 10 or 15, with and without the was and
+armoede. Simulated players claim a was now and then (bluffs included),
+check, toep, go along or pass at random, play a random legal card, and
+press *ready* after half the rounds (the others wait for the summary's own
+time). Any option plays that one configuration instead:
+
+```sh
+node test/e2e/toepen.mjs --url ws://127.0.0.1:18096/ws --players 5 --humans 2 --ai sterk --limit 15 [--no-was] [--no-armoede]
+```
+
+On every update it checks that the state has exactly toepen's keys (no
+`game`, `training` or `expert`) and `opts` exactly its seven, the phase is
+one of toepen's, a hand never holds more than four cards and `legal` is in
+it, nobody's points go down within a round, and at game over exactly one
+player is left, the winner, under the limit. Any `error` fails the match,
+except a move that crossed a change of turn (`niet-jouw-beurt`, "Die vraag
+staat niet (meer) open.") and a *ready* that crossed the last summary
+moving on into game over; so does 30 seconds without progress.
+
 With only a URL it plays the standard suite: tables of four, three and two,
 one to four humans, both ways of choosing trump, both rule sets, all AI
 levels, a training game with open cards, a full *boom* of 16 hands, and
