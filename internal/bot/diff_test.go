@@ -96,6 +96,9 @@ func TestDiffWhyGame(t *testing.T) {
 	want = "♥A: volgens de berekening levert dat gemiddeld 8 punten meer op dan ♥10, vooral doordat jullie minder vaak nat gaan (42% tegen 45%). " +
 		"De tegenstanders maken roem in deze slag in 30% van de verdelingen als je ♥10 speelt, en in 5% als je ♥A speelt."
 	e := Explain(v)
+	if a := Advise(v); a.Card == nil || *a.Card != card("AH") || a.Text != "Speel "+want {
+		t.Errorf("hand 10, the hint: got %v %q\nwant ♥A %q", a.Card, a.Text, "Speel "+want)
+	}
 	if got := optionWhy(t, e, "TH"); got != want {
 		t.Errorf("hand 10, ♥10: got %q\nwant %q", got, want)
 	}

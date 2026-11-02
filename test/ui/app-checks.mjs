@@ -1023,7 +1023,7 @@ CHECKS.expert = async browser => {
       if (start.other >= 0) {
         await pickRow(start.other);
         const got = await picked();
-        if (got.sel !== start.other || !golds.some(c => got.said.startsWith(`${c}: volgens de berekening`))) throw new Error(`a row picked ${JSON.stringify(got)}`);
+        if (got.sel !== start.other || !golds.some(c => got.said.startsWith(`${c}: volgens de berekening`) || got.said.startsWith(`${c} en `))) throw new Error(`a row picked ${JSON.stringify(got)}`);
         await shot(P, 'why-row');
       }
       let top = false;
