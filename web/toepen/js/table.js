@@ -58,8 +58,9 @@ export function init() {
   E.prompt = h('div', { class: 'tp-prompt' }, E.me, E.text, E.ringBox, E.actions, E.vote, E.callDock);
   E.hand = h('div', { class: 'tp-hand', role: 'group', 'aria-label': 'Jouw kaarten' });
   root.append(E.top, E.table, E.prompt, E.hand);
+  // A tap beside your cards puts a lifted card down again.
   root.addEventListener('click', e => {
-    if (selected && !e.target.closest('.tp-hand .card')) { selected = ''; renderHand(app.s); }
+    if (selected && e.target.isConnected && !e.target.closest('.tp-hand .card')) { selected = ''; renderHand(app.view); }
   });
   document.addEventListener('keydown', onKey);
 }
@@ -298,7 +299,9 @@ function renderHand(s) {
     c.tabIndex = mine ? 0 : -1;
     c.setAttribute('role', 'button');
     c.setAttribute('aria-label', cardName(code) + (mine && !ok ? ' (mag niet)' : ''));
-    c.addEventListener('click', () => tap(code));
+    // Not on to the table's click: the hand is drawn anew, and the table
+    // would take a tap on this (now gone) card for one beside the cards.
+    c.addEventListener('click', e => { e.stopPropagation(); tap(code); });
     return c;
   });
   E.hand.replaceChildren(...kids);
@@ -319,7 +322,7 @@ function renderDiscard(s, hand) {
     c.setAttribute('role', 'button');
     c.setAttribute('aria-pressed', String(chosen.has(code)));
     c.setAttribute('aria-label', `${cardName(code)}${chosen.has(code) ? ' (wegleggen)' : ''}`);
-    c.addEventListener('click', () => pick(code));
+    c.addEventListener('click', e => { e.stopPropagation(); pick(code); });
     return c;
   }));
   E.hand.classList.add('mine');
