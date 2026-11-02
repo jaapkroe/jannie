@@ -103,7 +103,7 @@ measured by `scripts/go test -run '^$' -bench . ./internal/server` and
 (`docs/design.md` §4.3).
 
 Browser checks with Puppeteer live in `test/ui` and run against a server
-(`scripts/dev-server PORT`) and a headless Chromium (`scripts/chrome PORT`):
+(`GAME=klaverjas scripts/dev-server PORT`) and a headless Chromium (`scripts/chrome PORT`):
 
 ```sh
 cd test/ui
@@ -112,7 +112,7 @@ node app-play.mjs ... --gedraaid | --multi | --training                         
 node app-play.mjs ... --players 3 | --players 2                                  # the auction and laying away; the piles
 node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at six sizes, into test/ui/out/
 node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 34 behaviour checks (coach, lessons, the Oefenen sheet, taps, back button, lost socket, chat during animations, full table, takeover vote, summary on a phone, card corners, expert mode, a call…); needs -fast, ~15 min
-node og-image.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # renders web/og.png, the link preview image
+node og-image.mjs --site klaverjas --cdp http://127.0.0.1:9303                  # renders web/klaverjas/og.png, the link preview image
 node app-perf.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # main-thread work per second and chat keystroke times on two emulated phones
 ```
 

@@ -55,13 +55,16 @@ test/sites.test.mjs        every site: its own files, its request budget, its ow
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
                            app-perf.mjs, a benchmark of the frontend on two emulated phones,
                            og-image.mjs, which renders a site's og.png, and site.mjs, a site's files
-deploy/                    nginx.conf, quadlet templates (*.in), npm-advanced.conf, README-deploy.md
+deploy/games/<game>.mk     a game's settings (§10): TITLE, VERB, SITE, ADDR, DEV_PORT, E2E_PORT, E2E_SIM
+deploy/                    the templates every game renders (game.pod.in, game-web.container.in,
+                           game-server.container.in), nginx.conf, npm-advanced.conf, README-deploy.md
 scripts/go                 Go toolchain in a container: `scripts/go test ./...`
-scripts/dev-server PORT    run the server from source on 127.0.0.1:PORT serving web/ (flags after PORT)
+GAME=<game> scripts/dev-server PORT  run the game's server from source on 127.0.0.1:PORT, serving
+                           web/shared and web/<game> (flags after PORT)
 scripts/chrome PORT        headless Chromium with CDP on 127.0.0.1:PORT, with a fake camera and microphone
-scripts/pod-check [ADDR [SITE]]  check a running pod without NPM: pages, websocket, link preview,
-                           security headers (`make check`)
-scripts/deploy-test        `make test`: the units through podman's quadlet generator, and how
+scripts/pod-check ADDR SITE TITLE  check a game's running pod without NPM: pages and titles, websocket,
+                           link preview, manifest, CSP, security headers (`make check`)
+scripts/deploy-test        `make test`: every game's units through podman's quadlet generator, and how
                            `make deploy` labels, tags and refuses builds (stubbed podman/systemd)
 Containerfile  Makefile  README.md
 ```
@@ -2293,22 +2296,48 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
 
 ## 10. Deployment
 
-- `Containerfile` stages: `build` (the official golang Alpine image: `go vet`,
-  `go test -short ./...`, static build with `-trimpath -ldflags "-s -w -X
-  main.version=$GIT_SHA"`), `server` (`FROM scratch`, binary + CA-less, `USER
-  65532:65532`), `web` (`nginxinc/nginx-unprivileged`, Alpine, `deploy/nginx.conf`,
-  `web/`). The base tags (minor versions) live only in the `Containerfile`;
-  `scripts/go` and `scripts/dev-server` read the build image from its `FROM … AS
-  build` line, and `make image` builds with `--pull=newer`, so a fix re-published
-  under the same tag reaches the next deploy. The `web-conf` stage renders
-  `@SITE@` into `nginx.conf` (checked with `nginx -t`) and into `index.html`
-  (`og:image`), which the `web` stage copies over the one from `web/`.
+One pod per game, each with its own address, units, images and game log. A
+game's settings are `deploy/games/<game>.mk` (plain `=`; a value on make's
+command line overrides one, the shell's environment does not); the games are
+the names of those files.
+
+| GAME | SITE | ADDR | DEV_PORT, E2E_PORT | TITLE, VERB | NPM proxy host |
+|---|---|---|---|---|---|
+| klaverjas | klaverjas.kroes.dev | 127.0.0.1:8093 | 18093, 18094 | Klaverjas, klaverjassen | ID 37 |
+| toepen | toepen.kroes.dev | 127.0.0.1:8095 | 18095, 18096 | Toepen, toepen | to be made |
+
+Port rule (`scripts/deploy-test` checks it): ADDR an odd port P, DEV_PORT
+10000+P, E2E_PORT 10001+P. Everything else is named after GAME (G): the pod
+`G`, units `G.pod`, `G-web.container`, `G-server.container` (services
+`G-pod`, `G-web`, `G-server`), images `localhost/G-server` and
+`localhost/G-web`, the server binary `/G` (its HealthCmd `["/G",
+"-healthcheck"]`) and the game-log volume `G-games`. For klaverjas these are
+the names from before there were more games, and its rendered units are byte
+for byte the same.
+
+- `Containerfile` stages: `build` (the official golang Alpine image; copies
+  only `cmd/` and `internal/`, so a Go test reads no file outside them: `go
+  vet`, `go test -short ./...`, then every `cmd/<game>` statically to
+  `/out/<game>` with `-trimpath -ldflags "-s -w -X main.version=$GIT_SHA"`);
+  a `server-<game>` per game (`FROM scratch`, its binary only, `USER
+  65532:65532`); `web-conf` and `web` (`nginxinc/nginx-unprivileged`, Alpine)
+  with `ARG GAME`, `SITE`, `TITLE`, `VERB`: `web-conf` refuses an empty or
+  odd GAME and any path in both `web/shared` and `web/G`, renders `@SITE@`,
+  `@TITLE@` and `@VERB@` into `nginx.conf` (checked with `nginx -t`) and
+  `@SITE@` and `@VERSION@` into the game's `index.html` (`og:image`, the
+  version); `web` copies the union of the two trees and that `index.html`.
+  The base tags (minor versions) live only in the `Containerfile`;
+  `scripts/go` and `scripts/dev-server` read the build image from its `FROM …
+  AS build` line, and `make image` builds with `--pull=newer`, so a fix
+  re-published under the same tag reaches the next deploy.
 - `deploy/nginx.conf`: listen 8080; `/ws` → `http://127.0.0.1:8081` with Upgrade
   headers and long read timeout; `/api/` → same; `location ~ "^/[A-Za-z]{4}$"` →
-  `/index.html`; security headers in one place (CSP `default-src 'self';
+  `/index.html`; the 404 page names the game (`Niet gevonden - @TITLE@`,
+  `Terug naar @VERB@`); security headers in one place (CSP `default-src 'self';
   connect-src 'self' wss://@SITE@; img-src 'self' data:; style-src 'self';
   script-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self';
-  object-src 'none'; form-action 'none'`, nosniff, Referrer-Policy,
+  object-src 'none'; form-action 'none'`, so a site's page reaches its own
+  server only, nosniff, Referrer-Policy,
   Permissions-Policy (camera and microphone for the page itself, for the
   call; geolocation, payment and USB for nobody), COOP, HSTS
   `max-age=31536000; includeSubDomains`), each sent
@@ -2318,28 +2347,39 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   NPM's `X-Real-IP` is trusted from `127.0.0.1` only and passed on as the one
   client address (`X-Forwarded-For` is dropped); `Host` is passed unchanged
   (`$http_host`), which the websocket Origin check compares against.
-- Quadlets rendered by `make install` into `~/.config/containers/systemd/`:
-  `klaverjas.pod` (`PublishPort=127.0.0.1:8093:8080`; `Network=pasta:--host-lo-to-ns-lo`,
+- Quadlets rendered by `make install GAME=G` into `~/.config/containers/systemd/`
+  from `deploy/game*.in` (`@GAME@`, `@TITLE@`, `@SITE@`, `@ADDR@`):
+  `G.pod` (`PublishPort=ADDR:8080`; `Network=pasta:--host-lo-to-ns-lo`,
   so NPM's connections arrive from `127.0.0.1` instead of the host's LAN
   address; `ExitPolicy=continue`, so both containers dying at once does not
-  stop the pod for good), `klaverjas-web.container`,
-  `klaverjas-server.container` (`Pod=klaverjas.pod`, `Pull=never`, `ReadOnly`,
+  stop the pod for good), `G-web.container`,
+  `G-server.container` (`Pod=G.pod`, `Pull=never`, `ReadOnly`,
   `NoNewPrivileges`, `DropCapability=ALL`, health checks; the server's unit
-  mounts the named volume `klaverjas-games` at `/data`, owned by the server's
+  mounts the named volume `G-games` at `/data`, owned by the server's
   user (`:U`), and runs `-addr 127.0.0.1:8081 -games /data`: the game log of
   §6, which `make uninstall` keeps; `deploy/README-deploy.md` says how to read
   it).
 - `Makefile` like `/storage/CLIC/ISMS/Makefile`: `help test test-all e2e dev
-  dev-stop image install deploy check status logs uninstall quadlet`, settings
-  `SITE ?= klaverjas.kroes.dev`, `ADDR ?= 127.0.0.1:8093`. The revision
+  dev-stop image image-server image-web install deploy check status logs
+  uninstall quadlet`. `GAME` comes from make's command line only (one in the
+  shell's environment is ignored, so it never picks what is deployed); an
+  unknown one is an error that lists the games. `install`, `deploy`,
+  `uninstall`, `dev` and the image targets need it and refuse without it
+  (exit 2, nothing run); `status`, `check`, `logs`, `quadlet`, `e2e` and
+  `dev-stop` cover every game without it; `GAME=all` runs a target for each
+  game in name order under one build tag and stops at the first failure
+  (`make -n deploy GAME=all` shows the plan). A setting on the command line
+  without one GAME is refused. The revision
   (`GIT_SHA`, the image label and `/api/health`'s version) is `HEAD`, with
   `-dirty` when `git status` lists anything; each build tags both images
   `<GIT_SHA>-YYYYmmdd-HHMMSS`, and only `make deploy` then moves `:current`
   (what the units run) to it, so `make image` alone never changes what a
   restart starts. `make deploy` refuses a dirty tree unless `ALLOW_DIRTY=1`,
   and ends with `make check`.
-- NPM proxy host (made by hand; it exists, ID 37): `klaverjas.kroes.dev` →
-  `http://127.0.0.1:8093`, wildcard certificate, Force SSL, Block Common
-  Exploits, **Websockets Support ON**, no access list, HTTP/2 off (either
-  works); Advanced empty and NPM's HSTS box off, since HSTS comes from
-  `deploy/nginx.conf` (recorded in `deploy/npm-advanced.conf`).
+- An NPM proxy host per game, made by hand: SITE → `http://ADDR`, wildcard
+  certificate, Force SSL, Block Common Exploits, **Websockets Support ON**, no
+  access list, HTTP/2 off (either works); Advanced empty and NPM's HSTS box
+  off, since HSTS comes from `deploy/nginx.conf` (recorded in
+  `deploy/npm-advanced.conf`). Outside this repository, per game: the name's
+  rate tier in shrek-infra (§9's request budget), the game-log volume in the
+  backup exclusions, and Trivy and monitoring for its images.
