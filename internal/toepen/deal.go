@@ -172,6 +172,7 @@ type Deal struct {
 	dealt    int                     // cards dealt to each: size, or more in the koningsspel
 	laid     [MaxPlayers][]game.Card // the koningsspel: the cards each laid away, face down
 	streak   [MaxPlayers]int         // passes on a toep in a row, also in rounds before (anti-lijntoep)
+	record   [MaxPlayers]Record      // the bluffs seen in the rounds before
 
 	start   [MaxPlayers]int // penalty points at the deal
 	points  [MaxPlayers]int // penalty points now

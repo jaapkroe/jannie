@@ -377,3 +377,64 @@ func deck(hands ...string) []game.Card {
 	}
 	return out
 }
+
+// The bots remember: who bluffed often is checked sooner and gets more
+// going along; and they bluff themselves, at any stake.
+func TestMemoryAndBluffs(t *testing.T) {
+	rng := rand.New(rand.NewPCG(9, 9))
+	liar := toepen.Record{Toeps: 6, ToepBluffs: 5, Claims: 6, ClaimBluffs: 5}
+	honest := toepen.Record{Toeps: 6, Claims: 6}
+	for _, lvl := range []Level{Normaal, Sterk} {
+		checks, stays := map[bool]int{}, map[bool]int{}
+		for range 120 {
+			deck := toepen.Shuffle(rng)
+			for _, lies := range []bool{false, true} {
+				rec := map[bool]toepen.Record{false: honest, true: liar}[lies]
+				// A claim of seat 0, seat 1 asked to check.
+				d := toepen.NewDeal(3, toepen.DefaultRules, 2, [toepen.MaxPlayers]int{}, deck)
+				_ = d.Was(0, true)
+				_ = d.Was(1, false)
+				_ = d.Was(2, false)
+				if d.Phase() == toepen.PhaseCheck && d.Turn() == 1 {
+					v := d.View(1)
+					v.Record[0] = rec
+					if New(0.5, lvl, 1).Check(v) {
+						checks[lies]++
+					}
+				}
+				// A toep of seat 0, seat 1 asked.
+				d = toepen.NewDeal(3, toepen.Rules{Limit: 10}, 2, [toepen.MaxPlayers]int{}, deck)
+				if err := d.Toep(0); err != nil {
+					t.Fatal(err)
+				}
+				v := d.View(1)
+				v.Record[0] = rec
+				if New(0.5, lvl, 2).Answer(v) {
+					stays[lies]++
+				}
+			}
+		}
+		t.Logf("%v: checks %v, goes along %v (false: honest, true: a liar)", lvl, checks, stays)
+		if checks[true] <= checks[false] || stays[true] <= stays[false] {
+			t.Errorf("%v does not read the liar: checks %v, stays %v", lvl, checks, stays)
+		}
+	}
+	// Bluffs at a stake above 2: a hand with little chance toeps now and
+	// then, so a toep of a bot is not always real.
+	d := toepen.NewDeal(3, toepen.Rules{Limit: 15}, 2, [toepen.MaxPlayers]int{}, deck("JH QS KD JC", "TS 9S 8S 7S", "TH 9H 8H 7H"))
+	v := d.View(0)
+	v.Stake = 3
+	if q := New(0.5, Sterk, 1).winChance(&v); q >= New(0.5, Sterk, 1).toepBar(&v)-0.1 {
+		t.Fatalf("not a weak hand: %.2f", q)
+	}
+	bluffs := 0
+	for k := range 400 {
+		if New(0.9, Sterk, uint64(k)).Toep(v) {
+			bluffs++
+		}
+	}
+	t.Logf("a weak hand toeps at stake 3 in %d of 400", bluffs)
+	if bluffs == 0 || bluffs > 100 {
+		t.Errorf("bluffs at stake 3: %d of 400", bluffs)
+	}
+}

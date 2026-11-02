@@ -35,6 +35,7 @@ type View struct {
 	Washed  [MaxPlayers]bool        // got new cards for a was
 	Claimed [MaxPlayers]bool        // claimed a was (once the time for it is over)
 	Open    [MaxPlayers][]game.Card // the hands played face up (a bluff caught, rule Bluf)
+	Record  [MaxPlayers]Record      // what the table saw of each seat's bluffs in the rounds before
 
 	WasRound int       // the time for a was: 1, more when new cards may be washed again
 	Answered bool      // PhaseWas: Seat said whether it has a was
@@ -74,6 +75,7 @@ func (d *Deal) View(seat game.Seat) View {
 		Armoede:  d.armoede,
 		Washed:   d.washed,
 		Answered: d.answered[seat],
+		Record:   d.record,
 		CanClaim: d.CanClaim(seat),
 		Claimant: d.Claimant(),
 		Checks:   d.Checks(),
@@ -140,15 +142,62 @@ func (v *View) Seen() []game.Card {
 	return out
 }
 
+// Record is what the table has seen of a player's bluffs in a match: its
+// toeps whose cards came on the table (it stayed in to the last trick),
+// and of those the ones without a card above an aas; its claims of a
+// vuile was that were checked, and of those the ones that were none. It is
+// public: everyone at the table saw the same.
+type Record struct {
+	Toeps       int `json:"toeps"`
+	ToepBluffs  int `json:"toepBluffs"`
+	Claims      int `json:"claims"`
+	ClaimBluffs int `json:"claimBluffs"`
+}
+
+// seen adds what round d showed of each seat's bluffs to rec.
+func (d *Deal) seen(rec *[MaxPlayers]Record) {
+	for _, c := range d.checks {
+		if c.Checker == game.NoSeat || c.Shown {
+			continue // let through, or on armoede: no bluff could be seen
+		}
+		rec[c.Claimant].Claims++
+		if !c.Genuine() {
+			rec[c.Claimant].ClaimBluffs++
+		}
+	}
+	if d.result == nil || !d.result.Tricks || len(d.tricks) == 0 {
+		return
+	}
+	last := d.tricks[len(d.tricks)-1]
+	for _, t := range d.toeps {
+		if !last.Played(t.Seat) {
+			continue // it passed or sat out: its cards stayed hidden
+		}
+		best := -1
+		for _, tr := range d.tricks[min(t.Tricks, len(d.tricks)):] {
+			for _, p := range tr.Cards {
+				if p.Seat == t.Seat {
+					best = max(best, Strength(p.Card.Rank))
+				}
+			}
+		}
+		rec[t.Seat].Toeps++
+		if best <= Strength(game.Ace) {
+			rec[t.Seat].ToepBluffs++
+		}
+	}
+}
+
 // Match is the bookkeeping of a game of toepen: the penalty points of
 // every seat, and who deals. It goes on until one player is left.
 type Match struct {
 	Players int
 	Rules   Rules
 	Points  [MaxPlayers]int
-	Streak  [MaxPlayers]int // passes on a toep in a row (anti-lijntoep)
-	Dealer  game.Seat       // of the round in play or last played
-	Round   int             // rounds dealt
+	Record  [MaxPlayers]Record // the bluffs seen so far
+	Streak  [MaxPlayers]int    // passes on a toep in a row (anti-lijntoep)
+	Dealer  game.Seat          // of the round in play or last played
+	Round   int                // rounds dealt
 }
 
 // NewMatch starts a match; first is the first dealer.
@@ -204,6 +253,7 @@ func (m *Match) Deal(deck []game.Card) *Deal {
 	m.Round++
 	d := NewDeal(m.Players, m.Rules, m.Dealer, m.Points, deck)
 	d.streak = m.Streak
+	d.record = m.Record
 	return d
 }
 
@@ -213,5 +263,6 @@ func (m *Match) Settle(d *Deal) {
 	if r := d.Result(); r != nil {
 		copy(m.Points[:], r.Points)
 		m.Streak = d.streak
+		d.seen(&m.Record)
 	}
 }

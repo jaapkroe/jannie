@@ -242,6 +242,21 @@ a vuile was follow the chance to take the last trick
 (sampled: makkelijk 12 deals, normaal 48, sterk 240) against what is at
 stake: passing costs the stake before the toep, losing the stake, and going
 out counts as five points more (so who is out either way goes along).
+**Memory**: the match keeps a public record per seat (`Record`, in every
+view): its toeps whose cards came on the table (it stayed in to the last
+trick), of which those without a card above an aas count as bluffs, and
+its checked claims of a vuile was, bluff or not. A seat's bluff rate is
+(bluffs + 1) / (seen + 8). Normaal and sterk weigh a toeper's sampled hand
+by it (a likely bluffer's hand counts as random; sterk reads a toep twice
+as sharply as normaal), go along more readily against a known bluffer
+(the risk of going along scaled by 1 − 1.2 × (rate − 1/8), between 0.5 and
+1.15), and take the claimant's rate as the chance of a bluff when they
+check. Makkelijk remembers nothing. **Bluffing, balanced**: so that a
+bot's toep is not simply real, a hand with little chance (below 15%)
+toeps now and then at any stake (sterk 2.5–9.5%, normaal 4–14% by
+boldness; × 0.6 above stake 2, × 0.25 when being caught would put it
+out), a hand just under the bar sometimes toeps anyway, and now and then a
+hopeless hand overtoeps while the stake is at most 3.
 In the koningsspel sterk tries every choice of cards to lay away in the
 same 24 sampled deals and keeps the eight that take the last trick most
 often (against normaal it wins 102 of 150 koningsspellen where the
@@ -254,8 +269,11 @@ goes along when it must. A real vuile was is always claimed (makkelijk
 against a bluff rate. The persona's aggression lowers the bar for toepen
 and raises the bluffs. The arena test (2 × 1,500 and 2 × 700 duplicate
 rounds at four) has sterk take fewer points than normaal, and normaal than
-makkelijk (now with overtoepen: sterk 2.55 against normaal 2.91, normaal
-2.58 against makkelijk 2.95 penalty points per round for two seats). A
+makkelijk (with overtoepen, the memory and the bluffs: sterk 2.71 against
+normaal 2.80, normaal 2.57 against makkelijk 3.02 penalty points per round
+for two seats; the arena keeps no record, so a bluff there buys nothing:
+it costs sterk about 0.03 a round, the price of being unreadable to
+people). A
 sterk decision takes about 4 ms.
 
 ## 6. The site (`web/toepen`)
@@ -337,11 +355,12 @@ options, worlds}`, `options` each `{label | cards, value, points, best}`:
   bar for a toep;
 - **antwoord**: *Meegaan* (expected penalty points: the stake times the
   chance to lose, going out counting five more), *Overtoepen* (the chance
-  against its bar) and *Passen* (the stake before the toep);
+  against its bar) and *Passen* (the stake before the toep); with what the
+  table saw of the toeper's bluffs;
 - **was**: whether the hand is a real vuile was, and the chance with it;
 - **controle**: the chance that the claim is a bluff, from the hands the
-  cards you do not see make, against the bar (50%; 85% when a wrong check
-  puts you out);
+  cards you do not see make and the claimant's record, against the bar
+  (50%; 85% when a wrong check puts you out);
 - **wegleggen**: the five best choices of cards to lay away in the
   koningsspel, each with its share of 48 deals.
 

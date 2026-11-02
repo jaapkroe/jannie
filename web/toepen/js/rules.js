@@ -327,7 +327,8 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
       ['Meegaan of passen', [
         'Vergelijk wat passen kost (de inzet van vóór de toep) met wat meegaan gemiddeld kost: de nieuwe inzet maal je kans om te verliezen.',
         'Eruit gaan weegt extra zwaar. Zet passen je er net zo goed uit als verliezen, ga dan mee.',
-        'Wie bij een hoge inzet nog toept, heeft meestal echt iets.']],
+        'Wie bij een hoge inzet nog toept, heeft vaak echt iets, maar niet altijd: ook de AI-spelers bluffen af en toe, ook bij een hoge inzet.',
+        'Let op wie bluft: wie vaak bluft, verdient vaker een meegaan of een controle. De AI-spelers onthouden dat ook, van iedereen aan tafel.']],
       ['Vuile was', [
         'Lever een echte vuile was altijd in: vier nieuwe kaarten zijn bijna altijd beter, en wie controleert, krijgt zelf een strafpunt.',
         'Bluf af en toe met een kansloze hand, maar nooit op armoede: daar mag het niet.']],

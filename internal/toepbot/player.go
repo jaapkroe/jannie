@@ -123,18 +123,51 @@ func (p *Player) search(v *toepen.View, legal []game.Card) game.Card {
 }
 
 // weight is how likely a sampled world is given the toeps made: a seat
-// that toept is thought to hold a strong hand (sterk only).
+// that toept is thought to hold a strong hand, unless it bluffs, as often
+// as the table saw it bluff (normaal and sterk; makkelijk takes every toep
+// for what it is not).
 func (p *Player) weight(v *toepen.View, w *world) float64 {
-	if p.lvl != Sterk {
+	if p.lvl == Makkelijk {
 		return 1
 	}
 	x := 1.0
 	for _, t := range v.Toeps {
 		if t.Seat != v.Seat && v.In(t.Seat) {
-			x *= 0.35 + toepStrength(w[t.Seat])
+			b := toepBluffRate(v, t.Seat)
+			read := 0.35 + toepStrength(w[t.Seat])
+			if p.lvl == Normaal {
+				read = 0.7 + 0.5*toepStrength(w[t.Seat]) // reads a toep half as sharply
+			}
+			x *= b + (1-b)*read
 		}
 	}
 	return x
+}
+
+// The prior of the bluff rates: one bluff in eight, as if seen in eight.
+const priorBluffs, priorSeen = 1.0, 8.0
+
+// toepBluffRate is how often seat o bluffs a toep, as far as the table saw
+// (its toeps whose cards came on the table), with the prior.
+func toepBluffRate(v *toepen.View, o game.Seat) float64 {
+	r := v.Record[o]
+	return (float64(r.ToepBluffs) + priorBluffs) / (float64(r.Toeps) + priorSeen)
+}
+
+// claimBluffRate is how often seat o bluffs a vuile was, as far as the
+// table saw (its claims checked, this round's too), with the prior.
+func claimBluffRate(v *toepen.View, o game.Seat) float64 {
+	r := v.Record[o]
+	bluffs, seen := float64(r.ClaimBluffs), float64(r.Claims)
+	for _, c := range v.Checks {
+		if c.Claimant == o && c.Checker != game.NoSeat && !c.Shown {
+			seen++
+			if !c.Genuine() {
+				bluffs++
+			}
+		}
+	}
+	return (bluffs + priorBluffs) / (seen + priorSeen)
 }
 
 // winChance is the share of sampled deals in which v.Seat takes the last
@@ -291,12 +324,46 @@ func (p *Player) Toep(v toepen.View) bool {
 	if q >= bar {
 		return true
 	}
-	// Now and then a bluff with a hand that has nothing to lose.
-	bluff := 0.02 + 0.08*p.aggr
 	if p.lvl == Makkelijk {
-		bluff = 0.04
+		return q < 0.12 && v.Stake <= 2 && p.rng.Float64() < 0.04
 	}
-	return q < 0.12 && v.Stake <= 2 && p.rng.Float64() < bluff
+	// Balanced: a bot that toeps only on a good hand is read at once. So a
+	// hopeless hand bluffs now and then at any stake (less above 2, and
+	// seldom when being caught would put it out), and a hand just under the
+	// bar toeps now and then too.
+	bluff, semi := 0.04+0.1*p.aggr, 0.08+0.14*p.aggr
+	if p.lvl == Sterk {
+		bluff, semi = 0.025+0.07*p.aggr, 0.05+0.1*p.aggr // just enough to be unreadable
+	}
+	if v.Stake > 2 {
+		bluff *= 0.6
+	}
+	if p.outIfLost(&v, v.Stake+1) {
+		bluff *= 0.25
+	}
+	switch {
+	case q < 0.15:
+		return p.rng.Float64() < bluff
+	case q >= bar-0.1:
+		return p.rng.Float64() < semi
+	}
+	return false
+}
+
+// distrust scales the risk of going along by what the table saw of the
+// toeper's bluffs: below 1 for one who bluffs more than one in eight,
+// above for one who never did.
+func (p *Player) distrust(v *toepen.View) float64 {
+	if v.Toeper == game.NoSeat {
+		return 1
+	}
+	b := toepBluffRate(v, v.Toeper)
+	return min(max(1-1.2*(b-priorBluffs/priorSeen), 0.5), 1.15)
+}
+
+// outIfLost reports whether losing stake puts v.Seat out of the match.
+func (p *Player) outIfLost(v *toepen.View, stake int) bool {
+	return v.Points[v.Seat]+stake >= v.Rules.Limit
 }
 
 // Overtoep decides, asked about a toep, whether to toep again: only with
@@ -309,13 +376,17 @@ func (p *Player) Overtoep(v toepen.View) bool {
 	}
 	q := p.winChance(&v)
 	climb := 0.06 * float64(v.Stake-2)
-	switch p.lvl {
-	case Makkelijk:
+	switch {
+	case p.lvl == Makkelijk:
 		return q >= 0.9 && p.rng.Float64() < 0.5
-	case Sterk:
-		return q >= 0.68+climb+0.05*float64(3-min(v.InCount(), 3))-0.08*p.aggr
+	case p.lvl == Sterk && q >= 0.68+climb+0.05*float64(3-min(v.InCount(), 3))-0.08*p.aggr:
+		return true
+	case p.lvl == Normaal && q >= 0.85+climb-0.05*p.aggr:
+		return true
 	}
-	return q >= 0.85+climb-0.05*p.aggr
+	// Now and then a bluff back, while the stake is low and being caught
+	// would not put it out: an overtoep is not always the nuts either.
+	return q < 0.1 && v.Stake <= 3 && !p.outIfLost(&v, v.Stake+1) && p.rng.Float64() < 0.02+0.04*p.aggr
 }
 
 // Answer decides whether to go along with a toep (true) or pass, taking
@@ -337,11 +408,13 @@ func (p *Player) Answer(v toepen.View) bool {
 		return q > 0.35-0.15*p.aggr || p.rng.Float64() < 0.15
 	}
 	// Going along costs the stake when the last trick is lost (and maybe
-	// more after another toep); passing costs the stake before.
+	// more after another toep); passing costs the stake before. Against
+	// whoever the table saw bluff often, a bot goes along more readily.
 	risk := 1.1 - 0.25*p.aggr
 	if p.lvl == Sterk {
 		risk = 1.05 - 0.15*p.aggr
 	}
+	risk *= p.distrust(&v)
 	return (1-q)*stay*risk < fold
 }
 
@@ -372,10 +445,7 @@ func (p *Player) Check(v toepen.View) bool {
 		return p.rng.Float64() < 0.15
 	}
 	g := wasChance(unseen(&v))
-	bluff := 0.15
-	if p.lvl == Sterk {
-		bluff = 0.12
-	}
+	bluff := claimBluffRate(&v, v.Claimant) // who bluffed before is checked sooner
 	pb := bluff * (1 - g) / (bluff*(1-g) + g)
 	bar := 0.5
 	if cost(v.Points[v.Seat], 1, v.Rules.Limit) > 1 {

@@ -169,7 +169,7 @@ func (p *Player) explainPlay(v *toepen.View) Explanation {
 			e.Advice = "Toep, en speel dan " + play
 			e.Why += fmt.Sprintf(" Dat is meer dan de grens om te toepen (%s): de anderen moeten dan meer betalen of passen.", pct(bar))
 		} else {
-			e.Why += fmt.Sprintf(" Te weinig om te toepen: de grens is %s (hoger met minder spelers). Een bluf met een kansloze hand kan bij inzet 1 of 2.", pct(bar))
+			e.Why += fmt.Sprintf(" Te weinig om te toepen: de grens is %s (hoger met minder spelers). Een bluf met een kansloze hand kan af en toe, ook bij een hogere inzet.", pct(bar))
 		}
 	}
 	return e
@@ -184,7 +184,7 @@ func (p *Player) explainAnswer(v *toepen.View) Explanation {
 	me, limit := v.Points[v.Seat], v.Rules.Limit
 	fold := cost(me, v.Stake-1, limit)
 	stay := cost(me, v.Stake, limit)
-	risk := 1.05 - 0.15*p.aggr
+	risk := (1.05 - 0.15*p.aggr) * p.distrust(v)
 	lose := (1 - q) * stay
 	e.Options = []Option{{Label: "Meegaan", Value: lose, Points: true}}
 	raise := v.CanRaise && v.Stake < 5 && q >= p.raiseBar(v)
@@ -200,6 +200,11 @@ func (p *Player) explainAnswer(v *toepen.View) Explanation {
 	}
 	why := fmt.Sprintf("Je kans op de laatste slag is %s. Meegaan kost gemiddeld %s strafpunten (de inzet %d maal je kans om te verliezen), passen kost er %s.%s",
 		pct(q), pts(lose), v.Stake, pts(fold), out)
+	if o := v.Toeper; o != game.NoSeat && v.Record[o].Toeps > 0 {
+		r := v.Record[o]
+		why += fmt.Sprintf(" Van de %d toeps van de toeper die op tafel kwamen, waren er %d bluf: zo vaak telt een zwakke hand mee in die kans.",
+			r.Toeps, r.ToepBluffs)
+	}
 	stays := true
 	switch {
 	case v.MustStay:
@@ -272,7 +277,7 @@ func (p *Player) explainWas(v *toepen.View) Explanation {
 func (p *Player) explainCheck(v *toepen.View) Explanation {
 	e := Explanation{Decision: "controle", Chance: -1}
 	g := wasChance(unseen(v))
-	bluff := 0.12
+	bluff := claimBluffRate(v, v.Claimant)
 	pb := bluff * (1 - g) / (bluff*(1-g) + g)
 	bar := 0.5
 	if cost(v.Points[v.Seat], 1, v.Rules.Limit) > 1 {
@@ -281,8 +286,12 @@ func (p *Player) explainCheck(v *toepen.View) Explanation {
 	check := pb > bar
 	e.Options = []Option{{Label: "Controleren", Value: pb, Best: check}, {Label: "Laten gaan", Value: 1 - pb, Best: !check}}
 	e.Advice = map[bool]string{true: "Controleer", false: "Laat gaan"}[check]
-	e.Why = fmt.Sprintf("Van de kaarten die jij niet ziet, vormt %s van de handen van vier een vuile was. De bots gaan uit van zo'n %s bluf. Samen is de kans dat dit bluf is %s; controleer boven %s",
-		pct(g), pct(bluff), pct(pb), pct(bar))
+	seen := "De bots gaan uit van zo'n " + pct(bluff) + " bluf"
+	if r := v.Record[v.Claimant]; r.Claims > 0 {
+		seen = fmt.Sprintf("Van de %d gecontroleerde vuile wassen van deze speler waren er %d bluf: reken op zo'n %s", r.Claims, r.ClaimBluffs, pct(bluff))
+	}
+	e.Why = fmt.Sprintf("Van de kaarten die jij niet ziet, vormt %s van de handen van vier een vuile was. %s. Samen is de kans dat dit bluf is %s; controleer boven %s",
+		pct(g), seen, pct(pb), pct(bar))
 	if bar > 0.5 {
 		e.Why += ", want een verkeerde controle zet je eruit."
 	} else {

@@ -928,3 +928,44 @@ func TestWireCodes(t *testing.T) {
 		}
 	}
 }
+
+// The table remembers each seat's bluffs: a toep whose cards came on the
+// table without one above an aas, and a claim checked and false.
+func TestRecord(t *testing.T) {
+	m := NewMatch(3, DefaultRules, 2)
+	// Seat 1 claims a was that is none, and is checked; seat 0 toeps with
+	// four pictures, and everyone goes along to the end.
+	d := m.Deal(deck("JH QS KD AC", "JD QD KH 8C", "TS 9S 8S 7S"))
+	must(t, d.Was(0, false))
+	must(t, d.Was(1, true))
+	must(t, d.Was(2, false))
+	must2(t)(d.Check(2, true))
+	if !d.Open(1) {
+		t.Fatal("the bluffer plays open")
+	}
+	must(t, d.Toep(0))
+	must(t, d.Answer(1, true))
+	must(t, d.Answer(2, true))
+	for d.Phase() != PhaseDone {
+		must(t, d.Play(d.Turn(), d.Legal()[0]))
+	}
+	m.Settle(d)
+	if want := (Record{Toeps: 1, ToepBluffs: 1}); m.Record[0] != want {
+		t.Errorf("seat 0: %+v", m.Record[0])
+	}
+	if want := (Record{Claims: 1, ClaimBluffs: 1}); m.Record[1] != want {
+		t.Errorf("seat 1: %+v", m.Record[1])
+	}
+	if d := m.Deal(game.NewDeck()); d.View(2).Record != m.Record {
+		t.Error("the next round's view knows the record")
+	}
+	// A toeper who wins by everyone passing shows nothing.
+	m = NewMatch(2, Rules{Limit: 10}, 1)
+	d = m.Deal(deck("JH QS KD AC", "TS 9S 8S 7S"))
+	must(t, d.Toep(0))
+	must(t, d.Answer(1, false))
+	m.Settle(d)
+	if m.Record[0] != (Record{}) {
+		t.Errorf("nothing shown: %+v", m.Record[0])
+	}
+}
