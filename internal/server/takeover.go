@@ -13,7 +13,7 @@ func (r *room) waitingFor() game.Seat {
 	if !r.inHand() || r.pending != stepNone {
 		return game.NoSeat
 	}
-	i := r.deal.Turn()
+	i := r.gp.turn()
 	if i == game.NoSeat {
 		return game.NoSeat
 	}

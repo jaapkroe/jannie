@@ -1,0 +1,29 @@
+# Rendered by `make install` into ~/.config/containers/systemd/@GAME@-web.container.
+# nginx: serves the frontend built into the image and proxies /ws and /api/ to
+# @GAME@-server in the same pod. No volume, no secret, no state.
+#   restart: systemctl --user restart @GAME@-web     logs: journalctl --user -u @GAME@-web
+[Unit]
+Description=@TITLE@ web (nginx), https://@SITE@/
+
+[Container]
+Image=localhost/@GAME@-web:current
+ContainerName=@GAME@-web
+Pod=@GAME@.pod
+Pull=never
+ReadOnly=true
+# Pid file and temp files; see deploy/nginx.conf.
+Tmpfs=/tmp
+Tmpfs=/var/cache/nginx
+NoNewPrivileges=true
+DropCapability=ALL
+HealthCmd=wget -q -O /dev/null http://127.0.0.1:8080/
+HealthInterval=60s
+HealthRetries=3
+# Three failed checks kill the container, and Restart= below brings it back.
+HealthOnFailure=kill
+
+[Service]
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

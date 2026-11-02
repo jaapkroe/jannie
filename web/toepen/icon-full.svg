@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Full-bleed favicon.svg for home-screen icons that the platform masks
+       itself: felt to every edge, no frame, nothing transparent (iOS would
+       fill it black), the card inside the central 80% circle (the maskable
+       safe zone). The PNGs are rendered once and committed, as klaverjas's
+       (web/klaverjas/icon-full.svg): apple-touch-icon.png 180 and
+       icon-maskable-512.png from this file, icon-192.png and icon-512.png
+       from favicon.svg. test/ui/app-icons.test.mjs checks the result. -->
+  <defs>
+    <radialGradient id="felt" cx="50%" cy="40%" r="75%">
+      <stop offset="0" stop-color="#3a7fb0"/>
+      <stop offset="1" stop-color="#123a5a"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" fill="url(#felt)"/>
+  <g transform="translate(32 32) scale(0.78) translate(-32 -32)">
+    <g transform="rotate(-9 32 33)">
+      <rect x="18.5" y="11" width="27" height="40" rx="4" fill="#fffaf0" stroke="#0d2e47" stroke-opacity=".35"/>
+      <text x="32" y="34" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-weight="900" font-size="17" fill="#c8102e">10</text>
+      <path d="M32 47.5c-5.8-3.9-7.6-7.2-5.2-9.6 1.8-1.8 4.1-.9 5.2.9 1.1-1.8 3.4-2.7 5.2-.9 2.4 2.4.6 5.7-5.2 9.6z" fill="#c8102e"/>
+    </g>
+  </g>
+</svg>

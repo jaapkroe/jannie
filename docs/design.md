@@ -4,6 +4,12 @@ This document is the contract between the parts of the system. Code that
 deviates from it must update it in the same change. English for code, comments
 and docs; **every user-visible string is Dutch**.
 
+The repository builds one site per game: klaverjas here, and toepen at
+`toepen.kroes.dev` with its own contract, [`toepen.md`](toepen.md). Both are
+played at the same table (§4.3, §6, the table's messages of §7) from a shared
+shell (§9), each from its own pod; [`games.md`](games.md) says how, and how to
+add a game.
+
 Hosted at `https://klaverjas.kroes.dev` on `shrek` (see `/storage/shrek-infra`):
 Nginx Proxy Manager (NPM) terminates TLS and forwards plain HTTP to
 `127.0.0.1:8093`, where a rootless podman **pod** (owned by `jaap`) runs two
@@ -22,28 +28,43 @@ strict CSP is possible.
 
 ```
 go.mod                     module klaverjas (Go 1.27), one dependency: github.com/coder/websocket
-cmd/klaverjas/main.go      flags, HTTP server, graceful shutdown, -healthcheck
+cmd/klaverjas/main.go      klaverjas's binary: its bots and internal/serve
+cmd/toepen/                toepen's binary (toepen.md)
+internal/serve/            what every binary shares: flags, HTTP server, graceful shutdown, -healthcheck,
+                           the dev static handler (web/shared ∪ web/<game>) and the game's 404 page
 internal/game/             pure rules engine: cards, legal moves, tricks, roem, scoring, deal state machine
 internal/bot/              bot personalities, play levels, hints/advice, chat lines
-internal/server/           rooms, codes, websocket protocol, pacing, chat, limits
-web/                       static frontend, vanilla ES modules, no build step
+internal/persona/          the personas' identities, shared by every game (bios per game)
+internal/server/           the table: rooms, codes, websocket protocol, pacing, chat, limits; klaverjas
+                           built in; the Game API for other games (§4.3); servertest/, their test kit
+internal/toepen/ internal/toepbot/ internal/toepenserver/   toepen's rules, bots and server side
+web/shared/                the shell every game's site uses, vanilla ES modules, no build step (§9)
+  css/app.css  css/cards.css
+  js/main.js (routing, the websocket, the update queue)  js/util.js  js/panels.js  js/home.js
+  js/cards.js  js/sound.js
+  js/call.js                 the call with the others at the table, loaded once another person sits there
+web/klaverjas/             klaverjas's site, served with web/shared (no path in both)
   index.html  favicon.svg  manifest.webmanifest  og.png (link preview)
   icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
-  css/app.css  css/cards.css  css/manual.css
-  js/main.js … (app modules)  js/cards.js  js/sound.js  js/manual.js
+  css/manual.css
+  js/game.js (the game module, §9)  js/table.js (the table and its overlays)  js/manual.js
   js/expert.js               the sheet *Redenering van de AI* (expert mode, training), loaded only when first opened
-  js/call.js                 the call with the others at the table, loaded once another person sits there
-test/e2e/                  node scripts that play full games over the websocket
+web/toepen/                toepen's site (toepen.md §6)
+test/e2e/                  node scripts that play full games over the websocket: sim.mjs (klaverjas), toepen.mjs
+test/sites.test.mjs        every site: its own files, its request budget, its own game only
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
                            app-perf.mjs, a benchmark of the frontend on two emulated phones,
-                           and og-image.mjs, which renders web/og.png
-deploy/                    nginx.conf, quadlet templates (*.in), npm-advanced.conf, README-deploy.md
+                           og-image.mjs, which renders a site's og.png, and site.mjs, a site's files
+deploy/games/<game>.mk     a game's settings (§10): TITLE, VERB, SITE, ADDR, DEV_PORT, E2E_PORT, E2E_SIM
+deploy/                    the templates every game renders (game.pod.in, game-web.container.in,
+                           game-server.container.in), nginx.conf, npm-advanced.conf, README-deploy.md
 scripts/go                 Go toolchain in a container: `scripts/go test ./...`
-scripts/dev-server PORT    run the server from source on 127.0.0.1:PORT serving web/ (flags after PORT)
+GAME=<game> scripts/dev-server PORT  run the game's server from source on 127.0.0.1:PORT, serving
+                           web/shared and web/<game> (flags after PORT)
 scripts/chrome PORT        headless Chromium with CDP on 127.0.0.1:PORT, with a fake camera and microphone
-scripts/pod-check [ADDR [SITE]]  check a running pod without NPM: pages, websocket, link preview,
-                           security headers (`make check`)
-scripts/deploy-test        `make test`: the units through podman's quadlet generator, and how
+scripts/pod-check ADDR SITE TITLE  check a game's running pod without NPM: pages and titles, websocket,
+                           link preview, manifest, CSP, security headers (`make check`)
+scripts/deploy-test        `make test`: every game's units through podman's quadlet generator, and how
                            `make deploy` labels, tags and refuses builds (stubbed podman/systemd)
 Containerfile  Makefile  README.md
 ```
@@ -702,9 +723,14 @@ smaller tables.
 
 ### 4.3 `internal/server`
 
-`internal/server` does **not** import `internal/bot`: it defines the interface
-it needs, and `cmd/klaverjas/ai.go` adapts package `bot` to it. Server tests
-use a fake AI (first legal card), so the two packages build independently.
+`internal/server` is the table every game is played at, and klaverjas, the
+built-in game. One server plays one game (`Config.Game`): `cmd/klaverjas`
+passes `server.Klaverjas(ai)`, `cmd/toepen` toepen's `server.Game`
+(`internal/toepenserver`, [`toepen.md`](toepen.md)). `internal/server` does
+**not** import `internal/bot` nor any other game: it defines the interfaces
+it needs, and `cmd/klaverjas/ai.go` adapts package `bot` to klaverjas's.
+Server tests use a fake AI (first legal card), so the packages build
+independently.
 `perf_test.go` measures the server's own cost: fake humans, connections
 without a socket, play whole matches in process with random legal
 decisions. `go test -run '^$' -bench . ./internal/server` runs
@@ -749,21 +775,83 @@ type AI interface {
     Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
 }
 type Config struct {
-    AI   AI
+    Game Game           // the game the server plays: Klaverjas(ai), or another (required)
     Fast bool           // scale all delays by 0.05 (tests)
     MaxRooms int        // default 1500
     AllowedOrigins []string // websocket Origin patterns besides same-host
     Version  string     // reported by /api/health {ok, version, rooms, players}
     Logger   *slog.Logger // nil: slog.Default()
+    GameLog  string     // directory of the game log (§6); "" keeps none
 }
+func Klaverjas(ai AI) Game                // the built-in game, on the code of this package
 func New(cfg Config) *Server
 func (s *Server) Handler() http.Handler   // /ws, /api/health
 func (s *Server) Shutdown(ctx context.Context)
 ```
 
-`cmd/klaverjas` flags: `-addr 127.0.0.1:8081`, `-static DIR` (dev only: also
-serve the frontend, with the same `/^[A-Za-z]{4}$/` → index.html rule as nginx,
-`Cache-Control: no-cache` and the nginx CSP),
+**Other games** play on an exported API (`api.go`, `ext.go`): the table owns
+codes and links, seats and the lobby, bots and their chat, calls,
+reconnects, the takeover question, pacing, the hand summary, game over, the
+game log and the limits; the game brings its rules, options, bots and
+personas. Klaverjas runs on the table's own match code behind an unexported
+seam (`games.go`), so its wire format and behaviour are exactly those of
+this document; nothing of another game reaches it.
+
+```go
+type Game interface {
+    Name() string
+    Seats() (min, max, def int)             // at most 8
+    Personas() []Persona                    // the game's bios; at least max − 1
+    NewOptions() GameOptions                // the game's own options, at their defaults
+    NewBrain(personaID, level string, seed uint64) any
+    Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
+    New(t *Table) Play                      // one match at table t
+}
+type GameOptions interface {
+    Set(fields map[string]json.RawMessage, lenient bool) error // the game's keys; Dutch errors
+    Wire(TableOpts) any                     // the state's opts and the game log's: table's and game's
+}
+type TableOpts struct{ Players int; AI, Tempo string; Seed int }   // what every game has (§3)
+type Play interface {
+    Start(); Next()                         // deal the first hand; the next one, or Table.GameOver
+    Turn() game.Seat; HandLen(i game.Seat) int; Single() bool
+    State(i game.Seat) any                  // Table.Shared(i) embedded, and the game's own keys
+    Move(i game.Seat, m Msg) error          // a human's message: ErrUnknownMsg, ErrIgnore,
+                                            // NotYourTurn(err) or ErrPaused, or ongeldig
+    Decision(i game.Seat, brain any) (think func() any, safe any) // a bot's, off the room goroutine
+    Apply(i game.Seat, a any) error
+    Resume(s Step)                          // after the game's pause s
+    Variant() string                        // for the server log
+}
+type Shared struct{ Code, Phase string; Opts any; You, Host int; Roster; Players; Turn int; Takeover; NextAt int64 }
+```
+
+`*Table` is the game's handle on its room: reads (`Code`, `Opts`,
+`Options`, `Players`, `Deals`, `Seed`, `MatchID`, `DisplayName`,
+`BotPlays`, `HumanCount`, `InHand`, `Pending`, `PauseEnds`, `Pace`,
+`Logger`, `Shared`) and the moves of the table (`SetPhase`, `SetHand`,
+`Pause`, `EndPause`, `OpenTurn`, `Emit`, `Later`, `Think` for a question
+everyone answers at once, `Background` for an analysis off the room
+goroutine, `Trick`, `Summary`, `GameOver`, `SysChat`,
+`BotSay`, `BotsReact`, `Log`), every duration scaled by the room's tempo.
+The table drives the match after every call into the game and every
+callback; a game never schedules itself. For another game the table reads
+`players`, `ai`, `tempo` and `seed` ("Kies N tot en met M spelers.") and
+hands the other keys to `Set`; `training` and `expert` are klaverjas's and
+ignored. `servertest` is a test kit for a game's server tests (`Start`, a
+client with `Create`, `Join`, `Until`, `WaitEvent`, …), and `toy_test.go`
+a toy game ("hoogste kaart") that is the template for the next one.
+
+Personas: their identities (name, emoji, colour, chattiness, speed) are
+`internal/persona`'s, the same at every game; bios and chat are per game
+(`internal/bot` for klaverjas, `internal/toepbot` for toepen).
+
+`internal/serve` is what every binary shares: `serve.Main(Site{Game, Title,
+Verb}, version, game)` with the flags `-addr 127.0.0.1:8081`, `-games DIR`
+(the game log), `-static DIR` (dev only: also serve the frontend, the union
+of `DIR/shared` and `DIR/<game>`, a path in both or a missing directory
+being a start-up error; the same `/^[A-Za-z]{4}$/` → index.html rule as
+nginx, `Cache-Control: no-cache`, the nginx CSP and the game's 404 page),
 `-fast`, `-origin PATTERN` (repeatable), `-healthcheck` (GET
 `http://127.0.0.1:8081/api/health`, exit 0/1; the scratch image has no curl).
 Logs with `log/slog` to stdout. Never log chat text or tokens.
@@ -1508,13 +1596,19 @@ Vanilla ES modules, no framework, no build step, no inline `<script>`/`<style>`
 and no `style="…"` attributes or `setAttribute('style')` (CSP `style-src
 'self'`; setting `el.style.x` from JS is fine). Build DOM with
 `document.createElement`/`textContent`; never `innerHTML` with user or server
-text. At most 17 requests per page load in total, the websocket included
-(NPM's rate limit for the name is in shrek-infra, `docs/services/klaverjas.md`):
-html, 3 css, favicon, manifest, one PNG icon (Chrome's install check),
-≤ 6 app modules, cards.js, sound.js, manual.js, the websocket; `expert.js` is
+text. The site is the union of `web/shared` (the shell every game's site
+uses) and `web/klaverjas` (this game's page, icons, modules and styles); a
+path in both is an error (see "One site per game" below). At most 17
+requests per page load in total, the websocket included (NPM's rate limit
+for the name is in shrek-infra, `docs/services/klaverjas.md`): html, 3 css
+(app.css and cards.css of the shell, manual.css), favicon, manifest, one
+PNG icon (Chrome's install check), the shell's 6 modules (main.js with the
+websocket, util, panels, home, sound, cards), the game's 3 (game, table,
+manual), the websocket; `expert.js` is
 imported only when its sheet is first opened (expert mode, training), and `call.js` once another
-person sits at the table, so a page load never fetches them. No service
-worker. System font stack.
+person sits at the table, so a page load never fetches them.
+`test/sites.test.mjs` counts it from index.html and the static imports.
+No service worker. System font stack.
 `localStorage` access wrapped in try/catch (keys prefixed `kj.`).
 Icons: `favicon.svg` (tab; manifest `any`), `icon-192.png` and `icon-512.png`
 (manifest `any`, rendered from favicon.svg), and from the full-bleed
@@ -1536,6 +1630,45 @@ fetcher calls itself `facebookexternalhit`, which NPM's bot filter refuses
 outside the house, so its previews show the image only for a sender at home.
 Server-side previewers (Telegram, Slack, Discord) fetch from datacenter
 addresses that shrek's firewall drops.
+
+### One site per game
+
+Every game has a site of its own (`klaverjas.kroes.dev`, `toepen.kroes.dev`;
+docs/games.md), built from the same shell:
+
+- `web/shared/js`: `main.js` (routing, the websocket, the update queue),
+  `util.js`, `panels.js` (modals, back button, settings, bot picker, menu,
+  feedback, chat), `home.js` (home, invite, lobby), `sound.js`, `cards.js`,
+  `call.js` (lazy); `web/shared/css`: `app.css`, `cards.css`.
+- `web/<game>`: `index.html`, `manifest.webmanifest`, `favicon.svg`,
+  `icon-full.svg`, the PNG icons, `og.png`, and `js/game.js`, the game
+  module, with the game's other modules and its stylesheet.
+- The shell reaches the game only through `main.js` importing `./game.js`;
+  `home.js` and `panels.js` get it at boot (`home.init(game)`,
+  `panels.useGame(game)`). `game.js` has no side effects on import.
+- Nothing a player sees on one site names another game
+  (`test/sites.test.mjs`). The look of a site comes from its stylesheet,
+  which overrides the shell's colour tokens (`--bg`, `--felt-1..3`, …).
+
+```js
+// web/<game>/js/game.js — what the shell needs from the game of the site
+export const name;          // 'Klaverjas': titles ("Klaverjas · ABCD"), the share title
+export const maxPlayers;    // the largest table: the lobby's hints, the refused-join toast
+export const PLAYING;       // Set of phases in which a turn may be the player's (sound and title cues)
+export const ACKED;         // Set of moves the server answers at once (silence: a dead socket)
+export const table;         // the table module: init, render(s), animate(ev, prev, next), settle, welcomeBack,
+                            //   bubble(s, seat, text), onError, staleVote(m), resync, resetRoom, relayout, renderCall
+export const TOOLS;         // the game's top-bar tools for panels.toolButtons, as the shell's:
+                            //   name: [icon, label, title, fn, {hidden}?]
+export const menuTitle, menu;  // the menu button's tooltip; menu(item) → the game's menu items, before the shell's
+export const soundSub, chatQuick, chatCls;  // settings line under Geluidseffecten; quick chat lines; a sender's colour
+export const sync, onError, onReconnect;    // after every update; on a refusal; on a new connection (all optional)
+export const messages, queued;  // the game's own server messages: handled at once, or after the animations before them
+export const home;          // options (rows: key, label, choices, info, players?, input?, multi + value?), defaults,
+                            //   quickOpts(), quickSub(), summary(o), remember(o), tiles()?, help {label, open},
+                            //   egg?, footer, support, shareText(code)
+export const lobby;         // seats(miniTable) → its seat slots; slot(s, seat) → {el, cls, role, free}
+```
 
 ### Module contracts shared between agents
 
@@ -2251,22 +2384,48 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
 
 ## 10. Deployment
 
-- `Containerfile` stages: `build` (the official golang Alpine image: `go vet`,
-  `go test -short ./...`, static build with `-trimpath -ldflags "-s -w -X
-  main.version=$GIT_SHA"`), `server` (`FROM scratch`, binary + CA-less, `USER
-  65532:65532`), `web` (`nginxinc/nginx-unprivileged`, Alpine, `deploy/nginx.conf`,
-  `web/`). The base tags (minor versions) live only in the `Containerfile`;
-  `scripts/go` and `scripts/dev-server` read the build image from its `FROM … AS
-  build` line, and `make image` builds with `--pull=newer`, so a fix re-published
-  under the same tag reaches the next deploy. The `web-conf` stage renders
-  `@SITE@` into `nginx.conf` (checked with `nginx -t`) and into `index.html`
-  (`og:image`), which the `web` stage copies over the one from `web/`.
+One pod per game, each with its own address, units, images and game log. A
+game's settings are `deploy/games/<game>.mk` (plain `=`; a value on make's
+command line overrides one, the shell's environment does not); the games are
+the names of those files.
+
+| GAME | SITE | ADDR | DEV_PORT, E2E_PORT | TITLE, VERB | NPM proxy host |
+|---|---|---|---|---|---|
+| klaverjas | klaverjas.kroes.dev | 127.0.0.1:8093 | 18093, 18094 | Klaverjas, klaverjassen | ID 37 |
+| toepen | toepen.kroes.dev | 127.0.0.1:8095 | 18095, 18096 | Toepen, toepen | to be made |
+
+Port rule (`scripts/deploy-test` checks it): ADDR an odd port P, DEV_PORT
+10000+P, E2E_PORT 10001+P. Everything else is named after GAME (G): the pod
+`G`, units `G.pod`, `G-web.container`, `G-server.container` (services
+`G-pod`, `G-web`, `G-server`), images `localhost/G-server` and
+`localhost/G-web`, the server binary `/G` (its HealthCmd `["/G",
+"-healthcheck"]`) and the game-log volume `G-games`. For klaverjas these are
+the names from before there were more games, and its rendered units are byte
+for byte the same.
+
+- `Containerfile` stages: `build` (the official golang Alpine image; copies
+  only `cmd/` and `internal/`, so a Go test reads no file outside them: `go
+  vet`, `go test -short ./...`, then every `cmd/<game>` statically to
+  `/out/<game>` with `-trimpath -ldflags "-s -w -X main.version=$GIT_SHA"`);
+  a `server-<game>` per game (`FROM scratch`, its binary only, `USER
+  65532:65532`); `web-conf` and `web` (`nginxinc/nginx-unprivileged`, Alpine)
+  with `ARG GAME`, `SITE`, `TITLE`, `VERB`: `web-conf` refuses an empty or
+  odd GAME and any path in both `web/shared` and `web/G`, renders `@SITE@`,
+  `@TITLE@` and `@VERB@` into `nginx.conf` (checked with `nginx -t`) and
+  `@SITE@` and `@VERSION@` into the game's `index.html` (`og:image`, the
+  version); `web` copies the union of the two trees and that `index.html`.
+  The base tags (minor versions) live only in the `Containerfile`;
+  `scripts/go` and `scripts/dev-server` read the build image from its `FROM …
+  AS build` line, and `make image` builds with `--pull=newer`, so a fix
+  re-published under the same tag reaches the next deploy.
 - `deploy/nginx.conf`: listen 8080; `/ws` → `http://127.0.0.1:8081` with Upgrade
   headers and long read timeout; `/api/` → same; `location ~ "^/[A-Za-z]{4}$"` →
-  `/index.html`; security headers in one place (CSP `default-src 'self';
+  `/index.html`; the 404 page names the game (`Niet gevonden - @TITLE@`,
+  `Terug naar @VERB@`); security headers in one place (CSP `default-src 'self';
   connect-src 'self' wss://@SITE@; img-src 'self' data:; style-src 'self';
   script-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self';
-  object-src 'none'; form-action 'none'`, nosniff, Referrer-Policy,
+  object-src 'none'; form-action 'none'`, so a site's page reaches its own
+  server only, nosniff, Referrer-Policy,
   Permissions-Policy (camera and microphone for the page itself, for the
   call; geolocation, payment and USB for nobody), COOP, HSTS
   `max-age=31536000; includeSubDomains`), each sent
@@ -2276,28 +2435,39 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   NPM's `X-Real-IP` is trusted from `127.0.0.1` only and passed on as the one
   client address (`X-Forwarded-For` is dropped); `Host` is passed unchanged
   (`$http_host`), which the websocket Origin check compares against.
-- Quadlets rendered by `make install` into `~/.config/containers/systemd/`:
-  `klaverjas.pod` (`PublishPort=127.0.0.1:8093:8080`; `Network=pasta:--host-lo-to-ns-lo`,
+- Quadlets rendered by `make install GAME=G` into `~/.config/containers/systemd/`
+  from `deploy/game*.in` (`@GAME@`, `@TITLE@`, `@SITE@`, `@ADDR@`):
+  `G.pod` (`PublishPort=ADDR:8080`; `Network=pasta:--host-lo-to-ns-lo`,
   so NPM's connections arrive from `127.0.0.1` instead of the host's LAN
   address; `ExitPolicy=continue`, so both containers dying at once does not
-  stop the pod for good), `klaverjas-web.container`,
-  `klaverjas-server.container` (`Pod=klaverjas.pod`, `Pull=never`, `ReadOnly`,
+  stop the pod for good), `G-web.container`,
+  `G-server.container` (`Pod=G.pod`, `Pull=never`, `ReadOnly`,
   `NoNewPrivileges`, `DropCapability=ALL`, health checks; the server's unit
-  mounts the named volume `klaverjas-games` at `/data`, owned by the server's
+  mounts the named volume `G-games` at `/data`, owned by the server's
   user (`:U`), and runs `-addr 127.0.0.1:8081 -games /data`: the game log of
   §6, which `make uninstall` keeps; `deploy/README-deploy.md` says how to read
   it).
 - `Makefile` like `/storage/CLIC/ISMS/Makefile`: `help test test-all e2e dev
-  dev-stop image install deploy check status logs uninstall quadlet`, settings
-  `SITE ?= klaverjas.kroes.dev`, `ADDR ?= 127.0.0.1:8093`. The revision
+  dev-stop image image-server image-web install deploy check status logs
+  uninstall quadlet`. `GAME` comes from make's command line only (one in the
+  shell's environment is ignored, so it never picks what is deployed); an
+  unknown one is an error that lists the games. `install`, `deploy`,
+  `uninstall`, `dev` and the image targets need it and refuse without it
+  (exit 2, nothing run); `status`, `check`, `logs`, `quadlet`, `e2e` and
+  `dev-stop` cover every game without it; `GAME=all` runs a target for each
+  game in name order under one build tag and stops at the first failure
+  (`make -n deploy GAME=all` shows the plan). A setting on the command line
+  without one GAME is refused. The revision
   (`GIT_SHA`, the image label and `/api/health`'s version) is `HEAD`, with
   `-dirty` when `git status` lists anything; each build tags both images
   `<GIT_SHA>-YYYYmmdd-HHMMSS`, and only `make deploy` then moves `:current`
   (what the units run) to it, so `make image` alone never changes what a
   restart starts. `make deploy` refuses a dirty tree unless `ALLOW_DIRTY=1`,
   and ends with `make check`.
-- NPM proxy host (made by hand; it exists, ID 37): `klaverjas.kroes.dev` →
-  `http://127.0.0.1:8093`, wildcard certificate, Force SSL, Block Common
-  Exploits, **Websockets Support ON**, no access list, HTTP/2 off (either
-  works); Advanced empty and NPM's HSTS box off, since HSTS comes from
-  `deploy/nginx.conf` (recorded in `deploy/npm-advanced.conf`).
+- An NPM proxy host per game, made by hand: SITE → `http://ADDR`, wildcard
+  certificate, Force SSL, Block Common Exploits, **Websockets Support ON**, no
+  access list, HTTP/2 off (either works); Advanced empty and NPM's HSTS box
+  off, since HSTS comes from `deploy/nginx.conf` (recorded in
+  `deploy/npm-advanced.conf`). Outside this repository, per game: the name's
+  rate tier in shrek-infra (§9's request budget), the game-log volume in the
+  backup exclusions, and Trivy and monitoring for its images.

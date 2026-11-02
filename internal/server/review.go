@@ -196,7 +196,6 @@ func (r *room) reviewing() bool { return r.players() == 4 }
 
 // startReviews starts a review for every human at the start of a match.
 func (r *room) startReviews() {
-	r.matchID = newToken()[:12]
 	r.handTricks = nil
 	for i := range r.seats {
 		if rv := r.seats[i].review; rv != nil {
@@ -225,7 +224,7 @@ func (r *room) gradeHands() {
 		rv.pending++
 		go func() {
 			var luck float64
-			r.srv.analyse(rv.staleIn(r), func() { luck = r.srv.cfg.AI.HandLuck(v) })
+			r.srv.analyse(rv.staleIn(r), func() { luck = r.srv.ai.HandLuck(v) })
 			r.post(func() {
 				rv.pending--
 				rv.hands++
@@ -290,7 +289,7 @@ func (r *room) gradeChoice(i game.Seat, v game.View, a action) {
 	go func() {
 		var g Grade
 		ok := false // analysed: not skipped as stale, no panic
-		r.srv.analyse(rv.staleIn(r), func() { g, ok = r.srv.cfg.AI.Grade(v, c), true })
+		r.srv.analyse(rv.staleIn(r), func() { g, ok = r.srv.ai.Grade(v, c), true })
 		r.post(func() {
 			rv.pending--
 			rv.grading--

@@ -472,7 +472,7 @@ func (r *room) signalChance(i game.Seat, hinted *game.Card) (s Signal, ok bool) 
 	case len(v.Legal) > 0:
 		prefer = v.Legal[0]
 	}
-	return r.srv.cfg.AI.SignalChance(v, prefer)
+	return r.srv.ai.SignalChance(v, prefer)
 }
 
 // chanceStep points out sig, a signal the learner can give now: what the
@@ -639,7 +639,7 @@ func (r *room) trickSignals() (s []Signal) {
 			s = nil
 		}
 	}()
-	return r.srv.cfg.AI.TrickSignals(r.viewFor(r.learner()))
+	return r.srv.ai.TrickSignals(r.viewFor(r.learner()))
 }
 
 // praise is what Juf Jannie says of the hand just over when our side won

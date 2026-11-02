@@ -13,6 +13,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { siteFile } from './site.mjs';
 import puppeteer from 'puppeteer-core';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -66,8 +67,8 @@ function startServer() {
         res.end('<!doctype html><meta charset="utf-8"><title>sound</title>');
         return;
       }
-      const file = path.join(WEB, path.normalize(url.pathname));
-      if (!file.startsWith(WEB + path.sep) || !file.endsWith('.js')) {
+      const file = siteFile('klaverjas', url.pathname);
+      if (!file?.endsWith('.js')) {
         res.writeHead(404).end();
         return;
       }

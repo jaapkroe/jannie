@@ -5,7 +5,7 @@
 //
 //   cd test/ui && node manual-app.mjs [OUTDIR]
 //
-// Serves web/ as the site root on 127.0.0.1:18121 (no game server needed) and
+// Serves klaverjas's site (web/shared and web/klaverjas) on 127.0.0.1:18121 (no game server needed) and
 // starts scripts/chrome 9321 unless a browser already listens there.
 // Env: CDP_PORT (9321), HTTP_PORT (18121). OUTDIR defaults to test/ui/out/manual-app.
 import puppeteer from 'puppeteer-core';
@@ -15,9 +15,9 @@ import { mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, normalize, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { siteFile } from './site.mjs';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
-const webRoot = join(repo, 'web');
 const out = process.argv[2] || join(repo, 'test/ui/out/manual-app');
 const cdpPort = process.env.CDP_PORT || '9321';
 const httpPort = Number(process.env.HTTP_PORT || 18121);
@@ -35,9 +35,9 @@ const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg
 const server = createServer(async (req, res) => {
   let path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   if (path === '/' || /^\/[A-Za-z]{4}$/.test(path)) path = '/index.html';
-  const file = normalize(join(webRoot, path));
-  if (!file.startsWith(webRoot)) {
-    res.writeHead(403).end();
+  const file = siteFile('klaverjas', path); // klaverjas's site: web/shared and web/klaverjas
+  if (!file) {
+    res.writeHead(404).end();
     return;
   }
   try {

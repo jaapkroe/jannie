@@ -16,6 +16,7 @@ import { mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, normalize, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { siteFile } from './site.mjs';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const out = process.argv[2] || join(repo, 'test/ui/out/manual');
@@ -31,8 +32,8 @@ const HARNESS = `<!doctype html>
 <html lang="nl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Handleiding</title>
-<link rel="stylesheet" href="/web/css/cards.css">
-<link rel="stylesheet" href="/web/css/manual.css">
+<link rel="stylesheet" href="/css/cards.css">
+<link rel="stylesheet" href="/css/manual.css">
 <style>
   html, body { margin: 0; }
   body { min-height: 100vh; background: radial-gradient(ellipse at 50% 40%, #237a4f 0%, #145236 55%, #0b2d1e 100%) fixed;
@@ -49,7 +50,7 @@ const HARNESS = `<!doctype html>
   .tabs span.on { background: #f3c969; color: #222; }
 </style>
 <script type="module">
-  import { SECTIONS, renderManual } from '/web/js/manual.js';
+  import { SECTIONS, renderManual } from '/js/manual.js';
   const id = new URLSearchParams(location.search).get('s');
   const modal = document.createElement('div');
   modal.className = 'modal';
@@ -79,9 +80,9 @@ const server = createServer(async (req, res) => {
     res.end(HARNESS);
     return;
   }
-  const file = normalize(join(repo, path));
-  if (!file.startsWith(repo) || file.includes('node_modules')) {
-    res.writeHead(403).end();
+  const file = siteFile('klaverjas', path); // the manual is klaverjas's
+  if (!file) {
+    res.writeHead(404).end();
     return;
   }
   try {
@@ -125,7 +126,7 @@ try {
   await page.goto(`http://127.0.0.1:${httpPort}/__manual.html?s=bediening`, { waitUntil: 'networkidle0' });
   const ids = process.env.SECTIONS
     ? process.env.SECTIONS.split(',')
-    : await page.evaluate(async () => (await import('/web/js/manual.js')).SECTIONS.map((s) => s.id));
+    : await page.evaluate(async () => (await import('/js/manual.js')).SECTIONS.map((s) => s.id));
 
   for (const vp of VIEWPORTS) {
     await page.setViewport({ ...vp, deviceScaleFactor: dsf });

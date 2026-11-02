@@ -88,9 +88,11 @@ type room struct {
 	rng       *rand.Rand
 	opts      Options
 	training  bool
-	expert    bool    // the expert mode (expert.go): alone against three bots, looking back at any moment
-	alwaysOn  bool    // tests: bots play on without a connected human
-	seats     [4]seat // seats 0..opts.Players-1; the others stay empty
+	expert    bool     // the expert mode (expert.go): alone against three bots, looking back at any moment
+	alwaysOn  bool     // tests: bots play on without a connected human
+	seats     []seat   // as many as the game's largest table; seats 0..opts.Players-1 are at the table, the others stay empty
+	gp        gameplay // the game on the table (games.go): klaverjas, or x
+	x         *extPlay // a game on the exported API (ext.go); nil for klaverjas
 	host      game.Seat
 	phase     string
 	seq       int
@@ -164,7 +166,7 @@ type dealtCards struct {
 func newRoom(s *Server, code string) *room {
 	var seed [16]byte
 	crand.Read(seed[:])
-	return &room{
+	r := &room{
 		srv:     s,
 		code:    code,
 		log:     s.log.With("room", code),
@@ -172,12 +174,18 @@ func newRoom(s *Server, code string) *room {
 		done:    make(chan struct{}),
 		rng:     rand.New(rand.NewPCG(binary.LittleEndian.Uint64(seed[:8]), binary.LittleEndian.Uint64(seed[8:]))),
 		opts:    defaultOptions(),
+		seats:   make([]seat, s.maxSeats),
 		host:    game.NoSeat,
 		phase:   phaseLobby,
 		asking:  game.NoSeat,
 		votesOn: game.NoSeat,
 		winner:  -1,
 	}
+	r.gp = klaverjas{r}
+	if s.ext != nil {
+		r.newExt()
+	}
+	return r
 }
 
 // loop runs the room's commands until it stops.
@@ -369,7 +377,10 @@ func (r *room) newBot(p Persona) seat {
 }
 
 func (r *room) newBrain(personaID, level string) *brainBox {
-	return &brainBox{b: r.srv.cfg.AI.NewBrain(personaID, level, r.rng.Uint64()), log: r.log}
+	if g := r.srv.ext; g != nil {
+		return &brainBox{ext: g.NewBrain(personaID, level, r.rng.Uint64()), log: r.log}
+	}
+	return &brainBox{b: r.srv.ai.NewBrain(personaID, level, r.rng.Uint64()), log: r.log}
 }
 
 // persona looks up a persona by ID.
@@ -407,12 +418,23 @@ func (r *room) randomPersona(skip ...string) Persona {
 
 func botName(p Persona) string { return p.Name + " (AI)" }
 
-// numberNL writes 2..4 as a Dutch word ("drie"), for texts.
+// numberNL writes 2..4 as a Dutch word ("drie"), other numbers in digits,
+// for klaverjas's texts (the lessons count trumps with it: "dus de anderen
+// hebben er 5").
 func numberNL(n int) string {
 	if n >= 2 && n <= 4 {
 		return [...]string{"twee", "drie", "vier"}[n-2]
 	}
 	return fmt.Sprint(n)
+}
+
+// seatsNL writes a number of seats, 2..8, as a Dutch word, for the texts
+// about a full table of any game; up to four it is numberNL.
+func seatsNL(n int) string {
+	if n >= 5 && n <= 8 {
+		return [...]string{"vijf", "zes", "zeven", "acht"}[n-5]
+	}
+	return numberNL(n)
 }
 
 // displayName is how a seat appears in chat and texts.
@@ -527,14 +549,14 @@ func (r *room) emitTo(ev any, fresh *client) {
 		if st.client == fresh {
 			e = nil
 		}
-		st.client.send(mustJSON(updateMsg{T: "update", Seq: r.seq, Ev: e, S: r.stateFor(game.Seat(i))}))
+		st.client.send(mustJSON(updateMsg{T: "update", Seq: r.seq, Ev: e, S: r.gp.state(game.Seat(i))}))
 	}
 	r.chatLesson()
 }
 
 // resync sends c its full state without an event.
 func (r *room) resync(c *client, i game.Seat) {
-	c.send(mustJSON(updateMsg{T: "update", Seq: r.seq, Ev: nil, S: r.stateFor(i)}))
+	c.send(mustJSON(updateMsg{T: "update", Seq: r.seq, Ev: nil, S: r.gp.state(i)}))
 }
 
 // welcome sends joined and the chat log.
@@ -570,21 +592,25 @@ func (r *room) sysChat(format string, args ...any) {
 // ---- joining and leaving ----
 
 func (r *room) handleCreate(c *client, m *inMsg) {
-	patch, _ := parseOpts(m.Opts, true)
-	r.training = m.Training
-	r.expert = m.Expert && !r.training
-	if r.training {
-		r.opts.Tempo = "rustig"
+	if r.x != nil {
+		r.x.createOpts(m.Opts) // training and the expert are klaverjas's: the ordinary game
+	} else {
+		patch, _ := parseOpts(m.Opts, true)
+		r.training = m.Training
+		r.expert = m.Expert && !r.training
+		if r.training {
+			r.opts.Tempo = "rustig"
+		}
+		patch.apply(&r.opts)
+		if patch.Players != nil {
+			r.opts.Players = *patch.Players
+		}
+		if r.expert {
+			r.opts.Players = 4 // the engine reasons for four
+		}
+		r.trainingOpts()
+		r.expertOpts()
 	}
-	patch.apply(&r.opts)
-	if patch.Players != nil {
-		r.opts.Players = *patch.Players
-	}
-	if r.expert {
-		r.opts.Players = 4 // the engine reasons for four
-	}
-	r.trainingOpts()
-	r.expertOpts()
 	var i game.Seat // the expert sits where they chose; anyone else at seat 0
 	if r.expert && m.Seat != nil && *m.Seat >= 0 && *m.Seat < 4 {
 		i = game.Seat(*m.Seat)
@@ -650,10 +676,10 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 		case i != game.NoSeat:
 		case r.firstSeat(func(st *seat) bool { return st.kind == seatBot }) != game.NoSeat:
 			fail(errFull, "Deze tafel is vol. Vraag de host om een AI-speler weg te halen en probeer het dan opnieuw.")
-		case r.players() < 4:
-			fail(errFull, fmt.Sprintf("Deze tafel is vol: alle %s plaatsen zijn bezet. Vraag de host om bij Spelers een plaats bij te zetten en probeer het dan opnieuw.", numberNL(r.players())))
+		case r.players() < len(r.seats):
+			fail(errFull, fmt.Sprintf("Deze tafel is vol: alle %s plaatsen zijn bezet. Vraag de host om bij Spelers een plaats bij te zetten en probeer het dan opnieuw.", seatsNL(r.players())))
 		default:
-			fail(errFull, "Deze tafel is vol: alle vier de plaatsen zijn bezet.")
+			fail(errFull, fmt.Sprintf("Deze tafel is vol: alle %s de plaatsen zijn bezet.", seatsNL(len(r.seats))))
 		}
 		if i == game.NoSeat {
 			r.refused(name)
@@ -839,7 +865,7 @@ func (r *room) disconnected(c *client) {
 	// The others may all have been waiting for this player: to be ready,
 	// or to answer the question.
 	if r.phase == phaseHandEnd && r.allReady() {
-		r.nextHand()
+		r.gp.next()
 		return
 	}
 	if r.tally() {
@@ -876,7 +902,7 @@ func (r *room) leave(c *client, i game.Seat) {
 	// The others may all have been waiting for this player: to be ready,
 	// or to answer the question.
 	if r.phase == phaseHandEnd && r.allReady() {
-		r.nextHand()
+		r.gp.next()
 		return
 	}
 	if r.tally() {
@@ -993,52 +1019,8 @@ func (r *room) handle(c *client, m *inMsg) {
 		if r.lobbyHost(c, i) {
 			r.startMatch()
 		}
-	case "auction":
-		if m.Bid == nil {
-			c.sendError(errInvalid, "Bied een aantal punten of pas.")
-			return
-		}
-		r.humanAct(c, i, action{kind: actAuction, bid: *m.Bid})
-	case "discard":
-		var a action
-		if len(m.Cards) != 2 {
-			c.sendError(errInvalid, game.ErrBadDiscard.Error())
-			return
-		}
-		for k, code := range m.Cards {
-			card, err := game.ParseCard(code)
-			if err != nil {
-				c.sendError(errInvalid, "Die kaart bestaat niet.")
-				return
-			}
-			a.cards[k] = card
-		}
-		a.kind = actDiscard
-		r.humanAct(c, i, a)
-	case "trump":
-		s, err := game.ParseSuit(m.Suit)
-		if err != nil {
-			c.sendError(errInvalid, "Kies een kleur: klaveren, ruiten, harten of schoppen.")
-			return
-		}
-		r.humanAct(c, i, action{kind: actTrump, suit: s})
-	case "bid":
-		if m.Play == nil {
-			c.sendError(errInvalid, "Kies spelen of passen.")
-			return
-		}
-		r.humanAct(c, i, action{kind: actBid, play: *m.Play})
-	case "play":
-		card, err := game.ParseCard(m.Card)
-		if err != nil {
-			c.sendError(errInvalid, "Die kaart bestaat niet.")
-			return
-		}
-		r.humanAct(c, i, action{kind: actPlay, card: card})
 	case "ready":
 		r.cmdReady(c, i)
-	case "tipRead":
-		r.cmdTipRead(m.N)
 	case "vote":
 		r.cmdVote(c, i, m)
 	case "chat":
@@ -1053,14 +1035,11 @@ func (r *room) handle(c *client, m *inMsg) {
 		r.cmdLobby(c, i)
 	case "leave":
 		r.leave(c, i)
-	case "handReview":
-		r.cmdHandReview(c, i, m)
-	case "why":
-		r.cmdWhy(c, i, m)
-	case "feedback":
-		r.cmdFeedback(c, i, m)
 	default:
-		c.sendError(errInvalid, "Dat bericht ken ik niet.")
+		// The decisions of a hand, and what else belongs to the game.
+		if !r.gp.move(c, i, m) {
+			c.sendError(errInvalid, "Dat bericht ken ik niet.")
+		}
 	}
 }
 
@@ -1181,6 +1160,14 @@ func (r *room) cmdOpts(c *client, i game.Seat, m *inMsg) {
 	if !r.lobbyHost(c, i) {
 		return
 	}
+	if r.x != nil {
+		if err := r.x.setOpts(m.Opts); err != nil {
+			c.sendError(errInvalid, err.Error())
+			return
+		}
+		r.emit(evLobby{Type: "lobby"})
+		return
+	}
 	patch, err := parseOpts(m.Opts, false)
 	if err != nil {
 		c.sendError(errInvalid, err.Error())
@@ -1216,7 +1203,7 @@ func (r *room) cmdReady(c *client, i game.Seat) {
 	r.seats[i].ready = true
 	if r.allReady() {
 		r.pending = stepNone
-		r.nextHand()
+		r.gp.next()
 		return
 	}
 	r.emitState()
@@ -1324,6 +1311,7 @@ func (r *room) cmdLobby(c *client, i game.Seat) {
 	r.phase = phaseLobby
 	r.handNo = 0
 	r.deal = nil
+	r.gp.lobby()
 	r.pending = stepNone
 	r.scores = nil
 	r.total = nil

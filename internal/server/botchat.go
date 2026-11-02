@@ -102,7 +102,7 @@ func (r *room) aiChat(id string, ev ChatEvent) (text string) {
 			text = ""
 		}
 	}()
-	return r.srv.cfg.AI.Chat(id, ev, r.rng)
+	return r.srv.cfg.Game.Chat(id, ev, r.rng)
 }
 
 // botsReact offers ev to the bots in random order until n of them spoke;
@@ -217,6 +217,12 @@ func (r *room) chatGameOver() {
 // soloist's two opponents.
 func (r *room) botReply(from game.Seat, text string) {
 	if r.rng.Float64() > 0.6 {
+		return
+	}
+	if r.x != nil { // another game: its bots answer for themselves
+		r.botsReact(1, 1400*time.Millisecond, func(i game.Seat) (ChatEvent, bool) {
+			return ChatEvent{Kind: "reply", Text: text, InHand: r.inHand()}, i != from
+		})
 		return
 	}
 	inHand := r.phase == phasePlay && r.deal != nil

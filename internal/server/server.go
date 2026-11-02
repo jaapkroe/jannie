@@ -1,5 +1,7 @@
-// Package server runs klaverjas rooms over websockets: codes, lobby, the
-// match loop with pacing, bots, chat and limits (design §4.3, §6, §7).
+// Package server runs the rooms of one card game over websockets: codes,
+// lobby, the match loop with pacing, bots, chat and limits (design §4.3,
+// §6, §7). Klaverjas is built in (Klaverjas); another game plugs in on the
+// exported API of api.go (Game, Play, Table).
 //
 // Each room is an actor: one goroutine owns all room state and runs
 // commands from a channel; timers post back into that channel. Each
@@ -11,6 +13,7 @@ import (
 	crand "crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"math/rand/v2"
 	"net"
@@ -25,7 +28,7 @@ import (
 
 // Config configures a Server.
 type Config struct {
-	AI             AI
+	Game           Game     // the game the server plays: Klaverjas(ai), or another on the API of api.go (required)
 	Fast           bool     // scale all delays by 0.05 (tests)
 	MaxRooms       int      // default 1500
 	AllowedOrigins []string // websocket Origin patterns besides same-host
@@ -38,6 +41,9 @@ type Config struct {
 type Server struct {
 	cfg      Config
 	log      *slog.Logger
+	ai       AI   // klaverjas's bots and analysis; nil for another game
+	ext      Game // another game than klaverjas (ext.go); nil for klaverjas
+	maxSeats int  // the game's largest table: the seats of a room
 	personas []Persona
 	games    *gameLog // nil: no game log
 
@@ -81,10 +87,29 @@ type Server struct {
 	explains chan struct{} // the reasoning's why (expert, training): one search at a time, on every core (see cmdWhy)
 }
 
-// New returns a server ready to serve; it panics without an AI.
+// New returns a server ready to serve; it panics without a game, for
+// klaverjas without an AI, and for a game with too few personas or a bad
+// range of seats.
 func New(cfg Config) *Server {
-	if cfg.AI == nil {
-		panic("server: Config.AI is required")
+	var ai AI
+	var ext Game
+	switch g := cfg.Game.(type) {
+	case nil:
+		panic("server: Config.Game is required")
+	case klaverjasGame:
+		if g.ai == nil {
+			panic("server: Klaverjas needs an AI")
+		}
+		ai = g.ai
+	default:
+		if g.NewOptions() == nil {
+			panic("server: " + g.Name() + ": NewOptions returned nil")
+		}
+		ext = g
+	}
+	least, most, def := cfg.Game.Seats()
+	if least < 1 || least > def || def > most || most > maxTable {
+		panic(fmt.Sprintf("server: %s: bad seats %d, %d, %d", cfg.Game.Name(), least, most, def))
 	}
 	if cfg.MaxRooms <= 0 {
 		cfg.MaxRooms = 1500
@@ -100,7 +125,10 @@ func New(cfg Config) *Server {
 	s := &Server{
 		cfg:            cfg,
 		log:            log,
-		personas:       cfg.AI.Personas(),
+		ai:             ai,
+		ext:            ext,
+		maxSeats:       most,
+		personas:       cfg.Game.Personas(),
 		games:          newGameLog(cfg.GameLog, log),
 		scale:          1,
 		idleTimeout:    30 * time.Minute,
@@ -137,8 +165,11 @@ func New(cfg Config) *Server {
 	if cfg.Fast {
 		s.scale = 0.05
 	}
-	if len(s.personas) < 4 {
+	switch {
+	case ext == nil && len(s.personas) < 4:
 		panic("server: the AI needs at least 4 personas")
+	case ext != nil && len(s.personas) < most-1:
+		panic(fmt.Sprintf("server: %s needs at least %d personas", ext.Name(), most-1))
 	}
 	return s
 }

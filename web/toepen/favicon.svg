@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="felt" cx="50%" cy="40%" r="70%">
+      <stop offset="0" stop-color="#3a7fb0"/>
+      <stop offset="1" stop-color="#123a5a"/>
+    </radialGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#felt)" stroke="#7a4a24" stroke-width="3"/>
+  <g transform="rotate(-9 32 33)">
+    <rect x="18.5" y="11" width="27" height="40" rx="4" fill="#fffaf0" stroke="#0d2e47" stroke-opacity=".35"/>
+    <text x="32" y="34" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-weight="900" font-size="17" fill="#c8102e">10</text>
+    <path d="M32 47.5c-5.8-3.9-7.6-7.2-5.2-9.6 1.8-1.8 4.1-.9 5.2.9 1.1-1.8 3.4-2.7 5.2-.9 2.4 2.4.6 5.7-5.2 9.6z" fill="#c8102e"/>
+  </g>
+</svg>

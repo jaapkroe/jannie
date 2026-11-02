@@ -157,8 +157,8 @@ func (r *room) shownTrick() *game.Trick {
 func (r *room) playerState(i game.Seat) *playerState {
 	st := &r.seats[i]
 	cards := 0
-	if r.inHand() && r.deal != nil {
-		cards = r.deal.HandLen(i)
+	if r.inHand() {
+		cards = r.gp.handLen(i)
 	}
 	switch st.kind {
 	case seatHuman:

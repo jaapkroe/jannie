@@ -48,7 +48,8 @@ type action struct {
 // brainBox serialises calls into one Brain and guards against bad answers.
 type brainBox struct {
 	mu  sync.Mutex
-	b   Brain
+	b   Brain // klaverjas
+	ext any   // another game's (Game.NewBrain), driven through Play (ext.go)
 	log *slog.Logger
 }
 
@@ -148,14 +149,14 @@ func fallback(v game.View) action {
 // chooses freely.
 func turnedBarred(v game.View) bool { return v.Forced && v.Players != 3 }
 
-// inHand reports whether a hand is being played (auction, discard, trump,
-// bid or play).
+// inHand reports whether a hand is being played: klaverjas's auction,
+// discard, trump, bid or play, or another game's phases (Table.SetPhase).
 func (r *room) inHand() bool {
 	switch r.phase {
-	case phaseAuction, phaseDiscard, phaseTrump, phaseBid, phasePlay:
-		return true
+	case phaseLobby, phaseHandEnd, phaseGameOver:
+		return false
 	}
-	return false
+	return true
 }
 
 // startMatch fills the empty seats and deals the first hand.
@@ -174,12 +175,11 @@ func (r *room) startMatch() {
 	r.handNo = 0
 	r.deal = nil
 	r.scores = nil
-	r.total = make([]int, game.Scorers(r.players()))
 	r.prev = nil
 	r.lastTrick = nil
 	r.winner = -1
 	r.overAt = time.Time{}
-	r.startReviews()
+	r.matchID = newToken()[:12]
 	r.seed = uint64(r.opts.Seed)
 	if r.seed == 0 {
 		r.seed = newSeed()
@@ -189,6 +189,14 @@ func (r *room) startMatch() {
 	r.handNo = r.firstHand - 1
 	r.handActs, r.handDealt = nil, nil
 	r.taught = nil // a rematch repeats the lesson from the start
+	r.gp.start()
+	r.greet()
+}
+
+// startKlaverjas deals the first hand of a match of klaverjas.
+func (r *room) startKlaverjas() {
+	r.total = make([]int, game.Scorers(r.players()))
+	r.startReviews()
 	// The seed from the start, so nobody has to play to the end to see it.
 	if r.opts.From > 0 {
 		r.sysChat("Spel (%d) begint: potje %d, %s. Veel plezier!", r.seed, r.firstHand, r.opts.variantNL())
@@ -201,7 +209,6 @@ func (r *room) startMatch() {
 		"trumpMode", r.opts.TrumpMode.String(), "rules", r.opts.Rules.String(), "ai", r.opts.AI, "training", r.training,
 		"expert", r.expert)
 	r.startHand()
-	r.greet()
 }
 
 // signalChat puts the table's agreements on signals in the chat at the
@@ -291,7 +298,7 @@ func (r *room) pause(s step, d time.Duration) {
 func (r *room) openTurn() {
 	r.turnAt = time.Now()
 	r.openedAt = r.turnAt
-	turn := r.deal.Turn()
+	turn := r.gp.turn()
 	r.openedOn = turn != game.NoSeat && r.seats[turn].client != nil
 	r.step++
 	r.think = r.thinkTime(turn)
@@ -307,7 +314,7 @@ func (r *room) thinkTime(i game.Seat) time.Duration {
 		speed = st.persona.Speed
 	}
 	f := speed * (0.7 + 0.6*r.rng.Float64())
-	if r.deal.Phase() == game.PhasePlay && len(r.deal.Legal()) == 1 {
+	if r.gp.single() {
 		f *= 0.6
 	}
 	return r.scaled(time.Duration(float64(r.pace().think) * f))
@@ -341,7 +348,7 @@ func (r *room) drive() {
 	if !live || !r.inHand() {
 		return
 	}
-	turn := r.deal.Turn()
+	turn := r.gp.turn()
 	if turn == game.NoSeat {
 		return
 	}
@@ -375,6 +382,11 @@ func (r *room) runPending() {
 	}
 	s := r.pending
 	r.pending = stepNone
+	r.gp.resume(s)
+}
+
+// resumeKlaverjas goes on after pause s of a hand of klaverjas.
+func (r *room) resumeKlaverjas(s step) {
 	switch s {
 	case stepDealt:
 		r.openTurn()
@@ -422,9 +434,9 @@ func (r *room) viewFor(i game.Seat) game.View {
 type botTurn struct {
 	step  int // r.step of the turn; 0: none
 	seat  game.Seat
-	ready bool      // the decision is in
-	act   action    // the decision, once ready
-	view  game.View // what it was decided on, for the fallback
+	ready bool // the decision is in
+	act   any  // the decision, once ready (klaverjas: an action)
+	safe  any  // a legal decision, should act come out illegal
 }
 
 // botMove makes sure seat i, played by a bot, moves at due: it starts the
@@ -447,10 +459,11 @@ func (r *room) decide(i game.Seat) {
 	if st.brain == nil { // the substitute of a human
 		st.brain = r.newBrain("", "normaal")
 	}
-	bb, v, step := st.brain, r.viewFor(i), r.step
-	r.bot = botTurn{step: step, seat: i, view: v}
+	think, safe := r.gp.decision(i, st.brain)
+	step := r.step
+	r.bot = botTurn{step: step, seat: i, safe: safe}
 	go func() {
-		a := bb.decide(v)
+		a := think()
 		r.post(func() {
 			if b := &r.bot; b.step == step && b.seat == i && !b.ready {
 				b.act, b.ready = a, true
@@ -465,12 +478,12 @@ func (r *room) decide(i game.Seat) {
 func (r *room) applyBot(i game.Seat) {
 	b := r.bot
 	if !b.ready || b.step != r.step || b.seat != i || r.pending != stepNone || !r.inHand() ||
-		r.deal.Turn() != i || !r.botPlays(i) || !r.live() {
+		r.gp.turn() != i || !r.botPlays(i) || !r.live() {
 		return
 	}
-	if err := r.act(i, b.act); err != nil {
+	if err := r.gp.apply(i, b.act); err != nil {
 		r.log.Error("bot move rejected", "seat", int(i), "err", err.Error())
-		if err := r.act(i, fallback(b.view)); err != nil {
+		if err := r.gp.apply(i, b.safe); err != nil {
 			r.log.Error("fallback move rejected", "seat", int(i), "err", err.Error())
 		}
 	}
@@ -766,7 +779,7 @@ func (r *room) explainTrick(t game.Trick, trump game.Suit, names [4]string) (tex
 			text = ""
 		}
 	}()
-	return r.srv.cfg.AI.ExplainTrick(t, trump, names)
+	return r.srv.ai.ExplainTrick(t, trump, names)
 }
 
 // hintFor returns the training hint for seat i on its turn, computed once
@@ -812,7 +825,7 @@ func (r *room) advise(v game.View) (a Advice, ok bool) {
 			ok = false
 		}
 	}()
-	return r.srv.cfg.AI.Advise(v), true
+	return r.srv.ai.Advise(v), true
 }
 
 // endHand scores the finished hand and shows the summary.
@@ -849,6 +862,10 @@ func (r *room) endHand() {
 // it does not: the player looks back at the hand at leisure and goes on
 // with ready.
 func (r *room) timeSummary(from time.Time) {
+	if r.x != nil {
+		r.x.timeSummary(from) // the game said how long (Table.Summary)
+		return
+	}
 	r.pendingAt, r.nextAt = time.Time{}, time.Time{}
 	if r.training || r.humanCount() == 1 {
 		return

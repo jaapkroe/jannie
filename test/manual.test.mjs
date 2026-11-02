@@ -4,13 +4,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { registerHooks } from 'node:module';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const manualPath = `${root}web/js/manual.js`;
-const cardsPath = `${root}web/js/cards.js`;
-const homePath = `${root}web/js/home.js`;
+// The handleiding is klaverjas's (web/klaverjas); cards.js is the shell's;
+// klaverjas's option rows (OPTS) are in its game.js.
+const manualPath = `${root}web/klaverjas/js/manual.js`;
+const cardsPath = `${root}web/shared/js/cards.js`;
+const homePath = `${root}web/klaverjas/js/game.js`;
 
 // ---- Minimal DOM, enough for the renderer ----
 
@@ -91,7 +93,7 @@ export function createBack() { const el = document.createElement('div'); el.clas
 `;
 registerHooks({
   resolve(specifier, context, next) {
-    if (specifier === './cards.js' && context.parentURL?.endsWith('/web/js/manual.js')) {
+    if (specifier === './cards.js' && context.parentURL?.endsWith('/web/klaverjas/js/manual.js')) {
       return { url: `data:text/javascript,${encodeURIComponent(STUB)}`, shortCircuit: true };
     }
     return next(specifier, context);
@@ -477,12 +479,12 @@ test('bediening covers the whole interface', () => {
   }
 });
 
-test('bediening names the game options exactly as the new-game sheet does', { skip: !existsSync(homePath) && 'home.js not written yet' }, () => {
-  // OPTS in home.js holds the option rows of both the new-game sheet and the lobby.
+test('bediening names the game options exactly as the new-game sheet does', () => {
+  // OPTS in klaverjas's game.js holds the option rows of both the new-game sheet and the lobby.
   const home = readFileSync(homePath, 'utf8');
   const start = home.indexOf('const OPTS');
   const labels = [...home.slice(start, home.indexOf('\n];', start)).matchAll(/\blabel: '([^']+)'/g)].map((m) => m[1]);
-  assert.ok(labels.length >= 6, `option labels in home.js: ${labels.join()}`);
+  assert.ok(labels.length >= 6, `option labels in game.js: ${labels.join()}`);
   const blocks = CONTENT.bediening;
   const at = blocks.findIndex((b) => b.h4 === 'Spelregels bij Nieuw spel');
   assert.ok(at >= 0 && blocks[at + 1].dl, 'option list follows its heading');
@@ -499,12 +501,13 @@ test('bediening only promises a review of the last potje', () => {
 });
 
 test('bediening chips show the pictograms of the real buttons', () => {
-  // The top-bar buttons show only an icon (panels.js TOOLS), so the manual
-  // puts that icon in front of each name; util.js must have it.
-  const util = readFileSync(`${root}web/js/util.js`, 'utf8');
-  const panels = readFileSync(`${root}web/js/panels.js`, 'utf8');
+  // The top-bar buttons show only an icon (TOOLS: the shell's in panels.js,
+  // klaverjas's own in its game.js), so the manual puts that icon in front
+  // of each name; util.js must have it.
+  const util = readFileSync(`${root}web/shared/js/util.js`, 'utf8');
+  const panels = readFileSync(`${root}web/shared/js/panels.js`, 'utf8') + readFileSync(homePath, 'utf8');
   const tools = Object.fromEntries([...panels.matchAll(/^ {2}\w+: \['(\w+)', '([^']+)'/gm)].map((m) => [m[2], m[1]]));
-  assert.ok(Object.keys(tools).length >= 6, `TOOLS in panels.js: ${Object.keys(tools).join()}`);
+  assert.ok(Object.keys(tools).length >= 6, `TOOLS in panels.js and game.js: ${Object.keys(tools).join()}`);
   const rows = blocksOf('dl').flat().filter((row) => row[2]);
   assert.ok(rows.length >= 10);
   for (const [term, , name] of rows) assert.match(util, new RegExp(`\\n  ${name}: \\[`), `${term}: icon ${name} in util.js`);
@@ -600,7 +603,7 @@ test('juf jannie names the search sizes and mistake rate of the bots', () => {
 });
 
 test('the words of the house: spekken, boom and doormars', () => {
-  const home = existsSync(homePath) ? readFileSync(homePath, 'utf8') : '';
+  const home = readFileSync(homePath, 'utf8');
   const text = [...SECTIONS.map(({ id }) => renderManual(id).textContent), home].join('\n');
   assert.doesNotMatch(text, /boompje/i);
   assert.doesNotMatch(text, /(?<!door)mars/i);
@@ -610,7 +613,7 @@ test('the words of the house: spekken, boom and doormars', () => {
   assert.match(home, /Zestien potjes heet een boom\./);
 });
 
-test('cards.js (when present) exports what manual.js imports', { skip: !existsSync(cardsPath) && 'cards.js not written yet' }, () => {
+test('cards.js exports what manual.js imports', () => {
   const src = readFileSync(manualPath, 'utf8');
   const names = src.match(/import \{([^}]+)\} from '\.\/cards\.js'/)[1].split(',').map((s) => s.trim());
   const cards = readFileSync(cardsPath, 'utf8');

@@ -1,10 +1,11 @@
-// Home-screen icons and the link preview: node --test test/ui/app-icons.test.mjs
+// Home-screen icons and the link preview of every site (web/<game>):
+//   node --test test/ui/app-icons.test.mjs
 //
 // iOS takes only a raster apple-touch-icon and fills transparent pixels
 // black; Android launchers want PNG icons and a maskable one whose artwork
-// stays inside the central 80% circle. The PNGs are rendered from
-// web/favicon.svg and web/icon-full.svg (commands in icon-full.svg).
-// Chat apps show og:image for a shared link: web/og.png, made by
+// stays inside the central 80% circle. The PNGs are rendered from the
+// site's favicon.svg and icon-full.svg (see icon-full.svg). Chat apps show
+// og:image for a shared link: the site's og.png, made by
 // test/ui/og-image.mjs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -13,8 +14,12 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 
+import { GAMES } from './site.mjs';
+
 const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web');
-const web = p => path.join(WEB, p.replace(/^\//, ''));
+// The felt's dominant colour channel per site: the corners of the maskable
+// icon show it.
+const FELT = { klaverjas: 'g', toepen: 'b' };
 
 // Decodes an 8-bit, non-interlaced RGB or RGBA PNG.
 function readPNG(file) {
@@ -73,10 +78,12 @@ function opaque(img) {
   return true;
 }
 
+for (const game of GAMES) {
+const web = p => path.join(WEB, game, p.replace(/^\//, ''));
 const manifest = JSON.parse(fs.readFileSync(web('manifest.webmanifest'), 'utf8'));
 const html = fs.readFileSync(web('index.html'), 'utf8');
 
-test('the apple-touch-icon is an opaque 180×180 PNG', () => {
+test(`${game}: the apple-touch-icon is an opaque 180×180 PNG`, () => {
   const link = /<link rel="apple-touch-icon" href="([^"]+)" sizes="180x180">/.exec(html);
   assert.ok(link, 'index.html links an apple-touch-icon with sizes 180x180');
   // iOS also asks for /apple-touch-icon.png by itself: the same file.
@@ -86,7 +93,7 @@ test('the apple-touch-icon is an opaque 180×180 PNG', () => {
   assert.ok(opaque(img), 'no transparent pixels (iOS fills them black)');
 });
 
-test('the manifest has the SVG plus PNG icons of 192 and 512, and a maskable one', () => {
+test(`${game}: the manifest has the SVG plus PNG icons of 192 and 512, and a maskable one`, () => {
   const icons = manifest.icons;
   assert.ok(icons.some(i => i.src === '/favicon.svg' && i.type === 'image/svg+xml'));
   for (const i of icons.filter(x => x.type === 'image/png')) {
@@ -99,10 +106,11 @@ test('the manifest has the SVG plus PNG icons of 192 and 512, and a maskable one
   assert.ok(png('512x512', 'maskable'), 'a 512 px maskable PNG');
 });
 
-test('the maskable icon is full bleed with its artwork inside the safe circle', () => {
+test(`${game}: the maskable icon is full bleed with its artwork inside the safe circle`, () => {
   const img = readPNG(web(manifest.icons.find(i => i.purpose === 'maskable').src));
   assert.ok(opaque(img), 'no transparent pixels');
-  // Felt is green; the gold clover and the red heart are not.
+  // The felt is green or blue; the artwork (klaverjas: the gold clover and
+  // the red heart; toepen: the white card and its red 10) is not.
   const c = img.w / 2;
   const safe = 0.4 * img.w;
   let art = 0;
@@ -116,16 +124,17 @@ test('the maskable icon is full bleed with its artwork inside the safe circle', 
       if (d > safe + 1 && outside.length < 5) outside.push(`${x},${y} at ${d.toFixed(1)} px`);
     }
   }
-  assert.ok(art > img.w * img.h * 0.1, 'the clover is there');
+  assert.ok(art > img.w * img.h * 0.1, 'the artwork is there');
   assert.deepEqual(outside, [], `artwork outside the ${safe} px safe circle`);
   // Felt reaches every corner: no frame, no rounded corners.
   for (const [x, y] of [[0, 0], [img.w - 1, 0], [0, img.h - 1], [img.w - 1, img.h - 1]]) {
     const p = img.at(x, y);
-    assert.ok(p.g > p.r && p.g > p.b, `corner ${x},${y} is felt green: ${JSON.stringify(p)}`);
+    const k = FELT[game];
+    assert.ok(k && Object.keys(p).every(o => o === 'a' || o === k[0] || p[k] > p[o]), `corner ${x},${y} is felt (${k}): ${JSON.stringify(p)}`);
   }
 });
 
-test('the link preview: og tags in index.html and an opaque 1200×630 og.png under 300 KB', () => {
+test(`${game}: the link preview: og tags in index.html and an opaque 1200×630 og.png under 300 KB`, () => {
   const meta = {};
   for (const [, k, v] of html.matchAll(/<meta property="(og:[a-z:_]+)" content="([^"]*)">/g)) meta[k] = v;
   // Absolute, as scrapers want it: the image build fills in the host name.
@@ -143,3 +152,4 @@ test('the link preview: og tags in index.html and an opaque 1200×630 og.png und
   // WhatsApp leaves out larger images.
   assert.ok(img.bytes < 300 * 1024, `og.png is ${img.bytes} bytes`);
 });
+}

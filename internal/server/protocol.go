@@ -33,6 +33,8 @@ type inMsg struct {
 	Cam      *bool           `json:"cam"`   // call: the camera is on
 	To       string          `json:"to"`    // rtc: the call session it is for
 	Desc     *rtcDesc        `json:"desc"`  // rtc: the session description (call.go)
+
+	raw json.RawMessage // the message as it came in: another game reads its own fields (Msg)
 }
 
 // whyMsg is the engine's reasoning for one decision (expert): see
@@ -112,7 +114,7 @@ type updateMsg struct {
 	T   string `json:"t"`
 	Seq int    `json:"seq"`
 	Ev  any    `json:"ev"`
-	S   *state `json:"s"`
+	S   any    `json:"s"` // klaverjas: *state; another game: its Play.State
 }
 
 type chatMsg struct {
