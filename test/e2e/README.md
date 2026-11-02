@@ -11,17 +11,30 @@ It needs Node 22 or later (it uses the built-in `WebSocket`) and nothing else.
 
 ## Running it
 
-The quickest way is `make e2e`: it starts the server from source with `-fast`
-on port 18094, waits for `/api/health`, plays the standard suite and stops the
-server again.
+Every game has a simulation of its own, named by `E2E_SIM` in its
+`deploy/games/<game>.mk`, which takes the server's URL as its one argument:
+`sim.mjs` (this file) for klaverjas, `toepen.mjs` for toepen.
 
-By hand, against a server of your own:
+The quickest way is `make e2e`: for every game in turn it starts the game's
+server from source with `-fast` on the game's `E2E_PORT`, waits for
+`/api/health`, plays the game's simulation and stops the server again, and it
+stops at the first game that fails. One game alone:
 
 ```sh
-scripts/dev-server 18200 -fast              # all delays × 0.05; poll /api/health until it answers
+make e2e GAME=klaverjas     # sim.mjs on 18094
+make e2e GAME=toepen        # toepen.mjs on 18096
+```
+
+By hand, against a server of your own (`GAME` says which game's server):
+
+```sh
+GAME=klaverjas scripts/dev-server 18200 -fast   # all delays × 0.05; poll /api/health until it answers
 node test/e2e/sim.mjs http://127.0.0.1:18200
 podman stop kj-dev-18200
 ```
+
+A simulation plays only its own game: a klaverjas server answers toepen's
+messages with "Dat bericht ken ik niet.", and the other way round.
 
 With only a URL it plays the standard suite: tables of four, three and two,
 one to four humans, both ways of choosing trump, both rule sets, all AI
