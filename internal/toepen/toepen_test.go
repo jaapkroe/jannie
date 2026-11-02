@@ -245,8 +245,62 @@ func TestWasLetThrough(t *testing.T) {
 	if !slices.Equal(d.Dealt(0), cards("JH QS KD 8C")) {
 		t.Errorf("dealt %v", d.Dealt(0))
 	}
+	// New cards: seat 0 alone says again whether it has a was.
+	if d.Phase() != PhaseWas || d.WasRound() != 2 || !d.CanClaim(0) || d.CanClaim(1) || !d.Answered(1) || d.Claimed(0) {
+		t.Fatalf("again: phase %v round %d", d.Phase(), d.WasRound())
+	}
+	must(t, d.Was(0, false))
 	if d.Phase() != PhasePlay || d.Turn() != 0 {
 		t.Errorf("phase %v turn %d", d.Phase(), d.Turn())
+	}
+}
+
+// A was may be handed in again with the new cards, and again, while the
+// stock lasts; the hand as dealt stays the first one.
+func TestWasAgain(t *testing.T) {
+	d := NewDeal(5, DefaultRules, 4, [MaxPlayers]int{},
+		deck("JH QS KD 7C", "TH 9H 8H 7H", "TS 9S 8S 7S", "KH QH AC 9C", "QC TC KS JS", "JD QD KC 7D", "AH AS AD JC", "8D 9D TD 8C"))
+	letGo := func() {
+		t.Helper()
+		for _, s := range []game.Seat{1, 2, 3, 4} {
+			must2(t)(d.Check(s, false))
+		}
+	}
+	must(t, d.Was(0, true))
+	for s := range game.Seat(4) {
+		must(t, d.Was(s+1, false))
+	}
+	letGo()
+	if d.Phase() != PhaseWas || d.WasRound() != 2 || !slices.Equal(d.Hand(0), cards("JD QD KC 7D")) || d.Stock() != 8 {
+		t.Fatalf("round %d hand %v", d.WasRound(), d.Hand(0))
+	}
+	must(t, d.Was(0, true)) // another vuile was
+	must2(t)(d.Check(1, false))
+	res, err := d.Check(2, true)
+	if err != nil || res == nil || !res.Genuine() || d.Points(2) != 1 {
+		t.Fatalf("checked again: %+v %v", res, err)
+	}
+	if d.WasRound() != 3 || !slices.Equal(d.Hand(0), cards("AH AS AD JC")) || d.Stock() != 4 {
+		t.Fatalf("round %d hand %v stock %d", d.WasRound(), d.Hand(0), d.Stock())
+	}
+	must(t, d.Was(0, true)) // a witte was
+	letGo()
+	// The stock is empty: no fourth time.
+	if d.Phase() != PhasePlay || d.Stock() != 0 || !slices.Equal(d.Dealt(0), cards("JH QS KD 7C")) {
+		t.Fatalf("phase %v stock %d dealt %v", d.Phase(), d.Stock(), d.Dealt(0))
+	}
+	if len(d.Checks()) != 3 {
+		t.Errorf("checks %+v", d.Checks())
+	}
+	checkCards(t, d)
+}
+
+func must2(t *testing.T) func(*Check, error) {
+	return func(_ *Check, err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -272,18 +326,70 @@ func TestWasChecked(t *testing.T) {
 				if d.Points(1) != 1 || d.Points(0) != 0 || d.Status(0) != StatusIn || !d.Washed(0) {
 					t.Errorf("genuine: checker pays, claimant plays new cards")
 				}
+				must(t, d.Was(0, false)) // asked again about the new cards
 				if d.Turn() != 0 {
 					t.Errorf("voorhand leads: %d", d.Turn())
 				}
 				return
 			}
-			if d.Points(0) != 1 || d.Status(0) != StatusCaught || d.HandLen(0) != 0 {
-				t.Errorf("bluff: claimant pays and sits out")
+			// Rule Bluf (the default): the claimant pays, takes the cards
+			// back and plays on with them face up.
+			if d.Points(0) != 1 || d.Status(0) != StatusIn || !d.Open(0) || !slices.Equal(d.Hand(0), cards(tc.hand)) {
+				t.Errorf("bluff: claimant pays and plays open")
 			}
-			if d.Phase() != PhasePlay || d.Turn() != 1 {
-				t.Errorf("the next seat in leads: phase %v turn %d", d.Phase(), d.Turn())
+			if v := d.View(1); !slices.Equal(v.Open[0], cards(tc.hand)) || len(v.Open[1]) != 0 {
+				t.Errorf("the open hand in the view: %v", v.Open)
+			}
+			if d.Phase() != PhasePlay || d.Turn() != 0 {
+				t.Errorf("voorhand leads: phase %v turn %d", d.Phase(), d.Turn())
 			}
 		})
+	}
+	// Without rule Bluf the caught claimant sits the round out.
+	rules := DefaultRules
+	rules.Bluf = false
+	d := NewDeal(3, rules, 2, [MaxPlayers]int{}, deck("JH QS KD 8C", "TH 9H 8H 7H", "TS 9S 8S 7S"))
+	must(t, d.Was(0, true))
+	must(t, d.Was(1, false))
+	must(t, d.Was(2, false))
+	must2(t)(d.Check(1, true))
+	if d.Points(0) != 1 || d.Status(0) != StatusCaught || d.HandLen(0) != 0 || d.Open(0) {
+		t.Errorf("bluff: claimant pays and sits out")
+	}
+	if d.Phase() != PhasePlay || d.Turn() != 1 {
+		t.Errorf("the next seat in leads: phase %v turn %d", d.Phase(), d.Turn())
+	}
+}
+
+// On armoede only a real was may be handed in, and it is laid open on the
+// table: nobody is asked to check it.
+func TestWasOnArmoede(t *testing.T) {
+	d := NewDeal(3, DefaultRules, 2, [MaxPlayers]int{9, 0, 0}, deck("JH QS KD 8C", "TH 9H 8H 7H", "TS 9S 8S 7S"))
+	if d.CanClaim(0) || !errors.Is(d.Was(0, true), ErrPoorBluff) {
+		t.Fatal("a bluff on armoede")
+	}
+	d = NewDeal(3, DefaultRules, 2, [MaxPlayers]int{9, 0, 0}, deck("JH QS KD 7C", "TH 9H 8H 7H", "TS 9S 8S 7S", "AH AS AD JC"))
+	if !d.CanClaim(0) {
+		t.Fatal("a real was on armoede")
+	}
+	must(t, d.Was(0, true))
+	must(t, d.Was(1, false))
+	must(t, d.Was(2, false))
+	c := d.Checks()
+	if len(c) != 1 || !c[0].Shown || c[0].Checker != game.NoSeat || c[0].Kind != Vuile || !slices.Equal(c[0].Cards, cards("JH QS KD 7C")) || !c[0].Washed() {
+		t.Fatalf("shown: %+v", c)
+	}
+	// New cards, a witte was again: asked again, shown again.
+	if d.Phase() != PhaseWas || !d.CanClaim(0) || !slices.Equal(d.Hand(0), cards("AH AS AD JC")) {
+		t.Fatalf("again: phase %v hand %v", d.Phase(), d.Hand(0))
+	}
+	must(t, d.Was(0, true))
+	if c := d.Checks(); len(c) != 2 || c[1].Kind != Witte || !c[1].Shown {
+		t.Fatalf("shown again: %+v", c)
+	}
+	must(t, d.Was(0, false))
+	if d.Phase() != PhaseToep || !d.ArmoedeToep() {
+		t.Errorf("then armoede's question: %v", d.Phase())
 	}
 }
 
@@ -325,8 +431,194 @@ func TestArmoede(t *testing.T) {
 	if d.Phase() != PhasePlay || d.Turn() != 1 || d.Points(0) != 1 {
 		t.Fatalf("phase %v turn %d: the passed voorhand's lead goes on", d.Phase(), d.Turn())
 	}
-	if !d.CanToep(1) {
-		t.Error("anyone may toep after armoede")
+	// On armoede nobody toeps; the others may.
+	if d.CanToep(1) || !errors.Is(d.Toep(1), ErrToepArmoede) {
+		t.Error("a toep on armoede")
+	}
+	must(t, d.Play(1, cards("JH")[0]))
+	if !d.CanToep(2) {
+		t.Error("seat 2 may toep after armoede")
+	}
+}
+
+// Who would be out by losing at the stake may not raise it: no toep and
+// no overtoep.
+func TestToepDead(t *testing.T) {
+	d := NewDeal(3, noWas(), 2, [MaxPlayers]int{8, 0, 0}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S"))
+	if !d.CanToep(0) {
+		t.Fatal("8 points at stake 1 may toep")
+	}
+	must(t, d.Toep(0))
+	if !d.CanRaise(1) {
+		t.Fatal("seat 1 may overtoep")
+	}
+	must(t, d.Overtoep(1)) // stake 3
+	must(t, d.Answer(2, true))
+	if d.Turn() != 0 || d.CanRaise(0) || !errors.Is(d.Overtoep(0), ErrToepDead) {
+		t.Fatal("8 points at stake 3 may not overtoep")
+	}
+	must(t, d.Answer(0, true))
+	if d.Phase() != PhasePlay || d.Turn() != 0 || d.CanToep(0) || !errors.Is(d.Toep(0), ErrToepDead) {
+		t.Fatal("8 points at stake 3 may not toep")
+	}
+}
+
+// An overtoep raises the stake again and asks everyone else, the toeper
+// too; who passes then pays the stake from before it. A toeper who passes
+// before its card can complete the trick.
+func TestOvertoep(t *testing.T) {
+	d := NewDeal(3, noWas(), 2, [MaxPlayers]int{}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S"))
+	must(t, d.Play(0, cards("TH")[0]))
+	must(t, d.Play(1, cards("JH")[0]))
+	must(t, d.Toep(2))
+	if !slices.Equal(d.Asking(), []game.Seat{0, 1}) || !d.CanRaise(0) {
+		t.Fatalf("asking %v", d.Asking())
+	}
+	must(t, d.Overtoep(0))
+	if d.Stake() != 3 || d.Toeper() != 0 || !slices.Equal(d.Asking(), []game.Seat{1, 2}) || len(d.Toeps()) != 2 {
+		t.Fatalf("stake %d toeper %d asking %v", d.Stake(), d.Toeper(), d.Asking())
+	}
+	must(t, d.Answer(1, true))
+	must(t, d.Answer(2, false))
+	if d.Points(2) != 2 || d.Status(2) != StatusPassed {
+		t.Fatalf("the toeper passed: %d points", d.Points(2))
+	}
+	tr := d.Tricks()
+	if len(tr) != 1 || tr[0].Winner != 0 || d.Phase() != PhasePlay || d.Turn() != 0 {
+		t.Fatalf("the trick is complete: %+v turn %d", tr, d.Turn())
+	}
+	// Everyone passes on an overtoep: the one who made it wins.
+	d = NewDeal(3, noWas(), 2, [MaxPlayers]int{}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S"))
+	must(t, d.Toep(0))
+	must(t, d.Overtoep(1))
+	must(t, d.Answer(2, false))
+	must(t, d.Answer(0, false))
+	if r := d.Result(); r == nil || r.Winner != 1 || !slices.Equal(r.Gains, []int{2, 0, 2}) {
+		t.Fatalf("result %+v", r)
+	}
+	// Not on armoede's question.
+	d = NewDeal(3, Rules{Limit: 10, Armoede: true}, 2, [MaxPlayers]int{0, 9, 0}, game.NewDeck())
+	if d.CanRaise(0) || !errors.Is(d.Overtoep(0), ErrNoRaise) {
+		t.Error("an overtoep on armoede")
+	}
+}
+
+// Anti-lijntoep: after two passes in a row on a toep, the third must go
+// along; going along starts the count again, armoede does not count.
+func TestLijntoep(t *testing.T) {
+	rules := Rules{Limit: 10, Lijntoep: true, Armoede: true}
+	hands := deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S")
+	m := NewMatch(3, rules, 2)
+	for want := 1; want <= 2; want++ {
+		m.Dealer = 2
+		m.Round = 0
+		d := m.Deal(hands)
+		must(t, d.Toep(0))
+		if d.MustStay(1) {
+			t.Fatalf("must stay after %d passes", want-1)
+		}
+		must(t, d.Answer(1, false))
+		must(t, d.Answer(2, false))
+		m.Settle(d)
+		if m.Streak[1] != want || m.Streak[2] != want {
+			t.Fatalf("streak %v", m.Streak)
+		}
+	}
+	m.Dealer, m.Round = 2, 0
+	d := m.Deal(hands)
+	must(t, d.Toep(0))
+	if !d.MustStay(1) || !errors.Is(d.Answer(1, false), ErrMustStay) {
+		t.Fatal("a third pass")
+	}
+	must(t, d.Answer(1, true))
+	if d.Streak(1) != 0 {
+		t.Errorf("streak %d after going along", d.Streak(1))
+	}
+	// The rule off: no limit.
+	d = NewDeal(3, Rules{Limit: 10}, 2, [MaxPlayers]int{}, hands)
+	d.streak[1] = 5
+	must(t, d.Toep(0))
+	if d.MustStay(1) {
+		t.Error("must stay without the rule")
+	}
+	// Armoede's question: passing is free of the rule, and does not count.
+	m.Points = [MaxPlayers]int{0, 0, 9}
+	m.Streak = [MaxPlayers]int{2, 2, 0}
+	m.Dealer, m.Round = 2, 0
+	d = m.Deal(hands)
+	if d.Phase() != PhaseToep || d.MustStay(0) {
+		t.Fatal("armoede")
+	}
+	must(t, d.Answer(0, false))
+	if d.Streak(0) != 2 {
+		t.Errorf("armoede counted: %d", d.Streak(0))
+	}
+}
+
+// The last trick taken with a boer takes a penalty point off the winner.
+func TestBoer(t *testing.T) {
+	for _, on := range []bool{true, false} {
+		d := NewDeal(2, Rules{Limit: 10, Boer: on}, 1, [MaxPlayers]int{3, 0}, deck("TS 9S 8S JH", "7S QS KS AC"))
+		for range 4 {
+			must(t, d.Play(0, d.Legal()[slices.IndexFunc(d.Legal(), func(c game.Card) bool { return c.Rank != game.Jack || len(d.Hand(0)) == 1 })]))
+			must(t, d.Play(1, d.Legal()[0]))
+		}
+		r := d.Result()
+		want := []int{-1, 1}
+		if !on {
+			want = []int{0, 1}
+		}
+		if r == nil || r.Winner != 0 || r.Boer != on || !slices.Equal(r.Gains, want) {
+			t.Fatalf("boer %v: %+v", on, r)
+		}
+	}
+	// No points to take off: none.
+	d := NewDeal(2, Rules{Limit: 10, Boer: true}, 1, [MaxPlayers]int{}, deck("JH TS 9S 8S", "AC 7S QS KS"))
+	must(t, d.Play(0, cards("TS")[0]))
+	must(t, d.Play(1, cards("7S")[0]))
+	must(t, d.Play(0, cards("9S")[0]))
+	must(t, d.Play(1, cards("QS")[0]))
+	must(t, d.Play(0, cards("8S")[0]))
+	must(t, d.Play(1, cards("KS")[0]))
+	must(t, d.Play(0, cards("JH")[0]))
+	must(t, d.Play(1, cards("AC")[0]))
+	if r := d.Result(); !r.Boer || r.Gains[0] != 0 || r.Points[0] != 0 {
+		t.Fatalf("result %+v", r)
+	}
+}
+
+// Everyone left one point from out: the koningsspel, eight cards each
+// (fewer when the deck runs short), no was, no armoede, no toep; it ends
+// the match.
+func TestKoningsspel(t *testing.T) {
+	rules := DefaultRules
+	d := NewDeal(4, rules, 3, [MaxPlayers]int{9, 9, 10, 9}, game.NewDeck())
+	if !d.Koning() || d.Size() != 8 || d.HandLen(0) != 8 || d.HandLen(2) != 0 || d.Phase() != PhasePlay || d.Stake() != 1 {
+		t.Fatalf("koningsspel: %v size %d phase %v stake %d", d.Koning(), d.Size(), d.Phase(), d.Stake())
+	}
+	if d.CanToep(d.Turn()) {
+		t.Error("a toep in the koningsspel")
+	}
+	rng := rand.New(rand.NewPCG(1, 2))
+	playRandom(t, rng, d)
+	r := d.Result()
+	if !r.Koning || len(d.Tricks()) != 8 {
+		t.Fatalf("result %+v after %d tricks", r, len(d.Tricks()))
+	}
+	for s := range 4 {
+		if out := r.Out[s]; out == (game.Seat(s) == r.Winner) {
+			t.Errorf("seat %d out %v", s, out)
+		}
+	}
+	if d := NewDeal(6, rules, 5, [MaxPlayers]int{9, 9, 9, 9, 9, 9}, game.NewDeck()); !d.Koning() || d.Size() != 5 {
+		t.Errorf("six on armoede: size %d", d.Size())
+	}
+	if d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 9, 8}, game.NewDeck()); d.Koning() || d.Size() != 4 {
+		t.Error("one not on armoede: no koningsspel")
+	}
+	rules.Koning = false
+	if d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 9, 9}, game.NewDeck()); d.Koning() || d.Size() != 4 {
+		t.Error("koningsspel without the rule")
 	}
 }
 
@@ -353,6 +645,7 @@ func TestDeadInRound(t *testing.T) {
 	if d.Status(1) != StatusDead || d.Points(1) != 10 {
 		t.Fatalf("status %v points %d", d.Status(1), d.Points(1))
 	}
+	must(t, d.Was(0, false)) // asked again about the new cards
 	if d.Phase() != PhasePlay || d.Turn() != 0 {
 		t.Fatalf("phase %v turn %d", d.Phase(), d.Turn())
 	}
@@ -394,34 +687,57 @@ func TestRandomMatches(t *testing.T) {
 	}
 	for k := range n {
 		players := 2 + k%7
-		rules := Rules{Limit: []int{10, 15}[k%2], Was: k%3 != 0, Armoede: k%5 != 0}
+		rules := Rules{Limit: []int{10, 15}[k%2], Was: k%3 != 0, Armoede: k%5 != 0,
+			Koning: k%4 != 0, Boer: k%7 != 3, Lijntoep: k%3 == 1, Bluf: k%2 == 0}
 		m := NewMatch(players, rules, game.Seat(rng.IntN(players)))
 		for rounds := 0; !m.Over(); rounds++ {
-			if rounds > players*rules.Limit {
+			if rounds > 4*players*rules.Limit {
 				t.Fatalf("match %d does not end", k)
 			}
 			d := m.Deal(Shuffle(rng))
 			before := m.Points
+			left := m.Left()
+			poor := 0
+			for s := range game.Seat(players) {
+				if m.Alive(s) && m.Points[s] == rules.Limit-1 {
+					poor++
+				}
+			}
+			if d.Koning() != (rules.Koning && poor == left) {
+				t.Fatalf("match %d: koningsspel %v with %d of %d on armoede", k, d.Koning(), poor, left)
+			}
 			playRandom(t, rng, d)
 			r := d.Result()
-			checked := 0 // a winner pays only for checking a genuine was
+			checked := 0 // a winner pays only for checking a genuine was, or a bluff caught (rule Bluf)
 			for _, c := range d.Checks() {
-				if c.Checker == r.Winner && c.Genuine() {
+				if c.Checker == r.Winner && c.Genuine() || c.Claimant == r.Winner && c.Checker != game.NoSeat && !c.Genuine() {
 					checked++
 				}
 			}
-			if r.Gains[r.Winner] != checked || r.Out[r.Winner] {
+			off := 0 // and has one off for the last trick taken with a boer
+			if r.Boer && before[r.Winner]+checked > 0 {
+				off = 1
+			}
+			if r.Gains[r.Winner] != checked-off || r.Out[r.Winner] {
 				t.Fatalf("match %d: the winner %d took points: %+v", k, r.Winner, r)
+			}
+			if r.Boer && (!rules.Boer || !r.Tricks) {
+				t.Fatalf("match %d: a boer without the rule or the last trick: %+v", k, r)
 			}
 			gained := 0
 			for s := range players {
-				if r.Points[s] < before[s] || r.Gains[s] != r.Points[s]-before[s] {
+				if game.Seat(s) != r.Winner && r.Points[s] < before[s] || r.Gains[s] != r.Points[s]-before[s] {
 					t.Fatalf("match %d: points went down or gains wrong: %+v", k, r)
 				}
-				gained += r.Gains[s]
+				if game.Seat(s) != r.Winner {
+					gained += r.Gains[s]
+				}
 			}
-			if gained == 0 {
+			if gained == 0 && checked == 0 {
 				t.Fatalf("match %d: a round without points", k)
+			}
+			if r.Koning && m.Left() > 1 && func() bool { m.Settle(d); return !m.Over() }() {
+				t.Fatalf("match %d: the koningsspel did not end the match: %+v", k, r)
 			}
 			m.Settle(d)
 		}
@@ -457,9 +773,24 @@ func playRandom(t *testing.T, rng *rand.Rand, d *Deal) {
 				t.Fatal(err)
 			}
 		case PhaseToep:
-			must(t, d.Answer(d.Turn(), rng.IntN(3) != 0))
+			s := d.Turn()
+			if d.CanRaise(s) && rng.IntN(5) == 0 {
+				must(t, d.Overtoep(s))
+				continue
+			}
+			stay := rng.IntN(3) != 0
+			if d.MustStay(s) {
+				if err := d.Answer(s, false); !errors.Is(err, ErrMustStay) {
+					t.Fatalf("passed under anti-lijntoep: %v", err)
+				}
+				stay = true
+			}
+			must(t, d.Answer(s, stay))
 		case PhasePlay:
 			s := d.Turn()
+			if d.Points(s)+d.Stake() >= d.Rules().Limit && d.CanToep(s) {
+				t.Fatalf("%d may toep with %d points at stake %d", s, d.Points(s), d.Stake())
+			}
 			if d.CanToep(s) && rng.IntN(6) == 0 {
 				must(t, d.Toep(s))
 				continue
@@ -483,7 +814,7 @@ func checkCards(t *testing.T, d *Deal) {
 		for _, c := range d.hands[s] {
 			seen[c]++
 		}
-		for _, c := range d.old[s] {
+		for _, c := range d.given[s] {
 			seen[c]++
 		}
 	}

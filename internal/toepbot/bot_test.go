@@ -36,6 +36,12 @@ func decide(t testing.TB, d *toepen.Deal, bots []*Player) {
 		}
 	case toepen.PhaseToep:
 		s := d.Turn()
+		if v := d.View(s); bots[s].Overtoep(v) {
+			if err := d.Overtoep(s); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
 		if err := d.Answer(s, bots[s].Answer(d.View(s))); err != nil {
 			t.Fatal(err)
 		}

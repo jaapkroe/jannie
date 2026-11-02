@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  strength, wasKind, seatAngle, onEllipse, seatStatus, prompt, roundHeadline, standings, variantText, rules, isOut,
+  strength, wasKind, seatAngle, onEllipse, seatStatus, prompt, roundHeadline, standings, variantText, manual, isOut, washes,
 } from '../../web/toepen/js/rules.js';
 
 const player = name => ({ name, bot: false, connected: true });
@@ -70,16 +70,32 @@ test('the prompt asks what the round awaits', () => {
   // The time for a was, with a vuile was in hand.
   q = prompt(table({ phase: 'was', turn: -1, nextAt: 99, canClaim: true, hand: ['JH', 'QS', 'KD', '7C'] }));
   assert.match(q.text, /vuile was/);
-  assert.deepEqual(q.actions.map(a => [a.t, a.play, a.kind]), [['was', true, 'go'], ['was', false, 'ghost']]);
+  assert.deepEqual(q.actions.map(a => [a.t, a.play, a.kind, a.label]), [['was', true, 'go', 'Vuile was!'], ['was', false, 'ghost', 'Geen']]);
   assert.equal(q.countdown, 99);
   // No was in hand: claiming one is a bluff; with the stock empty only "Geen was".
   assert.equal(prompt(table({ phase: 'was', turn: -1, nextAt: 99, canClaim: true })).actions[0].kind, 'bluff');
-  assert.deepEqual(prompt(table({ phase: 'was', turn: -1, nextAt: 99 })).actions.map(a => a.label), ['Geen was']);
+  assert.deepEqual(prompt(table({ phase: 'was', turn: -1, nextAt: 99 })).actions.map(a => a.label), ['Geen']);
   assert.equal(prompt(table({ phase: 'was', turn: -1, nextAt: 0 })).text, 'Er wordt gedeeld…');
-  // A toep: go along or pass, at the stake before it.
+  // A toep: go along or pass, at the stake before it; or toep again.
   q = prompt(table({ phase: 'toep', turn: 0, toeper: 2, stake: 3 }));
   assert.equal(q.text, 'Sjaak (AI) toept: de inzet is nu 3. Ga je mee?');
+  assert.deepEqual(q.actions.map(a => a.label), ['Meegaan', 'Passen']);
   assert.equal(q.actions[1].sub, '2 strafpunten');
+  q = prompt(table({ phase: 'toep', turn: 0, toeper: 2, stake: 3, canRaise: true }));
+  assert.deepEqual(q.actions.map(a => [a.t, a.label, a.sub]), [['answer', 'Meegaan', undefined], ['overtoep', 'Overtoepen', 'inzet 3 → 4'], ['answer', 'Passen', '2 strafpunten']]);
+  // Anti-lijntoep: no passing.
+  q = prompt(table({ phase: 'toep', turn: 0, toeper: 2, stake: 2, mustStay: true }));
+  assert.deepEqual(q.actions.map(a => a.label), ['Meegaan']);
+  assert.match(q.sub, /^Anti-lijntoep/);
+  // No toep: on armoede, or out at the stake already, or the koningsspel.
+  assert.equal(prompt(table({ canToep: false, armoede: [true, false, false, false], points: [9, 0, 0, 0] })).sub, 'Op armoede kun je niet toepen.');
+  assert.match(prompt(table({ canToep: false, points: [8, 0, 0, 0], stake: 2 })).sub, /lig je er bij verlies al uit/);
+  assert.equal(prompt(table({ canToep: false, koning: true, size: 8, tricks: 3 })).sub, 'Koningsspel: er wordt niet getoept.');
+  assert.equal(prompt(table({ canToep: false, koning: true, size: 8, tricks: 7 })).sub, 'De laatste slag: wie die haalt, wint het potje.');
+  // A was again, with the new cards.
+  q = prompt(table({ phase: 'was', turn: -1, nextAt: 99, canClaim: true, wasRound: 2, hand: ['JH', 'QS', 'KD', '7C'] }));
+  assert.equal(q.text, 'Je hebt weer een vuile was: ruil je hem voor vier nieuwe kaarten?');
+  assert.equal(prompt(table({ phase: 'was', turn: -1, nextAt: 99, canClaim: true, wasRound: 2 })).text, 'Je nieuwe kaarten: weer een vuile was?');
   assert.match(prompt(table({ phase: 'toep', turn: 0, toeper: -1, stake: 2 })).text, /^Armoede/);
   // A was claimed by someone else: check it or not.
   q = prompt(table({ phase: 'check', turn: 0, claimant: 3 }));
@@ -99,13 +115,39 @@ test('the summary of a round, from your seat', () => {
   assert.equal(lost.sub, 'De anderen pasten, bij inzet 2. Jij krijgt 1 strafpunt.');
   assert.equal(lost.cls, 'bad');
   assert.deepEqual(standings(s).map(x => x.seat), [1, 3, 0, 2]);
+  assert.equal(roundHeadline(s, { winner: 0, stake: 1, tricks: true, boer: true, gains: [-1, 1, 1, 1] }).sub,
+    'Met de boer als laatste slag, bij inzet 1: een strafpunt eraf.');
+  assert.equal(roundHeadline(s, { winner: 2, stake: 1, tricks: true, koning: true, gains: [1, 1, 0, 1] }).sub,
+    'Het koningsspel: Sjaak (AI) haalde de laatste slag. Jij krijgt 1 strafpunt.');
 });
 
-test('variant and rules follow the options', () => {
-  assert.equal(variantText({ limit: 15, was: true, armoede: false }), 'Toepen tot 15 strafpunten, met was');
+test('the piles of a vuile was: handed in, not a caught bluff', () => {
+  const s = table({ checks: [{ claimant: 1, checker: -1, kind: '' }, { claimant: 1, checker: 2, kind: 'vuile' }, { claimant: 3, checker: 0, kind: '' }] });
+  assert.deepEqual([0, 1, 2, 3].map(k => washes(s, k)), [0, 2, 0, 0]);
+});
+
+test('variant and manual follow the options', () => {
+  assert.equal(variantText({ limit: 15, was: true, armoede: false }), 'Toepen tot 15 strafpunten, met vuile was');
   assert.equal(variantText({ limit: 10 }), 'Toepen tot 10 strafpunten');
-  const parts = Object.fromEntries(rules({ limit: 15, was: false, armoede: true }));
-  assert.deepEqual(parts['Witte en vuile was'], ['Aan deze tafel speel je zonder was.']);
-  assert.match(parts.Armoede[0], /14 strafpunten/);
-  assert.match(parts['Eruit en winnen'][0], /^Wie 15 strafpunten/);
+  assert.equal(variantText({ limit: 10, was: true, armoede: true, koning: true, boer: true, lijntoep: true }),
+    'Toepen tot 10 strafpunten, met vuile was, armoede, koningsspel, boer eraf en anti-lijntoep');
+  const tabs = manual({ limit: 15, was: false, armoede: true, koning: true, boer: false, lijntoep: true });
+  assert.deepEqual(tabs.map(t => t.title), ['Spelregels', 'Extra regels', 'Begrippen', 'Bediening']);
+  const part = (id, title) => Object.fromEntries(tabs.find(t => t.id === id).parts)[title];
+  assert.deepEqual(part('extra', 'Vuile was'), ['Aan deze tafel speel je zonder vuile was.']);
+  assert.match(part('extra', 'Armoede')[0], /14 strafpunten/);
+  assert.match(part('extra', 'Anti-lijntoep')[0], /hoogstens twee keer/);
+  assert.deepEqual(part('extra', 'Boer: een punt eraf'), ['Aan deze tafel levert de boer niets op.']);
+  assert.match(part('regels', 'Eruit en winnen')[0], /^Wie 15 strafpunten/);
+  assert.ok(part('regels', 'Toepen').some(p => /overtoepen/.test(p)));
+  // Every term once, in alphabetical order.
+  const terms = tabs.find(t => t.id === 'begrippen').parts.map(([t]) => t);
+  assert.deepEqual(terms, [...terms].sort((a, b) => a.localeCompare(b, 'nl')));
+  assert.match(manual({}, { touch: true }).at(-1).parts[0][1][0], /^Tik een kaart/);
+  // Away from a table: every extra rule explained, with its default.
+  const home = Object.fromEntries(manual({}, { table: false }).find(t => t.id === 'extra').parts);
+  assert.match(home['Anti-lijntoep'][0], /^Lijntoepen/);
+  assert.equal(home['Anti-lijntoep'].at(-1), 'Dit kies je bij een nieuw spel; standaard staat het uit.');
+  assert.equal(home.Koningsspel.at(-1), 'Dit kies je bij een nieuw spel; standaard staat het aan.');
+  assert.ok(home['Vuile was'].some(p => /open uit/.test(p)));
 });

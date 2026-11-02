@@ -212,10 +212,30 @@ func (p *Player) Toep(v toepen.View) bool {
 	return q < 0.12 && v.Stake <= 2 && p.rng.Float64() < bluff
 }
 
+// Overtoep decides, asked about a toep, whether to toep again: only with
+// a hand that should take the last trick, and the higher the stake, the
+// surer (the toeper shows a good hand, and toeping back and forth soon
+// costs more than the round is worth).
+func (p *Player) Overtoep(v toepen.View) bool {
+	if !v.CanRaise || v.Stake >= 5 {
+		return false
+	}
+	q := p.winChance(&v)
+	climb := 0.06 * float64(v.Stake-2)
+	switch p.lvl {
+	case Makkelijk:
+		return q >= 0.9 && p.rng.Float64() < 0.5
+	case Sterk:
+		return q >= 0.68+climb+0.05*float64(3-min(v.InCount(), 3))-0.08*p.aggr
+	}
+	return q >= 0.85+climb-0.05*p.aggr
+}
+
 // Answer decides whether to go along with a toep (true) or pass, taking
-// the stake from before it.
+// the stake from before it. Under the anti-lijntoep rule it may have to go
+// along.
 func (p *Player) Answer(v toepen.View) bool {
-	if v.InCount() <= 1 {
+	if v.InCount() <= 1 || v.MustStay {
 		return true
 	}
 	me := v.Points[v.Seat]

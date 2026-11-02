@@ -39,20 +39,27 @@ messages with "Dat bericht ken ik niet.", and the other way round.
 ## toepen.mjs
 
 With only a URL it plays five matches: tables of 2 to 6 with one to four
-humans, every AI level, a limit of 10 or 15, with and without the was and
-armoede. Simulated players claim a was now and then (bluffs included),
-check, toep, go along or pass at random, play a random legal card, and
-press *ready* after half the rounds (the others wait for the summary's own
-time). Any option plays that one configuration instead:
+humans, every AI level, a limit of 10 or 15, and the extra rules on and
+off (vuile was, armoede, koningsspel, boer, anti-lijntoep, open after a
+bluff). Simulated players claim a vuile was now and then (bluffs
+included, again with new cards), check, toep, overtoep, go along or pass
+at random (going along when anti-lijntoep says so), play a random legal
+card, and press *ready* after half the rounds (the others wait for the
+summary's own time). Any option plays that one configuration instead:
 
 ```sh
-node test/e2e/toepen.mjs --url ws://127.0.0.1:18096/ws --players 5 --humans 2 --ai sterk --limit 15 [--no-was] [--no-armoede]
+node test/e2e/toepen.mjs --url ws://127.0.0.1:18096/ws --players 5 --humans 2 --ai sterk --limit 15 \
+  [--no-was] [--no-armoede] [--no-koning] [--no-boer] [--lijntoep] [--no-bluf]
 ```
 
 On every update it checks that the state has exactly toepen's keys (no
-`game`, `training` or `expert`) and `opts` exactly its seven, the phase is
-one of toepen's, a hand never holds more than four cards and `legal` is in
-it, nobody's points go down within a round, and at game over exactly one
+`game`, `training` or `expert`) and `opts` exactly its eleven, the phase is
+one of toepen's, a hand never holds more than four cards (eight in the
+koningsspel, and only with that rule) and `legal` is in it, `canRaise`
+only on a toep and `mustStay` only with anti-lijntoep, a hand played face
+up only with rule `bluf` and of a seat still in (yours: your hand), no
+bluff offered on armoede, nobody's points go down within a round (but for
+the boer's point off the last trick's winner), and at game over exactly one
 player is left, the winner, under the limit. Any `error` fails the match,
 except a move that crossed a change of turn (`niet-jouw-beurt`, "Die vraag
 staat niet (meer) open.") and a *ready* that crossed the last summary

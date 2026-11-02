@@ -75,6 +75,7 @@ func (b *testBrain) chance(p float64) bool {
 func (b *testBrain) Was(v toepen.View) bool    { return b.chance(0.2) }
 func (b *testBrain) Check(v toepen.View) bool  { return b.chance(0.4) }
 func (b *testBrain) Toep(v toepen.View) bool   { return b.chance(0.15) }
+func (b *testBrain) Overtoep(toepen.View) bool { return b.chance(0.1) }
 func (b *testBrain) Answer(v toepen.View) bool { return b.chance(0.7) }
 func (b *testBrain) Play(v toepen.View) game.Card {
 	b.mu.Lock()
@@ -109,8 +110,10 @@ func toepTurn(c *servertest.Client, s *state, rng *rand.Rand) bool {
 		return false
 	case s.Phase == phaseCheck:
 		c.Send(map[string]any{"t": "check", "play": rng.IntN(2) == 0})
+	case s.Phase == phaseToep && s.CanRaise && rng.IntN(6) == 0:
+		c.Send(map[string]any{"t": "overtoep"})
 	case s.Phase == phaseToep:
-		c.Send(map[string]any{"t": "answer", "play": rng.IntN(4) != 0})
+		c.Send(map[string]any{"t": "answer", "play": s.MustStay || rng.IntN(4) != 0})
 	case s.Phase == phasePlay && s.CanToep && rng.IntN(5) == 0:
 		c.Send(map[string]any{"t": "toep"})
 	case s.Phase == phasePlay:
@@ -124,13 +127,14 @@ func toepTurn(c *servertest.Client, s *state, rng *rand.Rand) bool {
 // toepKeys are the keys of toepen's state in every phase: the table's and
 // toepen's, without klaverjas's game, training and expert.
 var toepKeys = append(slices.Clone(servertest.SharedKeys),
-	"winner", "handNo", "dealer", "voorhand", "stake", "toeper", "armoedeToep", "points",
+	"winner", "handNo", "dealer", "voorhand", "stake", "toeper", "armoedeToep", "koning", "size", "wasRound",
+	"canRaise", "mustStay", "open", "points",
 	"status", "armoede", "washed", "answered", "claims", "canClaim", "claimant", "asking", "checks",
 	"stock", "hand", "canToep", "trick", "lastTrick", "tricks", "rounds",
 )
 
 // optsKeys are toepen's options on the wire.
-var optsKeys = []string{"players", "ai", "tempo", "seed", "limit", "was", "armoede"}
+var optsKeys = []string{"players", "ai", "tempo", "seed", "limit", "was", "armoede", "koning", "boer", "lijntoep", "bluf"}
 
 // checkKeys checks the keys of the state of m, and of its options.
 func checkKeys(t *testing.T, m *servertest.Msg, s *state) {
@@ -153,7 +157,7 @@ func playToepen(t *testing.T, c *servertest.Client, rng *rand.Rand) (map[string]
 	phases := map[string]*state{}
 	events := map[string]int{}
 	var prev *state
-	sent, wasIn := "", -1 // the state last acted on, the round whose was we answered
+	sent, wasIn := "", "" // the state last acted on, the time for a was we answered
 	for {
 		m := c.Next(10 * time.Second)
 		if m.T == "error" && m.ErrMsg() != toepen.ErrNoStock.Error() { // a claim the bots' claims beat to the last cards
@@ -169,7 +173,9 @@ func playToepen(t *testing.T, c *servertest.Client, rng *rand.Rand) (map[string]
 		checkKeys(t, m, s)
 		if prev != nil && prev.HandNo == s.HandNo {
 			for k := range s.Points {
-				if s.Points[k] < prev.Points[k] {
+				// The boer takes a point off the winner of the last trick.
+				boer := s.Tricks == s.Size && s.LastTrick != nil && s.LastTrick.Winner == game.Seat(k)
+				if s.Points[k] < prev.Points[k]-btoi(boer) {
 					t.Fatalf("points went down: %v → %v", prev.Points, s.Points)
 				}
 			}
@@ -190,13 +196,14 @@ func playToepen(t *testing.T, c *servertest.Client, rng *rand.Rand) (map[string]
 			return phases, events
 		}
 		key := string(m.S) // decide once per state, and once on a was
-		if s.Phase == phaseWas && wasIn == s.HandNo {
+		was := fmt.Sprint(s.HandNo, "/", s.WasRound)
+		if s.Phase == phaseWas && wasIn == was {
 			continue
 		}
 		if key != sent && toepTurn(c, s, rng) {
 			sent = key
 			if s.Phase == phaseWas {
-				wasIn = s.HandNo
+				wasIn = was
 			}
 		}
 	}
@@ -238,7 +245,8 @@ func TestToepenMatch(t *testing.T) {
 					t.Errorf("no event %s: %v", ev, events)
 				}
 			}
-			if players >= 4 && (events["toep"] == 0 || events["answer"] == 0 || events["claims"] == 0) {
+			// Six players leave a stock of eight: a short match may go without a claim.
+			if players >= 4 && (events["toep"] == 0 || events["answer"] == 0 || players == 4 && events["claims"] == 0) {
 				t.Errorf("no toep or was in a whole match: %v", events)
 			}
 			if ai.said("greet") == 0 {
@@ -341,14 +349,14 @@ func TestToepenLenientCreate(t *testing.T) {
 	c.WaitType("chatlog")
 	m := c.WaitType("update")
 	checkKeys(t, m, toepS(t, m))
-	if got := string(servertest.Field(t, m.S, "opts")); got != `{"players":4,"ai":"sterk","tempo":"snel","seed":0,"limit":10,"was":true,"armoede":false}` {
+	if got := string(servertest.Field(t, m.S, "opts")); got != `{"players":4,"ai":"sterk","tempo":"snel","seed":0,"limit":10,"was":true,"armoede":false,"koning":true,"boer":true,"lijntoep":false,"bluf":true}` {
 		t.Errorf("opts %s", got)
 	}
 	c2 := srv.Dial()
 	c2.Send(map[string]any{"t": "create", "name": "Kees", "opts": "geen object"})
 	c2.WaitType("joined")
 	c2.WaitType("chatlog")
-	if m := c2.WaitType("update"); string(servertest.Field(t, m.S, "opts")) != `{"players":4,"ai":"normaal","tempo":"normaal","seed":0,"limit":10,"was":true,"armoede":true}` {
+	if m := c2.WaitType("update"); string(servertest.Field(t, m.S, "opts")) != `{"players":4,"ai":"normaal","tempo":"normaal","seed":0,"limit":10,"was":true,"armoede":true,"koning":true,"boer":true,"lijntoep":false,"bluf":true}` {
 		t.Errorf("defaults %s", servertest.Field(t, m.S, "opts"))
 	}
 }
@@ -526,14 +534,36 @@ func TestToepenWasCheck(t *testing.T) {
 	switch {
 	case genuine && (s.Points[1] != 1 || !s.Washed[0] || s.Status[0] != toepen.StatusIn):
 		t.Errorf("genuine: points %v washed %v", s.Points, s.Washed)
-	case !genuine && (s.Points[0] != 1 || s.Status[0] != toepen.StatusCaught):
-		t.Errorf("bluff: points %v status %v", s.Points, s.Status)
+	case !genuine && (s.Points[0] != 1 || s.Status[0] != toepen.StatusIn || len(s.Open[0]) != 4 || len(s.Open[1]) != 0):
+		// Caught (rule bluf, the default): a point, and play on face up.
+		t.Errorf("bluff: points %v status %v open %v", s.Points, s.Status, s.Open)
 	}
 	if len(s.Checks) != 1 {
 		t.Errorf("checks %v", s.Checks)
 	}
-	if !genuine { // two players, one caught: the round is over
-		g.WaitEvent("handEnd")
+	if !genuine {
+		s = untilToep(t, g, "play", func(s *state) bool { return s.Phase == phasePlay })
+		if !slices.Equal(s.Open[0], hand) {
+			t.Errorf("the open hand %v, the claimed %v", s.Open[0], hand)
+		}
+	}
+}
+
+// Without rule bluf the caught bluffer sits the round out.
+func TestToepenBlufOff(t *testing.T) {
+	srv, _ := newToepServer(t)
+	h, g := twoHumans(t, srv, map[string]any{"armoede": false, "bluf": false, "seed": 5})
+	s := untilToep(t, h, "the time for a was", func(s *state) bool { return s.Phase == phaseWas && s.CanClaim })
+	if toepen.Was(s.Hand) != toepen.NoWas {
+		t.Skip("seed 5 deals a real was now")
+	}
+	h.Send(map[string]any{"t": "was", "play": true})
+	g.Send(map[string]any{"t": "was", "play": false})
+	untilToep(t, g, "asked to check", func(s *state) bool { return s.Phase == phaseCheck && s.Turn == s.You })
+	g.Send(map[string]any{"t": "check", "play": true})
+	m := g.WaitEvent("handEnd") // two players, one caught: the round is over
+	if s := toepS(t, m); s.Status[0] != toepen.StatusCaught || len(s.Open[0]) != 0 {
+		t.Errorf("caught: status %v open %v", s.Status, s.Open)
 	}
 }
 
@@ -607,6 +637,7 @@ type panicBrain struct{}
 func (panicBrain) Was(toepen.View) bool         { panic("was") }
 func (panicBrain) Check(toepen.View) bool       { panic("check") }
 func (panicBrain) Toep(toepen.View) bool        { panic("toep") }
+func (panicBrain) Overtoep(toepen.View) bool    { panic("overtoep") }
 func (panicBrain) Answer(toepen.View) bool      { panic("answer") }
 func (panicBrain) Play(v toepen.View) game.Card { panic("play") }
 
@@ -614,10 +645,11 @@ func (panicBrain) Play(v toepen.View) game.Card { panic("play") }
 // and plays a card it does not hold.
 type illegalBrain struct{}
 
-func (illegalBrain) Was(toepen.View) bool    { return true }
-func (illegalBrain) Check(toepen.View) bool  { return true }
-func (illegalBrain) Toep(toepen.View) bool   { return false }
-func (illegalBrain) Answer(toepen.View) bool { return true }
+func (illegalBrain) Was(toepen.View) bool      { return true }
+func (illegalBrain) Check(toepen.View) bool    { return true }
+func (illegalBrain) Toep(toepen.View) bool     { return false }
+func (illegalBrain) Overtoep(toepen.View) bool { return true }
+func (illegalBrain) Answer(toepen.View) bool   { return true }
 func (illegalBrain) Play(v toepen.View) game.Card {
 	for _, c := range game.NewDeck() {
 		if !slices.Contains(v.Hand, c) {
@@ -677,7 +709,7 @@ func TestToepenGameLog(t *testing.T) {
 		case "round":
 			servertest.WantKeys(t, "round", raw, []string{"t", "match", "at", "hand", "dealer", "cards", "acts", "result"})
 			servertest.WantKeys(t, "round result", servertest.Field(t, raw, "result"),
-				[]string{"hand", "dealer", "winner", "stake", "tricks", "gains", "points", "out"})
+				[]string{"hand", "dealer", "winner", "stake", "tricks", "boer", "koning", "gains", "points", "out"})
 			if cards, _ := rec["cards"].([]any); len(cards) != 3 {
 				t.Errorf("round cards %v", rec["cards"])
 			}
@@ -709,20 +741,27 @@ func (fewAI) Personas() []server.Persona { return plainAI{}.Personas()[:4] }
 // The options, as the game log and the state show them.
 func TestToepenOptions(t *testing.T) {
 	o := defaultOptions()
-	if err := o.Set(map[string]json.RawMessage{"limit": []byte("15"), "was": []byte("false"), "hands": []byte("8")}, false); err != nil || *o != (Options{15, false, true}) {
+	if err := o.Set(map[string]json.RawMessage{"limit": []byte("15"), "was": []byte("false"), "hands": []byte("8"), "lijntoep": []byte("true"), "boer": []byte("false")}, false); err != nil || *o != (Options{15, false, true, true, false, true, true}) {
 		t.Fatalf("set: %v %+v", err, *o)
 	}
-	if err := o.Set(map[string]json.RawMessage{"limit": []byte("10"), "armoede": []byte("null")}, false); err == nil || *o != (Options{15, false, true}) {
+	if err := o.Set(map[string]json.RawMessage{"limit": []byte("10"), "armoede": []byte("null")}, false); err == nil || *o != (Options{15, false, true, true, false, true, true}) {
 		t.Errorf("all or nothing: %v %+v", err, *o)
 	}
-	if err := o.Set(map[string]json.RawMessage{"limit": []byte("10"), "armoede": []byte("null")}, true); err != nil || *o != (Options{10, false, true}) {
+	if err := o.Set(map[string]json.RawMessage{"limit": []byte("10"), "armoede": []byte("null")}, true); err != nil || *o != (Options{10, false, true, true, false, true, true}) {
 		t.Errorf("lenient: %v %+v", err, *o)
 	}
 	b, _ := json.Marshal(o.Wire(server.TableOpts{Players: 3, AI: "sterk", Tempo: "snel", Seed: 5}))
-	if string(b) != `{"players":3,"ai":"sterk","tempo":"snel","seed":5,"limit":10,"was":false,"armoede":true}` {
+	if string(b) != `{"players":3,"ai":"sterk","tempo":"snel","seed":5,"limit":10,"was":false,"armoede":true,"koning":true,"boer":false,"lijntoep":true,"bluf":true}` {
 		t.Errorf("wire %s", b)
 	}
-	if v := o.variant(); v != "toepen tot 10 strafpunten, met armoede" {
+	if v := o.variant(); v != "toepen tot 10 strafpunten, met armoede, koningsspel en anti-lijntoep" {
 		t.Errorf("variant %q", v)
 	}
+}
+
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }

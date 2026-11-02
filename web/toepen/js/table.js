@@ -1,8 +1,8 @@
 // The table of toepen (docs/toepen.md) at toepen.kroes.dev: the seats
-// around the felt (two to six), the trick, the stake, your four cards and
-// the questions of the round (was, check, toep), the takeover question,
-// and the overlays of the game: the round summary, game over, the
-// standings and the rules. The shell (main.js, home.js, panels.js) does the
+// around the felt (two to six), the trick, the stake, your cards (four,
+// eight in the koningsspel) and the questions of the round (was, check,
+// toep), the takeover question, and the overlays of the game: the round
+// summary, game over, the standings and the manual. The shell (main.js, home.js, panels.js) does the
 // rest; game.js ties the two together. Pure parts: rules.js.
 import { app, h, clear, icon, toast, avatar, fillAvatar, playerName, wait, anim, dur, vibrate } from './util.js';
 import { createCard, createBack, cardName } from './cards.js';
@@ -14,6 +14,7 @@ const E = {};
 let built = false;
 let seatEls = [];        // per seat: its parts
 let slotOf = new Map();  // seat → its trick slot element
+let pileOf = new Map();  // seat → its pile of cards handed in for a vuile was
 let pending = null;      // {t, at, key}: a decision sent, awaiting the server
 let selected = '';       // a lifted card (touch: the first tap lifts, the second plays)
 let pendingVote = null;  // our answer to the takeover question, awaiting the server
@@ -42,7 +43,8 @@ export function init() {
   E.chip = h('div', { class: 'tp-chip', 'aria-live': 'polite' }, E.chipN = h('b', { text: '1' }), h('span', { text: 'inzet' }));
   E.shown = h('div', { class: 'tp-shown', hidden: true });
   E.fx = h('div', { class: 'tp-fx', 'aria-live': 'polite' });
-  E.table.append(E.seats, E.trick, E.chip, E.shown, E.fx);
+  E.piles = h('div', { class: 'tp-piles' });
+  E.table.append(E.seats, E.piles, E.trick, E.chip, E.shown, E.fx);
   E.me = h('div', { class: 'tp-me' }, E.meAv = h('span', { class: 'avatar' }),
     h('span', { class: 'tp-me-txt' }, E.meName = h('b'), E.mePts = h('span', { class: 'tp-pts' })));
   E.text = h('div', { class: 'tp-text', 'aria-live': 'polite' }, E.textMain = h('b'), E.textSub = h('small'));
@@ -92,7 +94,7 @@ export function welcomeBack() {}
 export function relayout() {}
 
 // What changes when a decision of ours went through.
-const stateKey = s => `${s.handNo}/${s.phase}/${s.turn}/${s.tricks}/${s.trick?.cards?.length}/${s.answered?.[s.you]}/${s.stake}`;
+const stateKey = s => `${s.handNo}/${s.phase}/${s.turn}/${s.tricks}/${s.trick?.cards?.length}/${s.answered?.[s.you]}/${s.stake}/${s.wasRound}/${s.checks?.length}`;
 
 function renderTop(s) {
   const lim = s.opts?.limit || 10;
@@ -122,8 +124,10 @@ function renderSeats(s) {
   if (seatEls.length !== n) {
     clear(E.seats);
     clear(E.trick);
+    clear(E.piles);
     seatEls = [];
     slotOf = new Map();
+    pileOf = new Map();
     for (let seat = 0; seat < n; seat++) {
       const S = seatParts(seat);
       seatEls.push(S);
@@ -131,6 +135,9 @@ function renderSeats(s) {
       const slot = h('div', { class: 'tp-slot' });
       slotOf.set(seat, slot);
       E.trick.append(slot);
+      const pile = h('div', { class: 'tp-pile', hidden: true, role: 'img' });
+      pileOf.set(seat, pile);
+      E.piles.append(pile);
     }
   }
   const lim = s.opts?.limit || 10;
@@ -148,6 +155,7 @@ function renderSeats(s) {
     const slot = slotOf.get(seat);
     slot.style.left = sl.x + '%';
     slot.style.top = sl.y + '%';
+    renderPile(s, seat, R.onEllipse(a - 17, 31, 31, 50, 55)); // beside the seat, toward its right
     const status = R.seatStatus(s, seat);
     const out = R.isOut(s, seat) || ['gepast', 'betrapt', 'eruit', 'uit'].includes(s.status?.[seat]);
     S.root.className = 'tp-seat' + (s.turn === seat && R.IN_HAND.has(s.phase) ? ' turn' : '') + (p ? '' : ' empty') +
@@ -160,17 +168,40 @@ function renderSeats(s) {
     S.status.hidden = !status;
     S.status.textContent = status;
     S.chip.hidden = s.dealer !== seat || s.phase === 'lobby';
-    setBacks(S, R.IN_HAND.has(s.phase) ? p?.cards ?? 0 : 0);
+    setBacks(S, R.IN_HAND.has(s.phase) ? p?.cards ?? 0 : 0, R.IN_HAND.has(s.phase) ? s.open?.[seat] : null);
   }
   fillAvatar(E.meAv, s.players[s.you]);
   E.meName.replaceChildren(playerName(s.players[s.you]?.name || 'Jij'));
-  E.mePts.textContent = R.pointsText(s.points?.[s.you] ?? 0) + (s.armoede?.[s.you] ? ' · armoede' : '');
+  E.mePts.textContent = R.pointsText(s.points?.[s.you] ?? 0) + (s.armoede?.[s.you] ? ' · armoede' : '') +
+    (R.IN_HAND.has(s.phase) && s.open?.[s.you]?.length ? ' · je speelt open' : '');
   E.me.classList.toggle('turn', s.turn === s.you && R.IN_HAND.has(s.phase));
 }
 
-function setBacks(S, n) {
-  if (S.backs.childElementCount === n) return;
-  S.backs.replaceChildren(...Array.from({ length: n }, () => createBack({ size: 'sm' })));
+// The cards a seat handed in for a vuile was this round, face down in
+// front of it on the felt: one small pile, with ×n for more than one.
+function renderPile(s, seat, at) {
+  const pile = pileOf.get(seat);
+  const n = R.IN_HAND.has(s.phase) ? R.washes(s, seat) : 0;
+  pile.style.left = at.x + '%';
+  pile.style.top = at.y + '%';
+  pile.hidden = !n;
+  if (Number(pile.dataset.n || 0) === n) return;
+  pile.dataset.n = n;
+  const who = seat === s.you ? 'Jij leverde' : `${s.players[seat]?.name || 'Speler'} leverde`;
+  pile.setAttribute('aria-label', `${who} ${n === 1 ? 'een vuile was' : `${n} keer een vuile was`} in`);
+  pile.title = pile.getAttribute('aria-label');
+  pile.replaceChildren(...Array.from({ length: Math.min(n + 1, 4) }, () => createBack({ size: 'sm' })),
+    n > 1 ? h('b', { class: 'tp-pile-n', text: `×${n}` }) : '');
+}
+
+// A seat's cards: backs, or, played face up after a bluff, the cards.
+function setBacks(S, n, open = null) {
+  const key = open?.length ? open.join() : String(n);
+  if (S.backs.dataset.key === key) return;
+  S.backs.dataset.key = key;
+  S.backs.classList.toggle('open', !!open?.length);
+  S.backs.replaceChildren(...(open?.length ? open.map(c => createCard(c, { size: 'sm' }))
+    : Array.from({ length: n }, () => createBack({ size: 'sm' }))));
 }
 
 function renderTrick(s) {
@@ -210,7 +241,7 @@ function renderPrompt(s) {
 function decide(a) {
   if (pending) return;
   sound.unlock();
-  sound.play(a.t === 'toep' ? 'knock' : 'click');
+  sound.play(a.t === 'toep' || a.t === 'overtoep' ? 'knock' : 'click');
   const m = { t: a.t };
   if (a.play !== undefined) m.play = a.play;
   send(m);
@@ -243,6 +274,7 @@ function renderHand(s) {
   });
   E.hand.replaceChildren(...kids);
   E.hand.classList.toggle('mine', mine);
+  E.hand.classList.toggle('many', hand.length > 4); // the koningsspel: the cards overlap
 }
 
 function tap(code) {
@@ -279,9 +311,9 @@ function onKey(e) {
   if (k >= 1 && k <= hand.length && s.turn === s.you && s.phase === 'play') {
     e.preventDefault();
     tap(hand[k - 1]);
-  } else if ((e.key === 't' || e.key === 'T') && s.canToep && !pending) {
+  } else if ((e.key === 't' || e.key === 'T') && (s.canToep || s.canRaise && s.turn === s.you && s.phase === 'toep') && !pending) {
     e.preventDefault();
-    decide({ t: 'toep' });
+    decide({ t: s.phase === 'toep' ? 'overtoep' : 'toep' });
   }
 }
 
@@ -312,6 +344,12 @@ export function staleVote(m) {
 
 // ---------- overlays ----------
 
+// After every update, also those the shell draws itself (the lobby): a
+// summary or game over still up closes once the room moved on.
+export function sync(s) {
+  if (s) syncOverlays(s);
+}
+
 function syncOverlays(s) {
   if (s.phase === 'handEnd') showSummary(s);
   else if (summaryFor) { summaryFor = 0; app.toepSummary?.close(true); }
@@ -330,7 +368,8 @@ function showSummary(s) {
     const gain = row.gains?.[x.seat] ?? 0;
     return h('div', { class: 'tp-sum-row' + (x.seat === s.you ? ' me' : '') + (x.out ? ' out' : '') + (x.seat === row.winner ? ' won' : '') },
       avatar(s.players[x.seat], 'sm'), playerName(x.name, { cls: 'tp-sum-name' }),
-      h('span', { class: 'tp-sum-gain' + (gain ? ' plus' : ''), text: gain ? `+${gain}` : x.seat === row.winner ? '🏆' : '' }),
+      h('span', { class: 'tp-sum-gain' + (gain > 0 ? ' plus' : gain < 0 ? ' minus' : ''), title: gain < 0 ? 'Met de boer: een strafpunt eraf' : '',
+        text: gain > 0 ? `+${gain}` : gain < 0 ? `🏆 ${gain}` : x.seat === row.winner ? '🏆' : '' }),
       meter(x.points, s.opts?.limit || 10),
       h('b', { class: 'tp-sum-pts', text: x.out ? 'eruit' : String(x.points) }));
   }));
@@ -401,7 +440,7 @@ export function openStand() {
       avatar(s.players[seat], 'xs'))));
     const rows = (s.rounds || []).map(r => h('tr', {}, h('td', { class: 'tp-st-n', text: r.hand }),
       order.map(seat => h('td', { class: (r.winner === seat ? 'won' : '') + (r.out?.[seat] && (r.gains?.[seat] ?? 0) > 0 ? ' out' : ''),
-        text: r.winner === seat ? '🏆' : r.gains?.[seat] ? `+${r.gains[seat]}` : '·' }))));
+        text: r.winner === seat ? ((r.gains?.[seat] ?? 0) < 0 ? `🏆${r.gains[seat]}` : '🏆') : r.gains?.[seat] ? `+${r.gains[seat]}` : '·' }))));
     const total = h('tr', { class: 'tp-st-total' }, h('td', { text: 'Σ' }),
       order.map(seat => h('td', { class: R.isOut(s, seat) ? 'out' : '', text: String(s.points?.[seat] ?? 0) })));
     m.body.replaceChildren(
@@ -413,16 +452,54 @@ export function openStand() {
   app.toepStand = m;
 }
 
-export function openRules() {
-  const o = app.view?.opts || {};
-  panels.openModal({
-    id: 'tp-rules', title: 'Spelregels toepen', cls: 'm-manual tp-rules', body: [
-      h('p', { class: 'sheet-note', text: `Aan deze tafel: ${R.variantText(o).toLowerCase()}.` }),
-      ...R.rules(o).flatMap(([title, ps]) => [h('h3', { text: title }), ...ps.map(p => h('p', { text: p }))]),
-      h('h3', { text: 'Bediening' }),
-      h('p', { text: touch.matches ? 'Tik een kaart aan om hem op te tillen, en nog een keer om hem te spelen. Toepen doe je met de knop Toep! naast je naam, voordat je speelt.'
-        : 'Klik een kaart om hem te spelen (of de toetsen 1 tot 4). Toepen: de knop Toep! of de toets T, voordat je speelt.' })],
+// The manual: tabs for the rules, the extra rules (this table's options),
+// the terms and the controls, on the shell's tabs and scrolling pane (as
+// klaverjas's handleiding). Opens on the tab last read.
+let lastTab = 'regels';
+export function openRules(tab) {
+  sound.play('click');
+  // At a table the extra rules say how they are played there; from the home
+  // screen, what each is and its default.
+  const atTable = document.body.classList.contains('in-room');
+  const o = atTable ? app.s?.opts || app.view?.opts || {} : {};
+  const tabsOf = R.manual(o, { touch: touch.matches, table: atTable });
+  const content = h('div', { class: 'man-scroll tp-man', role: 'tabpanel' });
+  const bar = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Delen van de spelregels' });
+  const btns = tabsOf.map(x => h('button', {
+    class: 'tab', type: 'button', role: 'tab', id: `tp-tab-${x.id}`, dataset: { id: x.id }, onclick: () => show(x.id),
+  }, x.title));
+  bar.append(...btns);
+  bar.addEventListener('keydown', e => {
+    const k = btns.indexOf(document.activeElement);
+    if (k < 0 || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    const b = btns[(k + (e.key === 'ArrowRight' ? 1 : btns.length - 1)) % btns.length];
+    b.focus();
+    show(b.dataset.id);
   });
+  function show(id) {
+    const tab = tabsOf.find(x => x.id === id) || tabsOf[0];
+    lastTab = tab.id;
+    for (const b of btns) {
+      const on = b.dataset.id === tab.id;
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+    }
+    content.setAttribute('aria-labelledby', `tp-tab-${tab.id}`);
+    const terms = tab.id === 'begrippen';
+    const note = atTable && (tab.id === 'extra' || tab.id === 'regels') ? [h('p', { class: 'sheet-note', text: `Aan deze tafel: ${R.variantText(o).toLowerCase()}.` })] : [];
+    content.replaceChildren(...note,
+      ...(terms ? [h('dl', { class: 'tp-terms' }, tab.parts.flatMap(([t, ps]) => [h('dt', { text: t }), h('dd', { text: ps.join(' ') })]))]
+        : tab.parts.flatMap(([title, ps]) => [h('h3', { text: title }), ...ps.map(p => h('p', { text: p }))])));
+    const next = tabsOf[tabsOf.indexOf(tab) + 1];
+    if (next) {
+      content.append(h('div', { class: 'man-next' },
+        h('button', { class: 'btn btn-ghost', type: 'button', onclick: () => show(next.id) }, `Volgende: ${next.title}`, icon('forward'))));
+    }
+    content.scrollTop = 0;
+    btns.find(b => b.dataset.id === tab.id)?.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }
+  panels.openModal({ id: 'tp-rules', title: 'Spelregels toepen', cls: 'm-manual tp-rules', body: [bar, content] });
+  show(tab || lastTab);
 }
 
 // ---------- animation ----------
@@ -491,6 +568,7 @@ export async function animate(ev, prev, next) {
   switch (ev.type) {
     case 'deal': {
       sound.play('shuffle');
+      if (ev.koning) flash('Koningsspel', 'poor', 1800);
       shownCheck = 0;
       render({ ...next, hand: [], trick: null, players: next.players.map(p => p && { ...p, cards: 0 }) });
       const n = next.players.length;
@@ -507,7 +585,7 @@ export async function animate(ev, prev, next) {
       break;
     }
     case 'claims':
-      for (const seat of ev.seats) { bubble(next, seat, 'Was!', 'was'); }
+      for (const seat of ev.seats) { bubble(next, seat, 'Vuile was!', 'was'); }
       sound.play('trump');
       await wait(500);
       break;
@@ -522,9 +600,9 @@ export async function animate(ev, prev, next) {
     case 'toep':
       sound.play('knock');
       vibrate(20);
-      bubble(next, ev.seat, 'Toep!', 'toep');
+      bubble(next, ev.seat, ev.over ? 'Overtoep!' : 'Toep!', 'toep');
       render({ ...prev, stake: ev.stake });
-      flash(ev.seat === next.you ? 'Toep!' : `${NAME(next, ev.seat)}: toep!`, 'toep');
+      flash(`${ev.seat === next.you ? '' : `${NAME(next, ev.seat)}: `}${ev.over ? 'overtoep' : 'toep'}!`.replace(/^./, c => c.toUpperCase()), 'toep');
       await wait(650);
       break;
     case 'answer':
@@ -541,7 +619,7 @@ export async function animate(ev, prev, next) {
       sound.play('card');
       const slot = slotOf.get(ev.seat);
       const from = ev.seat === next.you ? E.hand.querySelector(`.card[data-card="${ev.card}"]`) || E.hand : seatSource(prev, ev.seat);
-      if (ev.seat !== next.you) setBacks(seatEls[ev.seat], Math.max(0, (prev.players[ev.seat]?.cards ?? 1) - 1));
+      if (ev.seat !== next.you) setBacks(seatEls[ev.seat], Math.max(0, (prev.players[ev.seat]?.cards ?? 1) - 1), prev.open?.[ev.seat]?.filter(c => c !== ev.card));
       else if (from.classList.contains('card')) from.style.visibility = 'hidden'; // it is in the air now
       await fly(ev.card, from, slot, { ms: 320 });
       break;
@@ -570,26 +648,47 @@ export async function animate(ev, prev, next) {
   }
 }
 
-// The hand of a checked was, shown in the middle a moment; or the new
-// cards of one let through.
+// The hand of a checked vuile was, shown in the middle a moment; then, for
+// a hand handed in, its four cards go face down onto the claimant's pile
+// and four new ones come from the stock.
 async function showWas(ev, next) {
   shownCheck++;
   const who = NAME(next, ev.claimant);
-  if (ev.checker < 0) {
+  if (ev.checker < 0 && !ev.shown) {
     flash(`${who}: nieuwe kaarten`, 'was', 1200);
-    sound.play('shuffle');
-    await wait(700);
+    await handIn(ev.claimant, next);
     return;
   }
-  const verdict = ev.genuine ? `Echte ${R.wasName(ev.kind)}!` : 'Geen was: bluf!';
+  const verdict = ev.shown ? `${who}: armoede, echte ${R.wasName(ev.kind)}` : ev.genuine ? `Echte ${R.wasName(ev.kind)}!` : 'Geen vuile was: bluf!';
+  const after = ev.shown ? 'Open op tafel; vier nieuwe kaarten.'
+    : ev.genuine ? `${NAME(next, ev.checker)} krijgt een strafpunt.`
+      : `${who} krijgt een strafpunt${next.open?.[ev.claimant]?.length ? ' en speelt open verder' : ''}.`;
   E.shown.hidden = false;
   E.shown.replaceChildren(
     h('div', { class: 'tp-shown-cards' }, (ev.cards || []).map(c => createCard(c, { size: 'md' }))),
     h('b', { class: ev.genuine ? 'good' : 'bad', text: verdict }),
-    h('small', { text: ev.genuine ? `${NAME(next, ev.checker)} krijgt een strafpunt.` : `${who} krijgt een strafpunt.` }));
+    h('small', { text: after }));
   sound.play(ev.genuine ? 'roem' : 'nat');
   await wait(2200);
   E.shown.hidden = true;
+  if (ev.washed) await handIn(ev.claimant, next);
+}
+
+// Four cards fly from the claimant to its pile, face down, and four new
+// ones from the stock (the middle) back to it.
+async function handIn(seat, next) {
+  const hand = seat === next.you ? E.hand : seatEls[seat]?.ring;
+  const pile = pileOf.get(seat);
+  if (!hand || !pile) return;
+  sound.play('shuffle');
+  pile.hidden = false;
+  const out = [];
+  for (let k = 0; k < 4; k++) { out.push(fly('', hand, pile, { ms: 360, back: true })); await wait(60); }
+  await Promise.all(out);
+  render(next); // the pile as it now is
+  const back = [];
+  for (let k = 0; k < 4; k++) { back.push(fly('', E.chip, hand, { ms: 380, back: true, fade: seat === next.you })); sound.play('deal'); await wait(60); }
+  await Promise.all(back);
 }
 
 function seatToast(ev, next) {

@@ -23,7 +23,8 @@ type Brain interface {
 	Was(v toepen.View) bool       // right after the deal: claim a was (only asked when v.CanClaim)?
 	Check(v toepen.View) bool     // check the claimed was of v.Claimant?
 	Toep(v toepen.View) bool      // on its turn to play: toep first (only asked when v.CanToep)?
-	Answer(v toepen.View) bool    // go along with the toep (else pass)?
+	Overtoep(v toepen.View) bool  // asked about a toep: toep again (only asked when v.CanRaise)?
+	Answer(v toepen.View) bool    // go along with the toep (else pass; true when v.MustStay)?
 	Play(v toepen.View) game.Card // one of v.Legal
 }
 
@@ -65,18 +66,27 @@ func (g toepGame) Chat(personaID string, ev server.ChatEvent, rng *rand.Rand) st
 
 // ---- options ----
 
-// Options are toepen's own options (design §11): the penalty points that
-// put a player out, and whether the witte and vuile was and armoede are
-// played.
+// Options are toepen's own options (docs/toepen.md §2): the penalty
+// points that put a player out, and which of the rules that groups play
+// differently are played: the witte and vuile was, armoede, the
+// koningsspel, a point off for the last trick with a boer,
+// anti-lijntoep, and playing on face up after a bluff that was caught.
 type Options struct {
-	Limit   int
-	Was     bool
-	Armoede bool
+	Limit    int
+	Was      bool
+	Armoede  bool
+	Koning   bool
+	Boer     bool
+	Lijntoep bool
+	Bluf     bool
 }
 
-func defaultOptions() *Options { return &Options{Limit: toepen.DefaultLimit, Was: true, Armoede: true} }
+func defaultOptions() *Options {
+	r := toepen.DefaultRules
+	return &Options{Limit: r.Limit, Was: r.Was, Armoede: r.Armoede, Koning: r.Koning, Boer: r.Boer, Lijntoep: r.Lijntoep, Bluf: r.Bluf}
+}
 
-// Set reads limit, was and armoede (server.GameOptions).
+// Set reads limit and the rules' switches (server.GameOptions).
 func (o *Options) Set(fields map[string]json.RawMessage, lenient bool) error {
 	next := *o
 	for key, val := range fields {
@@ -89,16 +99,14 @@ func (o *Options) Set(fields map[string]json.RawMessage, lenient bool) error {
 			} else {
 				next.Limit = n
 			}
-		case "was", "armoede":
+		case "was", "armoede", "koning", "boer", "lijntoep", "bluf":
 			var b *bool // null would otherwise switch it off
-			switch {
-			case json.Unmarshal(val, &b) != nil || b == nil:
+			if json.Unmarshal(val, &b) != nil || b == nil {
 				err = errors.New("Ongeldige waarde voor " + key + ".")
-			case key == "was":
-				next.Was = *b
-			default:
-				next.Armoede = *b
+				break
 			}
+			*map[string]*bool{"was": &next.Was, "armoede": &next.Armoede, "koning": &next.Koning,
+				"boer": &next.Boer, "lijntoep": &next.Lijntoep, "bluf": &next.Bluf}[key] = *b
 		}
 		if err != nil && !lenient {
 			return err
@@ -111,35 +119,47 @@ func (o *Options) Set(fields map[string]json.RawMessage, lenient bool) error {
 // wireOpts is s.opts and the game log's opts: the table's options and
 // toepen's.
 type wireOpts struct {
-	Players int    `json:"players"`
-	AI      string `json:"ai"`
-	Tempo   string `json:"tempo"`
-	Seed    int    `json:"seed"`
-	Limit   int    `json:"limit"`
-	Was     bool   `json:"was"`
-	Armoede bool   `json:"armoede"`
+	Players  int    `json:"players"`
+	AI       string `json:"ai"`
+	Tempo    string `json:"tempo"`
+	Seed     int    `json:"seed"`
+	Limit    int    `json:"limit"`
+	Was      bool   `json:"was"`
+	Armoede  bool   `json:"armoede"`
+	Koning   bool   `json:"koning"`
+	Boer     bool   `json:"boer"`
+	Lijntoep bool   `json:"lijntoep"`
+	Bluf     bool   `json:"bluf"`
 }
 
 // Wire is the options on the wire (server.GameOptions).
 func (o *Options) Wire(t server.TableOpts) any {
-	return wireOpts{Players: t.Players, AI: t.AI, Tempo: t.Tempo, Seed: t.Seed, Limit: o.Limit, Was: o.Was, Armoede: o.Armoede}
+	return wireOpts{Players: t.Players, AI: t.AI, Tempo: t.Tempo, Seed: t.Seed, Limit: o.Limit, Was: o.Was,
+		Armoede: o.Armoede, Koning: o.Koning, Boer: o.Boer, Lijntoep: o.Lijntoep, Bluf: o.Bluf}
 }
 
 // rules are the options as package toepen's rules.
 func (o *Options) rules() toepen.Rules {
-	return toepen.Rules{Limit: o.Limit, Was: o.Was, Armoede: o.Armoede}
+	return toepen.Rules{Limit: o.Limit, Was: o.Was, Armoede: o.Armoede, Koning: o.Koning, Boer: o.Boer, Lijntoep: o.Lijntoep, Bluf: o.Bluf}
 }
 
-// variant names the rules for the start line and the log.
+// variant names the rules for the start line and the log: "toepen tot 10
+// strafpunten, met vuile was, armoede, koningsspel, boer eraf en open na
+// bluf" (as variantText in web/toepen/js/rules.js).
 func (o *Options) variant() string {
+	var with []string
+	for _, x := range []struct {
+		on   bool
+		name string
+	}{{o.Was, "vuile was"}, {o.Armoede, "armoede"}, {o.Koning, "koningsspel"}, {o.Boer, "boer eraf"}, {o.Lijntoep, "anti-lijntoep"},
+		{o.Was && o.Bluf, "open na bluf"}} {
+		if x.on {
+			with = append(with, x.name)
+		}
+	}
 	s := fmt.Sprintf("toepen tot %d strafpunten", o.Limit)
-	switch {
-	case o.Was && o.Armoede:
-		s += ", met was en armoede"
-	case o.Was:
-		s += ", met was"
-	case o.Armoede:
-		s += ", met armoede"
+	if len(with) > 0 {
+		s += ", met " + joinNL(with)
 	}
 	return s
 }

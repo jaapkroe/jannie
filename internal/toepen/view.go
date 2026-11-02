@@ -19,6 +19,10 @@ type View struct {
 	Toeper   game.Seat // the last to toep, NoSeat before anyone did
 	Toeps    []Toep    // every raise so far
 	CanToep  bool      // Seat may toep now
+	CanRaise bool      // PhaseToep: Seat may toep again instead of answering (Overtoep)
+	MustStay bool      // PhaseToep: Seat may not pass (anti-lijntoep)
+	Koning   bool      // the koningsspel
+	Size     int       // cards dealt to each
 	Hand     []game.Card
 	Legal    []game.Card // Seat's turn in PhasePlay
 
@@ -26,9 +30,11 @@ type View struct {
 	Points  [MaxPlayers]int    // penalty points now
 	Status  [MaxPlayers]Status //
 	Armoede [MaxPlayers]bool
-	Washed  [MaxPlayers]bool // got new cards for a was
-	Claimed [MaxPlayers]bool // claimed a was (once the time for it is over)
+	Washed  [MaxPlayers]bool        // got new cards for a was
+	Claimed [MaxPlayers]bool        // claimed a was (once the time for it is over)
+	Open    [MaxPlayers][]game.Card // the hands played face up (a bluff caught, rule Bluf)
 
+	WasRound int       // the time for a was: 1, more when new cards may be washed again
 	Answered bool      // PhaseWas: Seat said whether it has a was
 	CanClaim bool      // PhaseWas: Seat may still claim one
 	Claimant game.Seat // PhaseCheck: whose was is asked about
@@ -53,6 +59,11 @@ func (d *Deal) View(seat game.Seat) View {
 		Toeper:   d.toeper,
 		Toeps:    d.Toeps(),
 		CanToep:  d.CanToep(seat),
+		CanRaise: d.CanRaise(seat),
+		MustStay: d.MustStay(seat),
+		Koning:   d.koning,
+		Size:     d.size,
+		WasRound: d.window,
 		Hand:     slices.Clone(d.hands[seat]),
 		Points:   d.points,
 		Status:   d.status,
@@ -72,6 +83,9 @@ func (d *Deal) View(seat game.Seat) View {
 	for s := range game.Seat(d.players) {
 		v.Cards[s] = d.HandLen(s)
 		v.Claimed[s] = d.Claimed(s)
+		if d.Open(s) {
+			v.Open[s] = slices.Clone(d.hands[s])
+		}
 	}
 	if d.phase == PhasePlay && d.turn == seat {
 		v.Legal = d.Legal()
@@ -98,8 +112,8 @@ func (v *View) InCount() int {
 // Next is the seat after s, clockwise.
 func (v *View) Next(s game.Seat) game.Seat { return (s + 1) % game.Seat(v.Players) }
 
-// Seen lists every card Seat has seen leave a hand: the cards played and
-// the hands shown by a check.
+// Seen lists every card Seat has seen: the cards played, the hands shown
+// by a check and the hands played face up.
 func (v *View) Seen() []game.Card {
 	var out []game.Card
 	for _, t := range v.Tricks {
@@ -113,6 +127,11 @@ func (v *View) Seen() []game.Card {
 	for _, c := range v.Checks {
 		out = append(out, c.Cards...)
 	}
+	for s := range v.Players {
+		if s != int(v.Seat) {
+			out = append(out, v.Open[s]...)
+		}
+	}
 	return out
 }
 
@@ -122,8 +141,9 @@ type Match struct {
 	Players int
 	Rules   Rules
 	Points  [MaxPlayers]int
-	Dealer  game.Seat // of the round in play or last played
-	Round   int       // rounds dealt
+	Streak  [MaxPlayers]int // passes on a toep in a row (anti-lijntoep)
+	Dealer  game.Seat       // of the round in play or last played
+	Round   int             // rounds dealt
 }
 
 // NewMatch starts a match; first is the first dealer.
@@ -177,12 +197,16 @@ func (m *Match) Deal(deck []game.Card) *Deal {
 		m.Dealer = s
 	}
 	m.Round++
-	return NewDeal(m.Players, m.Rules, m.Dealer, m.Points, deck)
+	d := NewDeal(m.Players, m.Rules, m.Dealer, m.Points, deck)
+	d.streak = m.Streak
+	return d
 }
 
-// Settle takes the penalty points of a finished round.
+// Settle takes the penalty points of a finished round, and the passes in
+// a row.
 func (m *Match) Settle(d *Deal) {
 	if r := d.Result(); r != nil {
 		copy(m.Points[:], r.Points)
+		m.Streak = d.streak
 	}
 }

@@ -27,6 +27,7 @@ type play struct {
 	winner    int           // game over: the seat left
 	acts      string        // the round's decisions, for the game log
 	wasGen    int           // bumped when the time for a was opens: late bot answers are dropped
+	told      int           // the settled claims of the round told the table (wasDone)
 	poorAt    int           // the round whose armoede was announced
 }
 
@@ -42,11 +43,12 @@ const (
 type actKind uint8
 
 const (
-	actPlay   actKind = iota + 1 // a card
-	actToep                      // raise the stake, on the turn to play
-	actAnswer                    // play: go along with the toep, else pass
-	actWas                       // play: claim a was, else not
-	actCheck                     // play: check the claimed was, else let it go
+	actPlay     actKind = iota + 1 // a card
+	actToep                        // raise the stake, on the turn to play
+	actOvertoep                    // raise it again, asked about a toep
+	actAnswer                      // play: go along with the toep, else pass
+	actWas                         // play: claim a was, else not
+	actCheck                       // play: check the claimed was, else let it go
 )
 
 // action is one decision of a seat.
@@ -85,10 +87,17 @@ func (p *play) deal() {
 	p.d = p.m.Deal(toepen.Shuffle(t.Deals()))
 	p.handNo = p.m.Round
 	t.SetHand(p.handNo)
-	p.acts, p.last, p.collected = "", nil, false
+	p.acts, p.last, p.collected, p.told = "", nil, false, 0
 	t.SetPhase(p.phase())
 	t.Pause(stepDealt, t.Pace().Deal)
-	t.Emit(evDeal{Type: "deal", HandNo: p.handNo, Dealer: p.d.Dealer()})
+	t.Emit(evDeal{Type: "deal", HandNo: p.handNo, Dealer: p.d.Dealer(), Koning: p.d.Koning()})
+	if p.d.Koning() {
+		t.SysChat("Koningsspel: iedereen die nog meedoet, staat op armoede. %d kaarten elk, zonder vuile was en zonder toepen: wie de laatste slag haalt, wint het spel.",
+			p.d.Size())
+		t.BotsReact(1, 1200*time.Millisecond, func(i game.Seat) (server.ChatEvent, bool) {
+			return server.ChatEvent{Kind: "koning", Mine: true}, p.d.Status(i) == toepen.StatusIn
+		})
+	}
 }
 
 // phase is the room phase of the round in play.
@@ -156,8 +165,12 @@ func (p *play) proceed() {
 	t, d := p.t, p.d
 	t.SetPhase(p.phase())
 	switch {
+	case p.told < len(d.Checks()):
+		p.tellShown() // vuile was on armoede, laid open on the table
 	case d.Phase() == toepen.PhaseDone:
 		p.endRound()
+	case d.Phase() == toepen.PhaseWas:
+		p.openWas() // new cards for a was: who got them may wash again
 	case d.ArmoedeToep() && p.poorAt != p.handNo:
 		p.poorAt = p.handNo
 		var poor []game.Seat
@@ -181,8 +194,9 @@ func (p *play) proceed() {
 // ---- the was ----
 
 // openWas opens the time for a was: everyone in the round says at once
-// whether they have one. The bots decide in the background and answer
-// after their think time; the time runs out after the pace's was.
+// whether they have one (again: only who just got new cards). The bots
+// decide in the background and answer after their think time; the time
+// runs out after the pace's was.
 func (p *play) openWas() {
 	t, d := p.t, p.d
 	t.SetPhase(phaseWas)
@@ -190,7 +204,7 @@ func (p *play) openWas() {
 	p.wasGen++
 	gen := p.wasGen
 	for s := range game.Seat(t.Players()) {
-		if d.Status(s) != toepen.StatusIn || !t.BotPlays(s) {
+		if d.Status(s) != toepen.StatusIn || !t.BotPlays(s) || d.Answered(s) {
 			continue
 		}
 		v := d.View(s)
@@ -268,10 +282,12 @@ func (p *play) Move(i game.Seat, m server.Msg) error {
 		a = action{kind: actPlay, card: card}
 	case "toep":
 		a = action{kind: actToep}
+	case "overtoep":
+		a = action{kind: actOvertoep}
 	case "answer", "was", "check":
 		if msg.Play == nil {
 			return errors.New(map[string]string{
-				"answer": "Kies meegaan of passen.", "was": "Zeg of je een was hebt.", "check": "Kies controleren of laten gaan.",
+				"answer": "Kies meegaan of passen.", "was": "Zeg of je een vuile was hebt.", "check": "Kies controleren of laten gaan.",
 			}[m.T])
 		}
 		a = action{kind: map[string]actKind{"answer": actAnswer, "was": actWas, "check": actCheck}[m.T], play: *msg.Play}
@@ -312,7 +328,10 @@ func decide(b Brain, v toepen.View) action {
 	case toepen.PhaseCheck:
 		return action{kind: actCheck, play: b.Check(v)}
 	case toepen.PhaseToep:
-		return action{kind: actAnswer, play: b.Answer(v)}
+		if v.CanRaise && b.Overtoep(v) {
+			return action{kind: actOvertoep}
+		}
+		return action{kind: actAnswer, play: v.MustStay || b.Answer(v)}
 	case toepen.PhasePlay:
 		if v.CanToep && b.Toep(v) {
 			return action{kind: actToep}
@@ -369,19 +388,45 @@ func (p *play) Apply(i game.Seat, a any) error {
 		t.SetPhase(phaseToep)
 		t.Pause(stepAnnounced, pace.Announce)
 		t.Emit(evToep{Type: "toep", Seat: i, Stake: d.Stake()})
-		p.chatToep(i)
+		t.BotSay(i, server.ChatEvent{Kind: "toep", Mine: true, Points: d.Stake()}, 200*time.Millisecond)
+	case actOvertoep:
+		if err := d.Overtoep(i); err != nil {
+			return err
+		}
+		p.act(i, "o")
+		t.SetPhase(phaseToep)
+		t.Pause(stepAnnounced, pace.Announce)
+		t.Emit(evToep{Type: "toep", Seat: i, Stake: d.Stake(), Over: true})
+		t.BotSay(i, server.ChatEvent{Kind: "overtoep", Mine: true, Points: d.Stake()}, 200*time.Millisecond)
 	case actAnswer:
 		stake := d.Stake()
+		before := len(d.Tricks())
 		if err := d.Answer(i, act.play); err != nil {
 			return err
 		}
 		p.act(i, map[bool]string{true: "a1", false: "a0"}[act.play])
 		ev := evAnswer{Type: "answer", Seat: i, Stay: act.play}
-		if !act.play {
+		// The bot says what it did, never before: a line and a decision that agree.
+		if act.play {
+			if d.Toeper() != game.NoSeat {
+				t.BotSay(i, server.ChatEvent{Kind: "stay", Mine: true, Points: stake}, 300*time.Millisecond)
+			}
+		} else {
 			ev.Points = stake - 1
 			t.BotSay(i, server.ChatEvent{Kind: "pass", Mine: true, Points: ev.Points}, 300*time.Millisecond)
 		}
 		t.SetPhase(p.phase())
+		if len(d.Tricks()) > before {
+			// The toeper passed on an overtoep before its card, the last
+			// to play to the trick: the trick is complete.
+			tr := d.Tricks()[before]
+			p.last, p.collected = &tr, false
+			t.Trick()
+			t.Pause(stepCollect, pace.Trick)
+			t.Emit(ev)
+			t.Emit(evTrick{Type: "trick", Winner: tr.Winner, Last: d.Phase() == toepen.PhaseDone})
+			break
+		}
 		if d.Phase() == toepen.PhaseDone {
 			t.Emit(ev)
 			p.endRound()
@@ -402,15 +447,17 @@ func (p *play) Apply(i game.Seat, a any) error {
 			t.Emit(ev)
 			break
 		}
-		t.SetPhase(p.phase())
+		if d.Phase() != toepen.PhaseWas { // else the next time for a was opens after the announcement
+			t.SetPhase(p.phase())
+		}
 		wait := pace.Announce
 		if res.Checker != game.NoSeat {
 			wait = 3 * pace.Announce // the hand is shown: time to look
 		}
 		t.Pause(stepAnnounced, wait)
 		t.Emit(ev)
-		t.Emit(evWasDone{Type: "wasDone", Claimant: res.Claimant, Checker: res.Checker, Kind: res.Kind,
-			Cards: nonNil(res.Cards), Genuine: res.Genuine(), Washed: d.Washed(res.Claimant)})
+		t.Emit(wasDone(*res))
+		p.told++
 		p.chatCheck(res)
 	case actPlay:
 		before := len(d.Tricks())
@@ -436,8 +483,8 @@ func (p *play) Apply(i game.Seat, a any) error {
 }
 
 // act adds a decision to the round's log: the seat, then "w" (a was
-// claimed), "c1"/"c0" (checked or not), "t" (toep), "a1"/"a0" (went along
-// or passed) or a card.
+// claimed), "c1"/"c0" (checked or not), "t" (toep), "o" (overtoep),
+// "a1"/"a0" (went along or passed) or a card.
 func (p *play) act(i game.Seat, what string) {
 	if p.acts != "" {
 		p.acts += " "
@@ -458,7 +505,7 @@ func (p *play) endRound() {
 	p.m.Settle(d)
 	copy(p.total, res.Points)
 	row := round{Hand: p.handNo, Dealer: d.Dealer(), Winner: res.Winner, Stake: res.Stake, Tricks: res.Tricks,
-		Gains: res.Gains, Points: res.Points, Out: res.Out}
+		Boer: res.Boer, Koning: res.Koning, Gains: res.Gains, Points: res.Points, Out: res.Out}
 	p.rounds = append(p.rounds, row)
 	p.logRound(row)
 	t.Summary(evRound{Type: "handEnd", Result: row}, p.pace().round) // short, as a round: on by itself, also alone
@@ -468,7 +515,14 @@ func (p *play) endRound() {
 			t.BotSay(s, server.ChatEvent{Kind: "out", Mine: true}, 900*time.Millisecond)
 		}
 	}
-	if !res.Out[res.Winner] && !t.BotSay(res.Winner, server.ChatEvent{Kind: "wonRound", Mine: true, Points: res.Stake}, 700*time.Millisecond) &&
+	won := "wonRound"
+	if res.Boer {
+		won = "boer"
+		if res.Gains[res.Winner] < 0 {
+			t.SysChat("%s haalt de laatste slag met de boer: een strafpunt eraf.", t.DisplayName(res.Winner))
+		}
+	}
+	if !res.Out[res.Winner] && !t.BotSay(res.Winner, server.ChatEvent{Kind: won, Mine: true, Points: res.Stake}, 700*time.Millisecond) &&
 		res.Stake >= 3 {
 		t.BotsReact(1, 1100*time.Millisecond, func(i game.Seat) (server.ChatEvent, bool) {
 			return server.ChatEvent{Kind: "lostRound", Mine: true, Points: res.Gains[i]}, i != res.Winner && res.Gains[i] > 0
@@ -498,35 +552,50 @@ func (p *play) Next() {
 
 // ---- chat ----
 
-// chatToep: the bot that toept says so; else someone else may react.
-func (p *play) chatToep(i game.Seat) {
-	t, d := p.t, p.d
-	if t.BotSay(i, server.ChatEvent{Kind: "toep", Mine: true, Points: d.Stake()}, 200*time.Millisecond) {
-		return
-	}
-	t.BotsReact(1, 900*time.Millisecond, func(s game.Seat) (server.ChatEvent, bool) {
-		return server.ChatEvent{Kind: "toep", Points: d.Stake()}, s != i && d.Status(s) == toepen.StatusIn
-	})
-}
-
 // chatCheck tells the table how a claimed was ended.
 func (p *play) chatCheck(res *toepen.Check) {
 	t := p.t
 	who := t.DisplayName(res.Claimant)
 	switch {
+	case res.Shown:
+		t.SysChat("%s staat op armoede en legt een echte %s open op tafel: vier nieuwe kaarten.", who, res.Kind.NameNL())
 	case res.Checker == game.NoSeat:
-		t.SysChat("Niemand controleert de was van %s: vier nieuwe kaarten.", who)
+		t.SysChat("Niemand controleert de vuile was van %s: die legt vier kaarten dicht weg en krijgt vier nieuwe.", who)
 	case res.Genuine():
-		t.SysChat("%s controleert de was van %s: een echte %s. %s krijgt een strafpunt, %s vier nieuwe kaarten.",
+		t.SysChat("%s controleert de vuile was van %s: een echte %s. %s krijgt een strafpunt, %s vier nieuwe kaarten.",
 			t.DisplayName(res.Checker), who, res.Kind.NameNL(), t.DisplayName(res.Checker), who)
 		t.BotSay(res.Checker, server.ChatEvent{Kind: "checkWrong", Mine: true}, 900*time.Millisecond)
 	default:
-		t.SysChat("%s controleert de was van %s: geen was! %s krijgt een strafpunt en speelt dit potje niet mee.",
-			t.DisplayName(res.Checker), who, who)
+		then := "speelt dit potje niet mee"
+		if p.d.Open(res.Claimant) {
+			then = "neemt de kaarten terug en speelt open verder"
+		}
+		t.SysChat("%s controleert de vuile was van %s: geen vuile was! %s krijgt een strafpunt en %s.",
+			t.DisplayName(res.Checker), who, who, then)
 		if !t.BotSay(res.Claimant, server.ChatEvent{Kind: "caught", Mine: true}, 900*time.Millisecond) {
 			t.BotSay(res.Checker, server.ChatEvent{Kind: "checkRight", Mine: true}, 900*time.Millisecond)
 		}
 	}
+}
+
+// tellShown tells the table of the claims settled without a question: on
+// armoede the hand is laid open on the table a moment (three times an
+// announcement), and four new cards follow.
+func (p *play) tellShown() {
+	t, d := p.t, p.d
+	checks := d.Checks()
+	t.Pause(stepAnnounced, 3*t.Pace().Announce)
+	for ; p.told < len(checks); p.told++ {
+		c := checks[p.told]
+		t.Emit(wasDone(c))
+		p.chatCheck(&c)
+	}
+}
+
+// wasDone is the event of a settled claim.
+func wasDone(c toepen.Check) evWasDone {
+	return evWasDone{Type: "wasDone", Claimant: c.Claimant, Checker: c.Checker, Kind: c.Kind,
+		Cards: nonNil(c.Cards), Genuine: c.Genuine(), Washed: c.Washed(), Shown: c.Shown}
 }
 
 // joinNL joins names the Dutch way: "A", "A en B", "A, B en C".

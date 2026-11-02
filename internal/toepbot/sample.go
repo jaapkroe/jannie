@@ -9,7 +9,8 @@ import (
 )
 
 // world is one guess at the hidden cards: the hand of every other seat
-// still in the round, consistent with the suits it showed it lacks.
+// still in the round, consistent with the suits it showed it lacks; a hand
+// played face up is known.
 type world [toepen.MaxPlayers][]game.Card
 
 // unseen lists the cards v.Seat has not seen: not in its hand, not played,
@@ -65,7 +66,7 @@ type sampler struct {
 func newSampler(v *toepen.View) *sampler {
 	s := &sampler{v: v, pool: unseen(v), voids: voids(v)}
 	for o := range game.Seat(v.Players) {
-		if o != v.Seat && v.In(o) {
+		if o != v.Seat && v.In(o) && v.Open[o] == nil {
 			s.order = append(s.order, o)
 		}
 	}
@@ -83,9 +84,15 @@ func newSampler(v *toepen.View) *sampler {
 }
 
 // draw deals the pool out to the other seats, respecting the voids; after
-// a few failed tries it ignores them (a play nobody can explain).
+// a few failed tries it ignores them (a play nobody can explain). The hands
+// played face up are as they are.
 func (s *sampler) draw(rng *rand.Rand) world {
 	var w world
+	for o := range s.v.Players {
+		if o != int(s.v.Seat) && s.v.Open[o] != nil {
+			w[o] = slices.Clone(s.v.Open[o])
+		}
+	}
 	pool := slices.Clone(s.pool)
 	for try := range 8 {
 		rng.Shuffle(len(pool), func(i, j int) { pool[i], pool[j] = pool[j], pool[i] })

@@ -10,13 +10,21 @@ import (
 
 // Rules are the table's choices where groups play toepen differently.
 type Rules struct {
-	Limit   int  `json:"limit"`   // penalty points that put a player out (10 or 15)
-	Was     bool `json:"was"`     // a witte or vuile was may be swapped for new cards
-	Armoede bool `json:"armoede"` // a player one point from out: the round starts toept
+	Limit    int  `json:"limit"`    // penalty points that put a player out (10 or 15)
+	Was      bool `json:"was"`      // a witte or vuile was may be swapped for new cards
+	Armoede  bool `json:"armoede"`  // a player one point from out: the round starts toept
+	Koning   bool `json:"koning"`   // everyone left one point from out: the koningsspel, eight cards each
+	Boer     bool `json:"boer"`     // the last trick taken with a boer: a penalty point off
+	Lijntoep bool `json:"lijntoep"` // anti-lijntoep: nobody passes on a toep more than twice in a row
+	Bluf     bool `json:"bluf"`     // a bluff that is caught: play on with those cards face up (else sit the round out)
 }
 
 // DefaultRules are the rules of a new table.
-var DefaultRules = Rules{Limit: DefaultLimit, Was: true, Armoede: true}
+var DefaultRules = Rules{Limit: DefaultLimit, Was: true, Armoede: true, Koning: true, Boer: true, Bluf: true}
+
+// MaxPasses is how often in a row a player may pass on a toep under the
+// anti-lijntoep rule; on the next toep it must go along.
+const MaxPasses = 2
 
 // Phase is where a round is.
 type Phase string
@@ -29,7 +37,8 @@ const (
 	// they check it (Check).
 	PhaseCheck Phase = "check"
 	// PhaseToep: after a toep (or armoede) the others say in turn whether
-	// they go along or pass (Answer).
+	// they go along, pass (Answer) or, after a toep, toep again
+	// (Overtoep).
 	PhaseToep Phase = "toep"
 	// PhasePlay: tricks; on their turn a player plays a card or toeps.
 	PhasePlay Phase = "play"
@@ -79,8 +88,13 @@ var (
 	ErrNotInHand   = errors.New("Die kaart heb je niet.")
 	ErrIllegal     = errors.New("Die kaart mag niet.")
 	ErrToepAgain   = errors.New("Je toepte zelf het laatst: eerst moet een ander toepen.")
-	ErrAnswered    = errors.New("Je hebt al gezegd of je een was hebt.")
+	ErrAnswered    = errors.New("Je hebt al gezegd of je een vuile was hebt.")
 	ErrNoStock     = errors.New("De stapel is op: er kan niemand meer wassen.")
+	ErrToepArmoede = errors.New("Op armoede kun je niet toepen.")
+	ErrToepDead    = errors.New("Met deze inzet lig je er bij verlies al uit: dan kun je niet toepen.")
+	ErrNoRaise     = errors.New("Overtoepen kan alleen op een toep.")
+	ErrMustStay    = errors.New("Anti-lijntoep: je paste al twee keer achter elkaar, nu moet je mee.")
+	ErrPoorBluff   = errors.New("Op armoede mag je alleen een echte vuile was inleveren.")
 )
 
 // IllegalError is a card that may not be played, with the reason.
@@ -95,18 +109,24 @@ func (e *IllegalError) Error() string { return e.Reason }
 func (e *IllegalError) Is(target error) bool { return target == ErrIllegal }
 
 // Check is how a claimed was ended: let through by everyone (Checker
-// NoSeat), or checked, and then genuine or not. Cards are the claimed hand
-// when it was checked: everyone has seen them.
+// NoSeat), or checked, and then genuine or not; or, for a claimant on
+// armoede, laid open on the table (Shown) without a question. Cards are the
+// claimed hand when it was checked or shown: everyone has seen them.
 type Check struct {
 	Claimant game.Seat   `json:"claimant"`
 	Checker  game.Seat   `json:"checker"`
-	Kind     WasKind     `json:"kind"`  // what the hand was; only told when checked
-	Cards    []game.Card `json:"cards"` // the hand shown, when checked
+	Kind     WasKind     `json:"kind"`  // what the hand was; only told when checked or shown
+	Cards    []game.Card `json:"cards"` // the hand shown, when checked or shown
+	Shown    bool        `json:"shown"` // on armoede: laid open on the table, always genuine
 }
 
 // Genuine reports whether the claimed hand was a was (only known when it
-// was checked).
+// was checked or shown).
 func (c Check) Genuine() bool { return c.Kind != NoWas }
+
+// Washed reports whether the claimant handed the hand in for new cards:
+// let through, or checked or shown and genuine.
+func (c Check) Washed() bool { return c.Checker == game.NoSeat || c.Genuine() }
 
 // Toep is one raise of the stake: by Seat, with Tricks tricks complete,
 // to Stake.
@@ -122,7 +142,9 @@ type Result struct {
 	Winner game.Seat `json:"winner"`
 	Stake  int       `json:"stake"`
 	Tricks bool      `json:"tricks"` // won with the last trick; else everyone else passed or sat out
-	Gains  []int     `json:"gains"`  // this round
+	Boer   bool      `json:"boer"`   // the last trick taken with a boer (rule Boer): a point off for the winner
+	Koning bool      `json:"koning"` // the koningsspel
+	Gains  []int     `json:"gains"`  // this round (the winner's -1 for the boer)
 	Points []int     `json:"points"` // after it
 	Out    []bool    `json:"out"`    // out of the match after it
 }
@@ -139,7 +161,11 @@ type Deal struct {
 	stake    int
 	toeper   game.Seat // the last to toep; NoSeat before anyone did (also after armoede)
 	armoedeT bool      // the stake was raised for armoede
+	poorAsk  bool      // PhaseToep: the question is armoede's, not a toep's
 	toeps    []Toep
+	koning   bool            // the koningsspel
+	size     int             // cards dealt to each
+	streak   [MaxPlayers]int // passes on a toep in a row, also in rounds before (anti-lijntoep)
 
 	start   [MaxPlayers]int // penalty points at the deal
 	points  [MaxPlayers]int // penalty points now
@@ -149,12 +175,15 @@ type Deal struct {
 	stock   []game.Card
 
 	// The was.
+	window   int // the time for a was: 1, and one more each time new cards may be washed again
 	answered [MaxPlayers]bool
 	claimed  [MaxPlayers]bool
 	claims   []game.Seat // left to settle, in order from voorhand
 	washed   [MaxPlayers]bool
-	old      [MaxPlayers][]game.Card // the hands given back
+	fresh    [MaxPlayers]bool        // got new cards in this time for a was
+	given    [MaxPlayers][]game.Card // the hands given back, in order
 	checks   []Check
+	open     [MaxPlayers]bool // caught bluffing (rule Bluf): plays on with its cards face up
 
 	// Questions asked in turn: whether to check a was, or to go along.
 	asking []game.Seat
@@ -167,7 +196,10 @@ type Deal struct {
 // NewDeal deals a round to every seat of a table of players still in the
 // match (fewer than rules.Limit points): four cards each from deck, in
 // order from voorhand, the first seat in the match after dealer, which
-// must be in it. The rest of the deck is the stock for a was.
+// must be in it. The rest of the deck is the stock for a was. When
+// everyone left stands one point from out and the rules have the
+// koningsspel, each gets eight cards instead (fewer when the deck does not
+// hold eight for all), and there is no was and no armoede.
 func NewDeal(players int, rules Rules, dealer game.Seat, points [MaxPlayers]int, deck []game.Card) *Deal {
 	d := &Deal{
 		players: players,
@@ -179,23 +211,34 @@ func NewDeal(players int, rules Rules, dealer game.Seat, points [MaxPlayers]int,
 		points:  points,
 		turn:    game.NoSeat,
 	}
+	in, poor := 0, 0
 	for s := range players {
 		if points[s] < rules.Limit {
 			d.status[s] = StatusIn
 			d.armoede[s] = rules.Armoede && points[s] == rules.Limit-1
+			in++
+			if points[s] == rules.Limit-1 {
+				poor++
+			}
 		}
+	}
+	d.koning = rules.Koning && in >= 2 && poor == in
+	d.size = HandSize
+	if d.koning {
+		d.size = min(KoningSize, len(deck)/in)
 	}
 	d.voorhand = d.nextIn(dealer)
 	at := 0
 	for k, s := 0, d.voorhand; k < players; k, s = k+1, d.next(s) {
 		if d.status[s] == StatusIn {
-			d.hands[s] = slices.Clone(deck[at : at+HandSize])
-			at += HandSize
+			d.hands[s] = slices.Clone(deck[at : at+d.size])
+			at += d.size
 		}
 	}
 	d.stock = slices.Clone(deck[at:])
-	if rules.Was && len(d.stock) >= HandSize {
+	if rules.Was && !d.koning && len(d.stock) >= HandSize {
 		d.phase = PhaseWas
+		d.window = 1
 		return d
 	}
 	d.afterWas()
@@ -283,6 +326,9 @@ func (d *Deal) Was(seat game.Seat, claim bool) error {
 		if n*HandSize > len(d.stock) {
 			return ErrNoStock
 		}
+		if d.armoede[seat] && Was(d.hands[seat]) == NoWas {
+			return ErrPoorBluff
+		}
 	}
 	d.answered[seat], d.claimed[seat] = true, claim
 	for s := range d.players {
@@ -295,9 +341,10 @@ func (d *Deal) Was(seat game.Seat, claim bool) error {
 }
 
 // CanClaim reports whether seat may still claim a was: it is the time for
-// it, the seat has not answered and the stock holds new cards for it.
+// it, the seat has not answered and the stock holds new cards for it; on
+// armoede only with a real one.
 func (d *Deal) CanClaim(seat game.Seat) bool {
-	if d.phase != PhaseWas || !d.in(seat) || d.answered[seat] {
+	if d.phase != PhaseWas || !d.in(seat) || d.answered[seat] || d.armoede[seat] && Was(d.hands[seat]) == NoWas {
 		return false
 	}
 	n := 1
@@ -336,6 +383,15 @@ func (d *Deal) nextClaim() {
 			d.claims = d.claims[1:]
 			continue
 		}
+		if d.armoede[c] {
+			// On armoede the hand is laid open on the table, and it is
+			// real (Was refuses a bluff): nobody is asked.
+			d.checks = append(d.checks, Check{Claimant: c, Checker: game.NoSeat, Kind: Was(d.hands[c]),
+				Cards: slices.Clone(d.hands[c]), Shown: true})
+			d.swap(c)
+			d.claims = d.claims[1:]
+			continue
+		}
 		d.asking = d.others(c)
 		d.phase = PhaseCheck
 		d.turn = d.asking[0]
@@ -346,7 +402,33 @@ func (d *Deal) nextClaim() {
 		d.finish(d.fromIn(d.voorhand), false)
 		return
 	}
+	if d.washAgain() {
+		return
+	}
 	d.afterWas()
+}
+
+// washAgain opens another time for a was when claims got new cards: who
+// got them says again whether they have one (a was may be handed in more
+// than once, while the stock lasts). The others are not asked.
+func (d *Deal) washAgain() bool {
+	again := false
+	for s := range d.players {
+		again = again || d.fresh[s] && d.status[s] == StatusIn
+	}
+	if !again || len(d.stock) < HandSize {
+		d.fresh = [MaxPlayers]bool{}
+		return false
+	}
+	d.window++
+	for s := range d.players {
+		d.answered[s] = !(d.fresh[s] && d.status[s] == StatusIn)
+		d.claimed[s] = false
+	}
+	d.fresh = [MaxPlayers]bool{}
+	d.phase = PhaseWas
+	d.turn = game.NoSeat
+	return true
 }
 
 // Claimant is the seat whose was is being asked about (PhaseCheck), else
@@ -360,9 +442,11 @@ func (d *Deal) Claimant() game.Seat {
 
 // Check records whether seat, asked about the claimed was, checks it. The
 // first to check settles it: a genuine was costs the checker a point, a
-// false one the claimant, who then sits the round out; a genuine or
-// unchecked claim gets four new cards from the stock. The result is set
-// once the claim is settled (checked, or let through by everyone).
+// false one the claimant, who then plays on with those cards face up (rule
+// Bluf) or sits the round out; a genuine or unchecked claim gets four new
+// cards from the stock. The result is set once the claim is settled
+// (checked, or let through by everyone). Claims of seats on armoede that
+// follow are settled at once (shown).
 func (d *Deal) Check(seat game.Seat, check bool) (*Check, error) {
 	if d.phase != PhaseCheck {
 		return nil, ErrWrongPhase
@@ -382,7 +466,11 @@ func (d *Deal) Check(seat game.Seat, check bool) (*Check, error) {
 			d.swap(claimant)
 		} else {
 			d.penalise(claimant, 1)
-			if d.status[claimant] == StatusIn {
+			switch {
+			case d.status[claimant] != StatusIn:
+			case d.rules.Bluf:
+				d.open[claimant] = true
+			default:
 				d.status[claimant] = StatusCaught
 			}
 		}
@@ -403,17 +491,19 @@ func (d *Deal) Check(seat game.Seat, check bool) (*Check, error) {
 
 // swap gives s four new cards from the stock for its hand.
 func (d *Deal) swap(s game.Seat) {
-	d.old[s] = d.hands[s]
+	d.given[s] = append(d.given[s], d.hands[s]...)
 	d.hands[s] = slices.Clone(d.stock[:HandSize])
 	d.stock = d.stock[HandSize:]
 	d.washed[s] = true
+	d.fresh[s] = true
 }
 
 // afterWas starts the tricks, after the question of armoede when a player
 // still in is one point from out: the stake is then 2 from the start and
-// the others say whether they go along.
+// the others say whether they go along. Not in the koningsspel, where
+// everyone is.
 func (d *Deal) afterWas() {
-	if d.rules.Armoede {
+	if d.rules.Armoede && !d.koning {
 		poor := false
 		var ask []game.Seat
 		for k, s := 0, d.voorhand; k < d.players; k, s = k+1, d.next(s) {
@@ -430,6 +520,7 @@ func (d *Deal) afterWas() {
 			if len(ask) > 0 {
 				d.asking = ask
 				d.phase = PhaseToep
+				d.poorAsk = true
 				d.turn = ask[0]
 				return
 			}
@@ -440,6 +531,7 @@ func (d *Deal) afterWas() {
 
 func (d *Deal) startPlay() {
 	d.phase = PhasePlay
+	d.poorAsk = false
 	d.current = Trick{Leader: d.fromIn(d.voorhand), Winner: game.NoSeat}
 	d.turn = d.current.Leader
 }
@@ -447,13 +539,27 @@ func (d *Deal) startPlay() {
 // ---- toepen ----
 
 // CanToep reports whether seat may toep now: on its turn to play, unless
-// it was the last to toep.
+// it was the last to toep, stands on armoede, or would be out by losing at
+// the present stake already.
 func (d *Deal) CanToep(seat game.Seat) bool {
-	return d.phase == PhasePlay && seat == d.turn && seat != d.toeper && d.inCount() > 1
+	return d.phase == PhasePlay && seat == d.turn && seat != d.toeper && d.inCount() > 1 && d.mayRaise(seat) == nil
+}
+
+// mayRaise says why seat may not raise the stake, nil when it may: not on
+// armoede, and not when losing at the present stake puts it out already.
+func (d *Deal) mayRaise(seat game.Seat) error {
+	switch {
+	case d.armoede[seat]:
+		return ErrToepArmoede
+	case d.points[seat]+d.stake >= d.rules.Limit:
+		return ErrToepDead
+	}
+	return nil
 }
 
 // Toep raises the stake by one; the others still in say in turn whether
-// they go along (Answer). Then seat plays its card.
+// they go along (Answer) or toep again (Overtoep). Then seat plays its
+// card.
 func (d *Deal) Toep(seat game.Seat) error {
 	switch {
 	case d.phase != PhasePlay:
@@ -463,13 +569,55 @@ func (d *Deal) Toep(seat game.Seat) error {
 	case seat == d.toeper:
 		return ErrToepAgain
 	}
+	if err := d.mayRaise(seat); err != nil {
+		return err
+	}
+	d.raise(seat)
+	return nil
+}
+
+// raise puts the stake up by one for seat, and asks the others still in.
+func (d *Deal) raise(seat game.Seat) {
 	d.stake++
 	d.toeper = seat
 	d.toeps = append(d.toeps, Toep{Seat: seat, Tricks: len(d.tricks), Stake: d.stake})
 	d.asking = d.others(seat)
 	d.phase = PhaseToep
+	d.poorAsk = false
 	d.turn = d.asking[0]
+}
+
+// CanRaise reports whether seat, asked about a toep, may toep again
+// (overtoepen): not on armoede's question, and as for CanToep.
+func (d *Deal) CanRaise(seat game.Seat) bool {
+	return d.phase == PhaseToep && seat == d.turn && !d.poorAsk && d.mayRaise(seat) == nil
+}
+
+// Overtoep is the answer to a toep that raises the stake once more: seat
+// goes along, and everyone else still in (the toeper too) is asked again,
+// from seat's left. Passing then costs the stake from before this raise.
+func (d *Deal) Overtoep(seat game.Seat) error {
+	switch {
+	case d.phase != PhaseToep:
+		return ErrWrongPhase
+	case seat != d.turn:
+		return ErrNotYourTurn
+	case d.poorAsk:
+		return ErrNoRaise
+	}
+	if err := d.mayRaise(seat); err != nil {
+		return err
+	}
+	d.streak[seat] = 0
+	d.raise(seat)
 	return nil
+}
+
+// MustStay reports whether seat, asked about a toep, may not pass: under
+// the anti-lijntoep rule it passed on the last two toeps it was asked
+// about (armoede's question does not count).
+func (d *Deal) MustStay(seat game.Seat) bool {
+	return d.rules.Lijntoep && d.phase == PhaseToep && !d.poorAsk && d.streak[seat] >= MaxPasses
 }
 
 // Answer records whether seat goes along with the toep (stay) or passes:
@@ -481,6 +629,15 @@ func (d *Deal) Answer(seat game.Seat, stay bool) error {
 	}
 	if seat != d.turn {
 		return ErrNotYourTurn
+	}
+	if !stay && d.MustStay(seat) {
+		return ErrMustStay
+	}
+	poor := d.poorAsk
+	if !poor && stay {
+		d.streak[seat] = 0
+	} else if !poor {
+		d.streak[seat]++
 	}
 	if !stay {
 		d.status[seat] = StatusPassed
@@ -499,12 +656,12 @@ func (d *Deal) Answer(seat game.Seat, stay bool) error {
 		d.finish(w, false)
 		return nil
 	}
-	if len(d.tricks) == 0 && len(d.current.Cards) == 0 && d.toeper == game.NoSeat {
+	if poor {
 		d.startPlay() // armoede: the first card
 		return nil
 	}
 	d.phase = PhasePlay
-	d.turn = d.toPlay()
+	d.advance() // the toeper may have passed on an overtoep: the trick can be complete
 	return nil
 }
 
@@ -552,34 +709,50 @@ func (d *Deal) Play(seat game.Seat, c game.Card) error {
 	}
 	d.hands[seat] = slices.Delete(slices.Clone(hand), k, k+1)
 	d.current.Cards = append(d.current.Cards, game.Played{Seat: seat, Card: c})
+	d.advance()
+	return nil
+}
+
+// advance moves on after a card, or an answer: the turn goes to the next
+// seat to play to the trick; when every seat still in has played, the
+// trick is taken and its winner leads the next, or wins the round.
+func (d *Deal) advance() {
 	if next := d.toPlay(); next != game.NoSeat {
 		d.turn = next
-		return nil
+		return
 	}
 	t := d.current
 	t.Winner, _ = t.Winning(d.in)
 	d.tricks = append(d.tricks, t)
 	if len(d.hands[t.Winner]) == 0 {
 		d.finish(t.Winner, true)
-		return nil
+		return
 	}
 	d.current = Trick{Leader: t.Winner, Winner: game.NoSeat}
 	d.turn = t.Winner
-	return nil
 }
 
 // finish ends the round with winner; after the last trick every other
-// seat still in takes the stake.
+// seat still in takes the stake, and a winner who took it with a boer
+// (rule Boer) has a penalty point taken off, if it has one.
 func (d *Deal) finish(winner game.Seat, tricks bool) {
+	boer := false
 	if tricks {
 		for s := range game.Seat(d.players) {
 			if s != winner && d.status[s] == StatusIn {
 				d.penalise(s, d.stake)
 			}
 		}
+		last := d.tricks[len(d.tricks)-1]
+		for _, p := range last.Cards {
+			boer = boer || d.rules.Boer && p.Seat == winner && p.Card.Rank == game.Jack
+		}
+		if boer && d.points[winner] > 0 {
+			d.points[winner]--
+		}
 	}
 	res := &Result{
-		Winner: winner, Stake: d.stake, Tricks: tricks,
+		Winner: winner, Stake: d.stake, Tricks: tricks, Boer: boer, Koning: d.koning,
 		Gains: make([]int, d.players), Points: make([]int, d.players), Out: make([]bool, d.players),
 	}
 	for s := range d.players {
@@ -629,7 +802,7 @@ func (d *Deal) HandLen(seat game.Seat) int {
 // Dealt is the hand seat was dealt, before any was.
 func (d *Deal) Dealt(seat game.Seat) []game.Card {
 	if d.washed[seat] {
-		return slices.Clone(d.old[seat])
+		return slices.Clone(d.given[seat][:HandSize])
 	}
 	h := slices.Clone(d.hands[seat])
 	for _, t := range d.tricks {
@@ -662,6 +835,24 @@ func (d *Deal) Constraint() string {
 	}
 	return Constraint(d.hands[d.turn], d.current)
 }
+
+// Koning reports whether this round is the koningsspel.
+func (d *Deal) Koning() bool { return d.koning }
+
+// Size is the number of cards each was dealt: four, or eight in the
+// koningsspel.
+func (d *Deal) Size() int { return d.size }
+
+// WasRound is the time for a was this is or was last: 1, then one more
+// each time a claim got new cards and may be washed again; 0 without one.
+func (d *Deal) WasRound() int { return d.window }
+
+// Open reports whether seat plays with its cards face up: it was caught
+// bluffing a was (rule Bluf).
+func (d *Deal) Open(seat game.Seat) bool { return d.open[seat] && d.status[seat] == StatusIn }
+
+// Streak is how often seat passed on a toep in a row (anti-lijntoep).
+func (d *Deal) Streak(seat game.Seat) int { return d.streak[seat] }
 
 func (d *Deal) Status(seat game.Seat) Status { return d.status[seat] }
 func (d *Deal) Points(seat game.Seat) int    { return d.points[seat] }
@@ -700,7 +891,7 @@ func (d *Deal) Clone() *Deal {
 	c := *d
 	for s := range d.hands {
 		c.hands[s] = slices.Clone(d.hands[s])
-		c.old[s] = slices.Clone(d.old[s])
+		c.given[s] = slices.Clone(d.given[s])
 	}
 	c.stock = slices.Clone(d.stock)
 	c.claims = slices.Clone(d.claims)

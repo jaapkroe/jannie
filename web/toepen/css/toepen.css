@@ -249,6 +249,16 @@ body {
   margin-left: -14px;
 }
 
+/* A bluff caught (rule bluf): the seat plays its cards face up. */
+.tp-backs.open {
+  height: auto;
+  --card-w: 30px;
+}
+
+.tp-backs.open .card + .card {
+  margin-left: -8px;
+}
+
 .tp-seat .bubble {
   top: calc(100% + 4px);
   left: 50%;
@@ -310,6 +320,56 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
+}
+
+/* The cards handed in for a vuile was: a small face-down pile in front of
+   the player who handed them in, slightly fanned, ×n for more than once. */
+.tp-piles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tp-pile {
+  position: absolute;
+  z-index: 1;
+  display: grid;
+  transform: translate(-50%, -50%);
+  --card-w: clamp(22px, 5.4vw, 30px);
+  pointer-events: auto;
+}
+
+.tp-pile .card {
+  grid-area: 1 / 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+
+.tp-pile .card:nth-child(2) {
+  translate: 3px -2px;
+  rotate: 6deg;
+}
+
+.tp-pile .card:nth-child(3) {
+  translate: 6px -4px;
+  rotate: 12deg;
+}
+
+.tp-pile .card:nth-child(4) {
+  translate: 9px -6px;
+  rotate: 18deg;
+}
+
+.tp-pile-n {
+  position: absolute;
+  right: -14px;
+  bottom: -6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--gold);
+  color: var(--gold-ink);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 16px;
 }
 
 .tp-slot {
@@ -571,6 +631,16 @@ body {
   flex: none;
 }
 
+/* Eight cards (the koningsspel): smaller, and overlapping. */
+.tp-hand.many {
+  gap: 0;
+  --card-w: clamp(52px, 15vw, 96px);
+}
+
+.tp-hand.many .card + .card {
+  margin-left: calc(var(--card-w) * -0.36);
+}
+
 .tp-hand .card {
   cursor: default;
   transition: translate 0.15s var(--ease), filter 0.2s;
@@ -661,6 +731,11 @@ body {
   color: var(--zij-hi);
 }
 
+.tp-sum-gain.minus {
+  color: var(--wij-hi);
+  white-space: nowrap;
+}
+
 .tp-sum-pts {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -718,14 +793,51 @@ body {
   border-bottom: 0;
 }
 
-.tp-rules h3 {
-  margin: 16px 0 4px;
+/* The manual: the shell's tabs and scrolling pane (.tabs, .man-scroll). */
+.tp-man {
+  max-width: 68ch;
+}
+
+.tp-man h3 {
+  margin: 18px 0 4px;
   font-size: 16px;
 }
 
-.tp-rules p {
+.tp-man h3:first-of-type {
+  margin-top: 6px;
+}
+
+.tp-man p {
   margin: 0 0 8px;
   line-height: 1.45;
+}
+
+.tp-terms {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 8px 16px;
+  margin: 4px 0 0;
+}
+
+.tp-terms dt {
+  font-weight: 800;
+}
+
+.tp-terms dd {
+  margin: 0;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+@media (max-width: 480px) {
+  .tp-terms {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .tp-terms dd {
+    margin-bottom: 10px;
+  }
 }
 
 .btn-col {

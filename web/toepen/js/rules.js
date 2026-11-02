@@ -18,7 +18,13 @@ export function wasKind(hand) {
   if (pics === 3 && sevens === 1) return 'vuile';
   return '';
 }
-export const wasName = kind => (kind === 'witte' ? 'witte was' : kind === 'vuile' ? 'vuile was' : 'was');
+// Every hand that may be handed in is called a vuile was at this table;
+// four pictures is also known as a witte was.
+export const wasName = kind => (kind === 'witte' ? 'witte was' : 'vuile was');
+
+// How often seat handed in a vuile was this round: a claim let through, or
+// checked and genuine (a bluff that was caught hands nothing in).
+export const washes = (s, seat) => (s.checks || []).filter(c => c.claimant === seat && (c.checker < 0 || c.kind)).length;
 
 // Where a seat sits, as an angle in degrees: you at the bottom (270), the
 // others clockwise from your lower left (210) over the top to your lower
@@ -62,7 +68,8 @@ export function seatStatus(s, seat) {
     default: break;
   }
   if (s.phase === 'was' && s.nextAt) return s.answered?.[seat] ? 'klaar' : 'kijkt…';
-  if (s.claims?.[seat] && !s.checks?.some(c => c.claimant === seat)) return 'was?';
+  if (s.claims?.[seat] && !s.checks?.some(c => c.claimant === seat)) return 'vuile was?';
+  if (s.open?.[seat]?.length) return 'speelt open';
   if (s.armoede?.[seat]) return 'armoede';
   return '';
 }
@@ -76,32 +83,45 @@ export function prompt(s) {
   const turnName = s.turn >= 0 ? named(s, s.turn) : '';
   const st = s.status?.[me];
   if (st && st !== 'in') {
-    const why = { gepast: 'Je hebt gepast.', betrapt: 'Betrapt: dat was geen was.' }[st] || 'Je ligt eruit.';
+    const why = { gepast: 'Je hebt gepast.', betrapt: 'Betrapt: dat was geen vuile was.' }[st] || 'Je ligt eruit.';
     return { text: `${why} Je kijkt mee tot het potje uit is.`, actions: [] };
   }
   switch (s.phase) {
     case 'was': {
-      if (!s.nextAt) return { text: 'Er wordt gedeeld…', actions: [] };
-      if (s.answered?.[me]) return { text: 'Wachten tot iedereen gezegd heeft of die een was heeft…', actions: [] };
+      const again = (s.wasRound ?? 1) > 1;
+      if (!s.nextAt) return { text: again ? 'Nieuwe kaarten…' : 'Er wordt gedeeld…', actions: [] };
+      if (s.answered?.[me]) {
+        return { text: again ? 'Wie nieuwe kaarten kreeg, zegt of die weer een vuile was heeft…' : 'Wachten tot iedereen gezegd heeft of die een vuile was heeft…', actions: [] };
+      }
       const kind = wasKind(s.hand);
+      const poor = !!s.armoede?.[me];
       const actions = [];
-      if (s.canClaim) actions.push({ t: 'was', play: true, label: 'Was!', kind: kind ? 'go' : 'bluff', sub: kind ? wasName(kind) : 'bluffen' });
-      actions.push({ t: 'was', play: false, label: 'Geen was', kind: 'ghost' });
+      if (s.canClaim) {
+        actions.push({ t: 'was', play: true, label: 'Vuile was!', kind: kind ? 'go' : 'bluff',
+          sub: poor ? 'open op tafel' : kind ? (kind === 'witte' ? 'vier plaatjes' : 'echt') : 'bluffen' });
+      }
+      actions.push({ t: 'was', play: false, label: 'Geen', kind: 'ghost', sub: 'gewoon spelen' });
+      if (poor && !kind) {
+        return { text: 'Op armoede mag je alleen een echte vuile was inleveren.', sub: 'Je hebt er geen: je speelt met deze kaarten.', actions, countdown: s.nextAt };
+      }
       return {
-        text: kind ? `Je hebt een ${wasName(kind)}: ruil je hem voor vier nieuwe kaarten?` : 'Heb je een was?',
-        sub: s.canClaim ? 'Vier plaatjes (boer, vrouw, heer, aas), of drie en een 7: die mag je ruilen. Bluffen mag, maar wie controleert…'
-          : 'De stapel is op: er kan niet meer gewassen worden.',
+        text: kind ? `Je hebt ${again ? 'weer ' : ''}een ${wasName(kind)}: ruil je hem voor vier nieuwe kaarten?`
+          : again ? 'Je nieuwe kaarten: weer een vuile was?' : 'Heb je een vuile was?',
+        sub: poor && s.canClaim ? 'Op armoede leg je hem open op tafel, zodat iedereen hem ziet.'
+          : s.canClaim ? 'Vier plaatjes (boer, vrouw, heer, aas), of drie en een 7: die mag je ruilen. Bluffen mag, maar wie controleert…'
+            : 'De stapel is op: er kan niet meer gewassen worden.',
         actions,
         countdown: s.nextAt,
       };
     }
     case 'check': {
       const c = s.claimant;
-      if (c === me) return { text: `Je meldt een was. ${cap(turnName)} mag controleren…`, actions: [] };
-      if (!mine) return { text: `${name(s, c)} meldt een was. ${cap(turnName)} mag controleren…`, actions: [] };
+      if (c === me) return { text: `Je meldt een vuile was. ${cap(turnName)} mag controleren…`, actions: [] };
+      if (!mine) return { text: `${name(s, c)} meldt een vuile was. ${cap(turnName)} mag controleren…`, actions: [] };
       return {
-        text: `${name(s, c)} meldt een was. Controleer je?`,
-        sub: `Is het een echte was, dan krijg jij een strafpunt. Is het bluf, dan krijgt ${named(s, c)} er een en speelt dit potje niet mee.`,
+        text: `${name(s, c)} meldt een vuile was. Controleer je?`,
+        sub: `Is het een echte vuile was, dan krijg jij een strafpunt. Is het bluf, dan krijgt ${named(s, c)} er een en ${
+          s.opts?.bluf === false ? 'speelt dit potje niet mee' : 'speelt open verder'}.`,
         actions: [{ t: 'check', play: true, label: 'Controleren', kind: 'go' }, { t: 'check', play: false, label: 'Laten gaan', kind: 'ghost' }],
       };
     }
@@ -110,22 +130,23 @@ export function prompt(s) {
       if (!mine) {
         return { text: `${who}: de inzet is ${s.stake}. ${cap(turnName)} kiest: meegaan of passen.`, actions: [] };
       }
+      const actions = [{ t: 'answer', play: true, label: 'Meegaan', kind: 'go' }];
+      if (s.canRaise) actions.push({ t: 'overtoep', label: 'Overtoepen', kind: 'toep', sub: `inzet ${s.stake} → ${s.stake + 1}` });
+      if (!s.mustStay) actions.push({ t: 'answer', play: false, label: 'Passen', kind: 'ghost', sub: points(s.stake - 1) });
       return {
         text: `${who}: de inzet is nu ${s.stake}. Ga je mee?`,
-        sub: `Meegaan: verlies je, dan krijg je ${points(s.stake)}. Passen kost ${points(s.stake - 1)}, en je speelt niet meer mee.`,
-        actions: [
-          { t: 'answer', play: true, label: 'Meegaan', kind: 'go' },
-          { t: 'answer', play: false, label: 'Passen', kind: 'ghost', sub: points(s.stake - 1) },
-        ],
+        sub: s.mustStay ? 'Anti-lijntoep: je paste al twee keer achter elkaar, nu moet je mee.'
+          : `Meegaan: verlies je, dan krijg je ${points(s.stake)}. Passen kost ${points(s.stake - 1)}, en je speelt niet meer mee.`,
+        actions,
       };
     }
     default: {
       if (!mine) return { text: s.turn >= 0 ? `${cap(turnName)} is aan de beurt.` : '', actions: [] };
       const actions = s.canToep ? [{ t: 'toep', label: 'Toep!', kind: 'toep', sub: `inzet ${s.stake} → ${s.stake + 1}` }] : [];
-      const last = (s.tricks ?? 0) === 3;
+      const last = (s.tricks ?? 0) === (s.size || 4) - 1;
       return {
         text: s.rule || 'Jij bent aan de beurt',
-        sub: last ? 'De laatste slag: wie die haalt, wint het potje.' : s.canToep ? 'Toep eerst, of speel meteen een kaart.' : '',
+        sub: last ? 'De laatste slag: wie die haalt, wint het potje.' : s.canToep ? 'Toep eerst, of speel meteen een kaart.' : noToep(s),
         actions,
       };
     }
@@ -134,12 +155,23 @@ export function prompt(s) {
 
 const cap = t => (t ? t[0].toUpperCase() + t.slice(1) : t);
 
+// Why you may not toep on your turn, when that is not obvious.
+function noToep(s) {
+  const me = s.you;
+  if (s.koning) return 'Koningsspel: er wordt niet getoept.';
+  if (s.armoede?.[me]) return 'Op armoede kun je niet toepen.';
+  if ((s.points?.[me] ?? 0) + (s.stake || 1) >= limitOf(s)) return 'Met deze inzet lig je er bij verlies al uit: toepen kan niet.';
+  return '';
+}
+
 // The headline of a round that ended (a score row), seen by you.
 export function roundHeadline(s, row) {
   const w = row.winner;
   const title = w === s.you ? 'Jij wint het potje!' : `${name(s, w)} wint het potje`;
   const mine = row.gains?.[s.you] ?? 0;
   let sub = row.tricks ? `Met de laatste slag, bij inzet ${row.stake}.` : `De anderen pasten, bij inzet ${row.stake}.`;
+  if (row.boer) sub = `Met de boer als laatste slag, bij inzet ${row.stake}${(row.gains?.[w] ?? 0) < 0 ? ': een strafpunt eraf' : ''}.`;
+  if (row.koning) sub = `Het koningsspel: ${w === s.you ? 'jij haalde' : `${name(s, w)} haalde`} de laatste slag.`;
   if (w !== s.you && mine > 0) sub += ` Jij krijgt ${points(mine)}.`;
   if (w !== s.you && mine === 0 && s.status?.[s.you] !== 'in') sub += ' Jij liep geen punten op.';
   return { title, sub, cls: w === s.you ? 'good' : mine > 0 ? 'bad' : 'neutral' };
@@ -154,42 +186,110 @@ export function standings(s) {
     .sort((a, b) => a.points - b.points);
 }
 
-// "toepen tot 10 strafpunten, met was en armoede".
+// "Toepen tot 10 strafpunten, met vuile was, armoede, koningsspel en boer eraf"
+// (as the server's variant).
 export function variantText(o) {
-  let t = `Toepen tot ${o.limit || 10} strafpunten`;
-  if (o.was && o.armoede) t += ', met was en armoede';
-  else if (o.was) t += ', met was';
-  else if (o.armoede) t += ', met armoede';
-  return t;
+  const t = `Toepen tot ${o.limit || 10} strafpunten`;
+  const extra = [[o.was, 'vuile was'], [o.armoede, 'armoede'], [o.koning, 'koningsspel'], [o.boer, 'boer eraf'], [o.lijntoep, 'anti-lijntoep'],
+    [o.was && o.bluf, 'open na bluf']]
+    .filter(([on]) => on).map(([, n]) => n);
+  return extra.length ? `${t}, met ${joinNL(extra)}` : t;
 }
 
-// The rules, for the sheet Spelregels: [title, paragraphs] per part; the
-// parts of options that are off say so.
-export function rules(o = {}) {
+const joinNL = xs => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} en ${xs.at(-1)}`);
+
+// The extra rules on a new table (the server's defaults).
+const RULE_DEFAULTS = { was: true, armoede: true, koning: true, boer: true, lijntoep: false, bluf: true };
+
+// The manual (the sheet Spelregels): its tabs, each {id, title, parts},
+// a part [title, paragraphs]. The extra rules are options: at a table
+// (table) each says whether it is played there (o); elsewhere each is
+// explained with its default. Bediening differs by pointer.
+export function manual(o = {}, { touch = false, table = true } = {}) {
   const limit = o.limit || 10;
+  const off = what => `Aan deze tafel speel je zonder ${what}.`;
+  const on = k => !table || (o[k] ?? RULE_DEFAULTS[k]) === true;
+  const choice = k => (table ? [] : [`Dit kies je bij een nieuw spel; standaard staat het ${RULE_DEFAULTS[k] ? 'aan' : 'uit'}.`]);
   return [
-    ['De kaarten', [
-      'Toepen speel je met 32 kaarten: 7, 8, 9, 10, boer, vrouw, heer en aas in vier kleuren. Er is geen troef.',
-      'De volgorde is anders dan je gewend bent. Van laag naar hoog: boer, vrouw, heer, aas, 7, 8, 9, 10. De 10 is dus de hoogste kaart, de boer de laagste.']],
-    ['Een potje', [
-      'Iedereen krijgt vier kaarten. De speler links van de gever komt uit.',
-      'Je moet bekennen: de kleur spelen die gevraagd is. Kun je dat niet, dan gooi je een andere kaart bij; die kan de slag niet winnen.',
-      'De hoogste kaart van de gevraagde kleur wint de slag, en wie de slag haalt, komt weer uit.',
-      'Alleen de laatste slag telt: wie de vierde slag haalt, wint het potje. Alle anderen die nog meedoen, krijgen de inzet als strafpunten. De inzet begint op 1.']],
-    ['Toepen', [
-      'Ben je aan de beurt, dan mag je eerst toepen: op tafel kloppen. De inzet gaat dan een punt omhoog.',
-      'De anderen zeggen om de beurt of ze meegaan of passen. Wie past, krijgt de inzet van vóór de toep als strafpunten en doet dit potje niet meer mee. Past iedereen, dan wint wie toepte.',
-      'Je mag niet twee keer achter elkaar toepen: eerst moet een ander toepen. Daarna mag jij weer.',
-      'Wie toept, laat zien dat die denkt de laatste slag te halen. Of bluft.']],
-    ['Witte en vuile was', o.was === false ? ['Aan deze tafel speel je zonder was.'] : [
-      'Vier plaatjes (boer, vrouw, heer en aas, in elke combinatie) heten een witte was; drie plaatjes en een 7 een vuile was. Met zo\'n hand win je bijna nooit.',
-      'Meteen na het delen zegt iedereen tegelijk of die een was heeft. Wie er een meldt, mag de kaarten dicht inleveren voor vier nieuwe.',
-      'De anderen mogen om de beurt controleren. Klopt de was, dan krijgt wie controleerde een strafpunt. Was het bluf, dan krijgt wie de was meldde een strafpunt en speelt dat potje niet mee. Controleert niemand, dan krijg je hoe dan ook nieuwe kaarten.']],
-    ['Armoede', o.armoede === false ? ['Aan deze tafel speel je zonder armoede.'] : [
-      `Staat iemand op ${limit - 1} strafpunten, één van eruit, dan heet dat armoede. Het potje begint dan meteen met inzet 2.`,
-      'Wie niet op armoede staat, zegt na het delen of die meegaat. Passen kost dan één strafpunt.']],
-    ['Eruit en winnen', [
-      `Wie ${limit} strafpunten heeft, ligt eruit. Het spel gaat door tot er één speler over is: die wint.`,
-      'De deler schuift elk potje een plaats op, en slaat over wie eruit ligt.']],
+    { id: 'regels', title: 'Spelregels', parts: [
+      ['De kaarten', [
+        'Toepen speel je met 32 kaarten: 7, 8, 9, 10, boer, vrouw, heer en aas in vier kleuren. Er is geen troef.',
+        'De volgorde is anders dan je gewend bent. Van laag naar hoog: boer, vrouw, heer, aas, 7, 8, 9, 10. De 10 is dus de hoogste kaart, de boer de laagste.']],
+      ['Een potje', [
+        'Iedereen krijgt vier kaarten. De speler links van de gever komt uit.',
+        'Je moet bekennen: de kleur spelen die gevraagd is. Kun je dat niet, dan gooi je een andere kaart bij; die kan de slag niet winnen.',
+        'De hoogste kaart van de gevraagde kleur wint de slag, en wie de slag haalt, komt weer uit.',
+        'Alleen de laatste slag telt: wie de vierde slag haalt, wint het potje. Alle anderen die nog meedoen, krijgen de inzet als strafpunten. De inzet begint op 1.']],
+      ['Toepen', [
+        'Ben je aan de beurt, dan mag je eerst toepen: op tafel kloppen. De inzet gaat dan een punt omhoog.',
+        'De anderen zeggen om de beurt of ze meegaan of passen. Wie past, krijgt de inzet van vóór de toep als strafpunten en doet dit potje niet meer mee. Past iedereen, dan wint wie toepte.',
+        'Wie wordt gevraagd, mag ook overtoepen: de inzet gaat nog een punt omhoog, en dan zegt iedereen die nog meedoet, ook wie toepte, opnieuw of die meegaat. Passen kost dan de inzet van vóór de overtoep.',
+        'Je mag niet twee keer achter elkaar toepen: eerst moet een ander toepen. Daarna mag jij weer.',
+        'Lig je er bij verlies met de huidige inzet al uit, dan kun je niet (over)toepen.',
+        'Wie toept, laat zien dat die denkt de laatste slag te halen. Of bluft.']],
+      ['Eruit en winnen', [
+        `Wie ${limit} strafpunten heeft, ligt eruit. Het spel gaat door tot er één speler over is: die wint.`,
+        'De deler schuift elk potje een plaats op, en slaat over wie eruit ligt.']],
+    ] },
+    { id: 'extra', title: 'Extra regels', parts: [
+      ['Vuile was', !on('was') ? [off('vuile was')] : [
+        'Drie plaatjes (boer, vrouw, heer of aas) en een 7 heten een vuile was. Vier plaatjes mag ook; dat heet ook wel een witte was. Met zo\'n hand win je bijna nooit.',
+        'Meteen na het delen zegt iedereen tegelijk of die een vuile was heeft. Wie er een meldt, legt de kaarten dicht voor zich neer en krijgt vier nieuwe van de stapel.',
+        'De anderen mogen om de beurt controleren. Klopt de vuile was, dan krijgt wie controleerde een strafpunt. Controleert niemand, dan krijg je hoe dan ook nieuwe kaarten.',
+        !on('bluf')
+          ? 'Was het bluf, dan krijgt wie hem meldde een strafpunt en speelt dat potje niet mee.'
+          : `Was het bluf, dan krijgt wie hem meldde een strafpunt, neemt de kaarten terug en speelt het potje open uit: iedereen ziet die kaarten.${
+            table ? '' : ' Dat staat standaard aan; zonder doet die het potje niet meer mee.'}`,
+        'Is je nieuwe hand weer een vuile was, dan mag je hem opnieuw inleveren, zo vaak als de stapel nieuwe kaarten heeft. Het stapeltje voor je op tafel laat zien hoe vaak je inleverde.',
+        'Op armoede mag je alleen een echte vuile was inleveren, geen bluf. Je legt hem even open op tafel, zodat iedereen hem ziet; controleren hoeft dan niet.',
+        ...choice('was')]],
+      ['Armoede', !on('armoede') ? [off('armoede')] : [
+        `Staat iemand op ${limit - 1} strafpunten, één van eruit, dan heet dat armoede. Het potje begint dan meteen met inzet 2.`,
+        'Wie niet op armoede staat, zegt na het delen of die meegaat. Passen kost dan één strafpunt.',
+        'Op armoede kun je zelf niet toepen.', ...choice('armoede')]],
+      ['Koningsspel', !on('koning') ? [off('koningsspel')] : [
+        'Staat iedereen die nog meedoet op armoede, dan volgt het koningsspel: iedereen krijgt acht kaarten (met meer dan vier spelers zoveel als de stapel toelaat).',
+        'Er is geen vuile was en er wordt niet getoept. Wie de laatste slag haalt, wint het spel; de anderen liggen eruit.', ...choice('koning')]],
+      ['Boer: een punt eraf', !on('boer') ? ['Aan deze tafel levert de boer niets op.'] : [
+        'Haal je de laatste slag met een boer, de laagste kaart, dan gaat er een strafpunt van je af (als je er een hebt).', ...choice('boer')]],
+      ['Anti-lijntoep', on('lijntoep') ? [
+        'Lijntoepen is steeds passen en alleen meegaan met topkaarten. Daarom mag je hoogstens twee keer achter elkaar passen op een toep: bij de derde ga je verplicht mee (of je overtoept).',
+        'Meegaan of overtoepen telt opnieuw af. Het meegaan op armoede telt niet mee.', ...choice('lijntoep')] : [
+        'Aan deze tafel mag je zo vaak passen als je wilt. Met de regel anti-lijntoep mag je hoogstens twee keer achter elkaar passen op een toep.']],
+    ] },
+    { id: 'begrippen', title: 'Begrippen', parts: [
+      ['Armoede', [`Op ${limit - 1} strafpunten staan: één van eruit.`]],
+      ['Bekennen', ['De kleur spelen die gevraagd is.']],
+      ['Betrapt', ['Een vuile was gemeld die er geen was, en gecontroleerd: een strafpunt, en het potje open uitspelen (of, zonder die regel, niet meer meedoen).']],
+      ['Boer eraf', ['De laatste slag met een boer halen: een strafpunt eraf.']],
+      ['Controleren', ['De hand van wie een vuile was meldt laten zien: klopt hij niet, dan krijgt die een strafpunt; klopt hij wel, dan jij.']],
+      ['Eruit liggen', [`${limit} strafpunten of meer hebben: niet meer meedoen.`]],
+      ['Gever', ['Wie deelt; die schuift elk potje een plaats op.']],
+      ['Inzet', ['Hoeveel strafpunten wie de laatste slag niet haalt krijgt. Begint op 1, en gaat bij elke toep een omhoog.']],
+      ['Koningsspel', ['Het laatste potje als iedereen op armoede staat: acht kaarten, wie de laatste slag haalt, wint.']],
+      ['Lijntoepen', ['Steeds passen en alleen meegaan met topkaarten. De regel anti-lijntoep gaat het tegen.']],
+      ['Meegaan', ['Een toep aannemen: verlies je, dan krijg je de nieuwe inzet.']],
+      ['Open spelen', ['Met je kaarten zichtbaar voor iedereen spelen, na een betrapte bluf.']],
+      ['Overtoepen', ['Op een toep nog een keer toepen: de inzet gaat nog een punt omhoog.']],
+      ['Passen', ['Een toep niet aannemen: je krijgt de inzet van vóór de toep en speelt dat potje niet meer mee.']],
+      ['Plaatjes', ['Boer, vrouw, heer en aas: de laagste kaarten bij toepen.']],
+      ['Potje', ['Eén ronde van vier kaarten (acht in het koningsspel).']],
+      ['Slag', ['Eén kaart van iedereen die nog meedoet; de hoogste van de gevraagde kleur wint.']],
+      ['Strafpunten', ['Wat je oploopt als je een potje verliest, past of verkeerd controleert. Wie er het minst heeft, ligt er het laatst uit.']],
+      ['Toepen', ['Kloppen: de inzet een punt omhoog, voordat je je kaart speelt.']],
+      ['Voorhand', ['Wie links van de gever zit en het eerst uitkomt.']],
+      ['Vuile was', ['Drie plaatjes en een 7, of vier plaatjes (een witte was): die mag je inleveren voor nieuwe kaarten.']],
+    ] },
+    { id: 'bediening', title: 'Bediening', parts: [
+      ['Je kaarten', [touch
+        ? 'Tik een kaart aan om hem op te tillen, en nog een keer om hem te spelen. Kaarten die niet mogen, zijn donkerder.'
+        : 'Klik een kaart om hem te spelen, of gebruik de toetsen 1 tot 4 (in het koningsspel 1 tot 8). Kaarten die niet mogen, zijn donkerder.']],
+      ['Toepen en antwoorden', [
+        `Toepen doe je met de knop Toep! naast je naam, voordat je speelt${touch ? '' : ', of met de toets T'}.`,
+        'Wordt er getoept, dan kies je onder de tafel: Meegaan, Overtoepen of Passen. Na het delen: Vuile was! of Geen, en bij een vuile was van een ander: Controleren of Laten gaan.']],
+      ['Stand en meer', [
+        'Bovenaan staan jouw strafpunten, het potje en de inzet. Tik op je punten voor de stand van iedereen en elk potje.',
+        'Onder de drie puntjes vind je de stand, deze spelregels, de instellingen en het geluid. Met het ballonnetje open je de chat.']],
+    ] },
   ];
 }

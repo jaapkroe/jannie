@@ -23,10 +23,16 @@ type state struct {
 	Stake       int             `json:"stake"`
 	Toeper      int             `json:"toeper"`      // the last to toep this round, -1
 	ArmoedeToep bool            `json:"armoedeToep"` // the stake went up for armoede
+	Koning      bool            `json:"koning"`      // the koningsspel: eight cards each, the last trick wins the match
+	Size        int             `json:"size"`        // cards dealt to each this round
+	WasRound    int             `json:"wasRound"`    // the time for a was: 1, more when new cards may be washed again
+	CanRaise    bool            `json:"canRaise"`    // asked about a toep: you may toep again (overtoep)
+	MustStay    bool            `json:"mustStay"`    // asked about a toep: you may not pass (anti-lijntoep)
 	Points      []int           `json:"points"`      // penalty points, now
 	Status      []toepen.Status `json:"status"`      // per seat this round: in, gepast, betrapt, eruit, uit
 	Armoede     []bool          `json:"armoede"`     // per seat: one point from out this round
 	Washed      []bool          `json:"washed"`      // got four new cards for a was
+	Open        [][]game.Card   `json:"open"`        // per seat: its hand when played face up (a bluff caught), else empty
 	Answered    []bool          `json:"answered"`    // the time for a was: who said whether they have one
 	Claims      []bool          `json:"claims"`      // who claimed a was (once that time is over)
 	CanClaim    bool            `json:"canClaim"`    // you may still claim a was
@@ -51,7 +57,9 @@ type round struct {
 	Winner game.Seat `json:"winner"`
 	Stake  int       `json:"stake"`
 	Tricks bool      `json:"tricks"` // won with the last trick, else everyone else passed or sat out
-	Gains  []int     `json:"gains"`  // penalty points this round, per seat
+	Boer   bool      `json:"boer"`   // the last trick taken with a boer: the winner had a point off (if any)
+	Koning bool      `json:"koning"` // the koningsspel
+	Gains  []int     `json:"gains"`  // penalty points this round, per seat (-1: the boer)
 	Points []int     `json:"points"` // after it
 	Out    []bool    `json:"out"`    // out of the match after it
 }
@@ -63,8 +71,11 @@ func (p *play) State(i game.Seat) any {
 		Shared: t.Shared(i), Winner: -1, HandNo: p.handNo,
 		Dealer: -1, Voorhand: -1, Toeper: -1, Claimant: -1,
 		Points: make([]int, n), Status: make([]toepen.Status, n), Armoede: make([]bool, n),
-		Washed: make([]bool, n), Answered: make([]bool, n), Claims: make([]bool, n),
+		Washed: make([]bool, n), Answered: make([]bool, n), Claims: make([]bool, n), Open: make([][]game.Card, n),
 		Asking: []int{}, Checks: []toepen.Check{}, Hand: []game.Card{}, Rounds: nonNil(p.rounds),
+	}
+	for k := range s.Open {
+		s.Open[k] = []game.Card{}
 	}
 	if p.m != nil {
 		copy(s.Points, p.m.Points[:n])
@@ -81,6 +92,7 @@ func (p *play) State(i game.Seat) any {
 	}
 	s.Dealer, s.Voorhand, s.Stake = int(d.Dealer()), int(d.Voorhand()), d.Stake()
 	s.Toeper, s.ArmoedeToep = int(d.Toeper()), d.ArmoedeToep()
+	s.Koning, s.Size, s.WasRound = d.Koning(), d.Size(), d.WasRound()
 	s.Checks = nonNil(d.Checks())
 	s.Stock = d.Stock()
 	s.Tricks = len(d.Tricks())
@@ -101,6 +113,11 @@ func (p *play) State(i game.Seat) any {
 	}
 	if d.Status(i) == toepen.StatusIn {
 		s.Hand = toepen.SortHand(d.Hand(i))
+	}
+	for k := range game.Seat(n) {
+		if d.Open(k) {
+			s.Open[k] = toepen.SortHand(d.Hand(k))
+		}
 	}
 	if c := d.Claimant(); c != game.NoSeat {
 		s.Claimant = int(c)
@@ -125,6 +142,9 @@ func (p *play) State(i game.Seat) any {
 		}
 		s.Rule = d.Constraint()
 		s.CanToep = d.CanToep(i)
+	}
+	if s.Turn == int(i) && d.Phase() == toepen.PhaseToep {
+		s.CanRaise, s.MustStay = d.CanRaise(i), d.MustStay(i)
 	}
 	return s
 }
@@ -152,6 +172,7 @@ type evDeal struct {
 	Type   string    `json:"type"` // "deal"
 	HandNo int       `json:"handNo"`
 	Dealer game.Seat `json:"dealer"`
+	Koning bool      `json:"koning"` // the koningsspel
 }
 
 // evClaims: the time for a was is over and these seats claimed one.
@@ -169,7 +190,8 @@ type evCheck struct {
 }
 
 // evWasDone: a claimed was is settled. Checked (checker not -1), the hand
-// is shown and someone takes a point; washed: the claimant got four new
+// is shown and someone takes a point; shown (on armoede), it was laid
+// open without a question; washed: the claimant handed it in for four new
 // cards.
 type evWasDone struct {
 	Type     string         `json:"type"` // "wasDone"
@@ -179,12 +201,16 @@ type evWasDone struct {
 	Cards    []game.Card    `json:"cards"`
 	Genuine  bool           `json:"genuine"`
 	Washed   bool           `json:"washed"`
+	Shown    bool           `json:"shown"`
 }
 
+// evToep: seat raised the stake to stake, on its turn, or as the answer
+// to a toep (over: an overtoep).
 type evToep struct {
 	Type  string    `json:"type"` // "toep"
 	Seat  game.Seat `json:"seat"`
 	Stake int       `json:"stake"`
+	Over  bool      `json:"over"`
 }
 
 // evAnswer: seat goes along with the toep (stay), or passes and takes

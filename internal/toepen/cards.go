@@ -17,8 +17,11 @@ const (
 	// MaxPlayers is the largest table: four cards each from 32.
 	MaxPlayers = 8
 	// HandSize is the number of cards dealt to each player, and so the
-	// number of tricks in a round.
+	// number of tricks in a round; and the cards of a was.
 	HandSize = 4
+	// KoningSize is the hand of the koningsspel, when the deck holds it
+	// for everyone left.
+	KoningSize = 8
 	// DefaultLimit is the number of penalty points that puts a player out.
 	DefaultLimit = 10
 )
