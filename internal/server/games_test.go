@@ -65,3 +65,19 @@ func TestKlaverjasFullTable(t *testing.T) {
 		t.Errorf("fifth: %q", e.errMsg())
 	}
 }
+
+// Klaverjas's texts write only 2..4 as words, as before there were other
+// games: the roem lesson says "jij hebt er drie, dus de anderen hebben er
+// 5". The texts about a full table of any game spell out up to eight.
+func TestNumberWords(t *testing.T) {
+	for n, want := range map[int]string{0: "0", 1: "1", 2: "twee", 4: "vier", 5: "5", 8: "8"} {
+		if got := numberNL(n); got != want {
+			t.Errorf("numberNL(%d) = %q, want %q", n, got, want)
+		}
+	}
+	for n, want := range map[int]string{2: "twee", 4: "vier", 5: "vijf", 6: "zes", 8: "acht", 9: "9"} {
+		if got := seatsNL(n); got != want {
+			t.Errorf("seatsNL(%d) = %q, want %q", n, got, want)
+		}
+	}
+}
