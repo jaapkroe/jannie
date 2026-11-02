@@ -49,3 +49,19 @@ func TestKlaverjasKnowsNoOtherGame(t *testing.T) {
 	wantKeys(t, "deal", m.S, baseKeys)
 	unknown("in a hand")
 }
+
+// A full table of klaverjas says so as it always did: the text counts the
+// game's largest table, four.
+func TestKlaverjasFullTable(t *testing.T) {
+	_, ts, _ := newTestServer(t)
+	h := dial(t, ts)
+	h.create("Jaap", nil, false, false)
+	for _, name := range []string{"Kees", "Bram", "Vera"} {
+		dial(t, ts).join(h.code, name, "")
+	}
+	y := dial(t, ts)
+	y.send(map[string]any{"t": "join", "code": h.code, "name": "Te laat"})
+	if e := y.waitError(errFull); e.errMsg() != "Deze tafel is vol: alle vier de plaatsen zijn bezet." {
+		t.Errorf("fifth: %q", e.errMsg())
+	}
+}
