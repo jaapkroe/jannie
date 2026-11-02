@@ -13,21 +13,23 @@ import (
 // their team wins, who wins the last trick, and the roem in the card's own
 // trick. diffWhy compares two cards on these and names the difference that
 // brings the most points, when it is clear and large enough to be a reason:
-// at least diffMin points on average and a quarter of the gap between the
-// two cards, and with sampled deals at least two standard errors of the
-// paired difference.
+// at least diffMin points on average and a quarter of what the one card
+// brings more in points and roem (before nat and pit, which can turn a
+// few points into a whole hand), and with sampled deals at least two
+// standard errors of the paired difference. A sentence says how often
+// something happens, so a difference counts only when its shares, as
+// written, go the same way.
 
 // diffMin is the least a difference in the playouts must bring on average
 // for diffWhy to name it.
 const diffMin = 2.0
 
 // diffWhy is what playing a instead of b does differently, in one sentence,
-// or "": gap is how much more a brings, ea and eb are their playouts in the
-// same deals, w the weight of each deal (nil: sampled deals of equal
-// weight, so a difference must also stand out from their noise; else every
-// possible deal, weighted), hand the player's cards and trump the trump
-// suit.
-func diffWhy(a, b game.Card, gap float64, ea, eb []playEvent, w []float64, hand cardSet, trump game.Suit) string {
+// or "": ea and eb are their playouts in the same deals, w the weight of
+// each deal (nil: sampled deals of equal weight, so a difference must also
+// stand out from their noise; else every possible deal, weighted), hand the
+// player's cards and trump the trump suit.
+func diffWhy(a, b game.Card, ea, eb []playEvent, w []float64, hand cardSet, trump game.Suit) string {
 	n := len(ea)
 	if n == 0 || len(eb) != n {
 		return ""
@@ -38,7 +40,17 @@ func diffWhy(a, b game.Card, gap float64, ea, eb []playEvent, w []float64, hand 
 		}
 		return w[k]
 	}
-	// gain is the mean of f with a minus f with b, and whether it is clear.
+	// avg is the mean of f with a minus f with b.
+	avg := func(f func(e playEvent) float64) float64 {
+		var sw, s float64
+		for k := range n {
+			sw += weight(k)
+			s += weight(k) * (f(ea[k]) - f(eb[k]))
+		}
+		return s / sw
+	}
+	least := max(diffMin, avg(func(e playEvent) float64 { return float64(e.raw) })/4)
+	// gain is avg of f, and whether it is clear.
 	gain := func(f func(e playEvent) float64) (float64, bool) {
 		var sw, s, s2 float64
 		for k := range n {
@@ -47,18 +59,17 @@ func diffWhy(a, b game.Card, gap float64, ea, eb []playEvent, w []float64, hand 
 			s += weight(k) * d
 			s2 += weight(k) * d * d
 		}
-		if sw == 0 {
-			return 0, false
-		}
 		mean := s / sw
-		if mean < max(diffMin, gap/4) {
+		switch {
+		case mean < least:
+			return mean, false
+		case w != nil:
+			return mean, true
+		case n < 2:
 			return mean, false
 		}
-		if w == nil && n > 1 {
-			se := math.Sqrt(max(s2/sw-mean*mean, 0) / float64(n-1))
-			return mean, mean >= 2*se
-		}
-		return mean, true
+		se := math.Sqrt(max(s2/sw-mean*mean, 0) / float64(n-1))
+		return mean, mean >= 2*se
 	}
 	// share is the weighted share of the deals where f holds.
 	share := func(ev []playEvent, f func(e playEvent) bool) float64 {
@@ -96,23 +107,25 @@ func diffWhy(a, b game.Card, gap float64, ea, eb []playEvent, w []float64, hand 
 				game.CardShortNL(b) + " speelt, en in " + percent(share(ea, lost)) + " als je " + game.CardShortNL(a) + " speelt."
 		}
 	}
-	// The player's other cards, each on its own. The two cards compared go
-	// together: one is played now and the other later, so what one gains
-	// the other may lose.
+	// The player's other cards, each on its own.
 	for x := hand &^ bit(a) &^ bit(b); x != 0; x &= x - 1 {
 		c := game.CardFromIndex(trailing(x))
 		g, ok := gain(won(c))
 		consider(g, ok, cardLost(c))
 	}
+	// The two cards compared go together: one is played now and the other
+	// later, so what one gains the other may lose. The sentence names the
+	// one that gains, so that one must gain clearly and the other not lose
+	// more than diffMin.
 	wa, wb := won(a), won(b)
 	if g, ok := gain(func(e playEvent) float64 { return wa(e) + wb(e) }); ok {
-		ga, _ := gain(wa)
-		gb, _ := gain(wb)
-		c := a
+		ga, oka := gain(wa)
+		gb, okb := gain(wb)
+		c, okc, other := a, oka, gb
 		if gb > ga {
-			c = b
+			c, okc, other = b, okb, ga
 		}
-		consider(g, ok, cardLost(c))
+		consider(g, okc && other >= -diffMin, cardLost(c))
 	}
 	last := func(e playEvent) bool { return e.last }
 	g, ok := gain(func(e playEvent) float64 {
@@ -125,17 +138,19 @@ func diffWhy(a, b game.Card, gap float64, ea, eb []playEvent, w []float64, hand 
 		return "Jullie halen de laatste slag in " + percent(share(ea, last)) + " van de verdelingen als je " + game.CardShortNL(a) +
 			" speelt, en in " + percent(share(eb, last)) + " als je " + game.CardShortNL(b) + " speelt."
 	})
-	g, ok = gain(func(e playEvent) float64 { return float64(e.roem) })
-	consider(g, ok, func() string {
-		theirs, ours := func(e playEvent) bool { return e.roem < 0 }, func(e playEvent) bool { return e.roem > 0 }
-		less, _ := gain(func(e playEvent) float64 { return -float64(min(e.roem, 0)) })
-		more, _ := gain(func(e playEvent) float64 { return float64(max(e.roem, 0)) })
-		if more > -less {
-			return "Jullie maken roem in deze slag in " + percent(share(ea, ours)) + " van de verdelingen als je " + game.CardShortNL(a) +
-				" speelt, en in " + percent(share(eb, ours)) + " als je " + game.CardShortNL(b) + " speelt."
-		}
-		return "De tegenstanders maken roem in deze slag in " + percent(share(eb, theirs)) + " van de verdelingen als je " + game.CardShortNL(b) +
-			" speelt, en in " + percent(share(ea, theirs)) + " als je " + game.CardShortNL(a) + " speelt."
+	// Roem in this trick, the opponents' and ours apart.
+	theirs, ours := func(e playEvent) bool { return e.roem < 0 }, func(e playEvent) bool { return e.roem > 0 }
+	ta, tb := share(ea, theirs), share(eb, theirs)
+	g, ok = gain(func(e playEvent) float64 { return float64(min(e.roem, 0)) })
+	consider(g, ok && wholePercent(tb) > wholePercent(ta), func() string {
+		return "De tegenstanders maken roem in deze slag in " + percent(tb) + " van de verdelingen als je " + game.CardShortNL(b) +
+			" speelt, en in " + percent(ta) + " als je " + game.CardShortNL(a) + " speelt."
+	})
+	oa, ob := share(ea, ours), share(eb, ours)
+	g, ok = gain(func(e playEvent) float64 { return float64(max(e.roem, 0)) })
+	consider(g, ok && wholePercent(oa) > wholePercent(ob), func() string {
+		return "Jullie maken roem in deze slag in " + percent(oa) + " van de verdelingen als je " + game.CardShortNL(a) +
+			" speelt, en in " + percent(ob) + " als je " + game.CardShortNL(b) + " speelt."
 	})
 	return text
 }

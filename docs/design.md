@@ -506,12 +506,14 @@ func New(p Persona, lvl Level, seed uint64) Player
 //     the same deals (diff.go: the search keeps per deal which of the
 //     player's cards their team wins, who wins the last trick and the roem
 //     in the card's own trick): the difference that brings the most, when
-//     it is at least 2 points and a quarter of the gap and two paired SE
-//     ("Je ♣10 gaat in 100% van de verdelingen naar de tegenstanders als je
+//     it is at least 2 points, a quarter of what the card brings more in
+//     points and roem before nat and pit, and two paired SE, and its
+//     shares as written go the same way ("Je ♣10 gaat in 100% van de verdelingen naar de tegenstanders als je
 //     ♣9 speelt, en in 51% als je ♣10 speelt.", "Jullie halen de laatste
 //     slag in …", "De tegenstanders maken roem in deze slag in 30% van de
 //     verdelingen als je ♥10 speelt, en in 5% als je ♥A speelt."). The two
-//     cards compared count together: one is played now, the other later.
+//     cards compared count together, one played now and the other later;
+//     the one named must gain clearly and the other lose at most 2 points.
 //   - What the card signals at the table (§8) is added: true, or a
 //     warning when the partner would read something untrue.
 // Every play hint opens with "Speel ♠V: ". The search values every option
@@ -585,9 +587,10 @@ type Option struct {
                     // all that under nat when the hand goes nat, and the pit bonus (searchWhy's parts);
                     // they sum to Value less what was scored before it
     Why   string    // a card below the best: why the best brings more, as a hint's search reason
-                    // ("♣8: volgens de berekening levert dat …", with the difference in the playouts,
-                    // and "Dat verschil is kleiner dan twee keer de standaardfout en kan toeval zijn."
-                    // when it is); "… en … zijn volgens de berekening even goed: …" under half a point; else ""
+                    // ("♣8: volgens de berekening levert dat …", then "Dat verschil is kleiner dan twee
+                    // keer de standaardfout en kan toeval zijn." when it is, then the difference in
+                    // the playouts); "… en … zijn volgens de berekening even goed: …" under half a
+                    // point; else ""
 }
 func Explain(v game.View) Explanation
 // What the cards dealt to v.Seat are worth to its team against an average
@@ -2219,7 +2222,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   a phone the table scrolls sideways) and *Over 400 verdelingen van de
   kaarten die jij niet kon zien.* (`worlds`) with an ⓘ on what the numbers
   mean. With a card's `why`, every card's row is a touch target (44 px
-  high, its card a button): tapped, it is outlined and the line under the
+  high, its card a button): tapped, it is framed and the line under the
   table says why the best brings more (its `why`; the best itself *♣8 heeft
   de hoogste waarde.*). The card played starts picked, else normaal's
   card, when it has a `why`; else the line says *Tik op een kaart in de

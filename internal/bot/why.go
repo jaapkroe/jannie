@@ -331,18 +331,44 @@ func (m *mover) searchWhy(res []playResult, i, j int) string {
 	return m.gainWhy(res, i, j) + m.signalNote(res[i].card)
 }
 
-// gainWhy says how much more res[i] brings than res[j], and in which part of
-// the value mainly (two parts when the largest is under 60% of the gap, or
-// when nat brings at least 40% of it: the points in this trick and in the
-// later ones partly cancel, so either can look larger than nat), followed by
-// what the playouts of the two cards do differently in the same deals
-// (diffWhy), when something stands out.
+// gainWhy says how much more res[i] brings than res[j] and where, followed
+// by what the playouts of the two do differently (see gainText).
 func (m *mover) gainWhy(res []playResult, i, j int) string {
-	b, r := res[i], res[j]
-	gap := b.mean() - r.mean()
+	head, diff := m.gainText(sideOf(res[i]), sideOf(res[j]), nil)
+	return "volgens de berekening " + head + diff
+}
+
+// gainSide is one of two cards compared in a reason: its mean value, its
+// value per part, what it leads to and its playouts (see playEvent).
+type gainSide struct {
+	card  game.Card
+	value float64
+	parts [numParts]float64
+	out   Outcome
+	ev    []playEvent
+}
+
+// sideOf is the search's result r as a side of a reason.
+func sideOf(r playResult) gainSide {
+	s := gainSide{card: r.card, value: r.mean(), out: r.outcome(), ev: r.ev}
+	for k := range s.parts {
+		s.parts[k] = r.part(k)
+	}
+	return s
+}
+
+// gainText says how much more b brings than r and in which part of the
+// value mainly (two parts when the largest is under 60% of the gap, or when
+// nat brings at least 40% of it: the points in this trick and in the later
+// ones partly cancel, so either can look larger than nat): "levert dat
+// gemiddeld 9 punten meer op dan ♠8, vooral in de roem van deze slag.".
+// diff is what the playouts of the two do differently in the same deals, w
+// the weight of each deal (diffWhy), with a space before it, or "".
+func (m *mover) gainText(b, r gainSide, w []float64) (head, diff string) {
+	gap := b.value - r.value
 	var d [numParts]float64
 	for k := range d {
-		d[k] = b.part(k) - r.part(k)
+		d[k] = b.parts[k] - r.parts[k]
 	}
 	k1 := 0
 	for k := range d {
@@ -364,28 +390,29 @@ func (m *mover) gainWhy(res []playResult, i, j int) string {
 	if k2 >= 0 {
 		where += " en " + m.partWhere(k2, b, r)
 	}
-	text := "volgens de berekening levert dat gemiddeld " + count(int(math.Round(gap)), "punt", "punten") + " meer op dan " +
+	head = "levert dat gemiddeld " + count(int(math.Round(gap)), "punt", "punten") + " meer op dan " +
 		game.CardShortNL(r.card) + ", vooral " + where + "."
-	if diff := diffWhy(b.card, r.card, gap, b.ev, r.ev, nil, m.hand, m.t.trump); diff != "" {
-		text += " " + diff
+	if diff = diffWhy(b.card, r.card, b.ev, r.ev, w, m.hand, m.t.trump); diff != "" {
+		diff = " " + diff
 	}
-	return text
+	return head, diff
 }
 
 // optionWhy is the reason in the reasoning's row of res[i], a card the
-// search values below res[best]: how much more the best brings, where and
-// what differs (gainWhy), and whether that may be noise.
+// search values below res[best]: how much more the best brings and where,
+// whether that may be noise, and what differs (gainText).
 func (m *mover) optionWhy(res []playResult, best, i int) string {
 	gap := res[best].mean() - res[i].mean()
 	b, o := game.CardShortNL(res[best].card), game.CardShortNL(res[i].card)
 	if math.Round(gap) == 0 {
 		return b + " en " + o + " zijn volgens de berekening even goed: het verschil is minder dan een half punt."
 	}
-	text := b + ": " + m.gainWhy(res, best, i)
+	head, diff := m.gainText(sideOf(res[best]), sideOf(res[i]), nil)
+	text := b + ": volgens de berekening " + head
 	if gap < 2*pairSE(res, best, i) {
 		text += " Dat verschil is kleiner dan twee keer de standaardfout en kan toeval zijn."
 	}
-	return text
+	return text + diff
 }
 
 // partWhere names part k of the value, where card b gains over card r. A
@@ -393,7 +420,7 @@ func (m *mover) optionWhy(res []playResult, best, i int) string {
 // third of the gain in nat, a hand that turns nat counting for the 162 card
 // points. Otherwise the gain is in what the hands that go nat are worth;
 // the share is the higher of the two cards'.
-func (m *mover) partWhere(k int, b, r playResult) string {
+func (m *mover) partWhere(k int, b, r gainSide) string {
 	switch k {
 	case partPointsNow:
 		return "in de punten van deze slag"
@@ -406,9 +433,9 @@ func (m *mover) partWhere(k int, b, r playResult) string {
 	case partPit:
 		return "door de kans op pit"
 	}
-	ob, or := b.outcome(), r.outcome()
+	ob, or := b.out, r.out
 	changed := func(hi, lo float64) bool {
-		return wholePercent(hi) > wholePercent(lo) && 162*(hi-lo) >= (b.part(partNat)-r.part(partNat))/3
+		return wholePercent(hi) > wholePercent(lo) && 162*(hi-lo) >= (b.parts[partNat]-r.parts[partNat])/3
 	}
 	switch {
 	case m.ourTeamPlays() && changed(or.NatUs, ob.NatUs):

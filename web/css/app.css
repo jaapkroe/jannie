@@ -5304,9 +5304,17 @@ body.busy::after {
   cursor: pointer;
 }
 
-.xp-table tr.xp-sel {
-  outline: 2px solid var(--gold-hi);
-  outline-offset: -2px;
+/* The pick's frame on its cells: WebKit draws no outline on a row. */
+.xp-table tr.xp-sel > * {
+  box-shadow: inset 0 2px var(--gold-hi), inset 0 -2px var(--gold-hi);
+}
+
+.xp-table tr.xp-sel > :first-child {
+  box-shadow: inset 2px 0 var(--gold-hi), inset 0 2px var(--gold-hi), inset 0 -2px var(--gold-hi);
+}
+
+.xp-table tr.xp-sel > :last-child {
+  box-shadow: inset -2px 0 var(--gold-hi), inset 0 2px var(--gold-hi), inset 0 -2px var(--gold-hi);
 }
 
 .xp-pick {

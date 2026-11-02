@@ -195,12 +195,14 @@ type playResult struct {
 
 // playEvent is what one playout of a card did, in the terms of a hint's
 // reason (see diffWhy): which of the player's cards (in hand at the
-// decision) their team won, whether they won the last trick, and the roem
-// in the card's own trick, ours minus theirs. It is kept per world, so that
-// two cards can be compared in the same deals.
+// decision) their team won, whether they won the last trick, the roem in
+// the card's own trick, ours minus theirs, and the points and roem of the
+// whole hand, ours minus theirs, before nat and pit. It is kept per world,
+// so that two cards can be compared in the same deals.
 type playEvent struct {
 	ours cardSet
 	roem int16
+	raw  int16
 	last bool
 }
 
@@ -242,6 +244,13 @@ func addParts(p *[numParts]int64, start, mid, end [2][2]int, r *game.HandResult,
 	p[partPointsLater] += int64(d(end[0]) - d(mid[0]))
 	p[partRoemNow] += int64(d(mid[1]) - d(start[1]))
 	p[partRoemLater] += int64(d(end[1]) - d(mid[1]))
+}
+
+// rawDiff is the points and roem of deal d so far, team's minus the
+// opponents', before nat and pit.
+func rawDiff(d *game.Deal, team int) int {
+	p, r := d.HandPoints(), d.HandRoem()
+	return p[team] + r[team] - p[1-team] - r[1-team]
 }
 
 // part is part k of r's value per world.
@@ -347,7 +356,8 @@ func searchPlay(v *game.View, tab *table, cfg searchConfig, seed uint64, aggr fl
 				if cfg.points {
 					addParts(&parts[ch][i], start, mid, [2][2]int{s.d.HandPoints(), s.d.HandRoem()}, &r, int(vals[i]), team)
 					roem := mid[1][team] - mid[1][1-team] - start[1][team] + start[1][1-team]
-					evs[ch][i] = append(evs[ch][i], playEvent{ours: s.t.taken[team] & hand, roem: int16(roem), last: s.t.leader.Team() == team})
+					evs[ch][i] = append(evs[ch][i], playEvent{ours: s.t.taken[team] & hand, roem: int16(roem),
+						raw: int16(rawDiff(&s.d, team)), last: s.t.leader.Team() == team})
 				}
 				for j := range i {
 					d := vals[j] - vals[i]
