@@ -198,6 +198,20 @@ type logMatch struct {
 	Players  []logPlayer `json:"players"`
 }
 
+// logGameMatch is logMatch for a game on the exported API (api.go): its
+// name and its options (GameOptions.Wire), without training and expert.
+type logGameMatch struct {
+	T       string      `json:"t"` // "match"
+	Match   string      `json:"match"`
+	Room    string      `json:"room"`
+	At      time.Time   `json:"at"`
+	Version string      `json:"version"`
+	Game    string      `json:"game"`
+	Seed    uint64      `json:"seed"`
+	Opts    any         `json:"opts"`
+	Players []logPlayer `json:"players"`
+}
+
 // logSeat: a seat changed hands during the match (a joiner, someone back
 // on another device, an AI everyone agreed to).
 type logSeat struct {

@@ -206,7 +206,7 @@ func (r *room) explain(v game.View) (e Explanation) {
 			e = Explanation{}
 		}
 	}()
-	return r.srv.cfg.AI.Explain(v)
+	return r.srv.ai.Explain(v)
 }
 
 // fill puts explanation e in msg, rounded: points to tenths, shares of

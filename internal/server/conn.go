@@ -244,6 +244,7 @@ func (c *client) readLoop(ctx context.Context) {
 			c.sendError(errInvalid, "Dat bericht begrijp ik niet.")
 			continue
 		}
+		m.raw = data
 		c.srv.dispatch(c, &m)
 	}
 }

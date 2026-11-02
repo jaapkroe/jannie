@@ -192,7 +192,7 @@ var perfScenarios = []perfScenario{
 
 // perfServer is a server without pauses or think time.
 func perfServer(tb testing.TB) *Server {
-	s := New(Config{AI: &fakeAI{}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	s := New(Config{Game: Klaverjas(&fakeAI{}), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	s.scale = 0
 	tb.Cleanup(func() { s.Shutdown(context.Background()) })
 	return s
@@ -430,7 +430,7 @@ func BenchmarkWSGame(b *testing.B) {
 		mode websocket.CompressionMode
 	}{{"deflate", websocket.CompressionNoContextTakeover}, {"off", websocket.CompressionDisabled}} {
 		b.Run(c.name, func(b *testing.B) {
-			s := New(Config{AI: &fakeAI{}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+			s := New(Config{Game: Klaverjas(&fakeAI{}), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 			s.scale = 0.0005
 			s.msgRate, s.joinRate, s.joinBurst = 1000, 1000, 1000
 			ts := httptest.NewUnstartedServer(s.Handler())

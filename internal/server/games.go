@@ -1,33 +1,16 @@
 package server
 
 import (
-	"slices"
-
 	"klaverjas/internal/game"
 )
 
-// The games a room can play (docs/games.md). The room itself is the table
-// every game shares: codes and links, seats and the lobby, bots, chat,
-// calls, reconnects, the question whether an AI may play for someone who
-// is gone, pacing and limits. The game on it is a gameplay: Klaverjas (the
-// match code in match.go, state.go, review.go, lesson.go and expert.go,
-// adapted below) or Toepen (toepen.go).
-
-const (
-	gameKlaverjas = "klaverjas"
-	gameToepen    = "toepen"
-)
-
-// maxSeats is the largest table any game is played at: toepen with six.
-const maxSeats = 6
-
-// maxPlayers is the largest table of a game.
-func maxPlayers(g string) int {
-	if g == gameToepen {
-		return maxSeats
-	}
-	return 4
-}
+// A server plays one game (Config.Game). The room is the table every game
+// shares: codes and links, seats and the lobby, bots, chat, calls,
+// reconnects, the question whether an AI may play for someone who is gone,
+// pacing and limits. The game on it is a gameplay: klaverjas, built in on
+// the match code in match.go, state.go, review.go, lesson.go and
+// expert.go (adapted below), or a game on the exported API (api.go),
+// adapted by extPlay (ext.go).
 
 // gameplay is what the table needs from the game on it. Every method runs
 // on the room goroutine.
@@ -35,6 +18,8 @@ type gameplay interface {
 	// start deals the first hand of a match; the seats are filled and the
 	// match's seed drawn (r.deals).
 	start()
+	// lobby is the table back in the lobby after a match (cmdLobby).
+	lobby()
 	// turn is the seat whose decision the game waits for, NoSeat when it
 	// waits for nobody in particular (a pause, or everyone at once).
 	turn() game.Seat
@@ -48,9 +33,9 @@ type gameplay interface {
 	// decision is the decision of the bot (or substitute) at seat i for
 	// this turn, to work out in the background with bb (it must not touch
 	// the room), and a safe one for when that comes out illegal.
-	decision(i game.Seat, bb *brainBox) (think func() action, safe action)
+	decision(i game.Seat, bb *brainBox) (think func() any, safe any)
 	// apply plays decision a of the bot at seat i.
-	apply(i game.Seat, a action) error
+	apply(i game.Seat, a any) error
 	// single reports whether the decision on turn has one option: the bot
 	// then thinks shorter.
 	single() bool
@@ -58,26 +43,15 @@ type gameplay interface {
 	resume(s step)
 	// next deals the next hand after the summary, or ends the match.
 	next()
-	// variant names the game and its rules for the start line.
-	variant() string
 }
 
-// setGame puts the game of the options on the table, with a fresh match.
-func (r *room) setGame() {
-	if r.opts.Game == gameToepen {
-		r.gp = &toepPlay{r: r}
-		return
-	}
-	r.gp = klaverjas{r}
-}
-
-// toepen reports whether the table plays toepen.
-func (r *room) toepen() bool { return r.opts.Game == gameToepen }
-
-// klaverjas is the original game, on the code it always had.
+// klaverjas is the built-in game, on the code it always had.
 type klaverjas struct{ r *room }
 
 func (k klaverjas) start() { k.r.startKlaverjas() }
+
+// lobby: cmdLobby clears the match itself.
+func (k klaverjas) lobby() {}
 
 func (k klaverjas) turn() game.Seat {
 	if k.r.deal == nil {
@@ -97,12 +71,15 @@ func (k klaverjas) state(i game.Seat) any { return k.r.stateFor(i) }
 
 func (k klaverjas) move(c *client, i game.Seat, m *inMsg) bool { return k.r.klaverjasMove(c, i, m) }
 
-func (k klaverjas) decision(i game.Seat, bb *brainBox) (func() action, action) {
+func (k klaverjas) decision(i game.Seat, bb *brainBox) (func() any, any) {
 	v := k.r.viewFor(i)
-	return func() action { return bb.decide(v) }, fallback(v)
+	return func() any { return bb.decide(v) }, fallback(v)
 }
 
-func (k klaverjas) apply(i game.Seat, a action) error { return k.r.act(i, a) }
+func (k klaverjas) apply(i game.Seat, a any) error {
+	act, _ := a.(action)
+	return k.r.act(i, act)
+}
 
 func (k klaverjas) single() bool {
 	d := k.r.deal
@@ -112,8 +89,6 @@ func (k klaverjas) single() bool {
 func (k klaverjas) resume(s step) { k.r.resumeKlaverjas(s) }
 
 func (k klaverjas) next() { k.r.nextHand() }
-
-func (k klaverjas) variant() string { return k.r.opts.variantNL() }
 
 // klaverjasMove handles the messages of klaverjas: the decisions of a
 // hand, and the training, review and expert requests.
@@ -173,11 +148,4 @@ func (r *room) klaverjasMove(c *client, i game.Seat, m *inMsg) bool {
 		return false
 	}
 	return true
-}
-
-// inPlay reports whether phase is one in which a hand is being played, in
-// any game.
-func inPlay(phase string) bool {
-	return slices.Contains([]string{phaseAuction, phaseDiscard, phaseTrump, phaseBid, phasePlay,
-		phaseWas, phaseCheck, phaseToep}, phase)
 }

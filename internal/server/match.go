@@ -22,7 +22,6 @@ const (
 	stepAnnounced      // trump was announced: then voorhand leads
 	stepCollect        // a complete trick lies on the table: then it is collected
 	stepNextHand       // the hand summary: then the next hand (or game over)
-	stepWas            // toepen: the time for a was, in which everyone answers at once
 )
 
 type actKind uint8
@@ -49,8 +48,8 @@ type action struct {
 // brainBox serialises calls into one Brain and guards against bad answers.
 type brainBox struct {
 	mu  sync.Mutex
-	b   Brain     // klaverjas
-	tb  ToepBrain // toepen (toepen.go)
+	b   Brain // klaverjas
+	ext any   // another game's (Game.NewBrain), driven through Play (ext.go)
 	log *slog.Logger
 }
 
@@ -150,14 +149,18 @@ func fallback(v game.View) action {
 // chooses freely.
 func turnedBarred(v game.View) bool { return v.Forced && v.Players != 3 }
 
-// inHand reports whether a hand is being played (auction, discard, trump,
-// bid or play).
-func (r *room) inHand() bool { return inPlay(r.phase) }
+// inHand reports whether a hand is being played: klaverjas's auction,
+// discard, trump, bid or play, or another game's phases (Table.SetPhase).
+func (r *room) inHand() bool {
+	switch r.phase {
+	case phaseLobby, phaseHandEnd, phaseGameOver:
+		return false
+	}
+	return true
+}
 
-// startMatch fills the empty seats and deals the first hand of the game
-// on the table.
+// startMatch fills the empty seats and deals the first hand.
 func (r *room) startMatch() {
-	r.setGame() // a fresh match
 	r.fillSeats()
 	for i := range r.seats {
 		st := &r.seats[i]
@@ -165,11 +168,8 @@ func (r *room) startMatch() {
 		// The others let an AI play for an absent player in the match that
 		// ended: in this one they are waited for and asked again.
 		st.away, st.asked = false, false
-		switch st.kind {
-		case seatBot:
+		if st.kind == seatBot {
 			st.brain = r.newBrain(st.persona.ID, r.opts.AI)
-		case seatHuman:
-			st.brain = nil // a substitute's, maybe for another game
 		}
 	}
 	r.handNo = 0
@@ -179,7 +179,7 @@ func (r *room) startMatch() {
 	r.lastTrick = nil
 	r.winner = -1
 	r.overAt = time.Time{}
-	r.startReviews()
+	r.matchID = newToken()[:12]
 	r.seed = uint64(r.opts.Seed)
 	if r.seed == 0 {
 		r.seed = newSeed()
@@ -196,6 +196,7 @@ func (r *room) startMatch() {
 // startKlaverjas deals the first hand of a match of klaverjas.
 func (r *room) startKlaverjas() {
 	r.total = make([]int, game.Scorers(r.players()))
+	r.startReviews()
 	// The seed from the start, so nobody has to play to the end to see it.
 	if r.opts.From > 0 {
 		r.sysChat("Spel (%d) begint: potje %d, %s. Veel plezier!", r.seed, r.firstHand, r.opts.variantNL())
@@ -433,9 +434,9 @@ func (r *room) viewFor(i game.Seat) game.View {
 type botTurn struct {
 	step  int // r.step of the turn; 0: none
 	seat  game.Seat
-	ready bool   // the decision is in
-	act   action // the decision, once ready
-	safe  action // a legal decision, should act come out illegal
+	ready bool // the decision is in
+	act   any  // the decision, once ready (klaverjas: an action)
+	safe  any  // a legal decision, should act come out illegal
 }
 
 // botMove makes sure seat i, played by a bot, moves at due: it starts the
@@ -778,7 +779,7 @@ func (r *room) explainTrick(t game.Trick, trump game.Suit, names [4]string) (tex
 			text = ""
 		}
 	}()
-	return r.srv.cfg.AI.ExplainTrick(t, trump, names)
+	return r.srv.ai.ExplainTrick(t, trump, names)
 }
 
 // hintFor returns the training hint for seat i on its turn, computed once
@@ -824,7 +825,7 @@ func (r *room) advise(v game.View) (a Advice, ok bool) {
 			ok = false
 		}
 	}()
-	return r.srv.cfg.AI.Advise(v), true
+	return r.srv.ai.Advise(v), true
 }
 
 // endHand scores the finished hand and shows the summary.
@@ -861,17 +862,15 @@ func (r *room) endHand() {
 // it does not: the player looks back at the hand at leisure and goes on
 // with ready.
 func (r *room) timeSummary(from time.Time) {
-	r.pendingAt, r.nextAt = time.Time{}, time.Time{}
-	d := r.pace().summary
-	switch {
-	case r.toepen():
-		// A round of toepen is short and so is its summary: it moves on
-		// by itself also for one player alone.
-		d = r.pace().round
-	case r.training || r.humanCount() == 1:
+	if r.x != nil {
+		r.x.timeSummary(from) // the game said how long (Table.Summary)
 		return
 	}
-	r.pendingAt = from.Add(r.scaled(d))
+	r.pendingAt, r.nextAt = time.Time{}, time.Time{}
+	if r.training || r.humanCount() == 1 {
+		return
+	}
+	r.pendingAt = from.Add(r.scaled(r.pace().summary))
 	r.nextAt = r.pendingAt
 }
 

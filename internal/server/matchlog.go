@@ -45,6 +45,15 @@ func (r *room) logPlayerAt(i game.Seat) logPlayer {
 // logMatch records a match that starts, with the version of the server,
 // its seed and players.
 func (r *room) logMatch() {
+	if r.x != nil {
+		rec := logGameMatch{T: "match", Match: r.matchID, Room: r.code, At: time.Now().UTC(), Version: r.srv.cfg.Version,
+			Game: r.x.g.Name(), Seed: r.seed, Opts: r.x.wire()}
+		for i := range r.players() {
+			rec.Players = append(rec.Players, r.logPlayerAt(game.Seat(i)))
+		}
+		r.srv.games.write(rec)
+		return
+	}
 	rec := logMatch{T: "match", Match: r.matchID, Room: r.code, At: time.Now().UTC(), Version: r.srv.cfg.Version, Seed: r.seed,
 		Training: r.training, Expert: r.expert, Opts: r.opts}
 	for i := range r.players() {

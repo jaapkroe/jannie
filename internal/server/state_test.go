@@ -13,7 +13,7 @@ import (
 
 // Keys of `s` (design §7) present in every phase.
 var baseKeys = []string{
-	"game", "code", "phase", "opts", "training", "expert", "you", "host", "players", "handNo", "hands",
+	"code", "phase", "opts", "training", "expert", "you", "host", "players", "handNo", "hands",
 	"dealer", "voorhand", "turned", "bids", "forced", "bid", "bidder", "soloist", "talon",
 	"discards", "piles", "openRoem", "trump", "trumpBy", "playingTeam",
 	"turn", "takeover", "hand", "trick", "lastTrick", "tricksWon", "handPoints", "handRoem", "scores",
@@ -68,8 +68,7 @@ func testStateKeys(t *testing.T, players int) {
 		t.Errorf("first update ev %s, want null", lobby.Ev)
 	}
 	wantKeys(t, "lobby", lobby.S, append(slices.Clone(baseKeys), "roster"))
-	wantKeys(t, "opts", field(t, lobby.S, "opts"), []string{"game", "players", "hands", "trumpMode", "rules", "ai", "tempo", "open", "lesson", "tips", "signals", "seed", "from",
-		"limit", "was", "armoede"})
+	wantKeys(t, "opts", field(t, lobby.S, "opts"), []string{"players", "hands", "trumpMode", "rules", "ai", "tempo", "open", "lesson", "tips", "signals", "seed", "from"})
 	var seats []json.RawMessage
 	json.Unmarshal(field(t, lobby.S, "players"), &seats)
 	if len(seats) != players {

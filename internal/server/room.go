@@ -22,9 +22,6 @@ const (
 	phaseTrump    = "trump"
 	phaseBid      = "bid"
 	phasePlay     = "play"
-	phaseWas      = "was"   // toepen: right after the deal, everyone says whether they have a was
-	phaseCheck    = "check" // toepen: a claimed was; the others are asked in turn whether they check it
-	phaseToep     = "toep"  // toepen: after a toep, the others say in turn whether they go along
 	phaseHandEnd  = "handEnd"
 	phaseGameOver = "gameOver"
 )
@@ -91,10 +88,11 @@ type room struct {
 	rng       *rand.Rand
 	opts      Options
 	training  bool
-	expert    bool           // the expert mode (expert.go): alone against three bots, looking back at any moment
-	alwaysOn  bool           // tests: bots play on without a connected human
-	seats     [maxSeats]seat // seats 0..opts.Players-1; the others stay empty
-	gp        gameplay       // the game on the table (games.go)
+	expert    bool     // the expert mode (expert.go): alone against three bots, looking back at any moment
+	alwaysOn  bool     // tests: bots play on without a connected human
+	seats     []seat   // as many as the game's largest table; seats 0..opts.Players-1 are at the table, the others stay empty
+	gp        gameplay // the game on the table (games.go): klaverjas, or x
+	x         *extPlay // a game on the exported API (ext.go); nil for klaverjas
 	host      game.Seat
 	phase     string
 	seq       int
@@ -176,13 +174,17 @@ func newRoom(s *Server, code string) *room {
 		done:    make(chan struct{}),
 		rng:     rand.New(rand.NewPCG(binary.LittleEndian.Uint64(seed[:8]), binary.LittleEndian.Uint64(seed[8:]))),
 		opts:    defaultOptions(),
+		seats:   make([]seat, s.maxSeats),
 		host:    game.NoSeat,
 		phase:   phaseLobby,
 		asking:  game.NoSeat,
 		votesOn: game.NoSeat,
 		winner:  -1,
 	}
-	r.setGame()
+	r.gp = klaverjas{r}
+	if s.ext != nil {
+		r.newExt()
+	}
 	return r
 }
 
@@ -375,10 +377,10 @@ func (r *room) newBot(p Persona) seat {
 }
 
 func (r *room) newBrain(personaID, level string) *brainBox {
-	if r.toepen() {
-		return &brainBox{tb: r.srv.toepAI().NewToepBrain(personaID, level, r.rng.Uint64()), log: r.log}
+	if g := r.srv.ext; g != nil {
+		return &brainBox{ext: g.NewBrain(personaID, level, r.rng.Uint64()), log: r.log}
 	}
-	return &brainBox{b: r.srv.cfg.AI.NewBrain(personaID, level, r.rng.Uint64()), log: r.log}
+	return &brainBox{b: r.srv.ai.NewBrain(personaID, level, r.rng.Uint64()), log: r.log}
 }
 
 // persona looks up a persona by ID.
@@ -416,10 +418,10 @@ func (r *room) randomPersona(skip ...string) Persona {
 
 func botName(p Persona) string { return p.Name + " (AI)" }
 
-// numberNL writes 2..4 as a Dutch word ("drie"), for texts.
+// numberNL writes 2..8 as a Dutch word ("drie"), for texts.
 func numberNL(n int) string {
-	if n >= 2 && n <= 4 {
-		return [...]string{"twee", "drie", "vier"}[n-2]
+	if n >= 2 && n <= 8 {
+		return [...]string{"twee", "drie", "vier", "vijf", "zes", "zeven", "acht"}[n-2]
 	}
 	return fmt.Sprint(n)
 }
@@ -579,26 +581,25 @@ func (r *room) sysChat(format string, args ...any) {
 // ---- joining and leaving ----
 
 func (r *room) handleCreate(c *client, m *inMsg) {
-	patch, _ := parseOpts(m.Opts, true)
-	r.training = m.Training
-	r.expert = m.Expert && !r.training
-	if r.training {
-		r.opts.Tempo = "rustig"
+	if r.x != nil {
+		r.x.createOpts(m.Opts) // training and the expert are klaverjas's: the ordinary game
+	} else {
+		patch, _ := parseOpts(m.Opts, true)
+		r.training = m.Training
+		r.expert = m.Expert && !r.training
+		if r.training {
+			r.opts.Tempo = "rustig"
+		}
+		patch.apply(&r.opts)
+		if patch.Players != nil {
+			r.opts.Players = *patch.Players
+		}
+		if r.expert {
+			r.opts.Players = 4 // the engine reasons for four
+		}
+		r.trainingOpts()
+		r.expertOpts()
 	}
-	patch.apply(&r.opts)
-	if patch.Players != nil {
-		r.opts.Players = *patch.Players
-	}
-	if r.training || r.expert {
-		r.opts.Game = gameKlaverjas // the lessons and the engine's reasoning are klaverjas
-	}
-	r.opts.Players = min(r.opts.Players, maxPlayers(r.opts.Game))
-	if r.expert {
-		r.opts.Players = 4 // the engine reasons for four
-	}
-	r.trainingOpts()
-	r.expertOpts()
-	r.setGame()
 	var i game.Seat // the expert sits where they chose; anyone else at seat 0
 	if r.expert && m.Seat != nil && *m.Seat >= 0 && *m.Seat < 4 {
 		i = game.Seat(*m.Seat)
@@ -609,7 +610,7 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	if r.training {
 		r.seatTraining()
 	}
-	r.log.Info("room created", "game", r.opts.Game, "training", r.training, "expert", r.expert, "players", r.opts.Players, "start", m.Start)
+	r.log.Info("room created", "training", r.training, "expert", r.expert, "players", r.opts.Players, "start", m.Start)
 	r.welcome(c, i)
 	r.emitTo(evLobby{Type: "lobby"}, c)
 	if m.Start || r.expert { // an expert game has no lobby
@@ -664,10 +665,10 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 		case i != game.NoSeat:
 		case r.firstSeat(func(st *seat) bool { return st.kind == seatBot }) != game.NoSeat:
 			fail(errFull, "Deze tafel is vol. Vraag de host om een AI-speler weg te halen en probeer het dan opnieuw.")
-		case r.players() < 4:
+		case r.players() < len(r.seats):
 			fail(errFull, fmt.Sprintf("Deze tafel is vol: alle %s plaatsen zijn bezet. Vraag de host om bij Spelers een plaats bij te zetten en probeer het dan opnieuw.", numberNL(r.players())))
 		default:
-			fail(errFull, "Deze tafel is vol: alle vier de plaatsen zijn bezet.")
+			fail(errFull, fmt.Sprintf("Deze tafel is vol: alle %s de plaatsen zijn bezet.", numberNL(len(r.seats))))
 		}
 		if i == game.NoSeat {
 			r.refused(name)
@@ -1148,47 +1149,32 @@ func (r *room) cmdOpts(c *client, i game.Seat, m *inMsg) {
 	if !r.lobbyHost(c, i) {
 		return
 	}
+	if r.x != nil {
+		if err := r.x.setOpts(m.Opts); err != nil {
+			c.sendError(errInvalid, err.Error())
+			return
+		}
+		r.emit(evLobby{Type: "lobby"})
+		return
+	}
 	patch, err := parseOpts(m.Opts, false)
 	if err != nil {
 		c.sendError(errInvalid, err.Error())
 		return
 	}
-	g := r.opts.Game
-	if patch.Game != nil && *patch.Game != g {
-		if r.training || r.expert {
-			c.sendError(errInvalid, "Hier speel je klaverjas.")
-			return
-		}
-		g = *patch.Game
-	}
-	n := r.opts.Players
-	if patch.Players != nil {
-		n = *patch.Players
-	}
-	if n > maxPlayers(g) {
-		if patch.Players != nil {
-			c.sendError(errInvalid, "Kies 2, 3 of 4 spelers.")
-			return
-		}
-		n = maxPlayers(g) // to klaverjas from a larger table of toepen
-	}
-	if n != r.opts.Players {
+	if n := patch.Players; n != nil && *n != r.opts.Players {
 		if r.training {
 			c.sendError(errInvalid, "In de oefenmodus speel je altijd met z'n vieren, samen met Juf Jannie.")
 			return
 		}
-		if err := r.setPlayers(n); err != nil {
+		if err := r.setPlayers(*n); err != nil {
 			c.sendError(errInvalid, err.Error())
 			return
 		}
 	}
-	changed := g != r.opts.Game
 	patch.apply(&r.opts)
 	r.trainingOpts()
 	r.expertOpts()
-	if changed {
-		r.setGame()
-	}
 	r.emit(evLobby{Type: "lobby"})
 }
 
@@ -1314,7 +1300,7 @@ func (r *room) cmdLobby(c *client, i game.Seat) {
 	r.phase = phaseLobby
 	r.handNo = 0
 	r.deal = nil
-	r.setGame()
+	r.gp.lobby()
 	r.pending = stepNone
 	r.scores = nil
 	r.total = nil

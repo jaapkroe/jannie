@@ -9,7 +9,6 @@ import (
 // stateFor builds the full state `s` for the player at seat i (design §7).
 func (r *room) stateFor(i game.Seat) *state {
 	s := &state{
-		Game:        gameKlaverjas,
 		Code:        r.code,
 		Phase:       r.phase,
 		Opts:        r.opts,

@@ -222,7 +222,7 @@ func newTestServer(t *testing.T, tweak ...func(*Server)) (*Server, *httptest.Ser
 // newTestServerWith is newTestServer with another AI.
 func newTestServerWith(t *testing.T, ai AI, tweak ...func(*Server)) (*Server, *httptest.Server) {
 	t.Helper()
-	s := New(Config{AI: ai, Fast: true, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	s := New(Config{Game: Klaverjas(ai), Fast: true, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	s.scale = 0.005
 	s.msgRate = 1000 // the test clients act at 200 times the normal pace
 	s.joinRate, s.joinBurst = 1000, 1000
