@@ -26,8 +26,9 @@ type table struct {
 	high   int8      // trump order of the highest trump in the trick, -1 if none
 	points int       // card points in the trick so far
 
-	trickNo int    // completed tricks
-	won     [2]int // tricks won per team
+	trickNo int        // completed tricks
+	won     [2]int     // tricks won per team
+	taken   [2]cardSet // the cards of the tricks won per team
 	hasLed  [4]bool
 	suitLed [game.NumSuits]bool // a trick has been led in the suit
 	// boerSig per team: the seat that signalled holding the trump boer by
@@ -176,6 +177,7 @@ func (t *table) apply(seat game.Seat, c game.Card) {
 	}
 	if t.n == 4 {
 		t.won[t.win.Team()]++
+		t.taken[t.win.Team()] |= bit(t.trick[0]) | bit(t.trick[1]) | bit(t.trick[2]) | bit(t.trick[3])
 		t.trickNo++
 		t.n = 0
 		t.leader = t.win

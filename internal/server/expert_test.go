@@ -159,6 +159,11 @@ func TestExpertMatch(t *testing.T) {
 		w.SterkWhy != "waarom sterk" || w.HintWhy != "waarom de tip" {
 		t.Errorf("why now (trick %d, legal %v), asked with seat 1: %+v", now, s.Legal, w)
 	}
+	for _, o := range w.Options {
+		if (o.Value == 10) != (o.Why == "") {
+			t.Errorf("why now: option %+v, the reason under the best", o)
+		}
+	}
 	if n := ai.reasoned.Load(); n != 2 {
 		t.Errorf("%d explanations, want 2", n)
 	}

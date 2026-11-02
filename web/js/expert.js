@@ -189,7 +189,10 @@ const num = x => (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(1).rep
 const pct = x => `${Math.round(100 * x)}%`;
 
 // The engine's reasoning (design §7 why): the choices of normaal (with its
-// rule's reason), sterk and the hint, and the value of every option.
+// rule's reason), sterk and the hint, and the value of every option. A
+// card's row, tapped, says under the table why the best brings more (its
+// `why`); the card played starts picked, else normaal's, when it has one.
+// The pick stays with the answer, for the life of the sheet's answers.
 function whyView(w) {
   if (!w.options.length) return h('p', { class: 'xp-note', text: 'Voor deze beslissing heeft de AI geen redenering.' });
   const cards = w.options.some(o => o.parts);
@@ -197,27 +200,47 @@ function whyView(w) {
   const heads = cards
     ? ['Kaart', 'Waarde', '±', 'Punten slag', 'Punten later', 'Roem slag', 'Roem later', 'Nat', 'Pit', 'Nat wij', 'Nat zij']
     : [w.options[0].suit ? 'Troef' : 'Keuze', 'Waarde', '±', 'Nat wij', 'Nat zij'];
-  const rows = w.options.map(o => h('tr', { class: (same(o, w.played) ? 'xp-played' : '') + (o.value === best ? ' xp-best' : '') },
-    h('th', {}, suitify(label(o)), same(o, w.played) ? h('small', { text: o.card ? ' gespeeld' : ' gekozen' }) : null),
+  const reasons = cards && w.options.some(o => o.why);
+  w.pick ??= [w.played, w.normaal].map(c => w.options.findIndex(o => o.why && same(o, c))).find(i => i >= 0) ?? -1;
+  const said = h('p', { class: 'xp-said', 'aria-live': 'polite' });
+  const pick = i => {
+    w.pick = i;
+    rows.forEach((r, k) => {
+      r.classList.toggle('xp-sel', k === i);
+      r.querySelector('.xp-pick')?.setAttribute('aria-pressed', String(k === i));
+    });
+    const o = w.options[i];
+    said.replaceChildren(!o ? 'Tik op een kaart in de tabel: dan staat hier waarom de kaart met de hoogste waarde meer oplevert.'
+      : suitify(o.why || `${label(o)} heeft de hoogste waarde.`));
+  };
+  const rows = w.options.map((o, i) => h('tr', {
+    class: (same(o, w.played) ? 'xp-played' : '') + (o.value === best ? ' xp-best' : ''),
+    onclick: reasons ? () => { sound.play('click'); pick(i); } : null,
+  },
+    h('th', {}, reasons ? h('button', { class: 'xp-pick', type: 'button', 'aria-pressed': 'false' }, suitify(label(o))) : suitify(label(o)),
+      same(o, w.played) ? h('small', { text: o.card ? ' gespeeld' : ' gekozen' }) : null),
     h('td', { text: num(o.value) }),
     h('td', { text: o.value === best ? '' : o.se.toFixed(1).replace('.', ',') }),
     ...(cards ? (o.parts || []).map(p => h('td', { text: num(p) })) : []),
     h('td', { text: pct(o.natUs) }),
     h('td', { text: pct(o.natThem) })));
+  if (reasons) pick(w.pick);
   const rule = w.rule.replace(/^[^:]*: /, '');
   return h('div', { class: 'xp-why' },
     h('p', {}, h('b', { text: 'Normaal: ' }), suitify(what(w.normaal) + (rule ? ` · ${rule}` : ''))),
     h('p', {}, h('b', { text: 'Sterk: ' }), suitify(what(w.sterk) + (w.sterkWhy ? ` · ${w.sterkWhy}` : ''))),
     h('p', {}, h('b', { text: 'Tip: ' }), suitify(w.hintText + (w.hintWhy ? ` ${w.hintWhy}` : ''))),
-    w.worlds ? h('div', { class: 'xp-scroll' }, h('table', { class: 'xp-table' },
+    w.worlds ? h('div', { class: 'xp-scroll' }, h('table', { class: 'xp-table' + (reasons ? ' xp-pickable' : '') },
       h('thead', {}, h('tr', {}, heads.map(t => h('th', { text: t })))),
       h('tbody', {}, rows))) : null,
+    reasons ? said : null,
     h('p', { class: 'legend' }, w.worlds ? `Over ${w.worlds} verdelingen van de kaarten die jij niet kon zien. ` : 'Er mocht maar één kaart. ',
       panels.infoBtn('Redenering van de AI', [
         'Normaal: de keuze van de AI-spelers op Normaal, met de regel die hem koos. Sterk: de keuze van de AI-spelers op Sterk, uit deze berekening. Tip: wat Juf Jannie bij Oefenen aanraadt.',
         'De AI speelt elke keuze uit over honderden verdelingen van de kaarten die de speler niet kon zien, telkens met eenvoudige regels tot het eind van het potje.',
         `Waarde: hoeveel punten jij en je maat gemiddeld meer halen dan de tegenstanders aan het eind van het potje, roem, nat en pit meegeteld. ±: de standaardfout van het verschil met de beste; een verschil van minder dan twee keer ± kan toeval zijn.`,
-        ...(cards ? ['Punten slag, punten later, roem slag en roem later: hetzelfde verschil, alleen van de kaartpunten of van de roem, in deze slag en in de latere slagen, als het spelende team het potje haalt. Nat: gaat het spelende team nat, dan krijgt één team alles en telt dat hier. Pit: de pitbonus. Samen zijn ze de waarde, min wat er voor deze kaart al gehaald was.'] : []),
+        ...(cards ? ['Punten slag, punten later, roem slag en roem later: hetzelfde verschil, alleen van de kaartpunten of van de roem, in deze slag en in de latere slagen, als het spelende team het potje haalt. Nat: gaat het spelende team nat, dan krijgt één team alles en telt dat hier. Pit: de pitbonus. Samen zijn ze de waarde, min wat er voor deze kaart al gehaald was.',
+          'Tik op een kaart in de tabel: onder de tabel staat dan hoeveel meer de kaart met de hoogste waarde oplevert en waar vooral, en wat er in dezelfde verdelingen anders loopt: hoe vaak een kaart van jou naar de tegenstanders gaat, wie de laatste slag haalt of wie roem maakt in deze slag. Dat laatste staat er alleen bij als het minstens 2 punten scheelt, en een kwart van wat de kaart meer oplevert aan punten en roem zonder nat en pit, en meer dan toeval is.'] : []),
         `Nat wij: de kans dat jij en je maat spelen en nat gaan. Nat zij: de kans dat de tegenstanders spelen en nat gaan.`,
         ...(cards ? ['Sterk speelt niet altijd de kaart met de hoogste waarde: geen vals sein voor minder dan 20 punten (kleintje boer of boer over boer: 10), tenzij de kaart van Normaal zelf al een vals sein is, en bij heel weinig verschil de kaart van Normaal. Staat Sterk niet op de hoogste waarde, dan staat erbij waarom. De tip houdt de kaart van Normaal aan, tenzij Sterk minstens 5 punten en minstens twee keer de standaardfout beter is.'] : []),
         'De AI-spelers op Sterk rekenen met hun eigen verdelingen en, naar karakter, met wat zin in pit: hun keuze kan een enkele keer anders zijn dan hier.',

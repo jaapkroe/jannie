@@ -5297,6 +5297,40 @@ body.busy::after {
   color: var(--gold-hi);
 }
 
+/* A row tapped says under the table why the best brings more; the row is
+   the touch target. */
+.xp-pickable tbody tr {
+  height: 44px;
+  cursor: pointer;
+}
+
+/* The pick's frame on its cells: WebKit draws no outline on a row. */
+.xp-table tr.xp-sel > * {
+  box-shadow: inset 0 2px var(--gold-hi), inset 0 -2px var(--gold-hi);
+}
+
+.xp-table tr.xp-sel > :first-child {
+  box-shadow: inset 2px 0 var(--gold-hi), inset 0 2px var(--gold-hi), inset 0 -2px var(--gold-hi);
+}
+
+.xp-table tr.xp-sel > :last-child {
+  box-shadow: inset -2px 0 var(--gold-hi), inset 0 2px var(--gold-hi), inset 0 -2px var(--gold-hi);
+}
+
+.xp-pick {
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.xp-said {
+  min-height: 2.8em;
+}
+
 .xp-fb summary,
 .train-opts summary {
   min-height: 44px;

@@ -29,6 +29,7 @@ type Option struct {
 	SE    float64 // standard error of the difference with the best option (paired); 0 for the best
 	Outcome
 	Parts []float64 // a card: its value per part (see searchWhy), in the order of the part constants
+	Why   string    // a card below the best: why the best brings more (optionWhy); else ""
 }
 
 // Explain returns the reasoning for the decision of the player of v, whose
@@ -131,6 +132,9 @@ func explainPlay(v *game.View, seed uint64) Explanation {
 		o.Card = &res[i].card
 		for k := range o.Parts {
 			o.Parts[k] = res[i].part(k)
+		}
+		if i != best {
+			o.Why = m.optionWhy(res, best, i)
 		}
 		e.Options = append(e.Options, o)
 	}

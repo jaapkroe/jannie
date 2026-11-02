@@ -502,7 +502,18 @@ func New(p Persona, lvl Level, seed uint64) Player
 //     vooral in de roem van deze slag"). A gain in nat without more or
 //     less nat is in what the hands that go nat are worth ("vooral doordat
 //     alle punten en roem naar jullie gaan als de tegenstanders nat gaan
-//     (100%)").
+//     (100%)"). Then what the playouts of the two cards do differently in
+//     the same deals (diff.go: the search keeps per deal which of the
+//     player's cards their team wins, who wins the last trick and the roem
+//     in the card's own trick): the difference that brings the most, when
+//     it is at least 2 points, a quarter of what the card brings more in
+//     points and roem before nat and pit, and two paired SE, and its
+//     shares as written go the same way ("Je ♣10 gaat in 100% van de verdelingen naar de tegenstanders als je
+//     ♣9 speelt, en in 51% als je ♣10 speelt.", "Jullie halen de laatste
+//     slag in …", "De tegenstanders maken roem in deze slag in 30% van de
+//     verdelingen als je ♥10 speelt, en in 5% als je ♥A speelt."). The two
+//     cards compared count together, one played now and the other later;
+//     the one named must gain clearly and the other lose at most 2 points.
 //   - What the card signals at the table (§8) is added: true, or a
 //     warning when the partner would read something untrue.
 // Every play hint opens with "Speel ♠V: ". The search values every option
@@ -575,6 +586,11 @@ type Option struct {
     Parts []float64 // a card: points in its trick, in later tricks, roem in its trick, in later tricks,
                     // all that under nat when the hand goes nat, and the pit bonus (searchWhy's parts);
                     // they sum to Value less what was scored before it
+    Why   string    // a card below the best: why the best brings more, as a hint's search reason
+                    // ("♣8: volgens de berekening levert dat …", then "Dat verschil is kleiner dan twee
+                    // keer de standaardfout en kan toeval zijn." when it is, then the difference in
+                    // the playouts); "… en … zijn volgens de berekening even goed: …" under half a
+                    // point; else ""
 }
 func Explain(v game.View) Explanation
 // What the cards dealt to v.Seat are worth to its team against an average
@@ -715,7 +731,7 @@ type Advice struct{ Card *game.Card; Suit *game.Suit; Play *bool; Text string }
 type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool }                   // as bot.Choice
 type Grade struct{ Stake, Lost, Gain float64; Better Choice; Text string; Nat float64 } // as bot.Grade
 type Explanation struct{ Normaal Choice; Rule string; Sterk Choice; SterkWhy string; Hint Choice; HintText, HintWhy string; Worlds int; Options []Option } // as bot.Explanation
-type Option struct{ Choice; Value, SE float64; Outcome; Parts []float64 }
+type Option struct{ Choice; Value, SE float64; Outcome; Parts []float64; Why string }
 type ChatEvent struct{ Kind string; Mine bool; Text string; Points int; InHand, Playing bool } // as bot.ChatEvent
 type Signal struct{ Seat game.Seat; Card game.Card; Kind string; Means game.Card }           // as bot.Signal
 type AI interface {
@@ -1246,7 +1262,7 @@ client rotates so `you` is at the bottom.
 | `saved` | `what`: `"feedback"`: kept in the game log |
 | `rtc` | `from` (the sender's session), `seat` (the sender's), `desc` as sent: to the session named only (§6 Calls) |
 | `handReview` | `hand`, `pending` (that hand's grades still out), `replay`: the hand as in `review.replay` (below), with your graded decisions in `choices`; to you alone (client `handReview` above) |
-| `why` | Expert and training: `hand`, `trick` (as asked), `seat` (yours), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `sterkWhy`, `hint`, `hintText`, `hintWhy` (both "" but for a card, see §9 Expert), `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only |
+| `why` | Expert and training: `hand`, `trick` (as asked), `seat` (yours), `played` (the choice made, null: awaited now), `normaal`, `rule`, `sterk`, `sterkWhy`, `hint`, `hintText`, `hintWhy` (both "" but for a card, see §9 Expert), `worlds`, `options`: `[{card\|suit\|play, value, se, us, them, natUs, natThem, parts, why}]` — `Explanation` (§4.2) with points rounded to tenths and nat as shares of the deals (to thousandths); `parts` for cards only, `why` for a card below the best |
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
 
@@ -2205,7 +2221,12 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
   option played marked *gespeeld* or *gekozen*, the best value in gold; on
   a phone the table scrolls sideways) and *Over 400 verdelingen van de
   kaarten die jij niet kon zien.* (`worlds`) with an ⓘ on what the numbers
-  mean. Last
+  mean. With a card's `why`, every card's row is a touch target (44 px
+  high, its card a button): tapped, it is framed and the line under the
+  table says why the best brings more (its `why`; the best itself *♣8 heeft
+  de hoogste waarde.*). The card played starts picked, else normaal's
+  card, when it has a `why`; else the line says *Tik op een kaart in de
+  tabel: …*. The pick stays with the answer. Last
   a fold-out *Commentaar bij deze zet*: one feedback form for the sheet
   (*Wat klopt er volgens jou niet, of wat is beter?*, with the line *Je
   opmerking wordt met je naam bewaard, …* under it), sent with the hand
