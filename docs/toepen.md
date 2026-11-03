@@ -268,7 +268,18 @@ bot's toep is not simply real, a hand with little chance (below 15%)
 toeps now and then at any stake (sterk 2.5–9.5%, normaal 4–14% by
 boldness; × 0.6 above stake 2, × 0.25 when being caught would put it
 out), a hand just under the bar sometimes toeps anyway, and now and then a
-hopeless hand overtoeps while the stake is at most 3.
+hopeless hand overtoeps while the stake is at most 3. **Never pointless**: no toep or overtoep
+(bluff or not) when the bot cannot take the last trick any more and the
+card that will is one nobody can beat (no unseen card of its suit is
+higher): its player knows and will not pass, so a raise only adds to the
+bot's own loss. Asked about a toep with the last trick lost for sure, a
+bot passes. **Caution**: going out of the match weighs eight points on
+top of the points (`outCost`); distrust of a known bluffer never makes a
+bot call a stake that would put it out (and is at most 0.7); makkelijk's
+random calls stop there too; normaal reads a toep as sharply as sterk (it
+overrated its chances against a toep before); and sterk toeps only above
+60% (more with fewer players) and weighs the risk of going along by 1.25
+− 0.15 × boldness, normaal by 1.2 − 0.25 × boldness.
 In the koningsspel sterk tries every choice of cards to lay away in the
 same 24 sampled deals and keeps the eight that take the last trick most
 often (against normaal it wins 102 of 150 koningsspellen where the
@@ -281,11 +292,10 @@ goes along when it must. A real vuile was is always claimed (makkelijk
 against a bluff rate. The persona's aggression lowers the bar for toepen
 and raises the bluffs. The arena test (2 × 1,500 and 2 × 700 duplicate
 rounds at four) has sterk take fewer points than normaal, and normaal than
-makkelijk (with overtoepen, the memory and the bluffs: sterk 2.71 against
-normaal 2.80, normaal 2.57 against makkelijk 3.02 penalty points per round
-for two seats; the arena keeps no record, so a bluff there buys nothing:
-it costs sterk about 0.03 a round, the price of being unreadable to
-people). A
+makkelijk (sterk 2.20 against normaal 2.34, normaal 2.40 against
+makkelijk 2.90 penalty points per round for two seats; the arena keeps no
+record, so a bluff there buys nothing: it costs sterk about 0.03 a round,
+the price of being unreadable to people). A
 sterk decision takes about 4 ms.
 
 ## 6. The site (`web/toepen`)

@@ -134,11 +134,7 @@ func (p *Player) weight(v *toepen.View, w *world) float64 {
 	for _, t := range v.Toeps {
 		if t.Seat != v.Seat && v.In(t.Seat) {
 			b := toepBluffRate(v, t.Seat)
-			read := 0.35 + toepStrength(w[t.Seat])
-			if p.lvl == Normaal {
-				read = 0.7 + 0.5*toepStrength(w[t.Seat]) // reads a toep half as sharply
-			}
-			x *= b + (1-b)*read
+			x *= b + (1-b)*(0.35+toepStrength(w[t.Seat]))
 		}
 	}
 	return x
@@ -300,15 +296,84 @@ func combinations(hand []game.Card, n int) [][]game.Card {
 // limit: the points, and being out of the match as much as five more.
 func cost(points, n, limit int) float64 {
 	if points+n >= limit {
-		return float64(limit-points) + 5
+		return float64(limit-points) + outCost
 	}
 	return float64(n)
 }
 
+// outCost is what going out of the match weighs on top of the points: a
+// lot, so that no bot plays for a stake that ends its match lightly.
+const outCost = 8
+
+// lastTrick reports whether v is in the round's last trick.
+func lastTrick(v *toepen.View) bool {
+	size := v.Size
+	if size == 0 {
+		size = toepen.HandSize
+	}
+	return len(v.Tricks) == size-1
+}
+
+// lostForSure reports whether v.Seat can no longer take the last trick:
+// its card on the table, or the one it holds, does not beat the card that
+// wins it now, and later cards can only take it further away.
+func lostForSure(v *toepen.View) bool {
+	if !lastTrick(v) || len(v.Current.Cards) == 0 || !v.In(v.Seat) {
+		return false
+	}
+	t := v.Current
+	if !t.Played(v.Seat) {
+		if len(v.Hand) != 1 {
+			return false
+		}
+		t.Cards = append(slices.Clone(t.Cards), game.Played{Seat: v.Seat, Card: v.Hand[0]})
+	}
+	w, ok := t.Winning(v.In)
+	return ok && w != v.Seat
+}
+
+// knownWinner reports whether the card that wins the last trick now cannot
+// be beaten by any card the table has not seen: its player knows it wins,
+// and a toep will not make it pass.
+func knownWinner(v *toepen.View) bool {
+	w, ok := winningCard(v.Current, v.In)
+	if !ok || !lastTrick(v) {
+		return false
+	}
+	seen := map[game.Card]bool{}
+	for _, tr := range append(slices.Clone(v.Tricks), v.Current) {
+		for _, p := range tr.Cards {
+			seen[p.Card] = true
+		}
+	}
+	for _, c := range v.Checks {
+		for _, x := range c.Cards {
+			seen[x] = true
+		}
+	}
+	for s := range v.Players {
+		if s != int(v.Seat) {
+			for _, x := range v.Open[s] {
+				seen[x] = true
+			}
+		}
+	}
+	for _, c := range game.NewDeck() {
+		if !seen[c] && toepen.Beats(c, w) {
+			return false
+		}
+	}
+	return true
+}
+
+// pointless reports whether raising the stake can only cost v.Seat more:
+// it cannot take the last trick, and who will knows it.
+func pointless(v *toepen.View) bool { return lostForSure(v) && knownWinner(v) }
+
 // Toep decides, on v.Seat's turn to play, whether to toep first.
 func (p *Player) Toep(v toepen.View) bool {
-	if !v.CanToep {
-		return false
+	if !v.CanToep || pointless(&v) {
+		return false // a bluff nobody falls for only raises the bot's own loss
 	}
 	q := p.winChance(&v)
 	bar := 0.62 - 0.12*p.aggr
@@ -319,7 +384,7 @@ func (p *Player) Toep(v toepen.View) bool {
 		// Toepen asks the others to pay the stake or play for more: with a
 		// fair chance, more of them pass than it costs. Fewer players in,
 		// a higher bar: one opponent left is a coin flip for more points.
-		bar = 0.5 + 0.06*float64(3-min(v.InCount(), 3)) - 0.1*p.aggr
+		bar = 0.6 + 0.06*float64(3-min(v.InCount(), 3)) - 0.1*p.aggr
 	}
 	if q >= bar {
 		return true
@@ -362,12 +427,14 @@ func passCost(v *toepen.View) int {
 // distrust scales the risk of going along by what the table saw of the
 // toeper's bluffs: below 1 for one who bluffs more than one in eight,
 // above for one who never did.
+// Not when losing would put it out: a bluffer's toep still ends the match
+// of whoever calls it and loses.
 func (p *Player) distrust(v *toepen.View) float64 {
-	if v.Toeper == game.NoSeat {
+	if v.Toeper == game.NoSeat || p.outIfLost(v, v.Stake) {
 		return 1
 	}
 	b := toepBluffRate(v, v.Toeper)
-	return min(max(1-1.2*(b-priorBluffs/priorSeen), 0.5), 1.15)
+	return min(max(1-1.2*(b-priorBluffs/priorSeen), 0.7), 1.15)
 }
 
 // outIfLost reports whether losing stake puts v.Seat out of the match.
@@ -395,7 +462,7 @@ func (p *Player) Overtoep(v toepen.View) bool {
 	}
 	// Now and then a bluff back, while the stake is low and being caught
 	// would not put it out: an overtoep is not always the nuts either.
-	return q < 0.1 && v.Stake <= 3 && !p.outIfLost(&v, v.Stake+1) && p.rng.Float64() < 0.02+0.04*p.aggr
+	return q < 0.1 && v.Stake <= 3 && !p.outIfLost(&v, v.Stake+1) && !pointless(&v) && p.rng.Float64() < 0.02+0.04*p.aggr
 }
 
 // Answer decides whether to go along with a toep (true) or pass, taking
@@ -412,16 +479,20 @@ func (p *Player) Answer(v toepen.View) bool {
 	if fold >= stay {
 		return true // passing puts it out as surely as losing
 	}
+	if lostForSure(&v) {
+		return false // the last trick is lost: passing costs less
+	}
 	q := p.winChance(&v)
 	if p.lvl == Makkelijk {
-		return q > 0.35-0.15*p.aggr || p.rng.Float64() < 0.15
+		return q > 0.35-0.15*p.aggr || p.rng.Float64() < 0.15 && !p.outIfLost(&v, v.Stake)
 	}
 	// Going along costs the stake when the last trick is lost (and maybe
-	// more after another toep); passing costs the stake before. Against
-	// whoever the table saw bluff often, a bot goes along more readily.
-	risk := 1.1 - 0.25*p.aggr
+	// more after another toep, so a bit more than that); passing costs the
+	// stake it agreed to. Against whoever the table saw bluff often, a bot
+	// goes along more readily.
+	risk := 1.2 - 0.25*p.aggr
 	if p.lvl == Sterk {
-		risk = 1.05 - 0.15*p.aggr
+		risk = 1.25 - 0.15*p.aggr
 	}
 	risk *= p.distrust(&v)
 	return (1-q)*stay*risk < fold

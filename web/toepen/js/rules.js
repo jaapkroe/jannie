@@ -332,6 +332,8 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
       ['Toepen', [
         'Toep als je een goede kans hebt op de laatste slag: ruwweg zes op de tien. Met minder spelers moet je zekerder zijn: tegen één ander is het gauw kop of munt om meer punten.',
         'Een bluf met een kansloze hand kan, het liefst bij een lage inzet: wie past, betaalt toch.',
+        'Bluf niet als iemand de laatste slag zeker heeft (een 10 die niemand meer kan slaan): die past toch niet, en jij verliest alleen meer.',
+        'Haal je de laatste slag zeker niet meer, pas dan op een toep: passen kost minder dan verliezen.',
         'Overtoep alleen met een (bijna) zekere laatste slag, en hoe hoger de inzet, hoe zekerder: heen en weer toepen kost al snel meer dan het potje waard is.']],
       ['Meegaan of passen', [
         'Vergelijk wat passen kost (de inzet van vóór de toep) met wat meegaan gemiddeld kost: de nieuwe inzet maal je kans om te verliezen.',

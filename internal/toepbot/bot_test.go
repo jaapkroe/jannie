@@ -438,3 +438,104 @@ func TestMemoryAndBluffs(t *testing.T) {
 		t.Errorf("bluffs at stake 3: %d of 400", bluffs)
 	}
 }
+
+// lastTrickWithTen plays a round of two to its last trick, in which seat 1
+// leads the 10 of spades: nobody can beat it, and everyone knows it.
+func lastTrickWithTen(t *testing.T, points [toepen.MaxPlayers]int) *toepen.Deal {
+	t.Helper()
+	d := toepen.NewDeal(2, toepen.Rules{Limit: 10}, 0, points, deck("9H 8H 7H TS", "7D QD KD JD"))
+	for _, p := range []struct {
+		s game.Seat
+		c string
+	}{{1, "9H"}, {0, "7D"}, {1, "8H"}, {0, "QD"}, {1, "7H"}, {0, "KD"}, {1, "TS"}} {
+		if err := d.Play(p.s, cards(p.c)[0]); err != nil {
+			t.Fatal(p, err)
+		}
+	}
+	return d
+}
+
+// No bluff that cannot work: after an unbeatable 10 in the last trick a
+// toep only raises the bot's own loss, so no level toeps; and asked about
+// a toep there, every level passes.
+func TestNoPointlessToep(t *testing.T) {
+	v := lastTrickWithTen(t, [toepen.MaxPlayers]int{}).View(0)
+	if !v.CanToep || !pointless(&v) {
+		t.Fatalf("the spot: canToep %v pointless %v", v.CanToep, pointless(&v))
+	}
+	for _, lvl := range []Level{Makkelijk, Normaal, Sterk} {
+		for k := range 500 {
+			if New(1, lvl, uint64(k)).Toep(v) {
+				t.Fatalf("%v toeps against a known winner", lvl)
+			}
+		}
+	}
+	// Seat 1 toeps, then leads the 10; seat 0 went along.
+	d := toepen.NewDeal(2, toepen.Rules{Limit: 10}, 0, [toepen.MaxPlayers]int{}, deck("9H 8H 7H TS", "7D QD KD JD"))
+	for _, p := range []struct {
+		s game.Seat
+		c string
+	}{{1, "9H"}, {0, "7D"}, {1, "8H"}, {0, "QD"}, {1, "7H"}, {0, "KD"}} {
+		if err := d.Play(p.s, cards(p.c)[0]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := d.Toep(1); err != nil { // seat 1 leads the last trick: it toeps first
+		t.Fatal(err)
+	}
+	if err := d.Answer(0, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Play(1, cards("TS")[0]); err != nil {
+		t.Fatal(err)
+	}
+	// Now seat 0 may toep back (seat 1 toept last): pointless.
+	v = d.View(0)
+	if v.CanToep {
+		for _, lvl := range []Level{Makkelijk, Normaal, Sterk} {
+			if New(1, lvl, 1).Toep(v) {
+				t.Errorf("%v toeps back against the 10", lvl)
+			}
+		}
+	}
+	// Asked about a toep in a lost last trick: pass.
+	v.Phase, v.Toeper, v.Stake, v.PassCost = toepen.PhaseToep, 1, 3, 2
+	v.Record[1] = toepen.Record{Toeps: 6, ToepBluffs: 6}
+	for _, lvl := range []Level{Makkelijk, Normaal, Sterk} {
+		for k := range 200 {
+			if New(1, lvl, uint64(k)).Answer(v) {
+				t.Fatalf("%v goes along into a lost last trick", lvl)
+			}
+		}
+	}
+}
+
+// No bot calls into going out with a weak hand when passing keeps it in:
+// at 8 of 10, a toep to 2 with a hopeless hand is passed for 1.
+func TestNoCallIntoGoingOut(t *testing.T) {
+	d := toepen.NewDeal(3, toepen.Rules{Limit: 10}, 2, [toepen.MaxPlayers]int{8, 0, 0}, deck("JH QS KD 8C", "TH 9H 8H 7H", "TS 9S 8S 7S"))
+	if err := d.Play(0, cards("8C")[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Toep(1); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Answer(2, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.Overtoep(2); err == nil {
+		t.Fatal("a second answer")
+	}
+	v := d.View(0)
+	if v.Turn != 0 || v.PassCost != 1 {
+		t.Fatalf("seat 0 asked, pass cost %d", v.PassCost)
+	}
+	v.Record[1] = toepen.Record{Toeps: 6, ToepBluffs: 5} // even against a bluffer
+	for _, lvl := range []Level{Makkelijk, Normaal, Sterk} {
+		for k := range 200 {
+			if New(1, lvl, uint64(k)).Answer(v) {
+				t.Fatalf("%v calls into going out", lvl)
+			}
+		}
+	}
+}
