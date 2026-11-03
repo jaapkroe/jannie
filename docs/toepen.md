@@ -8,6 +8,9 @@ messages of §7), from its own server binary, web image and pod; how the
 sites share code is in [`games.md`](games.md). English for code and docs;
 every user-visible string Dutch.
 
+Besides the table, the site keeps the score of toepen played at a real
+table, with real cards (*Score bijhouden*, §9).
+
 Sources: <https://nl.wikipedia.org/wiki/Toepen> and the common house rules;
 where groups differ, the choice is written down here and the commonest
 variants are options.
@@ -304,7 +307,7 @@ The shell of design §9 with toepen's `game.js`:
 
 - Home: the wordmark *Toepen* and *Wie haalt de laatste slag?*, the name,
   *Snel spelen* (its subtitle names what differs from the defaults), *Nieuw
-  spel* (full width: there is no Oefenen), *Meedoen* with a code,
+  spel* and *Score bijhouden* (§9; there is no Oefenen), *Meedoen* with a code,
   *Spelregels en bediening*, and in the footer "Toepen zoals aan de
   keukentafel." with the version and *Support deze app*.
 - New-game sheet and lobby: *Spelers* 2–6, *Eruit bij*, *Vuile was*,
@@ -349,7 +352,8 @@ The shell of design §9 with toepen's `game.js`:
   tokens), its own icons (a ten of hearts) and link preview.
 - Page load: 17 requests (html, app.css, cards.css, toepen.css, favicon,
   manifest, a PNG icon, the shell's 6 modules, game.js, table.js, rules.js,
-  the websocket); call.js is lazy.
+  the websocket); call.js is lazy, and so are score.js, scorecalc.js and
+  scorechart.js (§9), loaded when the score sheet opens.
 
 ## 7. Deployment
 
@@ -358,7 +362,9 @@ dev port 18095, e2e port 18096 (`test/e2e/toepen.mjs`), volume
 `toepen-games`; `make install GAME=toepen`, `make deploy GAME=toepen`
 (deploy/README-deploy.md). Outside the repo: the NPM proxy host
 toepen.kroes.dev → `http://127.0.0.1:8095` with websockets on, and the
-name's rate tier in shrek-infra before the link goes out.
+name's rate tier in shrek-infra before the link goes out. nginx gives
+`/api/score` (§9) the long timeouts of `/ws`; the volume also holds the
+score sheets (`scores/`).
 
 ## 8. Redenering van de AI (expert mode)
 
@@ -391,3 +397,90 @@ options, worlds}`, `options` each `{label | cards, value, points, best}`:
   koningsspel, each with its share of 48 deals.
 
 The rules of thumb are also the manual's tab *Tips*.
+
+## 9. Score bijhouden (`internal/scoresheet`, `js/score.js`)
+
+For toepen played at a real table, with real cards: the app only keeps the
+score. The **host** makes a sheet (2–8 names, eruit bij 10 or 15), chooses
+and changes the names and enters every round; everyone with its code
+**watches** it live on their own phone and changes nothing. No seats, no
+bots, no chat, no call, no room: its own service in the toepen server.
+
+**Service** (`internal/scoresheet`, mounted by `cmd/toepen` through
+`serve.Site.Extras`): a websocket at `/api/score`, the same origin check
+as `/ws`. Client → server, JSON with `t`:
+
+| `t` | fields | who |
+|---|---|---|
+| `new` | `limit` (10, 15), `names` (2–8, each 1–20 characters, no two alike regardless of case) | anyone: makes a sheet, the sender its host |
+| `open` | `code`, `token` (optional) | anyone: watch the sheet; with its token, as its host |
+| `round` | `winner`, `gains`, `passed` (one per player), `stake` (0–30, optional) | host |
+| `edit` | `i` and the fields of `round` | host |
+| `delete` | `i` | host |
+| `names` | `names`: renamed and added players, never fewer (a player's points stay theirs; one added gets 0 in every round so far) | host |
+| `limit` | `limit` | host |
+| `restart` | — : a new match, the rounds go, the players and the limit stay | host |
+| `ping` | — | anyone; answered `pong` |
+
+Server → client: `sheet` with `sheet` `{code, limit, names, rounds:
+[{winner, gains, passed, stake}], version, updated}`, to everyone watching
+after every change; the answer to `new` adds `host: true` and the `token`,
+the answer to `open` `host: true` when the token is right. `error` with
+`msg` (Dutch) answers only the sender. A round's `winner` is a player who
+did not go away (-1, a row of corrections only, is accepted but the page
+does not make one); `gains` are the penalty points of that round, -30 to
+30 (negative: the boer's point off), and only the gains count: the stake
+is kept for editing and the tooltip.
+
+Codes are four letters without I and O (24 letters), a token 16 random
+bytes; codes are opened regardless of case. Limits: 5000 sheets, 40
+watchers a sheet, 300 rounds, 2000 connections and 20 per IP address,
+messages of 8 kB and a burst of 20 then one per 200 ms per connection.
+The server pings a connection every 25 s; nginx gives `/api/score` the
+timeouts of `/ws`. A sheet is written to `<games>/scores/<CODE>.json`
+(mode 0600, atomically) on every change and read back at start, so a
+restart or deploy keeps it; one untouched for **seven days** is removed
+(hourly, and at start). Without `-games` the sheets live in memory only.
+
+**The page** (`js/score.js`, the pure sums in `js/scorecalc.js`, the chart
+in `js/scorechart.js`; loaded on demand). *Score bijhouden* on the home
+screen opens the start: the sheets of this device (*Verder met*, from
+`kj.scores`: code, token if host, names; a week at most), a new sheet
+(names, *Eruit bij*, *Begin met bijhouden*) and *Meekijken* with a code.
+A link `https://toepen.kroes.dev/?score=CODE` opens the sheet at once; the
+URL carries `?score=` while it is open. The overlay of a sheet:
+
+- the code, *Live* or *Verbinden…* (the page pings every 20 s and
+  reconnects, a little later each time, also when it comes back from the
+  background), *Laat meekijken* (share or copy the link) for the host,
+  *Je kijkt mee* for a watcher;
+- when one player is left under the limit: *X wint de partij!* (and
+  confetti for whoever sees it happen); the host's *Nog een partij* asks
+  once more and sends `restart`;
+- the host's **Potje N**: *Inzet* with − and + (it starts at 2 when
+  someone still in is on armoede), per player still in 🏆 (who took the
+  last trick), *Weg* (went away on a toep) and the points with − and +.
+  The points follow the choices until set by hand: nothing for the winner,
+  the stake for who played to the end and lost, the stake minus one (at
+  least 1) for who went away. Changing the stake sets every row back to
+  that rule; − and + cover the rest (the boer, a vuile was). *Potje N
+  opslaan* needs a winner. A tap on a round in the table opens it here
+  (*Opslaan*, *Potje weghalen* after a second tap, *Annuleren*);
+- **Stand** as at the table's game over (`.tp-sum-list`: the bars of the
+  points, green for a point off with the boer), with *armoede*, *eruit*
+  and the lijntoeper's *N× achter elkaar weg*;
+- **Verloop**: a line per player of the points after every round, the
+  limit dashed, a line ending where its player went out; an open ring
+  where a lijntoeper went away again; legend, names at the line ends for
+  up to four players, a crosshair with every player's points and that
+  round's (🏆, weg, +n) under the pointer or the arrow keys. Colours: the
+  eight categorical slots in fixed order, player k slot k (hence at most
+  eight players: 32 cards, four each), checked for colour-blind
+  separation and 3:1 contrast on the chart's surface (`--panel-solid`);
+  the avatars in the standings and the table wear the same colour;
+- **Potjes**: the rounds as at the table (🏆, +n, Σ), a round in which a
+  player went away shaded, and **lijntoepen** in amber with the count:
+  two or more rounds in a row went away (a round played to the end breaks
+  the run; rounds after a player is out do not count);
+- for the host *Eruit bij*, *Spelers* (rename, add) and *Nieuwe partij*.
+

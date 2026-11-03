@@ -658,6 +658,8 @@ function boot() {
   } else {
     if (location.pathname !== '/') history.replaceState(history.state, '', '/');
     home.show();
+    // A game may answer links of its own (game.home.route; toepen: ?score=).
+    game.home.route?.(new URLSearchParams(location.search));
   }
   net.connect();
   document.getElementById('boot')?.remove();

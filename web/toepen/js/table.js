@@ -456,7 +456,7 @@ function refreshReady(s) {
 
 // The penalty points as bars, red up to points; minus green bars after
 // them: points just taken off (the boer).
-function meter(points, limit, minus = 0) {
+export function meter(points, limit, minus = 0) {
   const el = h('span', { class: 'tp-meter', title: `${points} van ${limit}${minus ? `, ${minus} eraf met de boer` : ''}` });
   for (let k = 0; k < limit; k++) el.append(h('i', { class: k < points ? 'on' : k < points + minus ? 'minus' : '' }));
   return el;

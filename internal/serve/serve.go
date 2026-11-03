@@ -27,6 +27,17 @@ type Site struct {
 	Game  string // the game: its directory in the web directory (-static), and its name in the log ("klaverjas")
 	Title string // the site's name, in the title of the 404 page ("Klaverjas")
 	Verb  string // the 404 page's way back: "Terug naar klaverjassen"
+	// Extras are services the site runs besides the game's table (toepen:
+	// its score sheets), made from the flags when the server starts.
+	Extras func(log *slog.Logger, f Flags) []Extra
+}
+
+// Extra is a service besides the table: its handler at Path (under /api/,
+// which nginx passes on, websockets too), and its shutdown.
+type Extra struct {
+	Path     string
+	Handler  http.Handler
+	Shutdown func(context.Context)
 }
 
 // Flags are the command line of a game server.
@@ -103,6 +114,13 @@ func Run(log *slog.Logger, site Site, version string, game server.Game, f Flags)
 	mux := http.NewServeMux()
 	mux.Handle("/ws", api)
 	mux.Handle("/api/", api)
+	var extras []Extra
+	if site.Extras != nil {
+		extras = site.Extras(log, f)
+	}
+	for _, x := range extras {
+		mux.Handle(x.Path, x.Handler)
+	}
 	if static != nil {
 		mux.Handle("/", static)
 	} else {
@@ -137,6 +155,11 @@ func Run(log *slog.Logger, site Site, version string, game server.Game, f Flags)
 	sctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 	srv.Shutdown(sctx)
+	for _, x := range extras {
+		if x.Shutdown != nil {
+			x.Shutdown(sctx)
+		}
+	}
 	if err := hs.Shutdown(sctx); err != nil && !errors.Is(err, context.DeadlineExceeded) {
 		return err
 	}

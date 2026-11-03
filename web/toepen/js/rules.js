@@ -384,6 +384,9 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
       ['Stand en meer', [
         'Bovenaan staan jouw strafpunten, het potje en de inzet. Tik op je punten voor de stand van iedereen en elk potje.',
         'Onder de drie puntjes vind je de stand, deze spelregels, de instellingen en het geluid. Met het ballonnetje open je de chat.']],
+      ['Score bijhouden', [
+        'Speel je met echte kaarten aan een echte tafel? Met Score bijhouden op het beginscherm houdt één iemand de strafpunten bij: namen invullen, en na elk potje de inzet, 🏆 bij wie de laatste slag haalde, Weg bij wie passte, en met − en + wat er nog anders ging (de boer, een vuile was).',
+        'De anderen kijken mee met de code of de link, en zien de stand, het verloop in een grafiek en elk potje. Wie twee keer of vaker achter elkaar weggaat, valt op als lijntoeper.']],
     ] },
   ];
 }

@@ -255,6 +255,8 @@ Each game's server appends a compact record of every game to its own volume, `G-
 - the results (for klaverjas also the Spelanalyse);
 - the players' feedback (in klaverjas's expert mode also about one of their own decisions).
 
+toepen's volume also holds the score sheets of games at a real table (docs/toepen.md §9) in `scores/<CODE>.json`: the names a host typed in and the rounds, removed seven days after their last change. The prune of the game log leaves that directory alone.
+
 It is used for statistics and to improve the games (looking at games again, tuning the engines). It grows by a few kB per game and is kept for **at most 12 months**: each server removes the month files older than the current month and the eleven before it, when it starts and every hour, and says so in its log (`game log: removed an old month`).
 
 ```sh
