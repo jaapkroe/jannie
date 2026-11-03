@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Plays full matches of toepen over the websocket protocol (docs/toepen.md)
-// against a toepen server and checks invariants on every update. No
-// dependencies: Node's global WebSocket. The toepen site's `make e2e`.
+// against a toepen server and checks invariants on every update, then keeps
+// a score sheet with watchers (§9). No dependencies: Node's global
+// WebSocket. The toepen site's `make e2e`.
 //
 //   node test/e2e/toepen.mjs http://127.0.0.1:18096          # the standard suite
 //   node test/e2e/toepen.mjs --url ws://127.0.0.1:18096/ws --players 5 --humans 2 --ai sterk --limit 15 [--no-was] [--no-armoede] [--no-koning] [--no-boer] [--lijntoep]
@@ -201,7 +202,91 @@ async function play(cfg, n) {
   return true;
 }
 
+// Score bijhouden (docs/toepen.md §9): a host keeps a sheet at /api/score
+// until one player is left, two watchers see every version of it, and
+// their own changes are refused.
+async function scoreSheet() {
+  const errors = [];
+  const sheetUrl = url.replace(/\/ws$/, '/api/score');
+  const conn = () => {
+    const ws = new WebSocket(sheetUrl);
+    const c = { ws, got: [], waiters: [] };
+    c.open = new Promise((ok, fail) => { ws.onopen = ok; ws.onerror = fail; });
+    ws.onmessage = e => {
+      const m = JSON.parse(e.data);
+      c.got.push(m);
+      c.waiters = c.waiters.filter(w => (w.pred(m) ? (w.ok(m), false) : true));
+    };
+    c.send = m => ws.send(JSON.stringify(m));
+    c.until = (pred, what) => {
+      const had = c.got.find(pred);
+      if (had) return Promise.resolve(had);
+      return new Promise((ok, fail) => {
+        c.waiters.push({ pred, ok });
+        setTimeout(() => fail(new Error(`no ${what}`)), 5000);
+      });
+    };
+    return c;
+  };
+  const t0 = Date.now();
+  const names = ['Jaap', 'Kees', 'Truus', 'Bram'];
+  const host = conn();
+  await host.open;
+  host.send({ t: 'new', limit: 10, names });
+  const made = await host.until(m => m.t === 'sheet', 'sheet');
+  if (!made.host || !made.token || !/^[A-HJ-NP-Z]{4}$/.test(made.sheet.code)) errors.push(`new: ${JSON.stringify(made)}`);
+  const code = made.sheet.code;
+  const watchers = [conn(), conn()];
+  for (const w of watchers) {
+    await w.open;
+    w.send({ t: 'open', code: code.toLowerCase() });
+    const m = await w.until(x => x.t === 'sheet', 'sheet for a watcher');
+    if (m.host || m.token) errors.push('a watcher became host');
+  }
+  watchers[0].send({ t: 'delete', i: 0 });
+  await watchers[0].until(m => m.t === 'error', 'refusal for a watcher');
+  // Rounds until one player is left: random winners, some go away.
+  const pts = names.map(() => 0);
+  let version = made.sheet.version;
+  let rounds = 0;
+  while (pts.filter(p => p < 10).length > 1 && rounds < 60) {
+    const ins = pts.flatMap((p, k) => (p < 10 ? [k] : []));
+    const winner = pick(ins);
+    const stake = 1 + Math.floor(rng() * 3);
+    const passed = names.map((_, k) => pts[k] < 10 && k !== winner && rng() < 0.3);
+    const gains = names.map((_, k) => (pts[k] >= 10 || k === winner ? 0 : passed[k] ? Math.max(1, stake - 1) : stake));
+    gains.forEach((g, k) => { pts[k] += g; });
+    host.send({ t: 'round', winner, gains, passed, stake });
+    version++;
+    rounds++;
+    for (const c of [host, ...watchers]) {
+      const m = await c.until(x => x.t === 'sheet' && x.sheet.version === version, `version ${version}`).catch(e => { errors.push(e.message); return null; });
+      const got = m && m.sheet.rounds.reduce((acc, r) => acc.map((p, k) => p + r.gains[k]), names.map(() => 0));
+      if (m && got.join() !== pts.join()) errors.push(`points ${got} != ${pts}`);
+    }
+    if (errors.length) break;
+  }
+  if (pts.filter(p => p < 10).length !== 1) errors.push(`no winner after ${rounds} rounds: ${pts}`);
+  // The host again, from a new connection, with its token.
+  const again = conn();
+  await again.open;
+  again.send({ t: 'open', code, token: made.token });
+  const back = await again.until(m => m.t === 'sheet', 'sheet for the host again');
+  if (!back.host || back.sheet.rounds.length !== rounds) errors.push('the host came back without its sheet');
+  for (const c of [host, again, ...watchers]) c.ws.close();
+  const secs = ((Date.now() - t0) / 1000).toFixed(1);
+  if (errors.length) {
+    console.log(`FAIL score sheet: ${errors.slice(0, 5).join('; ')}`);
+    return false;
+  }
+  console.log(`ok   score sheet ${code}: ${rounds} potjes, points ${pts.join('/')}, 2 watchers in step, ${secs} s`);
+  return true;
+}
+
 let good = 0;
 for (const [k, cfg] of suite.entries()) if (await play(cfg, k + 1)) good++;
-console.log(good === suite.length ? `all ${good} matches passed` : `${suite.length - good} of ${suite.length} matches FAILED`);
-process.exit(good === suite.length ? 0 : 1);
+// The standard suite only (one custom match leaves it out).
+const custom = !!(o.players || o.humans || o.url);
+const sheetOk = custom || await scoreSheet();
+console.log(good === suite.length && sheetOk ? `all ${good} matches passed${custom ? '' : ', and the score sheet'}` : `${suite.length - good} of ${suite.length} matches FAILED${sheetOk ? '' : ', the score sheet FAILED'}`);
+process.exit(good === suite.length && sheetOk ? 0 : 1);

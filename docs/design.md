@@ -847,7 +847,9 @@ Personas: their identities (name, emoji, colour, chattiness, speed) are
 (`internal/bot` for klaverjas, `internal/toepbot` for toepen).
 
 `internal/serve` is what every binary shares: `serve.Main(Site{Game, Title,
-Verb}, version, game)` with the flags `-addr 127.0.0.1:8081`, `-games DIR`
+Verb, Extras}, version, game)` (`Extras`: services a site runs besides its
+table, each a path, a handler and a shutdown; toepen's score sheets at
+`/api/score`, docs/toepen.md §9) with the flags `-addr 127.0.0.1:8081`, `-games DIR`
 (the game log), `-static DIR` (dev only: also serve the frontend, the union
 of `DIR/shared` and `DIR/<game>`, a path in both or a missing directory
 being a start-up error; the same `/^[A-Za-z]{4}$/` → index.html rule as

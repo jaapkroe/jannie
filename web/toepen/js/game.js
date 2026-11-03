@@ -1,7 +1,7 @@
 // Toepen at toepen.kroes.dev: what the shell (main.js, home.js, panels.js)
 // needs from the game of this site (design §9, "The game module";
 // docs/toepen.md). No side effects when imported: node tests read it.
-import { h, store, countWord, cap, toast } from './util.js';
+import { h, icon, store, countWord, cap, toast } from './util.js';
 import * as table from './table.js';
 import * as R from './rules.js';
 
@@ -129,6 +129,12 @@ export const lobby = {
   },
 };
 
+// Score bijhouden (score.js, loaded on demand): the score of a game at a
+// real table. From the home's tile, or a link https://SITE/?score=CODE.
+function openScore(code = '') {
+  import('./score.js').then(m => m.open(code)).catch(() => toast('Dat lukte niet. Is er verbinding?', { kind: 'warn' }));
+}
+
 export const home = {
   options: OPTS,
   defaults: DEFAULTS,
@@ -138,6 +144,17 @@ export const home = {
   // The next new game starts from what the room has.
   remember: ({ players, limit, was, armoede, koning, boer, lijntoep, bluf, ai, tempo }) => ({ players, limit, was, armoede, koning, boer, lijntoep, bluf, ai, tempo }),
   help: { label: 'Spelregels en bediening', open: () => table.openRules() },
+  tiles: () => [h('button', { class: 'btn btn-tile', type: 'button', id: 'btn-score', onclick: () => openScore() },
+    icon('score'), h('b', { text: 'Score bijhouden' }), h('small', { text: 'Aan een echte tafel' }))],
+  // At boot on the home: a link to a score sheet opens it. The page's own
+  // history entry goes back to /, so closing the sheet (back) lands there;
+  // the sheet's entry carries ?score= while it is open.
+  route: params => {
+    const code = params.get('score');
+    if (!code) return;
+    history.replaceState(history.state, '', '/');
+    openScore(code);
+  },
   // Five taps on the version: the expert mode on or off (on this device).
   egg: () => {
     const on = store.get('expert', '') !== '1';
