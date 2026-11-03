@@ -30,6 +30,7 @@ type state struct {
 	WasRound    int             `json:"wasRound"`    // the time for a was: 1, more when new cards may be washed again
 	CanRaise    bool            `json:"canRaise"`    // asked about a toep: you may toep again (overtoep)
 	MustStay    bool            `json:"mustStay"`    // asked about a toep: you may not pass (anti-lijntoep)
+	PassCost    int             `json:"passCost"`    // asked about a toep: what passing costs you (the stake you last agreed to)
 	Points      []int           `json:"points"`      // penalty points, now
 	Status      []toepen.Status `json:"status"`      // per seat this round: in, gepast, betrapt, eruit, uit
 	Armoede     []bool          `json:"armoede"`     // per seat: one point from out this round
@@ -152,7 +153,7 @@ func (p *play) State(i game.Seat) any {
 		s.Lay = d.Lay(i)
 	}
 	if s.Turn == int(i) && d.Phase() == toepen.PhaseToep {
-		s.CanRaise, s.MustStay = d.CanRaise(i), d.MustStay(i)
+		s.CanRaise, s.MustStay, s.PassCost = d.CanRaise(i), d.MustStay(i), d.PassCost(i)
 	}
 	s.Why = p.whyFor(i)
 	return s
@@ -230,12 +231,14 @@ type evToep struct {
 }
 
 // evAnswer: seat goes along with the toep (stay), or passes and takes
-// points.
+// points (the stake it last agreed to); auto: it went along unasked,
+// because passing would have put it out.
 type evAnswer struct {
 	Type   string    `json:"type"` // "answer"
 	Seat   game.Seat `json:"seat"`
 	Stay   bool      `json:"stay"`
 	Points int       `json:"points"`
+	Auto   bool      `json:"auto,omitempty"`
 }
 
 // evArmoede: these seats are one point from out; the stake starts at

@@ -655,9 +655,21 @@ body {
   cursor: pointer;
 }
 
-.tp-hand.mine .card.legal:hover,
 .tp-hand .card.selected {
   translate: 0 -12px;
+}
+
+/* Only a real pointer lifts a card on hover: on a touch screen a hover
+   sticks after a tap and would look like a hint. */
+@media (hover: hover) and (pointer: fine) {
+  .tp-hand.mine .card.legal:hover {
+    translate: 0 -12px;
+  }
+}
+
+/* First another choice (a vuile was, a check, a toep): the cards wait. */
+.tp-hand.waiting .card {
+  filter: brightness(0.5) saturate(0.6);
 }
 
 .tp-hand.mine .card.disabled {
@@ -736,11 +748,6 @@ body {
   color: var(--zij-hi);
 }
 
-.tp-sum-gain.minus {
-  color: var(--wij-hi);
-  white-space: nowrap;
-}
-
 .tp-sum-pts {
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -760,6 +767,21 @@ body {
 
 .tp-meter i.on {
   background: var(--zij);
+}
+
+/* A point off with the boer: green. */
+.tp-meter i.minus {
+  background: var(--wij-hi);
+}
+
+.tp-minus {
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  margin-left: 4px;
+  border-radius: 2px;
+  background: var(--wij-hi);
+  vertical-align: -2px;
 }
 
 .tp-st-scroll {

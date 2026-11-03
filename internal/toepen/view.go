@@ -21,6 +21,7 @@ type View struct {
 	CanToep  bool        // Seat may toep now
 	CanRaise bool        // PhaseToep: Seat may toep again instead of answering (Overtoep)
 	MustStay bool        // PhaseToep: Seat may not pass (anti-lijntoep)
+	PassCost int         // what passing costs Seat: the stake it last agreed to
 	Koning   bool        // the koningsspel
 	Size     int         // cards each plays with (eight in the koningsspel)
 	Lay      int         // PhaseDiscard: how many cards Seat lays away now
@@ -64,6 +65,7 @@ func (d *Deal) View(seat game.Seat) View {
 		CanToep:  d.CanToep(seat),
 		CanRaise: d.CanRaise(seat),
 		MustStay: d.MustStay(seat),
+		PassCost: d.accepted[seat],
 		Koning:   d.koning,
 		Size:     d.size,
 		Lay:      d.Lay(seat),

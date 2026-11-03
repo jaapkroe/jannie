@@ -15,7 +15,7 @@ const PHASES = new Set(['lobby', ...IN_HAND, 'handEnd', 'gameOver']);
 // The keys of toepen's state (docs/toepen.md); legal and rule on your turn
 // to play, roster in the lobby.
 const KEYS = ['code', 'phase', 'opts', 'you', 'host', 'players', 'turn', 'takeover', 'nextAt', 'winner', 'handNo',
-  'dealer', 'voorhand', 'stake', 'toeper', 'armoedeToep', 'koning', 'size', 'wasRound', 'canRaise', 'mustStay', 'open', 'lay', 'laid', 'points',
+  'dealer', 'voorhand', 'stake', 'toeper', 'armoedeToep', 'koning', 'size', 'wasRound', 'canRaise', 'mustStay', 'passCost', 'open', 'lay', 'laid', 'points',
   'status', 'armoede', 'washed', 'answered', 'claims', 'canClaim', 'claimant', 'asking', 'checks', 'stock', 'hand',
   'canToep', 'trick', 'lastTrick', 'tricks', 'rounds'];
 const OPTS = ['players', 'ai', 'tempo', 'seed', 'limit', 'was', 'armoede', 'koning', 'boer', 'lijntoep', 'bluf'];

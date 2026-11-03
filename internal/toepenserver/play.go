@@ -32,6 +32,7 @@ type play struct {
 	acts       string        // the round's decisions, for the game log
 	wasGen     int           // bumped when the time for a was opens: late bot answers are dropped
 	told       int           // the settled claims of the round told the table (wasDone)
+	stockTold  bool          // the table was told the stock ran out for a vuile was
 	poorAt     int           // the round whose armoede was announced
 }
 
@@ -94,7 +95,7 @@ func (p *play) deal() {
 	p.d = p.m.Deal(toepen.Shuffle(t.Deals()))
 	p.handNo = p.m.Round
 	t.SetHand(p.handNo)
-	p.acts, p.last, p.collected, p.told = "", nil, false, 0
+	p.acts, p.last, p.collected, p.told, p.stockTold = "", nil, false, 0, false
 	t.SetPhase(p.phase())
 	t.Pause(stepDealt, t.Pace().Deal)
 	t.Emit(evDeal{Type: "deal", HandNo: p.handNo, Dealer: p.d.Dealer(), Koning: p.d.Koning()})
@@ -177,6 +178,7 @@ func (p *play) Resume(s server.Step) {
 func (p *play) proceed() {
 	t, d := p.t, p.d
 	t.SetPhase(p.phase())
+	p.tellStockOut()
 	switch {
 	case p.told < len(d.Checks()):
 		p.tellShown() // vuile was on armoede, laid open on the table
@@ -425,6 +427,7 @@ func (p *play) Apply(i game.Seat, a any) error {
 		t.SetPhase(phaseToep)
 		t.Pause(stepAnnounced, pace.Announce)
 		t.Emit(evToep{Type: "toep", Seat: i, Stake: d.Stake()})
+		p.autoStays()
 		t.BotSay(i, server.ChatEvent{Kind: "toep", Mine: true, Points: d.Stake()}, 200*time.Millisecond)
 	case actOvertoep:
 		if err := d.Overtoep(i); err != nil {
@@ -434,9 +437,10 @@ func (p *play) Apply(i game.Seat, a any) error {
 		t.SetPhase(phaseToep)
 		t.Pause(stepAnnounced, pace.Announce)
 		t.Emit(evToep{Type: "toep", Seat: i, Stake: d.Stake(), Over: true})
+		p.autoStays()
 		t.BotSay(i, server.ChatEvent{Kind: "overtoep", Mine: true, Points: d.Stake()}, 200*time.Millisecond)
 	case actAnswer:
-		stake := d.Stake()
+		stake, passCost := d.Stake(), d.PassCost(i)
 		before := len(d.Tricks())
 		if err := d.Answer(i, act.play); err != nil {
 			return err
@@ -449,7 +453,7 @@ func (p *play) Apply(i game.Seat, a any) error {
 				t.BotSay(i, server.ChatEvent{Kind: "stay", Mine: true, Points: stake}, 300*time.Millisecond)
 			}
 		} else {
-			ev.Points = stake - 1
+			ev.Points = passCost
 			t.BotSay(i, server.ChatEvent{Kind: "pass", Mine: true, Points: ev.Points}, 300*time.Millisecond)
 		}
 		t.SetPhase(p.phase())
@@ -692,6 +696,24 @@ func safeLay(v toepen.View) []game.Card {
 	h := slices.Clone(v.Hand)
 	slices.SortStableFunc(h, func(a, b game.Card) int { return toepen.Strength(a.Rank) - toepen.Strength(b.Rank) })
 	return h[:v.Lay]
+}
+
+// autoStays tells the table who went along with a raise without being
+// asked: passing would have put them out.
+func (p *play) autoStays() {
+	for _, o := range p.d.AutoStays() {
+		p.act(o, "a1")
+		p.t.Emit(evAnswer{Type: "answer", Seat: o, Stay: true, Auto: true})
+	}
+}
+
+// tellStockOut says once a round that new cards of a vuile was cannot be
+// washed again: the stock ran out.
+func (p *play) tellStockOut() {
+	if p.d.StockOut() && !p.stockTold {
+		p.stockTold = true
+		p.t.SysChat("De stapel is op: wie nieuwe kaarten kreeg, kan niet nog eens wassen.")
+	}
 }
 
 // tellShown tells the table of the claims settled without a question: on

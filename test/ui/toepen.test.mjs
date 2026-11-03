@@ -64,7 +64,9 @@ test('the prompt asks what the round awaits', () => {
   let q = prompt(table());
   assert.equal(q.text, 'Je komt uit: speel wat je wilt');
   assert.deepEqual(q.actions.map(a => [a.t, a.label]), [['toep', 'Toep!']]);
-  assert.equal(prompt(table({ canToep: false, tricks: 3 })).sub, 'De laatste slag: wie die haalt, wint het potje.');
+  assert.equal(prompt(table({ canToep: false, tricks: 3 })).sub,
+    'De laatste slag: wie die haalt, wint het potje. Toepen heeft geen zin: wie nog meedoet, kan niet meer passen.');
+  assert.equal(prompt(table({ canToep: true, tricks: 3 })).sub, 'De laatste slag: wie die haalt, wint het potje.');
   // Someone else's turn.
   assert.equal(prompt(table({ turn: 1 })).text, 'Opa Dirk (AI) is aan de beurt.');
   // The time for a was, with a vuile was in hand.
@@ -81,6 +83,12 @@ test('the prompt asks what the round awaits', () => {
   assert.equal(q.text, 'Sjaak (AI) toept: de inzet is nu 3. Ga je mee?');
   assert.deepEqual(q.actions.map(a => a.label), ['Meegaan', 'Passen']);
   assert.equal(q.actions[1].sub, '2 strafpunten');
+  // Passing costs the stake you last agreed to: here 1, from before the first toep.
+  q = prompt(table({ phase: 'toep', turn: 0, toeper: 2, stake: 3, passCost: 1 }));
+  assert.equal(q.actions[1].sub, '1 strafpunt');
+  assert.match(q.sub, /Passen kost 1 strafpunt,/);
+  // A vuile was the stock has no new cards for.
+  assert.match(prompt(table({ hand: ['JH', 'QS', 'KD', '7C'], stock: 0, opts: { was: true } })).sub, /^Een vuile was, maar de stapel is op/);
   q = prompt(table({ phase: 'toep', turn: 0, toeper: 2, stake: 3, canRaise: true }));
   assert.deepEqual(q.actions.map(a => [a.t, a.label, a.sub]), [['answer', 'Meegaan', undefined], ['overtoep', 'Overtoepen', 'inzet 3 → 4'], ['answer', 'Passen', '2 strafpunten']]);
   // Anti-lijntoep: no passing.

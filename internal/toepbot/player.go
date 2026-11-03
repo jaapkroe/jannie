@@ -350,6 +350,15 @@ func (p *Player) Toep(v toepen.View) bool {
 	return false
 }
 
+// passCost is what passing costs v.Seat: the stake it last agreed to (in
+// a view made by hand without it, the stake before the toep).
+func passCost(v *toepen.View) int {
+	if v.PassCost > 0 {
+		return v.PassCost
+	}
+	return v.Stake - 1
+}
+
 // distrust scales the risk of going along by what the table saw of the
 // toeper's bluffs: below 1 for one who bluffs more than one in eight,
 // above for one who never did.
@@ -398,7 +407,7 @@ func (p *Player) Answer(v toepen.View) bool {
 	}
 	me := v.Points[v.Seat]
 	limit := v.Rules.Limit
-	fold := cost(me, v.Stake-1, limit)
+	fold := cost(me, passCost(&v), limit)
 	stay := cost(me, v.Stake, limit)
 	if fold >= stay {
 		return true // passing puts it out as surely as losing

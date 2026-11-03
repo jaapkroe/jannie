@@ -136,7 +136,7 @@ func toepTurn(c *servertest.Client, s *state, rng *rand.Rand) bool {
 // toepen's, without klaverjas's game, training and expert.
 var toepKeys = append(slices.Clone(servertest.SharedKeys),
 	"winner", "handNo", "dealer", "voorhand", "stake", "toeper", "armoedeToep", "koning", "size", "wasRound",
-	"canRaise", "mustStay", "open", "lay", "laid", "points",
+	"canRaise", "mustStay", "passCost", "open", "lay", "laid", "points",
 	"status", "armoede", "washed", "answered", "claims", "canClaim", "claimant", "asking", "checks",
 	"stock", "hand", "canToep", "trick", "lastTrick", "tricks", "rounds",
 )

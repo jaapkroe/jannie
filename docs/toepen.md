@@ -42,7 +42,10 @@ variants are options.
   six players: two claims; eight players: none).
 - **Again**: who got new cards is asked again, alone, in another time for
   a vuile was (`wasRound` 2, 3, …), and may hand in again, as long as the
-  stock holds four cards. The cards handed in lie face down in front of
+  stock holds four cards (with six players eight are left after the deal:
+  two hand-ins in all). When it does not, the table says so once
+  (`StockOut`), and a player who holds a vuile was the stock has no cards
+  for is told on its first turn. The cards handed in lie face down in front of
   the claimant (a pile on the site).
 - **On armoede** only a real vuile was may be claimed (`CanClaim` is false
   without one, `Was` refuses it): the hand is laid open on the table for a
@@ -70,13 +73,18 @@ variants are options.
   whether they go along (*meegaan*), pass (*passen*) or **overtoep**:
   raise the stake once more, after which everyone else still in, the
   toeper too, is asked again from the overtoeper's left. Who passes takes
-  the stake from before the last raise as penalty points and is out of the
-  round (*gepast*). Nobody may toep twice in a row: after a toep someone
+  the stake it last agreed to (`PassCost`) as penalty points and is out of
+  the round (*gepast*): who went along with the toep pays that stake, who
+  had not answered it yet the stake from before it (1 after a first toep
+  and an overtoep). Who would be out by passing goes along without being
+  asked (`AutoStays`; on armoede always). Nobody may toep twice in a row: after a toep someone
   else must toep first. When everyone else has passed, the last to raise
   wins the round.
 - **No toep when out already**: who would be out by losing at the present
   stake (points + stake ≥ limit), or stands on armoede, may neither toep
-  nor overtoep.
+  nor overtoep; nor may anyone when everyone else still in would go along
+  anyway (`ErrToepPointless`): a raise would then only put more at stake
+  for the raiser.
 - **Anti-lijntoep** (option `lijntoep`, off by default): who passed on the
   last two toeps it was asked about (across rounds; armoede's question does
   not count) must go along, or overtoep, on the third; going along starts
@@ -166,6 +174,9 @@ toepen's bios; it does not import klaverjas's packages. Room phases:
   the announcement, for those claimants only.
 - A vuile was on armoede is told (`wasDone` with `shown`) once the claims
   are announced, and lies open for three times `announce`.
+- Who goes along unasked with a toep or an overtoep is told as an `answer`
+  with `auto`; the stock running out for a vuile was is told once in the
+  chat.
 - Pauses: the claims and a toep are announced for the pace's `announce`,
   armoede for twice that, a checked was (its hand shown) for three times
   that; a completed trick lies for `trick`. The round summary moves on
@@ -206,8 +217,8 @@ The state `s`: `code`, `phase`, `opts`, `you`, `host`, `roster` (lobby),
 (cards each plays with: 4, 8 in the koningsspel), `lay` (the koningsspel,
 your turn: how many to lay away), `laid` (per seat, how many it laid
 away), `wasRound` (the time for a
-was: 1, 2, …), `canRaise` and `mustStay` (asked about a toep: you may
-overtoep; you may not pass), `open` (per seat: its hand when played face
+was: 1, 2, …), `canRaise`, `mustStay` and `passCost` (asked about a toep:
+you may overtoep; you may not pass; what passing costs you), `open` (per seat: its hand when played face
 up after a bluff, else empty), `points` (per seat, now; the boer takes one
 off at the last trick), `status` (per seat: `in`, `gepast`, `betrapt`,
 `eruit`, `uit` for out of the match), `armoede` (per seat), `washed`,
@@ -223,7 +234,8 @@ koning, gains, points, out}`, `gains` -1 for the boer).
 Events: `deal` `{handNo, dealer, koning}`; `discard` `{seat, n}`; `claims` `{seats}`; `check`
 `{seat, claimant, check}`; `wasDone` `{claimant, checker, kind, cards,
 genuine, washed, shown}`; `toep` `{seat, stake, over}` (over: an
-overtoep); `answer` `{seat, stay, points}`;
+overtoep); `answer` `{seat, stay, points, auto}` (points: what the pass
+cost; auto: went along unasked);
 `armoede` `{seats, stake}`; `play` `{seat, card}`; `trick` `{winner,
 last}`; `collect` `{winner}`; `handEnd` `{result}` (a score row);
 `gameOver` `{total, winner}`; and the seat events of design §7.
@@ -301,9 +313,13 @@ The shell of design §9 with toepen's `game.js`:
   gaan*; *Meegaan* / *Overtoepen* / *Passen* with what passing costs,
   *Passen* gone under anti-lijntoep; *Toep!* on your turn, and when you
   may not toep, why: on armoede, out at the stake already, the
-  koningsspel, or you raised last), the takeover question, a summary after every round
-  (the boer's point off as 🏆 -1), game over, *Stand* (the points and every
-  round) and the manual. A vuile was handed in flies face down to a small
+  koningsspel, you raised last, or nobody else could pass), the takeover
+  question, a summary after every round (the boer's point off as a green
+  bar after the red ones), game over with the course of the score (every
+  round; 🏆 and a green bar for the boer), *Stand* (the points and every
+  round) and the manual. While a choice other than a card is yours (a
+  vuile was, a check, a toep), your cards are darkened; a card lifts on
+  hover only with a mouse (on a touch screen a hover sticks). A vuile was handed in flies face down to a small
   pile beside the claimant's seat (×n when more than once; the cards laid
   away in the koningsspel lie there too) and four new
   cards come from the middle; on armoede the hand is shown in the middle
