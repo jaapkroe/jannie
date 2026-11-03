@@ -128,7 +128,7 @@ func ruleCard(hand []game.Card, t toepen.Trick, in func(game.Seat) bool) (game.C
 
 // toepBar is the chance on the last trick above which sterk toeps.
 func (p *Player) toepBar(v *toepen.View) float64 {
-	return 0.5 + 0.06*float64(3-min(v.InCount(), 3)) - 0.1*p.aggr
+	return 0.6 + 0.06*float64(3-min(v.InCount(), 3)) - 0.1*p.aggr
 }
 
 // raiseBar is the chance above which sterk overtoeps.
@@ -165,10 +165,13 @@ func (p *Player) explainPlay(v *toepen.View) Explanation {
 	if v.CanToep {
 		bar := p.toepBar(v)
 		e.Options = append(e.Options, Option{Label: "Toepen", Value: q, Best: q >= bar})
-		if q >= bar {
+		switch {
+		case pointless(v):
+			e.Why += " Toepen heeft geen zin: wie de laatste slag haalt, weet dat al en past niet. Je zou alleen zelf meer verliezen."
+		case q >= bar:
 			e.Advice = "Toep, en speel dan " + play
 			e.Why += fmt.Sprintf(" Dat is meer dan de grens om te toepen (%s): de anderen moeten dan meer betalen of passen.", pct(bar))
-		} else {
+		default:
 			e.Why += fmt.Sprintf(" Te weinig om te toepen: de grens is %s (hoger met minder spelers). Een bluf met een kansloze hand kan af en toe, ook bij een hogere inzet.", pct(bar))
 		}
 	}
@@ -184,7 +187,7 @@ func (p *Player) explainAnswer(v *toepen.View) Explanation {
 	me, limit := v.Points[v.Seat], v.Rules.Limit
 	fold := cost(me, passCost(v), limit)
 	stay := cost(me, v.Stake, limit)
-	risk := (1.05 - 0.15*p.aggr) * p.distrust(v)
+	risk := (1.25 - 0.15*p.aggr) * p.distrust(v)
 	lose := (1 - q) * stay
 	e.Options = []Option{{Label: "Meegaan", Value: lose, Points: true}}
 	raise := v.CanRaise && v.Stake < 5 && q >= p.raiseBar(v)
@@ -216,6 +219,9 @@ func (p *Player) explainAnswer(v *toepen.View) Explanation {
 	case v.InCount() <= 1 || fold >= stay:
 		e.Advice = "Ga mee"
 		why += " Passen kost evenveel als verliezen: meegaan dus."
+	case lostForSure(v):
+		e.Advice, stays = "Pas", false
+		why = fmt.Sprintf("De laatste slag haal je niet meer: passen kost %d, meegaan %d.", passCost(v), v.Stake)
 	case lose*risk < fold:
 		e.Advice = "Ga mee"
 	default:
