@@ -128,7 +128,7 @@ func TestAnswerWhenOutAnyway(t *testing.T) {
 	// either way and goes along.
 	p := New(0, Normaal, 1)
 	v := toepen.View{
-		Players: 3, Seat: 0, Phase: toepen.PhaseToep, Turn: 0, Stake: 2,
+		Players: 3, Seat: 0, Phase: toepen.PhaseToep, Turn: 0, Stake: 2, PassCost: 1,
 		Rules: toepen.Rules{Limit: 10}, Hand: cards("JH QS KD 8C"),
 		Points: [toepen.MaxPlayers]int{9, 0, 0},
 		Status: [toepen.MaxPlayers]toepen.Status{toepen.StatusIn, toepen.StatusIn, toepen.StatusIn},

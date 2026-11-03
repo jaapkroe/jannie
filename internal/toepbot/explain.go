@@ -182,7 +182,7 @@ func (p *Player) explainAnswer(v *toepen.View) Explanation {
 	q := p.winChance(v)
 	e.Chance = q
 	me, limit := v.Points[v.Seat], v.Rules.Limit
-	fold := cost(me, v.Stake-1, limit)
+	fold := cost(me, passCost(v), limit)
 	stay := cost(me, v.Stake, limit)
 	risk := (1.05 - 0.15*p.aggr) * p.distrust(v)
 	lose := (1 - q) * stay
@@ -198,8 +198,8 @@ func (p *Player) explainAnswer(v *toepen.View) Explanation {
 	if me+v.Stake >= limit {
 		out = " Verlies je, dan lig je eruit: dat telt hier als vijf strafpunten extra."
 	}
-	why := fmt.Sprintf("Je kans op de laatste slag is %s. Meegaan kost gemiddeld %s strafpunten (de inzet %d maal je kans om te verliezen), passen kost er %s.%s",
-		pct(q), pts(lose), v.Stake, pts(fold), out)
+	why := fmt.Sprintf("Je kans op de laatste slag is %s. Meegaan kost gemiddeld %s strafpunten (de inzet %d maal je kans om te verliezen), passen kost er %d (de inzet waarmee je het laatst akkoord ging).%s",
+		pct(q), pts(lose), v.Stake, passCost(v), out)
 	if o := v.Toeper; o != game.NoSeat && v.Record[o].Toeps > 0 {
 		r := v.Record[o]
 		why += fmt.Sprintf(" Van de %d toeps van de toeper die op tafel kwamen, waren er %d bluf: zo vaak telt een zwakke hand mee in die kans.",

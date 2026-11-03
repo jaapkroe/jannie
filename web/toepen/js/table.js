@@ -306,6 +306,8 @@ function renderHand(s) {
   });
   E.hand.replaceChildren(...kids);
   E.hand.classList.toggle('mine', mine);
+  // First another choice (a vuile was, a check, a toep): your cards wait.
+  E.hand.classList.toggle('waiting', R.yours(s) && s.phase !== 'play');
   E.hand.classList.toggle('many', hand.length > 4); // the koningsspel: the cards overlap
   E.hand.classList.toggle('lots', hand.length > 8);
 }
@@ -326,6 +328,7 @@ function renderDiscard(s, hand) {
     return c;
   }));
   E.hand.classList.add('mine');
+  E.hand.classList.remove('waiting');
   E.hand.classList.toggle('many', hand.length > 4);
   E.hand.classList.toggle('lots', hand.length > 8);
 }
@@ -432,9 +435,8 @@ function showSummary(s) {
     const gain = row.gains?.[x.seat] ?? 0;
     return h('div', { class: 'tp-sum-row' + (x.seat === s.you ? ' me' : '') + (x.out ? ' out' : '') + (x.seat === row.winner ? ' won' : '') },
       avatar(s.players[x.seat], 'sm'), playerName(x.name, { cls: 'tp-sum-name' }),
-      h('span', { class: 'tp-sum-gain' + (gain > 0 ? ' plus' : gain < 0 ? ' minus' : ''), title: gain < 0 ? 'Met de boer: een strafpunt eraf' : '',
-        text: gain > 0 ? `+${gain}` : gain < 0 ? `🏆 ${gain}` : x.seat === row.winner ? '🏆' : '' }),
-      meter(x.points, s.opts?.limit || 10),
+      h('span', { class: 'tp-sum-gain' + (gain > 0 ? ' plus' : ''), text: gain > 0 ? `+${gain}` : x.seat === row.winner ? '🏆' : '' }),
+      meter(x.points, s.opts?.limit || 10, Math.max(0, -gain)),
       h('b', { class: 'tp-sum-pts', text: x.out ? 'eruit' : String(x.points) }));
   }));
   E.go = h('button', { class: 'btn btn-go btn-big', type: 'button', onclick: () => { sound.play('click'); app.send({ t: 'ready' }); E.go.disabled = true; } },
@@ -452,10 +454,33 @@ function refreshReady(s) {
   if (E.go && s.players[s.you]?.ready) E.go.disabled = true;
 }
 
-function meter(points, limit) {
-  const el = h('span', { class: 'tp-meter', title: `${points} van ${limit}` });
-  for (let k = 0; k < limit; k++) el.append(h('i', { class: k < points ? 'on' : '' }));
+// The penalty points as bars, red up to points; minus green bars after
+// them: points just taken off (the boer).
+function meter(points, limit, minus = 0) {
+  const el = h('span', { class: 'tp-meter', title: `${points} van ${limit}${minus ? `, ${minus} eraf met de boer` : ''}` });
+  for (let k = 0; k < limit; k++) el.append(h('i', { class: k < points ? 'on' : k < points + minus ? 'minus' : '' }));
   return el;
+}
+
+// The course of the score: per round who won it (🏆, a green bar for a
+// point off with the boer) and what each took, and the totals.
+function roundsTable(s) {
+  if (!s.rounds?.length) return null;
+  const n = s.players.length;
+  const order = Array.from({ length: n }, (_, k) => (s.you + k) % n);
+  const head = h('tr', {}, h('th', { text: '#' }), order.map(seat => h('th', { title: s.players[seat]?.name || '' }, avatar(s.players[seat], 'xs'))));
+  const cell = (r, seat) => {
+    const g = r.gains?.[seat] ?? 0;
+    if (r.winner === seat) {
+      return h('td', { class: 'won', title: g < 0 ? 'Gewonnen met de boer: een strafpunt eraf' : 'Gewonnen' },
+        '🏆', g < 0 ? h('span', { class: 'tp-minus', 'aria-label': `${g}` }) : null);
+    }
+    return h('td', { class: r.out?.[seat] && g > 0 ? 'out' : '', text: g ? `+${g}` : '·' });
+  };
+  const rows = s.rounds.map(r => h('tr', {}, h('td', { class: 'tp-st-n', text: r.hand }), order.map(seat => cell(r, seat))));
+  const total = h('tr', { class: 'tp-st-total' }, h('td', { text: 'Σ' }),
+    order.map(seat => h('td', { class: R.isOut(s, seat) ? 'out' : '', text: String(s.points?.[seat] ?? 0) })));
+  return h('div', { class: 'tp-st-scroll' }, h('table', { class: 'tp-st-table' }, h('thead', {}, head), h('tbody', {}, rows, total)));
 }
 
 function showOver(s) {
@@ -475,7 +500,7 @@ function showOver(s) {
     id: 'tp-over', cls: 'm-over passive tp-over' + (won ? ' won' : ' lost'), closable: false, label: title, body: [
       h('h2', { class: 'over-title', text: title }),
       h('p', { class: 'over-sub', text: `Na ${s.handNo} ${s.handNo === 1 ? 'potje' : 'potjes'} is ${won ? 'alleen jij' : 'nog één speler'} over.` }),
-      standTable(s), h('div', { class: 'btn-col' }, btns)],
+      standTable(s), roundsTable(s), h('div', { class: 'btn-col' }, btns)],
   });
   m.round = s.handNo;
   app.toepOver = m;
@@ -498,19 +523,9 @@ export function openStand() {
   const m = panels.openModal({ id: 'tp-stand', title: 'Stand', cls: 'm-score tp-stand', body: [] });
   m.refresh = s => {
     if (!s) return;
-    const n = s.players.length;
-    const order = Array.from({ length: n }, (_, k) => (s.you + k) % n);
-    const head = h('tr', {}, h('th', { text: '#' }), order.map(seat => h('th', { title: s.players[seat]?.name || '' },
-      avatar(s.players[seat], 'xs'))));
-    const rows = (s.rounds || []).map(r => h('tr', {}, h('td', { class: 'tp-st-n', text: r.hand }),
-      order.map(seat => h('td', { class: (r.winner === seat ? 'won' : '') + (r.out?.[seat] && (r.gains?.[seat] ?? 0) > 0 ? ' out' : ''),
-        text: r.winner === seat ? ((r.gains?.[seat] ?? 0) < 0 ? `🏆${r.gains[seat]}` : '🏆') : r.gains?.[seat] ? `+${r.gains[seat]}` : '·' }))));
-    const total = h('tr', { class: 'tp-st-total' }, h('td', { text: 'Σ' }),
-      order.map(seat => h('td', { class: R.isOut(s, seat) ? 'out' : '', text: String(s.points?.[seat] ?? 0) })));
     m.body.replaceChildren(
       h('p', { class: 'sheet-note', text: `${R.variantText(s.opts || {})}. Wie de laatste slag niet haalt, krijgt de inzet als strafpunten.` }),
-      standTable(s),
-      s.rounds?.length ? h('div', { class: 'tp-st-scroll' }, h('table', { class: 'tp-st-table' }, h('thead', {}, head), h('tbody', {}, rows, total))) : null);
+      standTable(s), roundsTable(s));
   };
   m.refresh(app.view);
   app.toepStand = m;
@@ -720,7 +735,7 @@ export async function animate(ev, prev, next) {
       break;
     }
     case 'answer':
-      bubble(next, ev.seat, ev.stay ? 'Ik ga mee' : `Pas (+${ev.points})`, ev.stay ? 'go' : 'pass');
+      bubble(next, ev.seat, ev.auto ? 'Gaat vanzelf mee' : ev.stay ? 'Ik ga mee' : `Pas (+${ev.points})`, ev.stay ? 'go' : 'pass');
       if (!ev.stay) sound.play('click');
       await wait(ev.stay ? 250 : 450);
       break;

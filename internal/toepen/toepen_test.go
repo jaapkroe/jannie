@@ -436,8 +436,23 @@ func TestArmoede(t *testing.T) {
 		t.Error("a toep on armoede")
 	}
 	must(t, d.Play(1, cards("JH")[0]))
+	// The others still in are both on armoede: they go along with any toep,
+	// so a toep would only put more at stake for seat 2 itself.
+	if d.CanToep(2) || !errors.Is(d.Toep(2), ErrToepPointless) {
+		t.Error("a pointless toep")
+	}
+	// With someone in who can pass, seat 2 may toep; armoede goes along.
+	d = NewDeal(4, rules, 3, [MaxPlayers]int{0, 9, 3, 9}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S", "JS QS KS AS"))
+	must(t, d.Answer(0, true))
+	must(t, d.Answer(2, true))
+	must(t, d.Play(0, cards("TH")[0]))
+	must(t, d.Play(1, cards("JH")[0]))
 	if !d.CanToep(2) {
-		t.Error("seat 2 may toep after armoede")
+		t.Fatal("seat 2 may toep: seat 0 can pass")
+	}
+	must(t, d.Toep(2))
+	if !slices.Equal(d.AutoStays(), []game.Seat{3, 1}) || !slices.Equal(d.Asking(), []game.Seat{0}) || d.PassCost(0) != 2 {
+		t.Errorf("auto %v asking %v pass cost %d", d.AutoStays(), d.Asking(), d.PassCost(0))
 	}
 }
 
@@ -453,11 +468,11 @@ func TestToepDead(t *testing.T) {
 		t.Fatal("seat 1 may overtoep")
 	}
 	must(t, d.Overtoep(1)) // stake 3
-	must(t, d.Answer(2, true))
-	if d.Turn() != 0 || d.CanRaise(0) || !errors.Is(d.Overtoep(0), ErrToepDead) {
-		t.Fatal("8 points at stake 3 may not overtoep")
+	// Seat 0 agreed to 2: passing would put it out, so it goes along unasked.
+	if !slices.Equal(d.AutoStays(), []game.Seat{0}) || !slices.Equal(d.Asking(), []game.Seat{2}) {
+		t.Fatalf("auto %v asking %v", d.AutoStays(), d.Asking())
 	}
-	must(t, d.Answer(0, true))
+	must(t, d.Answer(2, true))
 	if d.Phase() != PhasePlay || d.Turn() != 0 || d.CanToep(0) || !errors.Is(d.Toep(0), ErrToepDead) {
 		t.Fatal("8 points at stake 3 may not toep")
 	}
@@ -493,7 +508,9 @@ func TestOvertoep(t *testing.T) {
 	must(t, d.Overtoep(1))
 	must(t, d.Answer(2, false))
 	must(t, d.Answer(0, false))
-	if r := d.Result(); r == nil || r.Winner != 1 || !slices.Equal(r.Gains, []int{2, 0, 2}) {
+	// Seat 2 never went along with seat 0's toep: passing costs it the
+	// stake from before that, 1; seat 0 agreed to 2 with its toep.
+	if r := d.Result(); r == nil || r.Winner != 1 || !slices.Equal(r.Gains, []int{2, 0, 1}) {
 		t.Fatalf("result %+v", r)
 	}
 	// Not on armoede's question.
@@ -967,5 +984,27 @@ func TestRecord(t *testing.T) {
 	m.Settle(d)
 	if m.Record[0] != (Record{}) {
 		t.Errorf("nothing shown: %+v", m.Record[0])
+	}
+}
+
+// Passing costs the stake a player last agreed to: after a toep and an
+// overtoep, who went along with the toep pays its stake, who did not pays
+// the stake from before it.
+func TestPassCost(t *testing.T) {
+	d := NewDeal(4, noWas(), 3, [MaxPlayers]int{}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S", "JS QS KS AS"))
+	must(t, d.Toep(0)) // 2: asking 1, 2, 3
+	must(t, d.Answer(1, true))
+	must(t, d.Overtoep(2)) // 3: asking 3, 0, 1
+	if !slices.Equal(d.Asking(), []game.Seat{3, 0, 1}) {
+		t.Fatalf("asking %v", d.Asking())
+	}
+	if d.PassCost(3) != 1 || d.PassCost(0) != 2 || d.PassCost(1) != 2 || d.View(3).PassCost != 1 {
+		t.Fatalf("pass costs %d %d %d", d.PassCost(3), d.PassCost(0), d.PassCost(1))
+	}
+	must(t, d.Answer(3, false))
+	must(t, d.Answer(0, true))
+	must(t, d.Answer(1, false))
+	if d.Points(3) != 1 || d.Points(1) != 2 || d.PassCost(0) != 3 {
+		t.Errorf("points %d %d, seat 0 agreed to %d", d.Points(3), d.Points(1), d.PassCost(0))
 	}
 }

@@ -85,20 +85,21 @@ func (s *Status) UnmarshalText(b []byte) error {
 
 // Errors, in Dutch: safe to show.
 var (
-	ErrWrongPhase   = errors.New("Dat kan nu niet.")
-	ErrNotYourTurn  = errors.New("Je bent niet aan de beurt.")
-	ErrNotIn        = errors.New("Je speelt dit potje niet (meer) mee.")
-	ErrNotInHand    = errors.New("Die kaart heb je niet.")
-	ErrIllegal      = errors.New("Die kaart mag niet.")
-	ErrToepAgain    = errors.New("Je toepte zelf het laatst: eerst moet een ander toepen.")
-	ErrAnswered     = errors.New("Je hebt al gezegd of je een vuile was hebt.")
-	ErrNoStock      = errors.New("De stapel is op: er kan niemand meer wassen.")
-	ErrToepArmoede  = errors.New("Op armoede kun je niet toepen.")
-	ErrToepDead     = errors.New("Met deze inzet lig je er bij verlies al uit: dan kun je niet toepen.")
-	ErrNoRaise      = errors.New("Overtoepen kan alleen op een toep.")
-	ErrMustStay     = errors.New("Anti-lijntoep: je paste al twee keer achter elkaar, nu moet je mee.")
-	ErrPoorBluff    = errors.New("Op armoede mag je alleen een echte vuile was inleveren.")
-	ErrDiscardTwice = errors.New("Leg elke kaart maar één keer weg.")
+	ErrWrongPhase    = errors.New("Dat kan nu niet.")
+	ErrNotYourTurn   = errors.New("Je bent niet aan de beurt.")
+	ErrNotIn         = errors.New("Je speelt dit potje niet (meer) mee.")
+	ErrNotInHand     = errors.New("Die kaart heb je niet.")
+	ErrIllegal       = errors.New("Die kaart mag niet.")
+	ErrToepAgain     = errors.New("Je toepte zelf het laatst: eerst moet een ander toepen.")
+	ErrAnswered      = errors.New("Je hebt al gezegd of je een vuile was hebt.")
+	ErrNoStock       = errors.New("De stapel is op: er kan niemand meer wassen.")
+	ErrToepArmoede   = errors.New("Op armoede kun je niet toepen.")
+	ErrToepDead      = errors.New("Met deze inzet lig je er bij verlies al uit: dan kun je niet toepen.")
+	ErrNoRaise       = errors.New("Overtoepen kan alleen op een toep.")
+	ErrMustStay      = errors.New("Anti-lijntoep: je paste al twee keer achter elkaar, nu moet je mee.")
+	ErrPoorBluff     = errors.New("Op armoede mag je alleen een echte vuile was inleveren.")
+	ErrToepPointless = errors.New("Toepen heeft nu geen zin: niemand anders kan nog passen.")
+	ErrDiscardTwice  = errors.New("Leg elke kaart maar één keer weg.")
 )
 
 // IllegalError is a card that may not be played, with the reason.
@@ -172,6 +173,9 @@ type Deal struct {
 	dealt    int                     // cards dealt to each: size, or more in the koningsspel
 	laid     [MaxPlayers][]game.Card // the koningsspel: the cards each laid away, face down
 	streak   [MaxPlayers]int         // passes on a toep in a row, also in rounds before (anti-lijntoep)
+	accepted [MaxPlayers]int         // the stake each last agreed to: passing costs it
+	auto     []game.Seat             // went along at the last raise without a question: passing would put them out
+	stockOut bool                    // new cards could not be washed again: the stock ran out
 	record   [MaxPlayers]Record      // the bluffs seen in the rounds before
 
 	start   [MaxPlayers]int // penalty points at the deal
@@ -223,6 +227,7 @@ func NewDeal(players int, rules Rules, dealer game.Seat, points [MaxPlayers]int,
 	for s := range players {
 		if points[s] < rules.Limit {
 			d.status[s] = StatusIn
+			d.accepted[s] = 1
 			d.armoede[s] = rules.Armoede && points[s] == rules.Limit-1
 			in++
 			if points[s] == rules.Limit-1 {
@@ -436,6 +441,7 @@ func (d *Deal) washAgain() bool {
 		again = again || d.fresh[s] && d.status[s] == StatusIn
 	}
 	if !again || len(d.stock) < HandSize {
+		d.stockOut = d.stockOut || again
 		d.fresh = [MaxPlayers]bool{}
 		return false
 	}
@@ -536,6 +542,11 @@ func (d *Deal) afterWas() {
 		}
 		if poor {
 			d.stake, d.armoedeT = 2, true
+			for s := range d.players {
+				if d.armoede[s] && d.status[s] == StatusIn {
+					d.accepted[s] = 2 // on armoede: in at 2 from the start
+				}
+			}
 			if len(ask) > 0 {
 				d.asking = ask
 				d.phase = PhaseToep
@@ -605,23 +616,45 @@ func (d *Deal) Laid(seat game.Seat) []game.Card { return slices.Clone(d.laid[sea
 // ---- toepen ----
 
 // CanToep reports whether seat may toep now: on its turn to play, unless
-// it was the last to toep, stands on armoede, or would be out by losing at
-// the present stake already.
+// it was the last to toep, stands on armoede, would be out by losing at
+// the present stake already, or nobody else could pass on it.
 func (d *Deal) CanToep(seat game.Seat) bool {
 	return d.phase == PhasePlay && seat == d.turn && seat != d.toeper && d.inCount() > 1 && d.mayRaise(seat) == nil
 }
 
 // mayRaise says why seat may not raise the stake, nil when it may: not on
-// armoede, and not when losing at the present stake puts it out already.
+// armoede, not when losing at the present stake puts it out already, and
+// not when everyone else still in would go along anyway (passing would put
+// them out): then a raise only puts more at stake for seat itself.
 func (d *Deal) mayRaise(seat game.Seat) error {
 	switch {
 	case d.armoede[seat]:
 		return ErrToepArmoede
 	case d.points[seat]+d.stake >= d.rules.Limit:
 		return ErrToepDead
+	case !slices.ContainsFunc(d.others(seat), func(o game.Seat) bool { return !d.doomed(o) }):
+		return ErrToepPointless
 	}
 	return nil
 }
+
+// doomed reports whether passing would put seat out of the match: it goes
+// along with every raise without being asked.
+func (d *Deal) doomed(seat game.Seat) bool {
+	return d.points[seat]+d.accepted[seat] >= d.rules.Limit
+}
+
+// PassCost is what passing costs seat now: the stake it last agreed to
+// (the stake before the first raise it did not go along with).
+func (d *Deal) PassCost(seat game.Seat) int { return d.accepted[seat] }
+
+// AutoStays lists the seats that went along with the last raise without a
+// question: passing would have put them out.
+func (d *Deal) AutoStays() []game.Seat { return slices.Clone(d.auto) }
+
+// StockOut reports whether new cards of a vuile was could not be washed
+// again this round because the stock ran out.
+func (d *Deal) StockOut() bool { return d.stockOut }
 
 // Toep raises the stake by one; the others still in say in turn whether
 // they go along (Answer) or toep again (Overtoep). Then seat plays its
@@ -642,14 +675,29 @@ func (d *Deal) Toep(seat game.Seat) error {
 	return nil
 }
 
-// raise puts the stake up by one for seat, and asks the others still in.
+// raise puts the stake up by one for seat, and asks the others still in;
+// who would be out by passing goes along at once.
 func (d *Deal) raise(seat game.Seat) {
 	d.stake++
 	d.toeper = seat
+	d.accepted[seat] = d.stake
 	d.toeps = append(d.toeps, Toep{Seat: seat, Tricks: len(d.tricks), Stake: d.stake})
-	d.asking = d.others(seat)
+	d.asking, d.auto = nil, nil
+	for _, o := range d.others(seat) {
+		if d.doomed(o) {
+			d.auto = append(d.auto, o)
+			d.accepted[o] = d.stake
+			d.streak[o] = 0
+			continue
+		}
+		d.asking = append(d.asking, o)
+	}
 	d.phase = PhaseToep
 	d.poorAsk = false
+	if len(d.asking) == 0 {
+		d.endAsking(false)
+		return
+	}
 	d.turn = d.asking[0]
 }
 
@@ -687,8 +735,9 @@ func (d *Deal) MustStay(seat game.Seat) bool {
 }
 
 // Answer records whether seat goes along with the toep (stay) or passes:
-// it then takes the stake from before the toep as penalty points and sits
-// the round out. When everyone else has passed, the one left wins.
+// it then takes the stake it last agreed to as penalty points (PassCost:
+// the stake before the first raise it did not go along with) and sits the
+// round out. When everyone else has passed, the one left wins.
 func (d *Deal) Answer(seat game.Seat, stay bool) error {
 	if d.phase != PhaseToep {
 		return ErrWrongPhase
@@ -705,30 +754,39 @@ func (d *Deal) Answer(seat game.Seat, stay bool) error {
 	} else if !poor {
 		d.streak[seat]++
 	}
-	if !stay {
+	if stay {
+		d.accepted[seat] = d.stake
+	} else {
 		d.status[seat] = StatusPassed
-		d.penalise(seat, d.stake-1)
+		d.penalise(seat, d.accepted[seat])
 	}
 	d.asking = d.asking[1:]
 	if len(d.asking) > 0 {
 		d.turn = d.asking[0]
 		return nil
 	}
+	d.endAsking(poor)
+	return nil
+}
+
+// endAsking goes on once everyone asked about a raise (or armoede) has
+// answered: the one left wins when everyone else passed; else the play.
+func (d *Deal) endAsking(poor bool) {
+	d.asking = nil
 	if d.inCount() <= 1 {
 		w := d.toeper
 		if !d.in(w) {
 			w = d.fromIn(d.voorhand)
 		}
 		d.finish(w, false)
-		return nil
+		return
 	}
 	if poor {
 		d.startPlay() // armoede: the first card
-		return nil
+		return
 	}
 	d.phase = PhasePlay
 	d.advance() // the toeper may have passed on an overtoep: the trick can be complete
-	return nil
 }
 
 // ---- tricks ----
@@ -961,6 +1019,7 @@ func (d *Deal) Clone() *Deal {
 		c.given[s] = slices.Clone(d.given[s])
 		c.laid[s] = slices.Clone(d.laid[s])
 	}
+	c.auto = slices.Clone(d.auto)
 	c.stock = slices.Clone(d.stock)
 	c.claims = slices.Clone(d.claims)
 	c.checks = slices.Clone(d.checks)
