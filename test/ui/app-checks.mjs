@@ -1324,11 +1324,25 @@ CHECKS.hometiles = async browser => {
   }
 };
 
-// The support line beside the version: its tap opens a short sheet with the
-// payment link in a new tab, and is no tap on the version (the expert mode).
+// The support line beside the version, there only with the deployment's
+// payment link (SUPPORT_URL, which the build puts in the meta support): a
+// server from source has none, and no line. With one, as the build fills it
+// in before the page reads it, its tap opens a short sheet with the link in
+// a new tab, and is no tap on the version (the expert mode).
+const SUPPORT_LINK = 'https://pay.example/r/AbC123?a=1&b=2';
 CHECKS.support = async browser => {
+  const P0 = await page(browser, VP.phone, 'support-none');
+  await run(P0, async () => {
+    await home(P0);
+    const st = await P0.page.evaluate(() => ({ meta: document.querySelector('meta[name="support"]')?.content, btn: !!document.querySelector('#btn-support'), ver: document.querySelector('.home-ver')?.textContent }));
+    if (st.btn || !st.ver?.startsWith('Versie ')) throw new Error(`without a payment link: ${JSON.stringify(st)}`);
+    await shot(P0, 'home');
+  });
   for (const vp of ['phone', 'oldSE']) {
     const P = await page(browser, VP[vp], `support-${vp}`);
+    await P.page.evaluateOnNewDocument(url => document.addEventListener('readystatechange', () => {
+      if (document.readyState === 'interactive') document.querySelector('meta[name="support"]').content = url;
+    }), SUPPORT_LINK);
     await run(P, async () => {
       await home(P);
       const line = await P.page.evaluate(() => {
@@ -1349,7 +1363,7 @@ CHECKS.support = async browser => {
       await press(P, '#btn-support');
       await waitFor(P, () => document.querySelector('.m-info.open a.btn-go'), { label: 'support sheet' });
       const a = await P.page.$eval('.m-info a.btn-go', e => ({ href: e.href, target: e.target, rel: e.rel, text: e.textContent }));
-      if (!a.href.startsWith('https://www.ing.nl/payreq/') || a.target !== '_blank' || !a.rel.includes('noopener') || a.text !== 'Bijdragen met iDEAL') throw new Error(`support link ${JSON.stringify(a)}`);
+      if (a.href !== SUPPORT_LINK || a.target !== '_blank' || !a.rel.includes('noopener') || a.text !== 'Bijdragen met iDEAL') throw new Error(`support link ${JSON.stringify(a)}`);
       await shot(P, 'sheet');
     });
   }

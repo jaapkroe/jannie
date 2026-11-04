@@ -4,3 +4,4 @@ build
 test/ui/out
 web/**/*.test.js
 web/**/*.test.mjs
+local.mk

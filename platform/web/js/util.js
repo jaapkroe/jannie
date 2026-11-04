@@ -312,6 +312,13 @@ export function versionText(v) {
   return m ? m[1] + (m[2] || '') : 'dev';
 }
 
+// The payment link behind "Support deze app" (index.html's meta support,
+// filled in by the Containerfile from the deployment's SUPPORT_URL): an
+// https URL, or '' when there is none and the home page shows no button.
+export function supportURL(v) {
+  return /^https:\/\/[^\s"'<>]+$/.test(v || '') ? v : '';
+}
+
 // ---------- game helpers ----------
 
 export const POS = ['bottom', 'left', 'top', 'right'];

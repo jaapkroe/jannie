@@ -12,6 +12,13 @@
 #   help test test-all                                          do not take it
 # GAME=all goes through the games one after another, in the order of their names,
 # under one build tag, and stops at the first one that fails.
+#
+# One setting belongs to the deployment rather than a game: SUPPORT_URL, the
+# payment link behind "Support deze app" on every game's home page. It goes in
+# local.mk next to this Makefile, which git ignores, as
+#   SUPPORT_URL = https://…
+# (or on make's command line; one in the shell's environment is ignored). Without
+# it the web images have no support button.
 # ---------------------------------------------------------------------------------------
 GAMES := $(sort $(basename $(notdir $(wildcard games/*/*.mk))))
 SETTINGS := TITLE VERB SITE ADDR DEV_PORT E2E_PORT E2E_SIM
@@ -25,6 +32,15 @@ override GAME :=
 endif
 ifneq ($(filter-out all $(GAMES),$(GAME))$(word 2,$(GAME)),)
 $(error GAME=$(GAME) is not a game; the games are $(GAMES), and GAME=all is every one)
+endif
+-include local.mk
+ifeq ($(origin SUPPORT_URL),environment)
+override SUPPORT_URL :=
+endif
+# One https URL, quoted as it is in the web image's build (the Containerfile
+# checks it again).
+ifneq ($(strip $(filter-out https://%,$(SUPPORT_URL))$(word 2,$(SUPPORT_URL))$(foreach c,' " < >,$(findstring $(c),$(SUPPORT_URL)))),)
+$(error SUPPORT_URL=$(SUPPORT_URL): not an https URL without quotes, spaces, < or > (local.mk; see the top of the Makefile))
 endif
 # The one game the targets act on, or empty for all of them (GAME=all, or no GAME).
 ONE := $(filter $(GAMES),$(GAME))
@@ -80,8 +96,10 @@ UNIT_SUFFIXES := .pod -web.container -server.container
 UNITS = $(addprefix $(GAME),$(UNIT_SUFFIXES))
 RENDER = sed -e 's|@GAME@|$(GAME)|g' -e 's|@TITLE@|$(TITLE)|g' -e 's|@SITE@|$(SITE)|g' -e 's|@ADDR@|$(ADDR)|g'
 # The web image is the game's: its files, its host name in the CSP and the link
-# preview, and its name and verb on the 404 page.
-WEB_ARGS = --build-arg GAME=$(GAME) --build-arg SITE=$(SITE) --build-arg 'TITLE=$(TITLE)' --build-arg 'VERB=$(VERB)'
+# preview, and its name and verb on the 404 page; and the deployment's support
+# link, if any.
+WEB_ARGS = --build-arg GAME=$(GAME) --build-arg SITE=$(SITE) --build-arg 'TITLE=$(TITLE)' --build-arg 'VERB=$(VERB)' \
+	--build-arg 'SUPPORT_URL=$(SUPPORT_URL)'
 
 e2e:       ## play full games over the websocket against GAME's server from source (every game's without GAME), at -fast pacing
 	@test -f $(E2E_SIM) || { echo "$(E2E_SIM) not found" >&2; exit 1; }
