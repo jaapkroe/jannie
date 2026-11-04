@@ -1,168 +1,142 @@
-# Klaverjas
+# Jannie
 
-Klaverjassen in the browser: the Dutch trick-taking card game for four players
-in two pairs, or for three or two, with friends, with bots, or both. The
-interface is entirely in Dutch. It runs at <https://klaverjas.kroes.dev>.
+Dutch card games in the browser. Play with friends, against bots, or both,
+with no account, no install and no ads. The interface is in Dutch.
 
-The same repository builds a site for **toepen** at
-<https://toepen.kroes.dev>: one game per site, each with its own address,
-interface and pod, built from shared code ([`docs/games.md`](docs/games.md),
-[`docs/toepen.md`](docs/toepen.md)). What follows is about klaverjas, unless
-it says otherwise.
+Each game has a site of its own:
 
-## Features
+| Game | Site | Players |
+|---|---|---|
+| Klaverjas | <https://klaverjas.kroes.dev> | 2–4 |
+| Toepen | <https://toepen.kroes.dev> | 2–6 |
+| Bridge | planned | 4 |
 
-- **Start in one tap.** *Snel spelen* starts a game against bots at once,
-  without even asking for a name (as does *Oefenen*). A hosted game gets a
-  four-letter code and a link (`/ABCD`); friends join by typing the code or
-  opening the link, and only need to give a name.
-- **The rules as played in Dutch cafés**: Utrechts (voorhand chooses trump) or
-  gedraaid (a turned suit to play or pass), with Amsterdams or Rotterdams
-  trumping; roem on the table, nat and pit, scored over a *boom* of 16 hands
-  or another length. Illegal cards cannot be played, and the game says why.
-- **Two, three or four players** (*Spelers*): with three, everyone for
-  themselves: ten cards each, an auction on points, and the highest bidder
-  takes the two cards on the table, lays two away and plays alone against
-  the other two; with two, each plays from eight piles of two cards on the
-  table, the top ones face up for both to see. Seats nobody takes get bots.
-- **Eight bots with a character of their own**, from Opa Dirk to Bakker Vera,
-  shown as "Naam (AI)", at three strengths. The strongest counts cards, infers
-  voids and gives and reads signals. They fill empty seats and chat in
-  character.
-- **No AI plays a seat unasked.** When a player loses the connection or
-  leaves, the game waits for them; an AI stands in only when everyone else at
-  the table agrees, and a friend with the code can take a seat that was left.
-- **Easy to follow**: cards fly to the table, the winning card lights up, tricks
-  slide to their winner, roem and trump get a banner, and short pauses let
-  every move register. Sound effects are synthesised in the browser.
-- **Score sheet, last trick and the whole previous hand** to look back on;
-  chat with quick reactions.
-- **Calling the table**: a game with friends starts with the question
-  whether to call along, with sound and, if you like, video, which then
-  takes the place of your face at your seat; in the call you hear and see
-  the others also with your own microphone and camera off. Microphone and
-  camera switch with one tap during the game and are remembered for the
-  next one. The first time you call you can choose to be in the call
-  straight away at every table with friends from then on. Sound and video
-  go from browser to browser (WebRTC), not through the server.
-- **Spelanalyse** at the end of a game of four, for each player alone: a
-  percentage for their own choices, judged by the strongest bot from what
-  they knew at the time, how good their cards were, and the moves that
-  gained or left the most points, each with its trick. After every hand, a
-  tap on a trick and *Dit potje terugkijken* replays that hand card by card
-  with the engine's view of each of the player's choices.
-- **Expert mode**, behind an easter egg (five taps on the version under the
-  home screen): replay a game, or one hand of it, from its seed (the chat
-  names it at the start of every game), at a seat of choice; ask the
-  engine's reasoning for your move on your turn, or for any of your moves
-  in the hand (the rule, the hint and the value of every option, and for
-  each option why the best brings more: which of your cards goes to the
-  opponents, who takes the last trick or who makes roem), and leave
-  a comment on it, kept in the game log to improve the bots.
-- **Handleiding**: the controls, the rules (also for two and three players),
-  card values, roem, signals (*seinen*, also called *voorkaarten*), tips, how
-  the game engine Juf Jannie plays and how strong it is, and a glossary.
-- **Oefenen**: training with Juf Jannie as partner, in separate lessons of
-  eight hands each, taught step by step while the game waits for each step:
-  *Basisspel* (the table and the screen, trump, which cards may be played and
-  the score, the card points from the third hand), *Roem en tellen* (roem,
-  pointed out the first few times, and counting the trumps in the fifth hand,
-  with a counter) and *Seinen* (the table's signals, pointed out the first
-  few times; nobody signals in the other two). *Vrij spelen* is a game
-  without a lesson. A hint on every turn and an explanation after every trick
-  (also in the chat, to read back) can be switched off with *Tips*, under
-  *Spelopties*, a fold that also has open cards, the rules, the AI level, the
-  tempo and a seed. The robot in the top bar gives the engine's reasoning for
-  your moves.
-- Built for phones (touch, portrait and landscape), tablets and desktop
-  browsers (mouse and keyboard).
+## Klaverjas
 
-## Playing it locally
+The Dutch trick-taking game, with the rules as played in cafés.
 
-The host needs only podman and make: the Go toolchain runs in a container
+- **Two, three or four players.** With four you play in pairs. With three,
+  an auction decides who plays alone against the other two. With two, each
+  player plays from piles on the table.
+- **The usual rule sets**: *Utrechts* (voorhand chooses trump) or *gedraaid*
+  (a turned suit to play or pass), and *Amsterdams* or *Rotterdams* trumping,
+  with roem, nat and pit, over a *boom* of 16 hands or another length.
+- **Bots with a character of their own**, from Opa Dirk to Bakker Vera, at
+  three strengths. The strongest counts cards and plays each choice out in
+  sampled deals.
+- **Signals** (*seinen*), agreed per table: *met de aas seinen*, *op- en
+  afseinen*, *kleintje boer* and *boer over boer*. The bots give and read
+  the signals the table has agreed.
+- **Oefenen**: lessons with Juf Jannie as your partner (*Basisspel*, *Roem en
+  tellen*, *Seinen*), taught step by step, with a hint on every turn and a
+  tip after every trick.
+- **Spelanalyse** after a game of four: a percentage for your own choices,
+  judged from what you knew at the time, with the moves that gained or lost
+  the most. Any hand can be replayed card by card.
+- **Handleiding**: the controls, the rules, roem, signals, tips and a
+  glossary.
+
+| Home | At the table | Oefenen | Spelanalyse |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/screenshots/klaverjas-home.png" width="180" alt="Klaverjas home screen on a phone"> | <img src="docs/screenshots/klaverjas-table.png" width="180" alt="Klaverjas table during a hand"> | <img src="docs/screenshots/klaverjas-lesson.png" width="180" alt="A klaverjas lesson with Juf Jannie"> | <img src="docs/screenshots/klaverjas-review.png" width="180" alt="Spelanalyse after a game of klaverjas"> |
+
+## Toepen
+
+The game of raising the stake and bluffing: whoever takes the last trick wins
+the round.
+
+- **Two to six players**, each for themselves. Whoever reaches the limit of
+  penalty points (*strafpunten*) is out, and the last player left wins.
+- **House rules as options**: *Eruit bij* 10 or 15, *Vuile was* (and what a
+  caught bluff costs), *Armoede*, *Koningsspel*, *Boer* and
+  *Anti-lijntoep*.
+- **Bots at three strengths.** They bluff now and then, and the stronger
+  two remember who bluffs at the table.
+- **Score bijhouden**, for a game at a real table with real cards: one
+  phone keeps the score, and everyone else follows it live with the code.
+
+| At the table | Score bijhouden |
+|:---:|:---:|
+| <img src="docs/screenshots/toepen-table.png" width="180" alt="Toepen table during a round"> | <img src="docs/screenshots/toepen-score.png" width="180" alt="Toepen score sheet for a game at a real table"> |
+
+## Every game
+
+- **Start in one tap**: *Snel spelen* seats you at a table with bots at
+  once, without asking for a name.
+- **Join with a code or a link**: *Nieuw spel* gives a four-letter code and
+  a link. Friends type the code under *Meedoen* or open the link.
+- **Calls** with sound and, if you like, video, from browser to browser.
+- **No AI takes a seat unasked.** When a player leaves or loses the
+  connection, the game waits. A bot stands in only when everyone else at
+  the table agrees, and a friend with the code can take the seat.
+- **Built for phones** (touch, portrait and landscape), and it works on
+  tablets and desktop browsers with mouse and keyboard.
+
+![Klaverjas in a desktop browser](docs/screenshots/klaverjas-desktop.png)
+
+## Privacy
+
+Each game's server keeps a log of every game, with the players' names, IP
+addresses and browser (User-Agent), for at most 12 months. It is used for
+statistics and to improve the games. Toepen's score sheets are deleted seven
+days after their last change. Calls go from browser to browser, not through
+the server; a public STUN server tells each browser its own address.
+
+## Development
+
+### Layout
+
+```
+platform/        the shared table and web shell
+  server/        rooms, seats, lobby, chat, calls, takeover, game log, pacing, limits
+                 (klaverjas is still built in here)
+  serve/         what every game's binary shares: flags, HTTP server, dev static handler
+  persona/       the bots' names and characters
+  web/           the shell every game's site is built on (js/, css/)
+games/<game>/    everything of one game: its Go packages, its site (web/), its settings
+                 (<game>.mk) and a README with its design
+cmd/<game>/      each game's server binary
+deploy/          the container unit templates and the nginx configuration
+docs/            the platform's design
+test/            JS unit tests, full games over the websocket (e2e/), browser checks (ui/)
+scripts/         the Go toolchain in a container, the dev server, headless Chromium, checks
+```
+
+The servers are Go, with one dependency. The sites are plain ES modules and
+CSS, with no build step and nothing loaded from other sites.
+
+### Quick start
+
+Only podman, make and Node are needed: the Go toolchain runs in a container
 (`scripts/go`).
 
 ```sh
-make dev GAME=klaverjas   # the server from source, serving its site, on http://127.0.0.1:18093/
-make dev GAME=toepen      # toepen's, on http://127.0.0.1:18095/
+make dev GAME=klaverjas   # klaverjas from source on http://127.0.0.1:18093/
+make dev GAME=toepen      # toepen on http://127.0.0.1:18095/
+make test                 # go vet, the Go and JS tests, the deployment files
+make help                 # the other targets
 ```
 
-The first start compiles for a minute; Ctrl-C stops it. Other players on your
-network cannot join this one, because it listens on loopback.
+The first start compiles for about a minute, and Ctrl-C stops it.
 
-## Tests
+### Documentation
 
-```sh
-make test       # go vet, the Go tests (-short), the JS unit tests and the deployment files
-make test-all   # also the bot arena: sterk must beat normaal must beat makkelijk
-make e2e        # full games over the websocket against each game's server from source (GAME=… for one)
-scripts/go test -run '^$' -bench . ./games/klaverjas/bot ./games/klaverjas/game   # CPU per bot decision and per hand
-```
+- [docs/architecture.md](docs/architecture.md): how the platform and the
+  games fit together
+- [docs/server.md](docs/server.md): the table on the server, and the Go API
+  a game implements
+- [docs/protocol.md](docs/protocol.md): the websocket protocol
+- [docs/frontend.md](docs/frontend.md): the web shell and a game's site
+- [docs/deployment.md](docs/deployment.md): images, units and running a site
+- [docs/adding-a-game.md](docs/adding-a-game.md): what a new game needs
+- [games/klaverjas/README.md](games/klaverjas/README.md): klaverjas's rules
+  as implemented, bots, lessons and Spelanalyse
+- [games/toepen/README.md](games/toepen/README.md): toepen's rules, bots and
+  Score bijhouden
+- [CLAUDE.md](CLAUDE.md): commands, conventions and constraints in detail
 
-The server's own cost per match, and what a connection receives, are
-measured by `scripts/go test -run '^$' -bench . ./platform/server` and
-`scripts/go test -run PerfWire -v ./platform/server -args -perf.wire`
-(`docs/design.md` §4.3).
+### Contributing
 
-Browser checks with Puppeteer live in `test/ui` and run against a server
-(`GAME=klaverjas scripts/dev-server PORT`) and a headless Chromium (`scripts/chrome PORT`):
-
-```sh
-cd test/ui
-node app-play.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # full games by tapping, reload, rematch
-node app-play.mjs ... --gedraaid | --multi | --training                          # bidding, two players with chat, hints
-node app-play.mjs ... --players 3 | --players 2                                  # the auction and laying away; the piles
-node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at six sizes, into test/ui/out/
-node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 34 behaviour checks (coach, lessons, the Oefenen sheet, taps, back button, lost socket, chat during animations, full table, takeover vote, summary on a phone, card corners, expert mode, a call…); needs -fast, ~15 min
-node og-image.mjs --site klaverjas --cdp http://127.0.0.1:9303                  # renders games/klaverjas/web/og.png, the link preview image
-node app-perf.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # main-thread work per second and chat keystroke times on two emulated phones
-```
-
-`make test` also runs the JS unit tests in `test/*.test.mjs` and
-`test/ui/*.test.mjs` (the manual against the rules, sounds, cards,
-`app-util.test.mjs` for the storage fallback and text helpers,
-`app-icons.test.mjs` for every site's home-screen icons and link preview,
-`toepen.test.mjs` for toepen's pure helpers, and `test/sites.test.mjs`, which
-keeps every site to its own files, its 17 requests and its own game), and
-`scripts/deploy-test`, which puts the units through podman's quadlet generator
-and checks how `make deploy` labels, tags and refuses builds, with stubs in
-place of podman and systemd.
-
-## How it is built
-
-- `games/klaverjas/game`: the rules engine, pure and exhaustively tested: legal moves
-  for both rule sets, tricks, roem, scoring and the state machine of one hand.
-- `games/klaverjas/bot`: the personalities, the three playing strengths (the strongest
-  uses determinised Monte Carlo playouts), the training hints and chat.
-- `platform/server`: the table every game is played at: rooms with codes, the
-  websocket protocol, pacing, chat and limits, with klaverjas built in and an
-  API for other games. Each room is one goroutine; all state is in memory.
-- `cmd/klaverjas`: the binary, which ties the bots to the server.
-- `platform/web` and `games/klaverjas/web`: the frontend, plain ES modules and CSS with
-  no build step and nothing loaded from other sites, so a strict Content
-  Security Policy applies. `platform/web` is the shell every game's site uses.
-- Toepen: `games/toepen/toepen` (rules), `games/toepen/toepbot` (bots),
-  `games/toepen/toepenserver`, `cmd/toepen` and `games/toepen/web`.
-
-[`docs/design.md`](docs/design.md) is the contract between these parts: the
-rules as implemented, the Go APIs, the wire protocol, the interface and the
-deployment. Toepen's is [`docs/toepen.md`](docs/toepen.md);
-[`docs/games.md`](docs/games.md) says how the sites share code, and how to
-add a game.
-
-## Deployment
-
-Two images from one `Containerfile`, a static Go binary `FROM scratch` and
-nginx-unprivileged with the frontend, run as one rootless podman pod from
-quadlet units, behind Nginx Proxy Manager:
-
-```sh
-make install GAME=klaverjas   # the pod and container units, for your user
-make deploy GAME=klaverjas    # build both images, restart, check health
-```
-
-Every game has its own pod, units, images and game-log volume; `GAME=toepen`
-does the same for toepen, and `GAME=all` every game in turn.
-
-[`deploy/README-deploy.md`](deploy/README-deploy.md) covers the first setup,
-the proxy host, day-to-day operation and what is exposed.
+Code, comments and docs are in English; every string a player sees is in
+Dutch. The docs describe how the code works, so a change updates them in the
+same commit. `make test` must pass.
