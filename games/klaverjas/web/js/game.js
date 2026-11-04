@@ -85,7 +85,7 @@ const OPTS = [
   { key: 'seed', label: 'Seed', input: true, choices: [],
     info: ['Leeg: elke partij krijgt nieuwe kaarten.',
       'Met een getal (1 tot 999999999) krijg je bij dezelfde spelregels dezelfde kaarten, ook bij Nog een partij. Zo speel je een partij nog eens, of dezelfde kaarten als iemand anders.',
-      'De seed van een partij staat bij de start in de chat, en in de spelanalyse.'] },
+      'De seed van een partij staat pas aan het eind in de chat, en in de spelanalyse.'] },
 ];
 
 const LABELS = Object.fromEntries(OPTS.map(o => [o.key, Object.fromEntries(o.choices)]));
@@ -228,7 +228,7 @@ function openExpert() {
     h('div', { class: 'opt-lbl' }, h('span', { text: 'Potje' }), panels.infoBtn('Potje', [
       'Leeg: het hele spel.',
       'Met een nummer speel je alleen dat potje van de seed: dezelfde kaarten en dezelfde gever als in het hele spel.',
-      'De seed staat bij de start van elk spel in de chat, het nummer van een potje op het scorebord.',
+      'De seed staat aan het eind van elk spel in de chat, het nummer van een potje op het scorebord.',
     ])),
     numberField(opts.from, v => { opts.from = v; save(); showHands(); }, { max: 24, placeholder: 'Hele spel', label: 'Potje' })));
   form.querySelector('[data-key="from"]').after(h('div', { class: 'opt-row', dataset: { key: 'seat' } },

@@ -3,12 +3,15 @@ package server
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -37,11 +40,12 @@ func TestGameLog(t *testing.T) {
 	host.send(map[string]any{"t": "start"})
 	playGame(t, rand.New(rand.NewPCG(21, 22)), 4, host, guest)
 	s := host.waitState("the review", func(s *state) bool { return s.Review != nil && !s.Review.Pending })
-	// The seed is in the chat from the start.
-	start := "Spel (4242) begint: 4 potjes, Utrechts/Amsterdams. Veel plezier!"
+	// A seed chosen in the options is named at game over too, not at the start.
+	start := "Het spel begint: 4 potjes, Utrechts/Amsterdams. Veel plezier!"
 	if !slices.ContainsFunc(guest.chats, func(m chatMsg) bool { return m.Sys && m.Text == start }) {
-		t.Errorf("no start line with the seed in %+v", guest.chats)
+		t.Errorf("no start line in %+v", guest.chats)
 	}
+	guest.waitChat("De seed van dit spel was 4242.")
 	if s.Review.Seed != 4242 || s.Expert {
 		t.Errorf("review seed %d, want 4242; expert %v", s.Review.Seed, s.Expert)
 	}
@@ -172,6 +176,73 @@ func TestSeedDeals(t *testing.T) {
 	if r1 == r2 || r1 < 1 || r1 > maxSeed || r2 < 1 || r2 > maxSeed {
 		t.Errorf("drawn seeds %d and %d", r1, r2)
 	}
+}
+
+// TestSeedAtEnd: a seed the server draws reaches nobody before game over,
+// in no message at all, and the chat names it then; a rematch draws a new
+// one and keeps it as well (docs/server.md#the-seed).
+func TestSeedAtEnd(t *testing.T) {
+	srv, ts, _ := newTestServer(t)
+	host := dial(t, ts)
+	host.keep = true
+	host.create("Host", map[string]any{"hands": 4}, false, false)
+	guest := dial(t, ts)
+	guest.keep = true
+	guest.join(host.code, "Gast", "")
+	host.waitState("both seated", func(s *state) bool { return s.Players[guest.seat] != nil && !s.Players[guest.seat].Bot })
+	host.send(map[string]any{"t": "start"})
+	r := roomOf(t, srv, host.code)
+	rng := rand.New(rand.NewPCG(31, 32))
+	var seeds []uint64
+	for match := 1; match <= 2; match++ {
+		if match > 1 {
+			host.send(map[string]any{"t": "rematch"})
+			host.waitEvent("deal")
+			guest.waitEvent("deal")
+		}
+		playGame(t, rng, 4, host, guest)
+		var seed uint64
+		call(r, func() { seed = r.seed })
+		seeds = append(seeds, seed)
+		for _, c := range []*tclient{host, guest} {
+			c.waitChat(fmt.Sprintf("De seed van dit spel was %d.", seed))
+			checkSeedAtEnd(t, c, match, seed)
+		}
+	}
+	if seeds[0] == seeds[1] {
+		t.Errorf("the rematch dealt from seed %d again", seeds[0])
+	}
+}
+
+// checkSeedAtEnd checks the messages c kept: none before its n-th update
+// with event gameOver names seed as a number, and a system line after it
+// does. A seed of four digits or fewer (one in 100000) may be a score or a
+// count: it is not looked for then.
+func checkSeedAtEnd(t *testing.T, c *tclient, n int, seed uint64) {
+	t.Helper()
+	msgs := c.kept
+	num := regexp.MustCompile(`(^|[^0-9])` + strconv.FormatUint(seed, 10) + `([^0-9]|$)`)
+	line := fmt.Sprintf("De seed van dit spel was %d.", seed)
+	over := 0
+	for k, m := range msgs {
+		if m.T == "update" && m.evType() == "gameOver" {
+			if over++; over == n {
+				for _, after := range msgs[k+1:] {
+					var cm chatMsg
+					if after.T == "chat" && json.Unmarshal(after.Msg, &cm) == nil && cm.Sys && cm.Text == line {
+						return
+					}
+				}
+				t.Errorf("seat %d: no line %q after game over %d", c.seat, line, n)
+				return
+			}
+		}
+		if seed >= 10000 && num.Match(m.raw) {
+			t.Errorf("seat %d: seed %d before game over %d: %s", c.seat, seed, n, m.raw)
+			return
+		}
+	}
+	t.Errorf("seat %d: no game over %d in %d messages", c.seat, n, len(msgs))
 }
 
 // TestSeedOption: a seed is a number from 1 to 999999999; null or 0 means a

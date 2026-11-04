@@ -960,7 +960,8 @@ CHECKS.expert = async browser => {
     await press(P, '#btn-expert-go');
     await waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelector('.potje-n b')?.textContent === '3', { label: 'potje 3' });
     const start = await P.page.$$eval('.chat-list .msg.sys', els => els.map(e => e.textContent));
-    if (!start.some(t => t.includes('Spel (4242) begint: potje 3'))) throw new Error(`start line ${start}`);
+    // The seed is named at game over, a chosen one too: the start line has none.
+    if (!start.some(t => t.includes('Het spel begint: potje 3')) || start.some(t => t.includes('4242'))) throw new Error(`start line ${start}`);
     const created = await P.page.evaluate(() => window.__kj.sent.find(m => m.t === 'create'));
     if (!created?.expert || created.seat !== 2 || 'seat' in created.opts || created.opts.seed !== 4242 || created.opts.from !== 3) throw new Error(`create ${JSON.stringify(created)}`);
     const at = await P.page.evaluate(() => ({ seat: window.__kj.seat, you: window.__kj.you }));

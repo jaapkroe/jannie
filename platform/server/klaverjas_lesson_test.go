@@ -1230,7 +1230,7 @@ func TestSignalChat(t *testing.T) {
 	for range 2 {
 		r.chat = nil
 		r.startMatch()
-		if len(r.chat) < 2 || r.chat[0].Text != "Spel (55) begint: 16 potjes, Utrechts/Amsterdams. Veel plezier!" || r.chat[1].Text != "Seinen aan deze tafel:" {
+		if len(r.chat) < 2 || r.chat[0].Text != "Het spel begint: 16 potjes, Utrechts/Amsterdams. Veel plezier!" || r.chat[1].Text != "Seinen aan deze tafel:" {
 			t.Errorf("start of a match: %+v", r.chat)
 		}
 	}

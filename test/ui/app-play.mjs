@@ -1,6 +1,7 @@
 // Plays complete short games (4 potjes, tempo snel) through the UI only:
 // trump choice, bidding, tapping legal cards, "Volgend potje", until the game
-// is over. Then checks the score sheet and totals.
+// is over. Then checks the score sheet and totals, and that the chat names
+// the seed at game over and not at the start (shots chat-start, game-over).
 //
 //   cd test/ui && node app-play.mjs [--url http://127.0.0.1:18100] [--cdp URL] [--only phone,desktop] [--gedraaid] [--multi] [--training]
 //     [--players 2|3|4]
@@ -136,6 +137,23 @@ async function checkTotals(P) {
 
 const newStats = () => ({ plays: 0, trumps: 0, bids: 0, hands: 0 });
 
+// The table's lines in the chat, once one starts with text.
+async function sysLines(P, text) {
+  await waitFor(P, t => [...document.querySelectorAll('.chat-list .msg.sys')].some(e => e.textContent.startsWith(t)), { label: `chat line ${text}` }, text);
+  return P.page.$$eval('.chat-list .msg.sys', els => els.map(e => e.textContent));
+}
+
+// A screenshot of the chat: the drawer opened where it is one (phone).
+async function chatShot(P, label) {
+  if (!(await P.page.$eval('.topbar .tb-chat', e => !!e.offsetParent).catch(() => false))) return shot(P, label);
+  await press(P, '.topbar .tb-chat');
+  await waitFor(P, () => document.body.classList.contains('chat-open'), { label: 'chat drawer' });
+  await sleep(350);
+  await shot(P, label);
+  await P.page.keyboard.press('Escape');
+  await waitFor(P, () => !document.body.classList.contains('chat-open'), { label: 'chat drawer closed' });
+}
+
 async function run(name) {
   const browser = await connect(A.cdp);
   const P = await openPage(browser, VIEWPORTS[name], 'play-' + name);
@@ -147,7 +165,13 @@ async function run(name) {
     await type(P, '#name', 'Tester');
     await newGame(P, PLAYERS);
     await press(P, '#btn-start:not(:disabled)');
+    // The chat names the seed at game over, not at the start (docs/server.md#the-seed).
+    const start = await sysLines(P, 'Het spel begint');
+    await chatShot(P, 'chat-start');
     await playLoop(P, stats, 3);
+    const end = await sysLines(P, 'De seed van dit spel was');
+    const seed = end.find(t => t.startsWith('De seed van dit spel was')).match(/\d+/)[0];
+    if (start.some(t => t.includes(seed))) throw new Error(`seed ${seed} in the chat at the start: ${start}`);
     await sleep(800);
     await shot(P, 'game-over');
     const totals = await checkTotals(P);
@@ -161,7 +185,7 @@ async function run(name) {
       { label: 'rematch dealt' });
     const fresh = await P.page.$$eval('.sp-num', els => els.map(e => Number(e.dataset.n ?? e.textContent)));
     if (fresh.some(n => n !== 0)) throw new Error(`rematch starts at ${fresh}, want all 0`);
-    console.log(`  ${P.name}: game over in ${Math.round((Date.now() - t0) / 1000)} s, ${stats.plays} cards, ${stats.trumps} trump choices, ${stats.bids} bids${stats.discards ? `, ${stats.discards} discards` : ''}, totals ${totals}`);
+    console.log(`  ${P.name}: game over in ${Math.round((Date.now() - t0) / 1000)} s, ${stats.plays} cards, ${stats.trumps} trump choices, ${stats.bids} bids${stats.discards ? `, ${stats.discards} discards` : ''}, totals ${totals}, seed ${seed} named at the end`);
   } catch (e) {
     await shot(P, 'zz-failure').catch(() => {});
     P.errors.push(`[${P.name}] ${e.message || e}`);

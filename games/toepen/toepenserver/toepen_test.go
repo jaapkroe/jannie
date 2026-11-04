@@ -284,6 +284,120 @@ func TestToepenRematch(t *testing.T) {
 	}
 }
 
+// TestToepenSeedAtEnd: the seed the table draws for a match reaches
+// neither player before game over, in no message at all, and the chat
+// names it then; a rematch draws its own (docs/server.md#the-seed).
+func TestToepenSeedAtEnd(t *testing.T) {
+	dir := t.TempDir()
+	srv, _ := newToepServer(t, func(c *server.Config) { c.GameLog = dir })
+	h := srv.Dial()
+	h.Keep = true
+	h.Create("Jaap", map[string]any{"players": 3}, false)
+	g := srv.Dial()
+	g.Keep = true
+	g.Join(h.Code, "Kees", "")
+	h.Send(map[string]any{"t": "start"})
+	clients := []*servertest.Client{h, g}
+	rng := rand.New(rand.NewPCG(11, 12))
+	var seeds []uint64
+	for match := 1; match <= 2; match++ {
+		if match > 1 {
+			h.Send(map[string]any{"t": "rematch"})
+		}
+		playTogether(t, clients, rng)
+		seeds = loggedSeeds(t, dir, match)
+		for _, c := range clients {
+			servertest.SeedAtEnd(t, c, match, seeds[match-1])
+		}
+	}
+	if seeds[0] == seeds[1] {
+		t.Errorf("the rematch dealt from seed %d again", seeds[0])
+	}
+}
+
+// playTogether plays one match with the clients' decisions at random, to
+// its end: game over and the table's line naming the seed after it, for
+// each of them. A decision that crossed another's is no error.
+func playTogether(t *testing.T, clients []*servertest.Client, rng *rand.Rand) {
+	t.Helper()
+	over := make([]bool, len(clients))
+	named := make([]bool, len(clients))
+	sent := make([]string, len(clients))  // the state last acted on
+	wasIn := make([]string, len(clients)) // the time for a was answered
+	deadline := time.Now().Add(30 * time.Second)
+	for slices.Contains(named, false) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the match did not end: over %v, seed named %v", over, named)
+		}
+		busy := false
+		for k, c := range clients {
+			var last *servertest.Msg
+			for m := c.Poll(); m != nil; m = c.Poll() {
+				busy = true
+				switch m.T {
+				case "error":
+					if e := m.ErrMsg(); m.Code != "niet-jouw-beurt" && e != toepen.ErrNoStock.Error() && !strings.HasPrefix(e, "Die vraag staat niet") {
+						t.Fatalf("seat %d: error %s: %s", c.Seat, m.Code, e)
+					}
+				case "update":
+					over[k] = over[k] || m.EvType() == "gameOver"
+					last = m
+				case "chat":
+					if _, _, text, _, sys := m.Chat(); over[k] && sys && strings.HasPrefix(text, "De seed van dit spel was ") {
+						named[k] = true
+					}
+				}
+			}
+			if last == nil || over[k] {
+				continue
+			}
+			s := toepS(t, last)
+			key, was := string(last.S), fmt.Sprint(s.HandNo, "/", s.WasRound)
+			if s.Phase == phaseWas && wasIn[k] == was {
+				continue
+			}
+			if key != sent[k] && toepTurn(c, s, rng) {
+				sent[k] = key
+				if s.Phase == phaseWas {
+					wasIn[k] = was
+				}
+			}
+		}
+		if !busy {
+			time.Sleep(time.Millisecond)
+		}
+	}
+}
+
+// loggedSeeds waits for n match records in the game log in dir and returns
+// their seeds.
+func loggedSeeds(t *testing.T, dir string, n int) []uint64 {
+	t.Helper()
+	var seeds []uint64
+	for range 100 {
+		seeds = nil
+		files, _ := filepath.Glob(filepath.Join(dir, "games-*.jsonl"))
+		for _, f := range files {
+			b, _ := os.ReadFile(f)
+			for _, line := range strings.Split(strings.TrimSpace(string(b)), "\n") {
+				var rec struct {
+					T    string `json:"t"`
+					Seed uint64 `json:"seed"`
+				}
+				if json.Unmarshal([]byte(line), &rec) == nil && rec.T == "match" {
+					seeds = append(seeds, rec.Seed)
+				}
+			}
+		}
+		if len(seeds) >= n {
+			return seeds
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("%d match records in the game log, want %d", len(seeds), n)
+	return nil
+}
+
 // toepOpts is the options of a state.
 func toepOpts(t *testing.T, m *servertest.Msg) map[string]any {
 	t.Helper()

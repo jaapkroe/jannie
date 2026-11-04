@@ -65,7 +65,7 @@ func TestExpertFrom(t *testing.T) {
 	one.opts.TrumpMode = game.Gedraaid
 	one.startMatch()
 	if !slices.ContainsFunc(one.chat, func(m chatMsg) bool {
-		return m.Sys && m.Text == "Spel (77) begint: potje 3, Gedraaid/Amsterdams. Veel plezier!"
+		return m.Sys && m.Text == "Het spel begint: potje 3, Gedraaid/Amsterdams. Veel plezier!"
 	}) {
 		t.Errorf("no start line in %+v", one.chat)
 	}

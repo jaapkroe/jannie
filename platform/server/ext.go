@@ -268,11 +268,10 @@ func (t *Table) Options() GameOptions { return t.r.x.opts }
 func (t *Table) Players() int { return t.r.players() }
 
 // Deals is the stream the deals of the match come from: drawn from its
-// seed, so the same seed and options give the same cards.
+// seed, so the same seed and options give the same cards. The game never
+// sees the seed itself; the table names it at game over
+// (docs/server.md#the-seed).
 func (t *Table) Deals() *rand.Rand { return t.r.deals }
-
-// Seed is the seed of the match.
-func (t *Table) Seed() uint64 { return t.r.seed }
 
 // MatchID is the match's id in the game log.
 func (t *Table) MatchID() string { return t.r.matchID }
@@ -460,8 +459,10 @@ func (t *Table) Summary(ev any, after time.Duration) {
 }
 
 // GameOver ends the match with the scores per seat (or side) and the
-// winner (-1: a draw): the event gameOver goes out and the game log
-// records the end.
+// winner (-1: a draw): the event gameOver goes out, the chat names the
+// match's seed and the game log records the end. A line of the game's own
+// about the end (who won) goes in the chat before GameOver, so the seed
+// comes last.
 func (t *Table) GameOver(total []int, winner int) {
 	r := t.r
 	r.pending = stepNone
@@ -471,6 +472,7 @@ func (t *Table) GameOver(total []int, winner int) {
 	r.total = slices.Clone(total)
 	r.winner = winner
 	r.emit(evGameOver{Type: "gameOver", Total: slices.Clone(total), Winner: winner})
+	r.nameSeed()
 	r.logEnd()
 }
 

@@ -189,7 +189,7 @@ these are klaverjas's values and what is particular to it:
 | `lesson` | `basis`, `roem`, `seinen`, "" | "" | Training only (else ""): the lesson Juf Jannie gives, a match of its own ([Lessons](#lessons); the rows of the Oefenen sheet, [Home](#home)); "": *vrij spelen*, no lesson |
 | `tips` | bool | true | Training only (else false): a hint on every turn and an explanation after every trick (`tipsOn`; *Tips* in the Oefenen sheet) |
 | `signals` | `{"aas","kleintjeBoer","hoogLaag","boerOverBoer"}`, bools | all true but `boerOverBoer` | The table's agreements on signals ([Seinen](#seinen-signals)), for four players; keys left out keep their default. The lesson on signals plays the defaults when all are off |
-| `seed` | 1..999999999, or 0 / null | 0 | The same seed deals the same first dealer, hands, talon and turned suit. The start line in the chat and the Spelanalyse show the seed of the match. The Oefenen sheet keeps it in `kj.train`, the expert sheet in `kj.expert` |
+| `seed` | 1..999999999, or 0 / null | 0 | The same seed deals the same first dealer, hands, talon and turned suit. The chat names the seed of the match at game over, as does the Spelanalyse, and no message before ([docs/server.md, "The seed"](../../docs/server.md#the-seed)). The Oefenen sheet keeps it in `kj.train`, the expert sheet in `kj.expert` |
 | `from` | 1..24, or 0 / null | 0 | Expert only (else 0): the match is hand `from` of the seed's deals alone, dealt as in the whole match (the deals before it are drawn and passed over, the deal passing on as often) and numbered so; `hands` is raised to a length that holds it. 0: the whole match |
 
 The UI label for the variant is "Utrechts/Amsterdams" etc.: `trumpMode` +
@@ -222,8 +222,8 @@ seat that `create` names (`seat`, 0–3; left out or out of range: 0), the
 host, three random bots at the room's level on the other seats, always four
 players, `open` allowed, no hints or tips, nobody else can join ("Dit is een
 expertspel; daar kun je niet aan meedoen."), no lobby (it starts at once;
-`lobby` is refused, a `rematch` plays the same seed and hand again, at the
-same seat). It deals from `seed` and `from` by seat, as a game of four with
+`lobby` is refused, a `rematch` plays the same options again at the same
+seat: the same seed and hand when a seed was chosen, a new seed when not). It deals from `seed` and `from` by seat, as a game of four with
 the same seed and options deals: the same first dealer, and the same cards
 for seat k. The state's `expert` is true, and the expert may ask `why`
 about their own decisions and give feedback about one of them, while the
@@ -821,8 +821,10 @@ has `why` and this `feedback` as well (`room.reasoning`), with option
 
 ### Chat at the start of a match
 
-The system line at the start of every match, rematches included, with its seed, so nobody has to play to the end to see it
-("Spel (482913) begint: 16 potjes, Utrechts/Amsterdams. Veel plezier!";
+The system line at the start of every match, rematches included,
+without the seed, which the table names at game over
+([docs/server.md, "The seed"](../../docs/server.md#the-seed))
+("Het spel begint: 16 potjes, Utrechts/Amsterdams. Veel plezier!";
 with `from` "… begint: potje 5, …"); right after it, with four players,
 the table's signals ([Seinen](#seinen-signals)): "Seinen aan deze tafel:" and a line for each
 agreement with what it says, the texts of Juf Jannie's lesson on signals

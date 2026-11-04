@@ -101,7 +101,7 @@ game's own options come after them in the state's `opts`:
 | `players` | the game's seat range (`Game.Seats`) | the game's | Seats at the table. Empty seats at the start get random bots |
 | `ai` | `makkelijk`, `normaal`, `sterk` | `normaal` | Strength of every bot in the room |
 | `tempo` | `rustig`, `normaal`, `snel` | `normaal` | Pacing of bots and pauses ("Pacing" below) |
-| `seed` | 1..999999999, or 0 / null | 0 | Every match deals from a seed: with this one the same cards for the same options and number of players, also on `rematch`; 0 draws a new seed per match. The start line in the chat shows the seed of the match. The client never remembers it in `kj.opts` |
+| `seed` | 1..999999999, or 0 / null | 0 | Every match deals from a seed: with this one the same cards for the same options and number of players, also on `rematch`; 0 draws a new seed per match. Before game over no message names a seed the server drew ("The seed" below). The client never remembers it in `kj.opts` |
 
 The seed seeds every deal of a match and nothing else (`dealRNG`), so the
 same seed and options give the same cards, whatever the players do.
@@ -109,13 +109,16 @@ same seed and options give the same cards, whatever the players do.
 ### Table
 
 `*Table` is the game's handle on its room: reads (`Code`, `Opts`,
-`Options`, `Players`, `Deals`, `Seed`, `MatchID`, `DisplayName`,
+`Options`, `Players`, `Deals`, `MatchID`, `DisplayName`,
 `BotPlays`, `HumanCount`, `InHand`, `Pending`, `PauseEnds`, `Pace`,
 `Logger`, `Shared`) and the moves of the table (`SetPhase`, `SetHand`,
 `Pause`, `EndPause`, `OpenTurn`, `Emit`, `Later`, `Think` for a question
 everyone answers at once, `Background` for an analysis off the room
 goroutine, `Trick`, `Summary`, `GameOver`, `SysChat`,
 `BotSay`, `BotsReact`, `Log`), every duration scaled by the room's tempo.
+A game never sees the seed, only the stream its deals come from (`Deals`);
+`GameOver` names it in the chat ("The seed" below), so a game's own line
+about the end goes before that call.
 The table drives the match after every call into the game and every
 callback; a game never schedules itself. For another game the table reads
 `players`, `ai`, `tempo` and `seed` ("Kies N tot en met M spelers.") and
@@ -125,7 +128,9 @@ ignored.
 ### servertest and the toy game
 
 `servertest` is a test kit for a game's server tests (`Start`, a client
-with `Create`, `Join`, `Until`, `WaitEvent`, …), and `toy_test.go` a toy
+with `Create`, `Join`, `Until`, `WaitEvent`, `Poll` for several clients
+in one loop, `Keep` to keep every message, …; `SeedAtEnd` checks a
+client's messages for the seed, "The seed" below), and `toy_test.go` a toy
 game ("hoogste kaart") that is the template for the next one.
 
 ### Personas
@@ -363,16 +368,43 @@ repeat one of its last two lines for the same kind of event (numbers aside:
 "20 roem" and "50 roem" are one line); it asks for another line a few times
 and otherwise stays silent.
 
+## The seed
+
+Every deal of a match follows from its seed alone (`dealRNG`). Whoever
+knows the seed while the match runs can start a game of their own with it,
+with open cards (klaverjas's Oefenen or expert mode), and see every hand of
+this one. So no message to any client names a seed the server drew
+before the match is over: not the chat, not the state (`opts.seed` is the
+option, 0 then), not an event or another message. The game log
+keeps it (`match`), on the server only. At game over, right after the
+event `gameOver`, the table names it in the chat for every game: "De seed
+van dit spel was 482913." Klaverjas's Spelanalyse, sent only at game over,
+has it as well. What uses the seed afterwards starts from there: the
+Spelanalyse, the expert mode, a new game with the seed typed in. A rematch
+without a chosen seed draws a new one, named at its own end.
+
+A seed chosen in the options is the table's own choice and stays visible
+to it: `opts.seed` carries it from the lobby on (the lobby shows it), and
+a rematch deals from it again. The start line names no seed, chosen or
+drawn, and game over names a chosen one too.
+
+Keeping the seed out of the messages takes away the easy way, not every
+way: a seed has at most nine digits, and with the source at hand someone
+can search the seeds for the one that deals the cards they hold. Nothing
+that needs deals nobody can know in advance (a ranking, a daily challenge)
+can rest on the seed alone.
+
 ## System chat lines
 
 System chat lines (`sys`, seat -1) from the table: joining, a join refused
 because the table is full, leaving, an AI taking a seat with everyone's
 consent, a player back from a substitute ("… is terug."), a seat taken back
 on another device, host changes, rematch, back to the lobby (and a gone
-player's seat freed). Each game writes the start of every match, rematches
-included, with its seed, so nobody has to play to the end to see it
-(klaverjas:
-[games/klaverjas/README.md, "Chat at the start of a match"](../games/klaverjas/README.md#chat-at-the-start-of-a-match)).
+player's seat freed), and the seed of the match at game over ("The seed"
+above). Each game writes the start of every match, rematches included,
+without the seed (klaverjas:
+[games/klaverjas/README.md, "Chat at the start of a match"](../games/klaverjas/README.md#chat-at-the-start-of-a-match);
+toepen: [games/toepen/README.md, "Server"](../games/toepen/README.md#server)).
 
 ## Calls
 

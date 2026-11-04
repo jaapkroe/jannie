@@ -70,7 +70,7 @@ const OPTS = [
   { key: 'seed', label: 'Seed', input: true, choices: [],
     info: ['Leeg: elke partij krijgt nieuwe kaarten.',
       'Met een getal (1 tot 999999999) krijg je bij dezelfde spelregels dezelfde kaarten, ook bij Nog een keer.',
-      'De seed van een partij staat bij de start in de chat.'] },
+      'De seed van een partij staat pas aan het eind in de chat.'] },
 ];
 const LABELS = Object.fromEntries(OPTS.map(o => [o.key, Object.fromEntries(o.choices)]));
 

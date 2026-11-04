@@ -139,7 +139,14 @@ the winner agree, in training a tip arrived after every trick, and every
 hand before the last that was asked to look back at came back, as did the
 refusal (not checked with `--reconnect`). Once
 the review is complete, its replay has every hand with the player's graded
-decisions, at least as many as the hand's last `handReview` had.
+decisions, at least as many as the hand's last `handReview` had. Right after
+`gameOver` the chat names the seed ("De seed van dit spel was 482913.";
+for a player back after game over, in the chat log), the review's `seed` is
+that one, and no message the player got before game over named it (the
+update at game over may: its review has it;
+[docs/server.md, "The seed"](../../docs/server.md#the-seed); a seed under
+10000 might be a score, so it is not looked for). A player is done with
+that line.
 
 Any `error` message from the server fails the game too (except the answer to
 a vote that crossed the end of its question, see above, and the refusal of
@@ -172,7 +179,9 @@ only on a toep and `mustStay` only with anti-lijntoep, a hand played face
 up only with rule `bluf` and of a seat still in (yours: your hand), no
 bluff offered on armoede, nobody's points go down within a round (but for
 the boer's point off the last trick's winner), and at game over exactly one
-player is left, the winner, under the limit. Any `error` fails the match,
+player is left, the winner, under the limit. Then every simulated player
+gets the line with the seed, after `gameOver`, and no message before game
+over named that seed, as for klaverjas. Any `error` fails the match,
 except a move that crossed a change of turn (`niet-jouw-beurt`, "Die vraag
 staat niet (meer) open.") and a *ready* that crossed the last summary
 moving on into game over; so does 30 seconds without progress.

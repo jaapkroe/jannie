@@ -131,11 +131,11 @@ func turnedBarred(v game.View) bool { return v.Forced && v.Players != 3 }
 func (r *room) startKlaverjas() {
 	r.total = make([]int, game.Scorers(r.players()))
 	r.startReviews()
-	// The seed from the start, so nobody has to play to the end to see it.
+	// Without the seed: the chat names it at game over (docs/server.md#the-seed).
 	if r.opts.From > 0 {
-		r.sysChat("Spel (%d) begint: potje %d, %s. Veel plezier!", r.seed, r.firstHand, r.opts.variantNL())
+		r.sysChat("Het spel begint: potje %d, %s. Veel plezier!", r.firstHand, r.opts.variantNL())
 	} else {
-		r.sysChat("Spel (%d) begint: %d potjes, %s. Veel plezier!", r.seed, r.opts.Hands, r.opts.variantNL())
+		r.sysChat("Het spel begint: %d potjes, %s. Veel plezier!", r.opts.Hands, r.opts.variantNL())
 	}
 	r.signalChat()
 	r.logMatch()
@@ -642,6 +642,7 @@ func (r *room) nextHand() {
 	r.overAt = time.Now()
 	r.winner = topScorer(r.total)
 	r.emit(evGameOver{Type: "gameOver", Total: slices.Clone(r.total), Winner: r.winner})
+	r.nameSeed()
 	r.chatGameOver()
 	r.logEnd()
 	for i := range r.seats {
