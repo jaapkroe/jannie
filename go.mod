@@ -1,4 +1,4 @@
-module klaverjas
+module jannie
 
 go 1.27
 

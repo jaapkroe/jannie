@@ -4,11 +4,11 @@ import (
 	"math"
 	"math/rand/v2"
 
-	"klaverjas/internal/persona"
-	"klaverjas/internal/server"
-	"klaverjas/internal/toepbot"
-	"klaverjas/internal/toepen"
-	"klaverjas/internal/toepenserver"
+	"jannie/games/toepen/toepbot"
+	"jannie/games/toepen/toepen"
+	"jannie/games/toepen/toepenserver"
+	"jannie/platform/persona"
+	"jannie/platform/server"
 )
 
 // toepAI adapts package toepbot to toepenserver.AI, with the personas of

@@ -1,4 +1,4 @@
-// Home-screen icons and the link preview of every site (web/<game>):
+// Home-screen icons and the link preview of every site (games/<game>/web):
 //   node --test test/ui/app-icons.test.mjs
 //
 // iOS takes only a raster apple-touch-icon and fills transparent pixels
@@ -12,11 +12,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { fileURLToPath } from 'node:url';
 
-import { GAMES } from './site.mjs';
+import { GAMES, siteDir } from './site.mjs';
 
-const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web');
 // The felt's dominant colour channel per site: the corners of the maskable
 // icon show it.
 const FELT = { klaverjas: 'g', toepen: 'b' };
@@ -79,7 +77,7 @@ function opaque(img) {
 }
 
 for (const game of GAMES) {
-const web = p => path.join(WEB, game, p.replace(/^\//, ''));
+const web = p => path.join(siteDir(game), p.replace(/^\//, ''));
 const manifest = JSON.parse(fs.readFileSync(web('manifest.webmanifest'), 'utf8'));
 const html = fs.readFileSync(web('index.html'), 'utf8');
 

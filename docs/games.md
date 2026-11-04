@@ -50,7 +50,7 @@ this design.
 - Its rules, bots, protocol messages and state, and its game log.
 
 The personas are the same café regulars on every site (identity in
-`internal/persona`); their bios and chat lines are per game.
+`platform/persona`); their bios and chat lines are per game.
 
 Storage is per origin: a player who plays both games types their name once
 on each site. Nothing links the sites to each other.
@@ -58,21 +58,21 @@ on each site. Nothing links the sites to each other.
 ## 3. What is shared as code
 
 ```
-cmd/<game>/                   main: the game's AI adapter and internal/serve
-internal/serve/               flags, run and shutdown, -healthcheck, the dev static handler
-                              (the union web/shared ∪ web/<game>), the per-game 404 page
-internal/server/              the table: rooms and codes, seats and the lobby, bots, chat,
+cmd/<game>/                   main: the game's AI adapter and platform/serve
+platform/serve/               flags, run and shutdown, -healthcheck, the dev static handler
+                              (the union platform/web ∪ games/<game>/web), the per-game 404 page
+platform/server/              the table: rooms and codes, seats and the lobby, bots, chat,
                               calls, reconnects, the takeover question, pacing, limits,
                               the game-log writer; klaverjas built in; the Game API
-internal/server/servertest/   a test kit for any game's server tests
-internal/persona/             the personas' identities
-internal/<game>, <game>bot,   a game's rules, bots and server side (toepen: internal/toepen,
-  <game>server/                 internal/toepbot, internal/toepenserver)
-web/shared/{js,css}/          the shell: main.js (with the websocket), util.js, panels.js,
+platform/server/servertest/   a test kit for any game's server tests
+platform/persona/             the personas' identities
+internal/<game>, <game>bot,   a game's rules, bots and server side (toepen: games/toepen/toepen,
+  <game>server/                 games/toepen/toepbot, games/toepen/toepenserver)
+platform/web/{js,css}/          the shell: main.js (with the websocket), util.js, panels.js,
                               home.js, sound.js, cards.js, call.js; app.css, cards.css
-web/<game>/                   the site's page, manifest, icons, og.png, js/game.js and the
+games/<game>/web/                   the site's page, manifest, icons, og.png, js/game.js and the
                               game's modules and stylesheet
-deploy/games/<game>.mk        the site's settings: TITLE, VERB, SITE, ADDR, ports, E2E_SIM
+games/<game>/<game>.mk        the site's settings: TITLE, VERB, SITE, ADDR, ports, E2E_SIM
 deploy/game*.in               the pod and unit templates every game renders
 ```
 
@@ -132,7 +132,7 @@ Which shared capabilities each uses:
 
 ## 6. What is not generic yet
 
-- **Cards.** `internal/game`'s card type and `cards.js` know the ranks 7–A
+- **Cards.** `games/klaverjas/game`'s card type and `cards.js` know the ranks 7–A
   only; the 52-card games need 2–6 and the jokers (`internal/cards`, faces
   in cards.js). Toepen reuses the 32.
 - **The shell's klaverjas leftovers.** util.js still holds klaverjas's
@@ -160,13 +160,13 @@ Which shared capabilities each uses:
    beats weaker) and chat lines and bios for the personas.
 3. Server: `internal/<game>server` implementing `server.Game`; its tests on
    `servertest`.
-4. `cmd/<game>`: the AI adapter and `internal/serve`.
-5. Site: `web/<game>/` with index.html, manifest, icons (`icon-full.svg`,
+4. `cmd/<game>`: the AI adapter and `platform/serve`.
+5. Site: `games/<game>/web/` with index.html, manifest, icons (`icon-full.svg`,
    rendered PNGs), `og.png`, `js/game.js` and its table, its stylesheet;
    add it to the felt table of `test/ui/app-icons.test.mjs` and a scene to
    `test/ui/og-image.mjs`.
 6. End-to-end: `test/e2e/<game>.mjs`.
-7. Deployment: `deploy/games/<game>.mk` (next free odd port), a
+7. Deployment: `games/<game>/<game>.mk` (next free odd port), a
    `server-<game>` target in the Containerfile; then outside the repo an NPM
    proxy host, the name's rate tier in shrek-infra, the game-log volume in
    the backup exclusions, Trivy and monitoring for its images.

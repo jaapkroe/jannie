@@ -28,39 +28,39 @@ strict CSP is possible.
 
 ```
 go.mod                     module klaverjas (Go 1.27), one dependency: github.com/coder/websocket
-cmd/klaverjas/main.go      klaverjas's binary: its bots and internal/serve
+cmd/klaverjas/main.go      klaverjas's binary: its bots and platform/serve
 cmd/toepen/                toepen's binary (toepen.md)
-internal/serve/            what every binary shares: flags, HTTP server, graceful shutdown, -healthcheck,
-                           the dev static handler (web/shared ∪ web/<game>) and the game's 404 page
-internal/game/             pure rules engine: cards, legal moves, tricks, roem, scoring, deal state machine
-internal/bot/              bot personalities, play levels, hints/advice, chat lines
-internal/persona/          the personas' identities, shared by every game (bios per game)
-internal/server/           the table: rooms, codes, websocket protocol, pacing, chat, limits; klaverjas
+platform/serve/            what every binary shares: flags, HTTP server, graceful shutdown, -healthcheck,
+                           the dev static handler (platform/web ∪ games/<game>/web) and the game's 404 page
+games/klaverjas/game/             pure rules engine: cards, legal moves, tricks, roem, scoring, deal state machine
+games/klaverjas/bot/              bot personalities, play levels, hints/advice, chat lines
+platform/persona/          the personas' identities, shared by every game (bios per game)
+platform/server/           the table: rooms, codes, websocket protocol, pacing, chat, limits; klaverjas
                            built in; the Game API for other games (§4.3); servertest/, their test kit
-internal/toepen/ internal/toepbot/ internal/toepenserver/   toepen's rules, bots and server side
-web/shared/                the shell every game's site uses, vanilla ES modules, no build step (§9)
+games/toepen/toepen/ games/toepen/toepbot/ games/toepen/toepenserver/   toepen's rules, bots and server side
+platform/web/                the shell every game's site uses, vanilla ES modules, no build step (§9)
   css/app.css  css/cards.css
   js/main.js (routing, the websocket, the update queue)  js/util.js  js/panels.js  js/home.js
   js/cards.js  js/sound.js
   js/call.js                 the call with the others at the table, loaded once another person sits there
-web/klaverjas/             klaverjas's site, served with web/shared (no path in both)
+games/klaverjas/web/             klaverjas's site, served with platform/web (no path in both)
   index.html  favicon.svg  manifest.webmanifest  og.png (link preview)
   icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
   css/manual.css
   js/game.js (the game module, §9)  js/table.js (the table and its overlays)  js/manual.js
   js/expert.js               the sheet *Redenering van de AI* (expert mode, training), loaded only when first opened
-web/toepen/                toepen's site (toepen.md §6)
+games/toepen/web/                toepen's site (toepen.md §6)
 test/e2e/                  node scripts that play full games over the websocket: sim.mjs (klaverjas), toepen.mjs
 test/sites.test.mjs        every site: its own files, its request budget, its own game only
 test/ui/                   puppeteer-core browser checks (npm install done; node_modules ignored),
                            app-perf.mjs, a benchmark of the frontend on two emulated phones,
                            og-image.mjs, which renders a site's og.png, and site.mjs, a site's files
-deploy/games/<game>.mk     a game's settings (§10): TITLE, VERB, SITE, ADDR, DEV_PORT, E2E_PORT, E2E_SIM
+games/<game>/<game>.mk     a game's settings (§10): TITLE, VERB, SITE, ADDR, DEV_PORT, E2E_PORT, E2E_SIM
 deploy/                    the templates every game renders (game.pod.in, game-web.container.in,
                            game-server.container.in), nginx.conf, npm-advanced.conf, README-deploy.md
 scripts/go                 Go toolchain in a container: `scripts/go test ./...`
 GAME=<game> scripts/dev-server PORT  run the game's server from source on 127.0.0.1:PORT, serving
-                           web/shared and web/<game> (flags after PORT)
+                           platform/web and games/<game>/web (flags after PORT)
 scripts/chrome PORT        headless Chromium with CDP on 127.0.0.1:PORT, with a fake camera and microphone
 scripts/pod-check ADDR SITE TITLE  check a game's running pod without NPM: pages and titles, websocket,
                            link preview, manifest, CSP, security headers (`make check`)
@@ -290,7 +290,7 @@ are those of any game at a table of four.
 Exact names may gain helpers, but these exported identifiers and semantics are
 what other packages use. Changing them means updating this section.
 
-### 4.1 `internal/game`
+### 4.1 `games/klaverjas/game`
 
 ```go
 type Suit uint8   // Clubs, Diamonds, Hearts, Spades  (wire "C","D","H","S")
@@ -403,7 +403,7 @@ type View struct {
 }
 ```
 
-Semantics and additions (implemented in `internal/game`):
+Semantics and additions (implemented in `games/klaverjas/game`):
 
 - `View.Current` is the trick the next card goes into: once a trick is complete
   it is already the next, empty trick led by the winner (the completed one is the
@@ -464,7 +464,7 @@ Semantics and additions (implemented in `internal/game`):
   `TricksWon() [2]int`, `HandPoints() [2]int` (incl. last trick),
   `HandRoem() [2]int`.
 
-Tests in `internal/game` are table-driven and exhaustive for: legal moves in
+Tests in `games/klaverjas/game` are table-driven and exhaustive for: legal moves in
 both rule sets (all branches above), trick winner, roem (each kind, combos,
 stuk+sequence, four of a kind, no false positives), scoring (normal, nat, tie =
 nat, pit, pit by defenders), deal state machine (both trump modes, forced
@@ -478,7 +478,7 @@ and every trump. Benchmarks: `BenchmarkPlayout` (a hand of random legal
 cards played out on a copy of a Deal), `BenchmarkLegalMoves`,
 `BenchmarkRoemPoints`.
 
-### 4.2 `internal/bot`
+### 4.2 `games/klaverjas/bot`
 
 ```go
 type Level int  // Makkelijk, Normaal, Sterk; String() "normaal"
@@ -680,7 +680,7 @@ Strength levels:
   results go to the rule-based card, then to the cheaper card.
 
 Each persona modulates its level's choices (Aggression shifts thresholds) and
-chat. `internal/bot` has an arena test (skipped with `-short`) that plays many
+chat. `games/klaverjas/bot` has an arena test (skipped with `-short`) that plays many
 hands between levels and asserts sterk > normaal > makkelijk in average points.
 Its benchmarks (`bench_test.go`) time the sterk decisions: with four players
 the first lead (also on one core), a card mid-hand, the trump choice and the
@@ -704,7 +704,7 @@ engine moved by about 2 points per hand at most, and sterk with signals did
 not beat sterk without (+0.7 ± 0.9 over 3,000 deals). The manual's
 *Juf Jannie* page quotes these numbers.
 
-At a table of three or two (`internal/bot/small.go`, `smallsearch.go`) the
+At a table of three or two (`games/klaverjas/bot/small.go`, `smallsearch.go`) the
 levels keep their meaning with their own policy; the signals of §8 play no
 part. Normaal plays by rules of thumb: the side that made trump draws trumps
 while it holds the strongest, everyone cashes cards that win for sure (with
@@ -721,26 +721,26 @@ more than defending (fitted in self-play); makkelijk with few deals and too
 boldly. The arena test also checks sterk > normaal > makkelijk at both
 smaller tables.
 
-### 4.3 `internal/server`
+### 4.3 `platform/server`
 
-`internal/server` is the table every game is played at, and klaverjas, the
+`platform/server` is the table every game is played at, and klaverjas, the
 built-in game. One server plays one game (`Config.Game`): `cmd/klaverjas`
 passes `server.Klaverjas(ai)`, `cmd/toepen` toepen's `server.Game`
-(`internal/toepenserver`, [`toepen.md`](toepen.md)). `internal/server` does
-**not** import `internal/bot` nor any other game: it defines the interfaces
+(`games/toepen/toepenserver`, [`toepen.md`](toepen.md)). `platform/server` does
+**not** import `games/klaverjas/bot` nor any other game: it defines the interfaces
 it needs, and `cmd/klaverjas/ai.go` adapts package `bot` to klaverjas's.
 Server tests use a fake AI (first legal card), so the packages build
 independently.
 `perf_test.go` measures the server's own cost: fake humans, connections
 without a socket, play whole matches in process with random legal
-decisions. `go test -run '^$' -bench . ./internal/server` runs
+decisions. `go test -run '^$' -bench . ./platform/server` runs
 `BenchmarkGame` (a match of 16 hands: solo, gedraaid, four humans, expert,
 three and two players; and the lesson on the basic game, 8 hands),
 `BenchmarkMarshalState`
 (every update of a solo match encoded again), `BenchmarkStateGameOver` (the
 state after 24 hands) and `BenchmarkWSGame` (a solo match over a real
 websocket, with and without permessage-deflate, with the bytes on the
-wire); `go test -run PerfWire -v ./internal/server -args -perf.wire` lists
+wire); `go test -run PerfWire -v ./platform/server -args -perf.wire` lists
 what one connection receives in a match, per kind of message and per key
 of the state (skipped without the flag).
 
@@ -843,10 +843,10 @@ client with `Create`, `Join`, `Until`, `WaitEvent`, …), and `toy_test.go`
 a toy game ("hoogste kaart") that is the template for the next one.
 
 Personas: their identities (name, emoji, colour, chattiness, speed) are
-`internal/persona`'s, the same at every game; bios and chat are per game
-(`internal/bot` for klaverjas, `internal/toepbot` for toepen).
+`platform/persona`'s, the same at every game; bios and chat are per game
+(`games/klaverjas/bot` for klaverjas, `games/toepen/toepbot` for toepen).
 
-`internal/serve` is what every binary shares: `serve.Main(Site{Game, Title,
+`platform/serve` is what every binary shares: `serve.Main(Site{Game, Title,
 Verb, Extras}, version, game)` (`Extras`: services a site runs besides its
 table, each a path, a handler and a shutdown; toepen's score sheets at
 `/api/score`, docs/toepen.md §9) with the flags `-addr 127.0.0.1:8081`, `-games DIR`
@@ -1598,8 +1598,8 @@ Vanilla ES modules, no framework, no build step, no inline `<script>`/`<style>`
 and no `style="…"` attributes or `setAttribute('style')` (CSP `style-src
 'self'`; setting `el.style.x` from JS is fine). Build DOM with
 `document.createElement`/`textContent`; never `innerHTML` with user or server
-text. The site is the union of `web/shared` (the shell every game's site
-uses) and `web/klaverjas` (this game's page, icons, modules and styles); a
+text. The site is the union of `platform/web` (the shell every game's site
+uses) and `games/klaverjas/web` (this game's page, icons, modules and styles); a
 path in both is an error (see "One site per game" below). At most 17
 requests per page load in total, the websocket included (NPM's rate limit
 for the name is in shrek-infra, `docs/services/klaverjas.md`): html, 3 css
@@ -1638,11 +1638,11 @@ addresses that shrek's firewall drops.
 Every game has a site of its own (`klaverjas.kroes.dev`, `toepen.kroes.dev`;
 docs/games.md), built from the same shell:
 
-- `web/shared/js`: `main.js` (routing, the websocket, the update queue),
+- `platform/web/js`: `main.js` (routing, the websocket, the update queue),
   `util.js`, `panels.js` (modals, back button, settings, bot picker, menu,
   feedback, chat), `home.js` (home, invite, lobby), `sound.js`, `cards.js`,
-  `call.js` (lazy); `web/shared/css`: `app.css`, `cards.css`.
-- `web/<game>`: `index.html`, `manifest.webmanifest`, `favicon.svg`,
+  `call.js` (lazy); `platform/web/css`: `app.css`, `cards.css`.
+- `games/<game>/web`: `index.html`, `manifest.webmanifest`, `favicon.svg`,
   `icon-full.svg`, the PNG icons, `og.png`, and `js/game.js`, the game
   module, with the game's other modules and its stylesheet.
 - The shell reaches the game only through `main.js` importing `./game.js`;
@@ -1653,7 +1653,7 @@ docs/games.md), built from the same shell:
   which overrides the shell's colour tokens (`--bg`, `--felt-1..3`, …).
 
 ```js
-// web/<game>/js/game.js — what the shell needs from the game of the site
+// games/<game>/web/js/game.js — what the shell needs from the game of the site
 export const name;          // 'Klaverjas': titles ("Klaverjas · ABCD"), the share title
 export const maxPlayers;    // the largest table: the lobby's hints, the refused-join toast
 export const PLAYING;       // Set of phases in which a turn may be the player's (sound and title cues)
@@ -2387,7 +2387,7 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
 ## 10. Deployment
 
 One pod per game, each with its own address, units, images and game log. A
-game's settings are `deploy/games/<game>.mk` (plain `=`; a value on make's
+game's settings are `games/<game>/<game>.mk` (plain `=`; a value on make's
 command line overrides one, the shell's environment does not); the games are
 the names of those files.
 
@@ -2412,7 +2412,7 @@ for byte the same.
   a `server-<game>` per game (`FROM scratch`, its binary only, `USER
   65532:65532`); `web-conf` and `web` (`nginxinc/nginx-unprivileged`, Alpine)
   with `ARG GAME`, `SITE`, `TITLE`, `VERB`: `web-conf` refuses an empty or
-  odd GAME and any path in both `web/shared` and `web/G`, renders `@SITE@`,
+  odd GAME and any path in both `platform/web` and `web/G`, renders `@SITE@`,
   `@TITLE@` and `@VERB@` into `nginx.conf` (checked with `nginx -t`) and
   `@SITE@` and `@VERSION@` into the game's `index.html` (`og:image`, the
   version); `web` copies the union of the two trees and that `index.html`.

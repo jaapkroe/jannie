@@ -12,7 +12,7 @@ It needs Node 22 or later (it uses the built-in `WebSocket`) and nothing else.
 ## Running it
 
 Every game has a simulation of its own, named by `E2E_SIM` in its
-`deploy/games/<game>.mk`, which takes the server's URL as its one argument:
+`games/<game>/<game>.mk`, which takes the server's URL as its one argument:
 `sim.mjs` (this file) for klaverjas, `toepen.mjs` for toepen.
 
 The quickest way is `make e2e`: for every game in turn it starts the game's

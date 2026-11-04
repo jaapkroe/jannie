@@ -1,6 +1,6 @@
 #!/bin/sh
 # Tests the deployment files without building, installing or starting anything:
-# - every game's settings (deploy/games/<game>.mk) are complete and in the form
+# - every game's settings (games/<game>/<game>.mk) are complete and in the form
 #   the Makefile and the Containerfile take; host names, addresses and ports are
 #   each game's own, every address is on loopback and follows the port rule;
 #   klaverjas's are pinned, since its site must not change;
@@ -16,8 +16,9 @@
 #   image build gets a tag of its own, with the commit (-dirty when the tree is
 #   not one) as its revision;
 # - the Containerfile has a server target per game with the game's binary, and
-#   a web target that refuses an empty GAME; cmd/<game>, web/<game> and the
-#   game's E2E_SIM are checked where they are there (each comes with its game).
+#   a web target that refuses an empty GAME, and a Go stage that copies no
+#   site; cmd/<game>, games/<game>/web and the game's E2E_SIM are checked where
+#   they are there (each comes with its game).
 # The Makefile runs in a throwaway git repository with podman, systemctl,
 # loginctl, journalctl, curl, node, sleep, scripts/dev-server and
 # scripts/pod-check replaced by stubs that only record their calls.
@@ -49,10 +50,13 @@ note() { echo "deploy-test: $*" >&2; }
 
 # ---- the throwaway repository and the stubs ---------------------------------
 repo=$tmp/repo calls=$tmp/calls
-mkdir -p "$repo/deploy/games" "$repo/scripts" "$tmp/bin" "$tmp/set"
+mkdir -p "$repo/deploy" "$repo/scripts" "$tmp/bin" "$tmp/set"
 cp "$root/Makefile" "$root/Containerfile" "$repo/"
 cp "$root"/deploy/*.in "$repo/deploy/"
-cp "$root"/deploy/games/*.mk "$repo/deploy/games/"
+for f in "$root"/games/*/*.mk; do
+  g=$(basename "$f" .mk)
+  mkdir -p "$repo/games/$g" && cp "$f" "$repo/games/$g/"
+done
 for stub in podman systemctl journalctl node scripts/pod-check; do
   case $stub in scripts/*) f=$repo/$stub ;; *) f=$tmp/bin/$stub ;; esac
   printf '#!/bin/sh\necho "%s $*" >> "%s"\n' "${stub#scripts/}" "$calls" > "$f"
@@ -105,14 +109,14 @@ first=$(echo $games | cut -d' ' -f1)
 others() { for h in $games; do [ "$h" = "$1" ] || echo "$h"; done; }
 
 # ---- the settings of every game ---------------------------------------------
-expect "games, the names of deploy/games/*.mk" 1 "$(holds [ -n "$games" ])"
+expect "games, the names of games/*/*.mk" 1 "$(holds [ -n "$games" ])"
 for g in $games; do
   expect "$g: a name that fits units, images and URLs" 1 "$(printf '%s\n' "$g" | grep -c '^[a-z][a-z0-9-]*$' || true)"
   expect "$g: not all, which means every game" 1 "$(holds [ "$g" != all ])"
   # Only `NAME = value` lines, with plain `=` (the environment cannot change them)
   # and nothing after the value, whose spaces would end up in units and URLs.
-  expect "deploy/games/$g.mk: settings only, as NAME = value" "" \
-    "$(grep -v -E '^(#.*)?$' "$root/deploy/games/$g.mk" \
+  expect "games/$g/$g.mk: settings only, as NAME = value" "" \
+    "$(grep -v -E '^(#.*)?$' "$root/games/$g/$g.mk" \
       | grep -v -E "^($(echo $settings | tr ' ' '|')) = ([^ ].*)?[^ ]\$" || true)"
   for v in $settings; do
     expect "$g: $v is set" 1 "$(holds [ -n "$(val "$g" "$v")" ])"
@@ -435,12 +439,13 @@ echo '# changed' >> "$repo/deploy/game.pod.in"
 mk image GAME=klaverjas || true
 expect "revision of a tree with a changed file" 2 "$(grep -c -- "--build-arg GIT_SHA=$head-dirty " "$calls")"
 
-# ---- a new game is a new deploy/games/<game>.mk --------------------------------
+# ---- a new game is a new games/<game>/<game>.mk ---------------------------------
 # presidenten-server, the longest name to come, still fits make status's column.
 sed -e 's/^TITLE = .*/TITLE = Presidenten/' -e 's/^VERB = .*/VERB = presidenten/' \
   -e 's/^SITE = .*/SITE = presidenten.example/' -e 's/^ADDR = .*/ADDR = 127.0.0.1:8199/' \
   -e 's/^DEV_PORT = .*/DEV_PORT = 18199/' -e 's/^E2E_PORT = .*/E2E_PORT = 18200/' \
-  "$repo/deploy/games/klaverjas.mk" > "$repo/deploy/games/presidenten.mk"
+  "$repo/games/klaverjas/klaverjas.mk" > "$tmp/presidenten.mk"
+mkdir "$repo/games/presidenten" && mv "$tmp/presidenten.mk" "$repo/games/presidenten/"
 run quadlet GAME=presidenten
 expect "make quadlet GAME=presidenten, a new game" 1 "$(hasline 'PodName=presidenten' "$tmp/out")"
 run status
@@ -460,11 +465,14 @@ for g in $games; do
 done
 expect "Containerfile: one target web" 1 "$(grep -c '^FROM .* AS web$' "$cf" || true)"
 expect "web: labelled with its game" 1 "$(has 'org.opencontainers.image.title="${GAME} web"' "$cf")"
-expect "web-conf: an empty GAME refused before web/\${GAME}/ is copied" 1 \
+expect "web-conf: an empty GAME refused before games/\${GAME}/web/ is copied" 1 \
   "$(holds [ "$(grep -n -m 1 'test -n "$GAME"' "$cf" | cut -d: -f1)" -lt \
-           "$(grep -n -m 1 'COPY web/${GAME}/' "$cf" | cut -d: -f1)" ])"
-expect "web: nothing copied from web/ but what web-conf checked" "COPY web/shared/ /tmp/shared/ COPY web/\${GAME}/ /tmp/game/ " \
-  "$(grep '^COPY web' "$cf" | tr '\n' ' ')"
+           "$(grep -n -m 1 'COPY games/${GAME}/web/' "$cf" | cut -d: -f1)" ])"
+expect "web: nothing copied from the sites but what web-conf checked" \
+  "COPY platform/web/ /tmp/shared/ COPY games/\${GAME}/web/ /tmp/game/ " \
+  "$(grep -E '^COPY (platform/web|games/\$\{GAME\}/web)' "$cf" | tr '\n' ' ')"
+expect "build: the Go stage copies platform/ and games/ without their sites" 2 \
+  "$(grep -c '^COPY --exclude=\*\*/web .* \(platform\|games\)/ \(platform\|games\)/$' "$cf" || true)"
 
 # ---- each game's code, pages and simulation, once they are there ----------------
 for g in $games; do
@@ -473,23 +481,23 @@ for g in $games; do
   else
     note "GAME=$g: no cmd/$g yet; not checked"
   fi
-  html=$root/web/$g/index.html
+  site=$root/games/$g/web html=$root/games/$g/web/index.html
   if [ -f "$html" ]; then
-    expect "web/$g/index.html: the title, TITLE" 1 "$(has "<title>$(val "$g" TITLE)</title>" "$html")"
+    expect "games/$g/web/index.html: the title, TITLE" 1 "$(has "<title>$(val "$g" TITLE)</title>" "$html")"
     for ph in @SITE@ @VERSION@; do
-      expect "web/$g/index.html: $ph, which the build fills in" 1 "$(has "$ph" "$html")"
+      expect "games/$g/web/index.html: $ph, which the build fills in" 1 "$(has "$ph" "$html")"
     done
-    expect "web/$g/manifest.webmanifest: the name, TITLE" "\"$(val "$g" TITLE)\"" \
-      "$(tr -d '\n' < "$root/web/$g/manifest.webmanifest" 2>/dev/null \
+    expect "games/$g/web/manifest.webmanifest: the name, TITLE" "\"$(val "$g" TITLE)\"" \
+      "$(tr -d '\n' < "$site/manifest.webmanifest" 2>/dev/null \
         | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n 1 | sed 's/^[^:]*:[[:space:]]*//')"
-    if [ -d "$root/web/shared" ]; then
-      expect "no path in both web/shared and web/$g" "" "$( {
-        (cd "$root/web/shared" && find . ! -type d; cd "$root/web/$g" && find .) | sort | uniq -d
-        (cd "$root/web/$g" && find . ! -type d; cd "$root/web/shared" && find .) | sort | uniq -d
+    if [ -d "$root/platform/web" ]; then
+      expect "no path in both platform/web and games/$g/web" "" "$( {
+        (cd "$root/platform/web" && find . ! -type d; cd "$site" && find .) | sort | uniq -d
+        (cd "$site" && find . ! -type d; cd "$root/platform/web" && find .) | sort | uniq -d
       } | sort -u | tr '\n' ' ')"
     fi
   else
-    note "GAME=$g: no web/$g/index.html yet; not checked"
+    note "GAME=$g: no games/$g/web/index.html yet; not checked"
   fi
   if [ ! -f "$root/$(val "$g" E2E_SIM)" ]; then
     note "GAME=$g: no $(val "$g" E2E_SIM) yet; make e2e GAME=$g cannot run"

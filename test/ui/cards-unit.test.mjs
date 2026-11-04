@@ -1,8 +1,8 @@
-// web/shared/js/cards.js without a browser: node --test test/ui/cards-unit.test.mjs
+// platform/web/js/cards.js without a browser: node --test test/ui/cards-unit.test.mjs
 // (a minimal stand-in DOM for the faces; cards-shot.mjs checks how they render).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { SUITS, RANKS, parseCard, cardName, cardShort, createCard } from '../../web/shared/js/cards.js';
+import { SUITS, RANKS, parseCard, cardName, cardShort, createCard } from '../../platform/web/js/cards.js';
 
 // Just enough DOM for the faces: attributes, classes, dataset, children and deep clones.
 class FakeElement {

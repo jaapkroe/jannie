@@ -1,6 +1,6 @@
-# ---- site settings: one file per game, deploy/games/<game>.mk ------------------------
+# ---- site settings: one file per game, games/<game>/<game>.mk -----------------------
 # Every game has a pod, an address and images of its own. Its settings are in
-# deploy/games/<game>.mk: the public host name (SITE), where the pod listens (ADDR),
+# games/<game>/<game>.mk: the public host name (SITE), where the pod listens (ADDR),
 # the ports of the server from source and the rest. Change them there, then
 # `make install GAME=<game> && make deploy GAME=<game>`. The games are the names of
 # those files; a new file is a new game (deploy/README-deploy.md, "Adding a game").
@@ -13,12 +13,12 @@
 # GAME=all goes through the games one after another, in the order of their names,
 # under one build tag, and stops at the first one that fails.
 # ---------------------------------------------------------------------------------------
-GAMES := $(sort $(basename $(notdir $(wildcard deploy/games/*.mk))))
+GAMES := $(sort $(basename $(notdir $(wildcard games/*/*.mk))))
 SETTINGS := TITLE VERB SITE ADDR DEV_PORT E2E_PORT E2E_SIM
 NEED_GAME := install deploy uninstall dev image image-server image-web
 EVERY_GAME := status check quadlet e2e dev-stop
 ifeq ($(GAMES),)
-$(error no game: deploy/games/*.mk is missing)
+$(error no game: games/*/*.mk is missing)
 endif
 ifneq ($(origin GAME),command line)
 override GAME :=
@@ -58,7 +58,7 @@ STOP_DEV = podman stop -t 3 kj-dev-$(1) >/dev/null 2>&1 || true
 
 help:      ## list targets
 	@grep -E '^[a-z0-9-]+:.*## ' $(firstword $(MAKEFILE_LIST)) | sed -E 's/:[^#]*## /\t/'
-	@echo "GAME: $(GAMES), or all (deploy/games/*.mk; see the top of the Makefile)"
+	@echo "GAME: $(GAMES), or all (games/*/*.mk; see the top of the Makefile)"
 
 # ---- development, no images ---------------------------------------------------------
 test:      ## go vet, the short Go tests, the JS tests and the deployment files
@@ -73,8 +73,8 @@ test-all:  ## every Go test, including the slow bot arena
 
 ifneq ($(ONE),)
 # ---- one game: GAME -----------------------------------------------------------------
-include deploy/games/$(ONE).mk
-$(foreach v,$(SETTINGS),$(if $($(v)),,$(error deploy/games/$(ONE).mk: $(v) is not set)))
+include games/$(ONE)/$(ONE).mk
+$(foreach v,$(SETTINGS),$(if $($(v)),,$(error games/$(ONE)/$(ONE).mk: $(v) is not set)))
 # Its three units, <game>.pod from deploy/game.pod.in and so on.
 UNIT_SUFFIXES := .pod -web.container -server.container
 UNITS = $(addprefix $(GAME),$(UNIT_SUFFIXES))
@@ -103,7 +103,7 @@ dev-stop:  ## stop GAME's development server (every game's without GAME), if `ma
 # ---- containers, as your own user -----------------------------------------------------
 image-server:   ## build GAME's server image (fresh base image), tagged BUILD_TAG; go vet and the short tests run inside the build
 	podman build --target server-$(GAME) $(BUILD_ARGS) -t localhost/$(GAME)-server:$(BUILD_TAG) .
-image-web:      ## build GAME's web image, tagged BUILD_TAG: nginx, its configuration for SITE, web/shared and web/GAME
+image-web:      ## build GAME's web image, tagged BUILD_TAG: nginx, its configuration for SITE, platform/web and games/GAME/web
 	podman build --target web $(BUILD_ARGS) $(WEB_ARGS) -t localhost/$(GAME)-web:$(BUILD_TAG) .
 image: image-server image-web   ## build both images of GAME; the running pod keeps its :current ones
 quadlet:   ## show the three units of GAME (every game's without GAME) with its settings filled in
@@ -154,7 +154,7 @@ EACH = for g in $(GAMES); do \
 	  $(MAKE) --no-print-directory $@ GAME=$$g GIT_SHA=$(GIT_SHA) BUILD_TAG=$(BUILD_TAG) || exit 1; done
 # Every game's development port, for `make dev GAME=all`.
 define dev-port
-include deploy/games/$(1).mk
+include games/$(1)/$(1).mk
 $(1).DEV_PORT := $$(DEV_PORT)
 endef
 $(foreach g,$(GAMES),$(eval $(call dev-port,$(g))))

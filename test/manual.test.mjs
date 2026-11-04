@@ -8,11 +8,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-// The handleiding is klaverjas's (web/klaverjas); cards.js is the shell's;
+// The handleiding is klaverjas's (games/klaverjas/web); cards.js is the shell's;
 // klaverjas's option rows (OPTS) are in its game.js.
-const manualPath = `${root}web/klaverjas/js/manual.js`;
-const cardsPath = `${root}web/shared/js/cards.js`;
-const homePath = `${root}web/klaverjas/js/game.js`;
+const manualPath = `${root}games/klaverjas/web/js/manual.js`;
+const cardsPath = `${root}platform/web/js/cards.js`;
+const homePath = `${root}games/klaverjas/web/js/game.js`;
 
 // ---- Minimal DOM, enough for the renderer ----
 
@@ -93,7 +93,7 @@ export function createBack() { const el = document.createElement('div'); el.clas
 `;
 registerHooks({
   resolve(specifier, context, next) {
-    if (specifier === './cards.js' && context.parentURL?.endsWith('/web/klaverjas/js/manual.js')) {
+    if (specifier === './cards.js' && context.parentURL?.endsWith('/games/klaverjas/web/js/manual.js')) {
       return { url: `data:text/javascript,${encodeURIComponent(STUB)}`, shortCircuit: true };
     }
     return next(specifier, context);
@@ -504,8 +504,8 @@ test('bediening chips show the pictograms of the real buttons', () => {
   // The top-bar buttons show only an icon (TOOLS: the shell's in panels.js,
   // klaverjas's own in its game.js), so the manual puts that icon in front
   // of each name; util.js must have it.
-  const util = readFileSync(`${root}web/shared/js/util.js`, 'utf8');
-  const panels = readFileSync(`${root}web/shared/js/panels.js`, 'utf8') + readFileSync(homePath, 'utf8');
+  const util = readFileSync(`${root}platform/web/js/util.js`, 'utf8');
+  const panels = readFileSync(`${root}platform/web/js/panels.js`, 'utf8') + readFileSync(homePath, 'utf8');
   const tools = Object.fromEntries([...panels.matchAll(/^ {2}\w+: \['(\w+)', '([^']+)'/gm)].map((m) => [m[2], m[1]]));
   assert.ok(Object.keys(tools).length >= 6, `TOOLS in panels.js and game.js: ${Object.keys(tools).join()}`);
   const rows = blocksOf('dl').flat().filter((row) => row[2]);
@@ -588,14 +588,14 @@ test('seinen says plainly that tegenkleur is not used here', () => {
 
 test('juf jannie names the search sizes and mistake rate of the bots', () => {
   const text = renderManual('jannie').textContent;
-  const search = readFileSync(`${root}internal/bot/search.go`, 'utf8');
+  const search = readFileSync(`${root}games/klaverjas/bot/search.go`, 'utf8');
   const [, play, trump] = search.match(/defaultSearch = searchConfig\{playWorlds: (\d+), trumpWorlds: (\d+)\}/);
   assert.match(text, new RegExp(`kan zien op ${play} manieren`));
   assert.match(text, new RegExp(`spelen of passen doet ze hetzelfde met ${trump} verdelingen`));
-  const player = readFileSync(`${root}internal/bot/player.go`, 'utf8');
+  const player = readFileSync(`${root}games/klaverjas/bot/player.go`, 'utf8');
   assert.equal(player.match(/const makkelijkMistakes = ([\d.]+)/)[1], '0.3');
   assert.match(text, /ongeveer 1 op de 3 keer een willekeurige kaart/);
-  const small = readFileSync(`${root}internal/bot/smallsearch.go`, 'utf8');
+  const small = readFileSync(`${root}games/klaverjas/bot/smallsearch.go`, 'utf8');
   const per = Number(small.match(/const smallWorlds = (\d+)/)[1]) * Number(play);
   assert.match(text, new RegExp(`Op Sterk speelt ze dan bij elke beurt ${per.toLocaleString('nl-NL')} verdelingen uit`));
   const [, mk, nm, st] = small.match(/worlds := map\[Level\]int\{Makkelijk: (\d+), Normaal: (\d+), Sterk: (\d+)\}/);

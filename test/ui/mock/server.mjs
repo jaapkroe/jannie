@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Mock klaverjas server for frontend development and UI tests: serves
-// klaverjas's site (web/shared and web/klaverjas, test/ui/site.mjs)
+// klaverjas's site (platform/web and games/klaverjas/web, test/ui/site.mjs)
 // (with the /ABCD → index.html rule) and speaks the websocket protocol of
 // docs/design.md §7 with a compact rules engine and simple bots, for tables
 // of four only (opts.players other than 4 is ignored).
@@ -25,7 +25,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { WebSocketServer } from 'ws';
-import { siteFile } from '../site.mjs'; // klaverjas's site: web/shared and web/klaverjas
+import { siteFile } from '../site.mjs'; // klaverjas's site: platform/web and games/klaverjas/web
 
 const args = process.argv.slice(2);
 const arg = (name, def) => {

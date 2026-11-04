@@ -1,5 +1,5 @@
 // One site per game (design §9, docs/games.md): each game's site is the union
-// of web/shared (the shell) and web/<game>. Checks, for every site:
+// of platform/web (the shell) and games/<game>/web. Checks, for every site:
 //   - the two trees share no path (no file of the shell is replaced);
 //   - a page load stays within the 17 requests NPM's rate tier allows, and
 //     every module main.js imports statically is preloaded;
@@ -10,9 +10,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { WEB, GAMES, siteFile, treeFiles } from './ui/site.mjs';
+import { SHELL, GAMES, siteDir, siteFile, treeFiles } from './ui/site.mjs';
 
-const SHARED = path.join(WEB, 'shared');
+const SHARED = SHELL;
 const read = f => fs.readFileSync(f, 'utf8');
 
 test('there are sites, and klaverjas is one of them', () => {
@@ -41,12 +41,12 @@ function visibleText(file) {
 }
 
 for (const game of GAMES) {
-  const dir = path.join(WEB, game);
+  const dir = siteDir(game);
 
   test(`${game}: its tree and the shell's share no path`, () => {
     const shared = new Set(treeFiles(SHARED));
     const both = treeFiles(dir).filter(f => shared.has(f));
-    assert.deepEqual(both, [], 'a path in web/shared and in the game\'s tree');
+    assert.deepEqual(both, [], 'a path in platform/web and in the game\'s tree');
   });
 
   test(`${game}: a page load stays within 17 requests`, () => {
@@ -93,7 +93,7 @@ for (const game of GAMES) {
     const files = [...treeFiles(dir).map(f => path.join(dir, f)), ...treeFiles(SHARED).map(f => path.join(SHARED, f))];
     for (const f of files) {
       const text = visibleText(f).toLowerCase();
-      for (const o of others) assert.ok(!text.includes(o), `${path.relative(WEB, f)} names ${o}`);
+      for (const o of others) assert.ok(!text.includes(o), `${path.relative(path.join(SHELL, '../..'), f)} names ${o}`);
     }
   });
 }

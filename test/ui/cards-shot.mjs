@@ -37,7 +37,7 @@ try {
   problems.push(...await page.evaluate(async () => {
     const bad = [];
     const expect = (ok, msg) => { if (!ok) bad.push(msg); };
-    const mod = await import('/web/shared/js/cards.js');
+    const mod = await import('/platform/web/js/cards.js');
     const { createCard, createBack, suitIcon } = mod;
 
     const faces = [...document.querySelectorAll('#gallery .card:not(.back)')];

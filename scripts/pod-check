@@ -7,7 +7,7 @@
 # and that every kind of path carries each security header exactly once (a
 # location with an add_header of its own would drop them all; see
 # deploy/nginx.conf).
-#   scripts/pod-check ADDR SITE TITLE     the settings of deploy/games/<game>.mk, e.g.
+#   scripts/pod-check ADDR SITE TITLE     the settings of games/<game>/<game>.mk, e.g.
 #   scripts/pod-check 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas
 # `make check [GAME=<game>]` runs it with them; `make deploy GAME=<game>` too.
 # Prints the failures and a summary; exits 1 if anything failed.

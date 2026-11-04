@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"klaverjas/internal/game"
-	"klaverjas/internal/server"
-	"klaverjas/internal/toepen"
-	"klaverjas/internal/toepenserver"
+	"jannie/games/klaverjas/game"
+	"jannie/games/toepen/toepen"
+	"jannie/games/toepen/toepenserver"
+	"jannie/platform/server"
 )
 
 // TestToepAI plays matches with the real bots through the adapter.

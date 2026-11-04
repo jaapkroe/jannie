@@ -18,18 +18,18 @@ internet ──443──> NPM ──http──> 127.0.0.1:8093 ┌ pod klaverjas
 | `klaverjas` | `klaverjas.kroes.dev` | `127.0.0.1:8093` | ID 37 | `klaverjas-games` |
 | `toepen` | `toepen.kroes.dev` | `127.0.0.1:8095` | ID … (fill in once made) | `toepen-games` |
 
-A game is a file `deploy/games/<game>.mk` with its settings; the `Makefile` reads the games from those files. Everything else is named after the game, `G` below:
+A game is a file `games/<game>/<game>.mk` with its settings; the `Makefile` reads the games from those files. Everything else is named after the game, `G` below:
 
 | What | Name |
 |---|---|
 | Pod and its units | pod `G`; `G.pod`, `G-web.container`, `G-server.container` in `~/.config/containers/systemd/`; services `G-pod`, `G-web`, `G-server` |
-| `G-web` | `localhost/G-web:current`, nginx-unprivileged: serves the game's files (`web/shared` and `web/G`), proxies `/ws` and `/api/`, sets the security headers |
+| `G-web` | `localhost/G-web:current`, nginx-unprivileged: serves the game's files (`platform/web` and `web/G`), proxies `/ws` and `/api/`, sets the security headers |
 | `G-server` | `localhost/G-server:current`, `FROM scratch`: the game server `/G`, on `127.0.0.1:8081` inside the pod only |
 | Game log | the volume `G-games`, never shared with another game |
 
 All images are built here from the checkout; nothing is pulled at start (`Pull=never`). There is no secret and no database: games live in the server's memory, so **every restart of a pod ends every game in progress in it** (and only there). The one volume of each pod holds its game log (below).
 
-The settings of a game, in `deploy/games/<game>.mk`:
+The settings of a game, in `games/<game>/<game>.mk`:
 
 | Setting | klaverjas | toepen | Used for |
 |---|---|---|---|
@@ -58,7 +58,7 @@ Every command that acts on a pod takes `GAME=`, a game or `all`, on make's comma
 
 ## Upgrading klaverjas to one pod per game (once)
 
-klaverjas keeps its name, address, units, images, volume and NPM proxy host; only the way they are made changes (the templates `deploy/game*.in`, the settings in `deploy/games/klaverjas.mk`, a web image built from `web/shared` and `web/klaverjas`). On shrek, as `jaap`, when nobody is playing:
+klaverjas keeps its name, address, units, images, volume and NPM proxy host; only the way they are made changes (the templates `deploy/game*.in`, the settings in `games/klaverjas/klaverjas.mk`, a web image built from `platform/web` and `games/klaverjas/web`). On shrek, as `jaap`, when nobody is playing:
 
 1. Pull the change, then check that the new templates render exactly the units that are installed. **The diff must print nothing**; if it does, stop and look at what it shows before installing anything.
 
@@ -239,7 +239,7 @@ The proxy hosts are public with no access list, because players join from wherev
 | NPM shows `502 Bad Gateway` | The game's pod is not running: `make status GAME=<game>`, `systemctl --user status <game>-pod` |
 | The page loads, but it never connects | Websockets Support is off on the proxy host (the websocket check through NPM answers `426`), or the server container is down (`/api/health` through nginx answers `502`) |
 | `/ws` answers `403` | The `Origin` does not match the host: something rewrote `Host` between the browser and the server |
-| One game's site shows another game | The proxy host forwards to the other game's port: compare it with `ADDR` in `deploy/games/<game>.mk` and `deploy/npm-advanced.conf` |
+| One game's site shows another game | The proxy host forwards to the other game's port: compare it with `ADDR` in `games/<game>/<game>.mk` and `deploy/npm-advanced.conf` |
 | Everyone shares one address and hits the room limit | NPM's connections no longer arrive from `127.0.0.1` in the pod: `ADDR` is not loopback, or `Network=pasta:--host-lo-to-ns-lo` is missing from the pod unit |
 | Old scripts or styles after a deploy | Cache Assets is on in the proxy host |
 | The page stays on its loading dots, or loads without styles | NPM refused part of the load with `429`, its rate limit: many players behind one address loaded at the same moment. A reload a few seconds later works. If it happens to one player alone, the name's own rate tier is not installed in NPM (*First time: toepen*, step 2); the name's limit is in shrek-infra (`docs/services/<game>.md`) |
@@ -280,9 +280,9 @@ A game `G` (say `pesten`) is ready to go public when every step below is done; `
 
 1. **Rules and tests:** `internal/G`, the rules engine, with its tests.
 2. **Bots and an arena:** `internal/Gbot`, and an arena test in `make test-all` that shows each level beats the one below it.
-3. **Server package:** `internal/Gserver`, the game on the table library's exported API (`internal/server`), tested with `internal/server/servertest`.
-4. **Command:** `cmd/G`, through `internal/serve`; the binary is named after the game (the units' `HealthCmd` runs `/G`).
-5. **Web:** `web/G/` with `index.html` (`<title>TITLE</title>`, `@SITE@` in the `og:image`, `@VERSION@`), `manifest.webmanifest` (name `TITLE`), `favicon.svg`, the icon PNGs, `og.png`, `js/` and `css/`; no path that `web/shared` has too.
+3. **Server package:** `internal/Gserver`, the game on the table library's exported API (`platform/server`), tested with `platform/server/servertest`.
+4. **Command:** `cmd/G`, through `platform/serve`; the binary is named after the game (the units' `HealthCmd` runs `/G`).
+5. **Web:** `web/G/` with `index.html` (`<title>TITLE</title>`, `@SITE@` in the `og:image`, `@VERSION@`), `manifest.webmanifest` (name `TITLE`), `favicon.svg`, the icon PNGs, `og.png`, `js/` and `css/`; no path that `platform/web` has too.
 6. **Settings:** `deploy/games/G.mk`, a copy of another game's with every value changed: `TITLE`, `VERB`, `SITE` (`G.kroes.dev`), `ADDR` on the next free odd port `P`, `DEV_PORT` `10000+P`, `E2E_PORT` `10001+P`, and `E2E_SIM`, its simulation, `test/e2e/G.mjs`.
 7. **Containerfile:** a target `server-G`, a copy of `server-klaverjas` with the name changed in its four places.
 8. **Tests:** `make test` (`scripts/deploy-test` checks the settings, the units, the target, `cmd/G` and `web/G`), `make e2e GAME=G`, the UI checks against `make dev GAME=G`.

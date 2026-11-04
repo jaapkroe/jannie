@@ -1,6 +1,6 @@
 // Builds the card gallery (test/ui/cards-gallery.html): every face and back at
 // several sizes, two- and four-colour decks, a fanned hand and the state classes.
-import { SUITS, RANKS, cardName, cardShort, createCard, createBack, suitIcon } from '../../web/shared/js/cards.js';
+import { SUITS, RANKS, cardName, cardShort, createCard, createBack, suitIcon } from '../../platform/web/js/cards.js';
 
 const main = document.getElementById('gallery');
 const SUIT_ORDER = ['S', 'H', 'C', 'D'];
