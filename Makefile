@@ -34,11 +34,9 @@ ifneq ($(filter-out all $(GAMES),$(GAME))$(word 2,$(GAME)),)
 $(error GAME=$(GAME) is not a game; the games are $(GAMES), and GAME=all is every one)
 endif
 -include local.mk
-ifeq ($(origin SUPPORT_URL),environment)
-override SUPPORT_URL :=
-endif
-# One https URL, quoted as it is in the web image's build (the Containerfile
-# checks it again).
+# Not one from the environment; spaces around it dropped. One https URL, quoted
+# as it is in the web image's build (the Containerfile checks it again).
+override SUPPORT_URL := $(if $(filter environment%,$(origin SUPPORT_URL)),,$(strip $(SUPPORT_URL)))
 ifneq ($(strip $(filter-out https://%,$(SUPPORT_URL))$(word 2,$(SUPPORT_URL))$(foreach c,' " < >,$(findstring $(c),$(SUPPORT_URL)))),)
 $(error SUPPORT_URL=$(SUPPORT_URL): not an https URL without quotes, spaces, < or > (local.mk; see the top of the Makefile))
 endif

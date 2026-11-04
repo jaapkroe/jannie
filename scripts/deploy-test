@@ -438,6 +438,10 @@ for g in $games; do
 done
 expect "make deploy GAME=all with local.mk: no server image gets SUPPORT_URL" 0 \
   "$(grep '^podman build --target server-' "$calls" | grep -c 'SUPPORT_URL' || true)"
+# A space after the value, easily left in local.mk, is not part of it.
+printf 'SUPPORT_URL = %s  \n' "$pay" > "$repo/local.mk"
+run image-web GAME=klaverjas
+expect "SUPPORT_URL in local.mk with a space after it" 1 "$(has "--build-arg SUPPORT_URL=$pay -t " "$calls")"
 # The command line wins over local.mk: a build without the link.
 run image-web GAME=klaverjas SUPPORT_URL=
 expect "SUPPORT_URL= on the command line, over local.mk" 1 "$(has '--build-arg SUPPORT_URL= -t ' "$calls")"
