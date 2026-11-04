@@ -12,10 +12,10 @@ import (
 	"jannie/games/klaverjas/game"
 )
 
-// Lessons (issues #41, #45 and #54, design §6): in training Juf Jannie gives
-// the lesson of option lesson, a step at a time. Each is a match of
-// lessonLength hands, and a rematch repeats it from the start. Without one
-// (vrij spelen) she only gives the hints and explains the tricks.
+// Lessons (design §6): in training Juf Jannie gives the lesson of option
+// lesson, a step at a time. Each is a match of lessonLength hands, and a
+// rematch repeats it from the start. Without one (vrij spelen) she only
+// gives the hints and explains the tricks.
 //
 // The basic game (planBasis): after the deal she says who sits where and what
 // the screen shows; after the first trump how the cards rank, with the manual
