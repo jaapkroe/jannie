@@ -10,12 +10,13 @@ import (
 	"jannie/games/klaverjas/game"
 )
 
-// The expert mode (design §6 Expert mode), reached by an easter egg on the
-// home screen: alone against three bots, at a seat of choice, with the
-// cards of a seed, the whole match or one hand of it (option from). While
-// the match runs and after it, the expert asks the engine's reasoning for
-// their own decisions (why) and comments on them (feedback), which goes to
-// the game log. Looking back at a hand is the review's (handReview).
+// The expert mode (games/klaverjas/README.md#expert-mode-on-the-server),
+// reached by an easter egg on the home screen: alone against three bots,
+// at a seat of choice, with the cards of a seed, the whole match or one
+// hand of it (option from). While the match runs and after it, the expert
+// asks the engine's reasoning for their own decisions (why) and comments
+// on them (feedback), which goes to the game log. Looking back at a hand
+// is the review's (handReview).
 
 // maxExpertFeedback limits the feedback lines in a match of a player who
 // comments from the reasoning sheet (the expert, training).
@@ -50,9 +51,9 @@ func (r *room) dealOf(dc dealtCards) *game.Deal {
 	return game.NewDealFor(r.players(), dc.dealer, dc.hands, dc.talon, r.opts.TrumpMode, r.opts.Rules, dc.turned)
 }
 
-// handReplay is finished hand h as the replay shows it (design §7): the
-// cards as dealt, sorted under its trump, the tricks, and the graded
-// decisions of rv's player in it.
+// handReplay is finished hand h as the replay shows it
+// (games/klaverjas/README.md#the-review): the cards as dealt, sorted under
+// its trump, the tricks, and the graded decisions of rv's player in it.
 func (r *room) handReplay(h int, rv *review) replayHand {
 	dc, acts, _ := r.handData(h)
 	d := r.dealOf(dc)
@@ -155,9 +156,9 @@ func decisionArgs(m *inMsg) (h, t int, ok bool) {
 }
 
 // cmdWhy works out the engine's reasoning for a decision of the asker
-// (design §7 why), made or awaited now. It runs in the background, one at
-// a time per room and over all rooms (the search takes every core), and
-// the answer goes to the asker.
+// (games/klaverjas/README.md#client--server), made or awaited now. It
+// runs in the background, one at a time per room and over all rooms (the
+// search takes every core), and the answer goes to the asker.
 func (r *room) cmdWhy(c *client, i game.Seat, m *inMsg) {
 	if !r.reasoning() || r.phase == phaseLobby {
 		c.sendError(errInvalid, "De redenering van de AI vraag je op bij Oefenen.")

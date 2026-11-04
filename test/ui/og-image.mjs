@@ -1,9 +1,10 @@
-// Renders web/<site>/og.png, the 1200×630 preview image that chat apps show
-// for a shared link (og:image in the site's index.html): the felt, the
-// site's emblem (klaverjas: the gold clover; toepen: a ten of hearts), its
-// name and a fan of real card faces from cards.js. Run it again when the
-// cards or the look change, and commit the PNG. Without --url it serves
-// the site itself (test/ui/site.mjs): no game server needed.
+// Renders games/<site>/web/og.png, the 1200×630 preview image that chat
+// apps show for a shared link (og:image in the site's index.html): the
+// felt, the site's emblem (klaverjas: the gold clover; toepen: a ten of
+// hearts), its name and a fan of real card faces from cards.js. Run it
+// again when the cards or the look change, and commit the PNG. Without
+// --url it serves the site itself (test/ui/site.mjs): no game server
+// needed.
 //
 //   scripts/chrome 9700
 //   cd test/ui && node og-image.mjs --cdp http://127.0.0.1:9700 [--site klaverjas|toepen] [--out FILE]

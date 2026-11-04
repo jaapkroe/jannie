@@ -9,7 +9,7 @@ import (
 )
 
 // Deals for three players (auction, talon, soloist) and two players
-// (eight piles each), design §2.
+// (eight piles each), games/klaverjas/README.md#rules-as-implemented.
 
 func TestShuffleFor(t *testing.T) {
 	for _, players := range []int{2, 3, 4} {

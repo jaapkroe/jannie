@@ -9,11 +9,12 @@
 TITLE = Klaverjas
 # The 404 page's way back: "Terug naar klaverjassen".
 VERB = klaverjassen
-# Public host name. NPM terminates TLS for it and forwards to ADDR.
+# Public host name. The reverse proxy terminates TLS for it and forwards to ADDR.
 SITE = klaverjas.kroes.dev
-# Where the pod listens. Loopback, because NPM runs on the same machine; see
-# deploy/README-deploy.md before changing it. The port rule of every game: an odd
-# port P here, DEV_PORT 10000+P and E2E_PORT 10001+P (scripts/deploy-test checks it).
+# Where the pod listens. Loopback, because the proxy runs on the same machine; see
+# docs/deployment.md#reverse-proxy before changing it. The port rule of every game:
+# an odd port P here, DEV_PORT 10000+P and E2E_PORT 10001+P (scripts/deploy-test
+# checks it).
 ADDR = 127.0.0.1:8093
 # The server from source, for `make dev` and `make e2e`; clear of the installed pods.
 DEV_PORT = 18093

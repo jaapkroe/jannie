@@ -6,7 +6,7 @@ import * as game from './game.js';
 import * as panels from './panels.js';
 import * as home from './home.js';
 
-// The game of this site (its game.js, design §9 "The game module"): its
+// The game of this site (its game.js, docs/frontend.md#the-game-module): its
 // table and what differs per game. The shell reaches the game only here.
 const { table, PLAYING } = game;
 const ROUTE = /^\/([A-Za-z]{4})\/?$/;

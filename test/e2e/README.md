@@ -1,19 +1,22 @@
 # End-to-end games over the websocket
 
-`sim.mjs` plays complete klaverjas games against a running server, the way the
-browser does: over `/ws` with the protocol of `docs/design.md` §7. Simulated
-players create a room, join it with the code, make random legal choices (trump
-suit, *spelen*/*passen*, cards), press *ready* after each hand and play on until
-`gameOver`. Bots fill the other seats. Every message is checked; the first
-broken invariant stops that game with a message saying who saw what, where.
+Every game has a simulation that plays complete games against a running
+server, the way the browser does: over `/ws` with the table's protocol
+([docs/protocol.md](../../docs/protocol.md)) and the game's own messages
+(`games/<game>/README.md`). Simulated players create a room, join it with
+the code, make random legal choices, press *ready* after a hand or round
+and play on until `gameOver`. Bots fill the other seats. Every message is
+checked; the first broken invariant stops that game with a message saying
+who saw what, where.
 
-It needs Node 22 or later (it uses the built-in `WebSocket`) and nothing else.
+The simulations need Node 22 or later (they use the built-in `WebSocket`)
+and nothing else.
 
 ## Running it
 
 Every game has a simulation of its own, named by `E2E_SIM` in its
 `games/<game>/<game>.mk`, which takes the server's URL as its one argument:
-`sim.mjs` (this file) for klaverjas, `toepen.mjs` for toepen.
+`sim.mjs` for klaverjas, `toepen.mjs` for toepen.
 
 The quickest way is `make e2e`: for every game in turn it starts the game's
 server from source with `-fast` on the game's `E2E_PORT`, waits for
@@ -36,35 +39,11 @@ podman stop kj-dev-18200
 A simulation plays only its own game: a klaverjas server answers toepen's
 messages with "Dat bericht ken ik niet.", and the other way round.
 
-## toepen.mjs
+## sim.mjs (klaverjas)
 
-With only a URL it plays five matches: tables of 2 to 6 with one to four
-humans, every AI level, a limit of 10 or 15, and the extra rules on and
-off (vuile was, armoede, koningsspel, boer, anti-lijntoep, open after a
-bluff). Simulated players lay away random cards in the koningsspel, claim
-a vuile was now and then (bluffs included, again with new cards), check,
-toep, overtoep, go along or pass
-at random (going along when anti-lijntoep says so), play a random legal
-card, and press *ready* after half the rounds (the others wait for the
-summary's own time). Any option plays that one configuration instead:
-
-```sh
-node test/e2e/toepen.mjs --url ws://127.0.0.1:18096/ws --players 5 --humans 2 --ai sterk --limit 15 \
-  [--no-was] [--no-armoede] [--no-koning] [--no-boer] [--lijntoep] [--no-bluf]
-```
-
-On every update it checks that the state has exactly toepen's keys (no
-`game`, `training` or `expert`) and `opts` exactly its eleven, the phase is
-one of toepen's, a hand never holds more than four cards (eight in the
-koningsspel, and only with that rule) and `legal` is in it, `canRaise`
-only on a toep and `mustStay` only with anti-lijntoep, a hand played face
-up only with rule `bluf` and of a seat still in (yours: your hand), no
-bluff offered on armoede, nobody's points go down within a round (but for
-the boer's point off the last trick's winner), and at game over exactly one
-player is left, the winner, under the limit. Any `error` fails the match,
-except a move that crossed a change of turn (`niet-jouw-beurt`, "Die vraag
-staat niet (meer) open.") and a *ready* that crossed the last summary
-moving on into game over; so does 30 seconds without progress.
+It plays klaverjas: its players choose a trump suit, *spelen* or *passen*,
+a bid and the cards to lay away at a table of three, and cards, at random
+among the legal ones.
 
 With only a URL it plays the standard suite: tables of four, three and two,
 one to four humans, both ways of choosing trump, both rule sets, all AI
@@ -84,7 +63,7 @@ node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --players 3 --humans 2 --rul
 | Option | Values | Default |
 |---|---|---|
 | `--url` (or a positional URL) | `ws://…/ws`, or `http://host:port` (then `/ws` is added) | `ws://127.0.0.1:18200/ws` |
-| `--players` | 2, 3, 4: the seats at the table (§2 of the design) | 4 |
+| `--players` | 2, 3, 4: the seats at the table ([games/klaverjas/README.md, "Rules as implemented"](../../games/klaverjas/README.md#rules-as-implemented)) | 4 |
 | `--humans` | 1 to `--players` simulated players; the other seats get bots | `--players` |
 | `--trump` | `utrechts`, `gedraaid` | `utrechts` |
 | `--rules` | `amsterdams`, `rotterdams` | `amsterdams` |
@@ -106,7 +85,7 @@ Each connection sends its own `X-Real-IP`, so many simulated players do not
 run into the per-address limits (150 connections, 60 new rooms per 10 minutes).
 The server trusts that header because in production only nginx can reach it.
 
-## What is checked
+### What is checked
 
 On every update:
 
@@ -167,3 +146,33 @@ a vote that crossed the end of its question, see above, and the refusal of
 `handReview` at a table of three or two), as does a closed connection or 30 seconds without any message (a
 stall). With `--reconnect` the result line counts the reconnects, the
 questions, the votes (and those too late) and the takeovers.
+
+## toepen.mjs
+
+With only the URL as its argument (no `--url`) it plays five matches: tables of 2 to 6 with one to four
+humans, every AI level, a limit of 10 or 15, and the extra rules on and
+off (vuile was, armoede, koningsspel, boer, anti-lijntoep, open after a
+bluff). Simulated players lay away random cards in the koningsspel, claim
+a vuile was now and then (bluffs included, again with new cards), check,
+toep, overtoep, go along or pass
+at random (going along when anti-lijntoep says so), play a random legal
+card, and press *ready* after half the rounds (the others wait for the
+summary's own time). Any option plays that one configuration instead:
+
+```sh
+node test/e2e/toepen.mjs --url ws://127.0.0.1:18096/ws --players 5 --humans 2 --ai sterk --limit 15 \
+  [--no-was] [--no-armoede] [--no-koning] [--no-boer] [--lijntoep] [--no-bluf]
+```
+
+On every update it checks that the state has exactly toepen's keys (no
+`game`, `training` or `expert`) and `opts` exactly its eleven, the phase is
+one of toepen's, a hand never holds more than four cards (eight in the
+koningsspel, and only with that rule) and `legal` is in it, `canRaise`
+only on a toep and `mustStay` only with anti-lijntoep, a hand played face
+up only with rule `bluf` and of a seat still in (yours: your hand), no
+bluff offered on armoede, nobody's points go down within a round (but for
+the boer's point off the last trick's winner), and at game over exactly one
+player is left, the winner, under the limit. Any `error` fails the match,
+except a move that crossed a change of turn (`niet-jouw-beurt`, "Die vraag
+staat niet (meer) open.") and a *ready* that crossed the last summary
+moving on into game over; so does 30 seconds without progress.

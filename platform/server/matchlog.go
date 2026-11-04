@@ -22,7 +22,8 @@ func newSeed() uint64 {
 
 // dealRNG is the stream every deal of a match is drawn from: the first
 // dealer, the cards and the turned suit, nothing else. So the same seed and
-// options give the same cards, whatever the players do (design §3 seed).
+// options give the same cards, whatever the players do
+// (docs/server.md#table-options).
 func dealRNG(seed uint64) *rand.Rand {
 	return rand.New(rand.NewPCG(seed, seed^0x6b6c61766572))
 }

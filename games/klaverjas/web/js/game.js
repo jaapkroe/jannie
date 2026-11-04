@@ -1,6 +1,7 @@
 // Klaverjas at klaverjas.kroes.dev: what the shell (main.js, home.js,
-// panels.js) needs from the game of this site (design §9, "The game
-// module"). No side effects when imported: node tests read it.
+// panels.js) needs from the game of this site
+// (docs/frontend.md#the-game-module). No side effects when imported: node
+// tests read it.
 import { sound } from './sound.js';
 import { app, h, icon, store, posOf, isWij, teamCls, variantText, countWord, cap, POS } from './util.js';
 import * as panels from './panels.js';

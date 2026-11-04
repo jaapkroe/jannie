@@ -26,7 +26,7 @@ const {
   store, roemText, cap, playerName, keyboardOpen, textField, handHeadline, DEFAULT_NAME,
   posOf, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText, countWord,
   reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
-  versionText,
+  versionText, supportURL,
 } = await import('../../platform/web/js/util.js');
 
 test('store keeps values in memory when localStorage is blocked', () => {
@@ -328,4 +328,13 @@ test('versionText: the commit shortened, -dirty kept, "dev" when not filled in',
   assert.equal(versionText('dev'), 'dev');
   assert.equal(versionText(''), 'dev');
   assert.equal(versionText(undefined), 'dev');
+});
+
+test('supportURL: an https link as it is, nothing when not filled in or not one', () => {
+  assert.equal(supportURL('https://pay.example/r/AbC123'), 'https://pay.example/r/AbC123');
+  assert.equal(supportURL('https://pay.example/r?a=1&b=2'), 'https://pay.example/r?a=1&b=2');
+  for (const v of ['@SUPPORT_URL@', '', undefined, 'https://', 'http://pay.example/r', 'javascript:alert(1)',
+    ' https://pay.example/r', 'https://pay.example/a b', 'https://pay.example/"x', 'https://pay.example/<x>']) {
+    assert.equal(supportURL(v), '', String(v));
+  }
 });

@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// pacing holds the unscaled delays of one tempo (design §6).
+// pacing holds the unscaled delays of one tempo (docs/server.md#pacing).
 type pacing struct {
 	think, deal, announce, trick, summary time.Duration
 }

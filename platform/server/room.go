@@ -879,7 +879,7 @@ func (r *room) pickHost(from cards.Seat) bool {
 // checkIdle removes the room when it has been empty or finished too long:
 // 30 min after game over; with nobody connected, after 30 min while a game
 // runs that a human may come back to, or after 5 min in the lobby, after
-// game over or once every human has left (design §6).
+// game over or once every human has left (docs/server.md#rooms-and-codes).
 func (r *room) checkIdle() {
 	now := time.Now()
 	wait := r.srv.idleTimeout

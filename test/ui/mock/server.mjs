@@ -2,13 +2,15 @@
 // Mock klaverjas server for frontend development and UI tests: serves
 // klaverjas's site (platform/web and games/klaverjas/web, test/ui/site.mjs)
 // (with the /ABCD → index.html rule) and speaks the websocket protocol of
-// docs/design.md §7 with a compact rules engine and simple bots, for tables
-// of four only (opts.players other than 4 is ignored).
+// docs/protocol.md and games/klaverjas/README.md#protocol with a compact
+// rules engine and simple bots, for tables of four only (opts.players
+// other than 4 is ignored).
 //
 //   node test/ui/mock/server.mjs [--port 18100] [--scale 1] [--fast] [--rig] [--seed N]
 //
-// --scale multiplies the real server's pauses (default 1, as in design §6);
-// --fast is --scale 0.15. The hand summary always uses the full pause.
+// --scale multiplies the real server's pauses (default 1, as in
+// docs/server.md#pacing); --fast is --scale 0.15. The hand summary always
+// uses the full pause.
 //
 // As the server, it never lets an AI play a person's seat unasked: the game
 // waits on whoever left or lost the connection, and asks everyone else
@@ -318,10 +320,11 @@ const TRUMP_MISSED = {
   why: 'je hebt de boer, de nel en de aas, in totaal vier klaveren. Je haalt het zo naar schatting in 8 van de 10 potjes.',
 };
 
-// The player's graded decisions in finished hand h (design §7 replayHand
-// choices), by trick: in hand 1 the trump choice with points left, in
-// every hand a strong card in trick 2, points left in trick 4 and the
-// cards of tricks 1, 3, 5 and 6 without either.
+// The player's graded decisions in finished hand h (replayHand
+// choices, games/klaverjas/README.md#the-review), by trick: in hand 1 the
+// trump choice with points left, in every hand a strong card in trick 2,
+// points left in trick 4 and the cards of tricks 1, 3, 5 and 6 without
+// either.
 function choicesOf(room, h, seat) {
   const mine = (room.handTricks[h - 1] || []).map(t => t.cards.find(c => c.seat === seat)?.card);
   if (mine.length < 8 || mine.some(c => !c)) return [];
@@ -349,9 +352,9 @@ function replayOf(room, h, seat) {
   return { hand: h, cards: cards.map(c => sortHand(c, room.scores[h - 1]?.trump)), tricks: ts, choices: choicesOf(room, h, seat) };
 }
 
-// The review at game over (design §9 Spelanalyse), with its moments taken
-// from the graded decisions of the first and the last hand, and every hand
-// for the replay.
+// The review at game over (games/klaverjas/README.md#spelanalyse), with
+// its moments taken from the graded decisions of the first and the last
+// hand, and every hand for the replay.
 function mockReview(room, seat) {
   const tricks = room.prevHand?.tricks || [];
   const last = choicesOf(room, room.handNo, seat);
@@ -501,7 +504,7 @@ function trackTurn(room) {
   room.think = delay(room, 'think') * (0.7 + rand() * 0.6);
 }
 
-// ---------- takeover (design §6) ----------
+// ---------- takeover (docs/server.md#takeover-consent) ----------
 
 // The game runs while a person is connected.
 const live = room => room.players.some(p => p && !p.bot && p.connected);
@@ -1038,7 +1041,8 @@ wss.on('connection', ws => {
     try { m = JSON.parse(data); } catch { return; }
     try { onMessage(ws, m); } catch (e) { console.error(e); }
   });
-  // A connection lost keeps the seat; nobody plays it unasked (design §6).
+  // A connection lost keeps the seat; nobody plays it unasked
+  // (docs/server.md#takeover-consent).
   ws.on('close', () => {
     const { room, seat } = ws.kj;
     const p = room?.players[seat];

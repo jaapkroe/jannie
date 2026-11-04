@@ -3,7 +3,7 @@
 # games/<game>/<game>.mk: the public host name (SITE), where the pod listens (ADDR),
 # the ports of the server from source and the rest. Change them there, then
 # `make install GAME=<game> && make deploy GAME=<game>`. The games are the names of
-# those files; a new file is a new game (deploy/README-deploy.md, "Adding a game").
+# those files; a new file is a new game (docs/adding-a-game.md#checklist).
 #
 # GAME, from make's command line only (one left in the shell's environment is
 # ignored, so that it never picks what is deployed), is one game or `all`:
@@ -12,6 +12,14 @@
 #   help test test-all                                          do not take it
 # GAME=all goes through the games one after another, in the order of their names,
 # under one build tag, and stops at the first one that fails.
+#
+# One setting belongs to the deployment rather than a game: SUPPORT_URL, the
+# payment link behind "Support deze app" on every game's home page. It goes in
+# local.mk next to this Makefile, which git ignores, as
+#   SUPPORT_URL = https://…
+# (or on make's command line; one in the shell's environment is ignored). Make
+# reads local.mk, so a # in the link is written \# and a $ as $$. Without it
+# the web images have no support button.
 # ---------------------------------------------------------------------------------------
 GAMES := $(sort $(basename $(notdir $(wildcard games/*/*.mk))))
 SETTINGS := TITLE VERB SITE ADDR DEV_PORT E2E_PORT E2E_SIM
@@ -25,6 +33,13 @@ override GAME :=
 endif
 ifneq ($(filter-out all $(GAMES),$(GAME))$(word 2,$(GAME)),)
 $(error GAME=$(GAME) is not a game; the games are $(GAMES), and GAME=all is every one)
+endif
+-include local.mk
+# Not one from the environment; spaces around it dropped. One https URL, quoted
+# as it is in the web image's build (the Containerfile checks it again).
+override SUPPORT_URL := $(if $(filter environment%,$(origin SUPPORT_URL)),,$(strip $(SUPPORT_URL)))
+ifneq ($(strip $(filter-out https://%,$(SUPPORT_URL))$(filter https://,$(SUPPORT_URL))$(word 2,$(SUPPORT_URL))$(foreach c,' " < >,$(findstring $(c),$(SUPPORT_URL)))),)
+$(error SUPPORT_URL=$(SUPPORT_URL): not an https URL without quotes, spaces, < or > (local.mk; see the top of the Makefile))
 endif
 # The one game the targets act on, or empty for all of them (GAME=all, or no GAME).
 ONE := $(filter $(GAMES),$(GAME))
@@ -80,8 +95,10 @@ UNIT_SUFFIXES := .pod -web.container -server.container
 UNITS = $(addprefix $(GAME),$(UNIT_SUFFIXES))
 RENDER = sed -e 's|@GAME@|$(GAME)|g' -e 's|@TITLE@|$(TITLE)|g' -e 's|@SITE@|$(SITE)|g' -e 's|@ADDR@|$(ADDR)|g'
 # The web image is the game's: its files, its host name in the CSP and the link
-# preview, and its name and verb on the 404 page.
-WEB_ARGS = --build-arg GAME=$(GAME) --build-arg SITE=$(SITE) --build-arg 'TITLE=$(TITLE)' --build-arg 'VERB=$(VERB)'
+# preview, and its name and verb on the 404 page; and the deployment's support
+# link, if any.
+WEB_ARGS = --build-arg GAME=$(GAME) --build-arg SITE=$(SITE) --build-arg 'TITLE=$(TITLE)' --build-arg 'VERB=$(VERB)' \
+	--build-arg 'SUPPORT_URL=$(SUPPORT_URL)'
 
 e2e:       ## play full games over the websocket against GAME's server from source (every game's without GAME), at -fast pacing
 	@test -f $(E2E_SIM) || { echo "$(E2E_SIM) not found" >&2; exit 1; }
@@ -104,6 +121,7 @@ dev-stop:  ## stop GAME's development server (every game's without GAME), if `ma
 image-server:   ## build GAME's server image (fresh base image), tagged BUILD_TAG; go vet and the short tests run inside the build
 	podman build --target server-$(GAME) $(BUILD_ARGS) -t localhost/$(GAME)-server:$(BUILD_TAG) .
 image-web:      ## build GAME's web image, tagged BUILD_TAG: nginx, its configuration for SITE, platform/web and games/GAME/web
+	$(if $(SUPPORT_URL),,@echo "No SUPPORT_URL (local.mk): $(GAME)'s web image has no support button.")
 	podman build --target web $(BUILD_ARGS) $(WEB_ARGS) -t localhost/$(GAME)-web:$(BUILD_TAG) .
 image: image-server image-web   ## build both images of GAME; the running pod keeps its :current ones
 quadlet:   ## show the three units of GAME (every game's without GAME) with its settings filled in
@@ -114,9 +132,9 @@ install:   ## install GAME's pod and both its container units for your user
 	  $(RENDER) deploy/game$$s.in > $(QUADLET_DIR)/$(GAME)$$s || exit 1; done
 	systemctl --user daemon-reload
 	@loginctl show-user "$$USER" -p Linger | grep -q yes || echo "Note: run 'loginctl enable-linger $$USER' so the game starts at boot and survives logout."
-# What runs in public is a commit, the one on Forgejo; ALLOW_DIRTY=1 deploys the
-# working tree anyway, labelled -dirty. The image builds run in a sub-make, after
-# this check, with this make's revision and tag.
+# What runs in public is a commit, so the revision the site shows names its code;
+# ALLOW_DIRTY=1 deploys the working tree anyway, labelled -dirty. The image builds
+# run in a sub-make, after this check, with this make's revision and tag.
 deploy:    ## build both images of GAME from a committed tree, (re)start its pod, then check it as `make check` does
 	@case "$(GIT_SHA)" in *-dirty) [ "$(ALLOW_DIRTY)" = 1 ] || { \
 	  echo "make deploy: the working tree has changes that are not committed (git status)." \
@@ -128,7 +146,7 @@ deploy:    ## build both images of GAME from a committed tree, (re)start its pod
 	@addr=$(ADDR); tries=30; ($(WAIT_HEALTH)) && scripts/pod-check $(ADDR) $(SITE) '$(TITLE)' || \
 	  { echo "see: make status GAME=$(GAME); make logs GAME=$(GAME)" >&2; exit 1; }; \
 	  echo "$(GAME) $(GIT_SHA) is up on http://$(ADDR)/ (images :current and :$(BUILD_TAG))"
-check:     ## check GAME's running pod (every game's without GAME) on its ADDR without NPM: pages, websocket, security headers
+check:     ## check GAME's running pod (every game's without GAME) on its ADDR without the reverse proxy: pages, websocket, security headers
 	@scripts/pod-check $(ADDR) $(SITE) '$(TITLE)'
 # The first column fits the longest name to come, presidenten-server.
 status:    ## state, image revision and health of GAME's pod and both its containers (every game's without GAME)

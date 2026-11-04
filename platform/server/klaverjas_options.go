@@ -7,7 +7,8 @@ import (
 	"jannie/games/klaverjas/game"
 )
 
-// Options are the room settings chosen by the host (design §3).
+// Options are the room settings chosen by the host
+// (games/klaverjas/README.md#options).
 type Options struct {
 	Players   int            `json:"players"`
 	Hands     int            `json:"hands"`
@@ -18,7 +19,7 @@ type Options struct {
 	Open      bool           `json:"open"`
 	Lesson    string         `json:"lesson"`  // training: the lesson Juf Jannie gives (klaverjas_lesson.go); "": vrij spelen
 	Tips      bool           `json:"tips"`    // training: a hint on every turn and an explanation after every trick
-	Signals   game.Signals   `json:"signals"` // the table's agreements on signals (design §8)
+	Signals   game.Signals   `json:"signals"` // the table's agreements on signals (games/klaverjas/README.md#seinen-signals)
 	Seed      int            `json:"seed"`    // 1..maxSeed: every match deals the same cards; 0: a new seed per match
 	From      int            `json:"from"`    // expert: 1..maxHands: the match is that one hand of the seed's deals; 0: the whole match
 }

@@ -8,11 +8,11 @@ import (
 	"jannie/games/klaverjas/game"
 )
 
-// The reasons of play hints (design §4.2). A hint gives the reason of what
-// chose its card: the rule of the rule-based policy (ruleWhy), or, for a
-// card the search rates clearly higher, how much more it brings and in
-// which part of the value (searchWhy). What the card signals at the table
-// is added as a note (signalNote).
+// The reasons of play hints (games/klaverjas/README.md#package-bot). A
+// hint gives the reason of what chose its card: the rule of the rule-based
+// policy (ruleWhy), or, for a card the search rates clearly higher, how
+// much more it brings and in which part of the value (searchWhy). What the
+// card signals at the table is added as a note (signalNote).
 
 // ruleWhy is the reason of rule r for card c, the text after "Speel ♠V: ".
 func (m *mover) ruleWhy(c game.Card, r rule) string {
@@ -280,8 +280,9 @@ func (m *mover) roemNote(c game.Card) string {
 }
 
 // signalNote is the sentence, starting with a space, on what c tells the
-// partner at this table (design §8): a signal given truthfully, or a
-// warning when the partner would read something untrue; "" otherwise.
+// partner at this table (games/klaverjas/README.md#seinen-signals): a
+// signal given truthfully, or a warning when the partner would read
+// something untrue; "" otherwise.
 func (m *mover) signalNote(c game.Card) string {
 	t := m.t
 	if t.n == 0 {
@@ -477,11 +478,11 @@ func (m *mover) partnerSaid(hi game.Card) string {
 }
 
 // highDiscard reports whether discarding c says truthfully what
-// afseinen reads in it (design §8), at a table that agreed on op- en
-// afseinen: c is a 10 or plaatje of a side suit that was not led, on the
-// partner's trick, and at most one other card of that suit stays, not the
-// highest card of the suit still out: "de hoogste van deze kleur heb ik
-// niet".
+// afseinen reads in it (games/klaverjas/README.md#seinen-signals), at a
+// table that agreed on op- en afseinen: c is a 10 or plaatje of a side
+// suit that was not led, on the partner's trick, and at most one other
+// card of that suit stays, not the highest card of the suit still out: "de
+// hoogste van deze kleur heb ik niet".
 func (m *mover) highDiscard(c game.Card) bool {
 	t := m.t
 	if !t.sig.HoogLaag || !t.partnersTrick() || c.Suit == t.trump || c.Suit == t.led() {

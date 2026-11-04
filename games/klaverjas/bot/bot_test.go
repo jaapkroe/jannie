@@ -184,8 +184,8 @@ func containsAny(s string, subs []string) bool {
 
 // TestAdviseAlwaysValid asks for advice at every decision of some deals,
 // with every seat following it. Play hints must be true to what happens in
-// the trick, and a hint from the search says where its card gains (design
-// §4.2).
+// the trick, and a hint from the search says where its card gains
+// (games/klaverjas/README.md#package-bot).
 func TestAdviseAlwaysValid(t *testing.T) {
 	deals := 16
 	if testing.Short() {

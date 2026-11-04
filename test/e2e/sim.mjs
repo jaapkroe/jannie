@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-// Plays full klaverjas games over the websocket protocol (design §7) and
-// checks invariants on every update. No dependencies: Node's global
-// WebSocket. See README.md in this directory.
+// Plays full klaverjas games over the websocket protocol (docs/protocol.md,
+// games/klaverjas/README.md#protocol) and checks invariants on every update.
+// No dependencies: Node's global WebSocket. See README.md in this directory.
 //
 //   node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --players 3 --humans 2 --trump gedraaid \
 //     --rules rotterdams --ai sterk --hands 4 [--training] [--reconnect] [--games 3]
@@ -22,14 +22,15 @@ With only a URL, plays the standard suite of configurations.`;
 const STALL_MS = 30000;
 const IN_HAND = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
 const MOVES = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
-// Cards per seat (and tricks) at a table of 2, 3 or 4 (design §2).
+// Cards per seat (and tricks) at a table of 2, 3 or 4
+// (games/klaverjas/README.md#rules-as-implemented).
 const SIZE = { 2: 16, 3: 10, 4: 8 };
 // The server's answer to a vote that crossed the end of its question (the
 // player came back, the others agreed): told, not a failure, as long as the
 // question did close or change after the vote was sent.
 const LATE_VOTE = 'Die vraag staat niet (meer) open.';
 // The server's answer to a hand asked to look back at, at a table of three
-// or two (design §7 handReview).
+// or two (games/klaverjas/README.md#client--server).
 const ALONE_FOUR = "Terugkijken kan alleen met z'n vieren.";
 
 let args;
@@ -128,7 +129,7 @@ const label = c => `${c.training ? 'training' : `${c.humans} human${c.humans > 1
 
 class Violation extends Error {}
 
-// Card points (design §2), for the soloist's discards.
+// Card points (games/klaverjas/README.md#cards), for the soloist's discards.
 function cardPoints(code, trump) {
   if (code[1] === trump) return { J: 20, 9: 14, A: 11, T: 10, K: 4, Q: 3 }[code[0]] ?? 0;
   return { A: 11, T: 10, K: 4, Q: 3, J: 2 }[code[0]] ?? 0;
@@ -150,8 +151,10 @@ const cardNL = code => SUIT_SYMBOL[code[1]] + RANK_NL[code[0]];
 
 const rand = n => Math.floor(Math.random() * n);
 const pick = a => a[rand(a.length)];
-// The side of a seat in a hand (design §2): its team with four players,
-// itself with two, with three 0 for the soloist and 1 for the other two.
+// The side of a seat in a hand
+// (games/klaverjas/README.md#rules-as-implemented): its team with four
+// players, itself with two, with three 0 for the soloist and 1 for the
+// other two.
 const sideOf = (n, seat, soloist) => (n === 3 ? (seat === soloist ? 0 : 1) : seat % 2);
 
 // One simulated human: connects, follows the protocol, plays randomly and

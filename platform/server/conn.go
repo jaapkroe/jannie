@@ -15,7 +15,7 @@ const (
 	sendQueueLen    = 256
 	writeTimeout    = 10 * time.Second
 	// A connection the server has heard nothing from, or sent nothing to,
-	// for pingEvery gets a ping (design §6 Limits), checked pingChecks
+	// for pingEvery gets a ping (docs/server.md#limits), checked pingChecks
 	// times as often. The browser pings every 20 s itself (net.js), and the
 	// pong it gets keeps the proxies' idle timeout away just as well, so a
 	// page that pings gets no server pings: a phone's radio wakes for one

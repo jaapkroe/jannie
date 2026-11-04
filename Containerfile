@@ -11,6 +11,8 @@
 #   podman build --target web --build-arg GIT_SHA=$(git rev-parse HEAD) --build-arg GAME=klaverjas \
 #                --build-arg SITE=klaverjas.kroes.dev --build-arg TITLE=Klaverjas \
 #                --build-arg VERB=klaverjassen -t localhost/klaverjas-web:test .
+# The web target also takes SUPPORT_URL, the deployment's payment link behind
+# the home page's support button; without it there is no button.
 # (`make image GAME=<game>` builds both with the game's settings, with -dirty after
 # the commit when the tree is not that commit, and a tag of its own for each build;
 # `make deploy GAME=<game>` then points :current, which the units run, at that build.)
@@ -58,17 +60,24 @@ CMD ["-addr", "127.0.0.1:8081"]
 # nginx configuration with the public host name, the game's name and its verb
 # filled in, checked here so a broken one never reaches the web image; and
 # index.html with the host name, for the link preview's og:image, which must be
-# an absolute URL, and with the commit, the version the home page shows.
+# an absolute URL, with the commit, the version the home page shows, and with
+# the payment link, empty without one.
 FROM docker.io/nginxinc/nginx-unprivileged:1.31-alpine AS web-conf
 ARG GAME
 ARG SITE
 ARG TITLE
 ARG VERB
 ARG GIT_SHA=dev
+ARG SUPPORT_URL=
 # Before the COPY below: with an empty GAME, games/${GAME}/web/ names no game.
+# The payment link goes into an HTML attribute as it is: an https URL with
+# no quote, space, < or >.
 RUN test -n "$GAME" && test -n "$SITE" && test -n "$TITLE" && test -n "$VERB" || { \
       echo "the web target needs --build-arg GAME, SITE, TITLE and VERB (make image-web GAME=<game>)" >&2; exit 1; } && \
-    case "$GAME" in *[!a-z0-9-]*) echo "GAME=$GAME: not a game's name" >&2; exit 1;; esac
+    case "$GAME" in *[!a-z0-9-]*) echo "GAME=$GAME: not a game's name" >&2; exit 1;; esac && \
+    case "$SUPPORT_URL" in '' | https://?*) ;; *) false;; esac && \
+    case "$SUPPORT_URL" in *[\"\'\<\>[:space:]]*) false;; esac || { \
+      echo "SUPPORT_URL=$SUPPORT_URL: not an https URL without quotes, spaces, < or >" >&2; exit 1; }
 COPY platform/web/ /tmp/shared/
 COPY games/${GAME}/web/ /tmp/game/
 COPY deploy/nginx.conf /tmp/nginx.conf.in
@@ -77,8 +86,10 @@ RUN both=$( { (cd /tmp/shared && find . ! -type d; cd /tmp/game && find .) | sor
     { [ -z "$both" ] || { echo "in both platform/web and games/$GAME/web:" $both >&2; exit 1; }; } && \
     sed -e "s|@SITE@|${SITE}|g" -e "s|@TITLE@|${TITLE}|g" -e "s|@VERB@|${VERB}|g" /tmp/nginx.conf.in > /tmp/nginx.conf && \
     ! grep -q '@[A-Z_]*@' /tmp/nginx.conf && nginx -t -q -c /tmp/nginx.conf && \
-    sed -e "s|@SITE@|${SITE}|g" -e "s|@VERSION@|${GIT_SHA}|g" /tmp/game/index.html > /tmp/index.html && \
-    ! grep -q -e @SITE@ -e @VERSION@ /tmp/index.html
+    support=$(printf '%s\n' "$SUPPORT_URL" | sed -e 's/&/\&amp;/g' -e 's/[\\|&]/\\&/g') && \
+    sed -e "s|@SITE@|${SITE}|g" -e "s|@VERSION@|${GIT_SHA}|g" -e "s|@SUPPORT_URL@|${support}|g" \
+      /tmp/game/index.html > /tmp/index.html && \
+    ! grep -q -e @SITE@ -e @VERSION@ -e @SUPPORT_URL@ /tmp/index.html
 
 FROM docker.io/nginxinc/nginx-unprivileged:1.31-alpine AS web
 ARG GAME

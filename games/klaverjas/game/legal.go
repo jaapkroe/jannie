@@ -82,7 +82,8 @@ func judge(hand uint32, ti *trickInfo, partner Seat, trump Suit, rules Rules) si
 		s.need, s.why = needHigherTrump, rMustOvertrump
 	case rules == Rotterdams && s.hasOther:
 		// Rotterdams: whoever cannot follow must trump, also below the
-		// trick's trump; a side card only without trumps (design §2).
+		// trick's trump; a side card only without trumps
+		// (games/klaverjas/README.md#following-suit-rules).
 		s.need, s.why = needTrump, rRotterdamsUnder
 	case s.hasOther:
 		s.need, s.why = needNonTrump, rCannotOvertrump

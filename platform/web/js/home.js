@@ -5,7 +5,7 @@
 // (klaverjas: Oefenen), the help button, the texts that name the game, the
 // easter egg under the version, and how the lobby places its seats.
 import { sound } from './sound.js';
-import { app, h, clear, icon, store, toast, seatCount, avatar, playerName, countWord, copyText, DEFAULT_NAME, versionText } from './util.js';
+import { app, h, clear, icon, store, toast, seatCount, avatar, playerName, countWord, copyText, DEFAULT_NAME, versionText, supportURL } from './util.js';
 import * as panels from './panels.js';
 
 const E = {};
@@ -130,12 +130,13 @@ export function init(g) {
   showQuickSub();
   E.card = h('div', { class: 'home-card' },
     h('label', { class: 'name-lbl', for: 'name', text: 'Je naam' }), E.name, E.invite, E.main);
+  const support = supportURL(document.querySelector('meta[name="support"]')?.content);
   root.querySelector('.home-inner').append(E.card,
     h('footer', { class: 'home-foot' },
       h('span', { text: game.home.footer }),
       h('div', { class: 'home-meta' },
         h('small', { class: 'home-ver', text: `Versie ${versionText(document.querySelector('meta[name="version"]')?.content)}`, onclick: versionTap }),
-        h('button', { class: 'home-support', type: 'button', id: 'btn-support', onclick: openSupport }, icon('hand'), 'Support deze app'))),
+        support ? h('button', { class: 'home-support', type: 'button', id: 'btn-support', onclick: () => openSupport(support) }, icon('hand'), 'Support deze app') : null)),
   );
   E.lobby = document.getElementById('lobby');
   buildLobby();
@@ -243,12 +244,12 @@ function openNewGame() {
 
 // ---------- support ----------
 
-// A free contribution to the owner: an ING payment request, valid until
-// 2027-10-29, so a new one goes here before then. For the site only: the
-// store apps may not point to a payment outside the store.
-const SUPPORT_URL = 'https://www.ing.nl/payreq/m/YPJ0vnfaNXF4YztOueB1ZPIJSX7LY8nK';
-
-function openSupport() {
+// A free contribution to whoever runs the site, through the deployment's
+// own payment link (SUPPORT_URL in local.mk, see the Makefile). Without one
+// there is no button: a fork does not show someone else's link, and the
+// store apps, which may not point to a payment outside the store, are built
+// without it.
+function openSupport(url) {
   sound.unlock();
   sound.play('click');
   panels.openModal({
@@ -256,7 +257,7 @@ function openSupport() {
     body: [
       h('p', { text: game.home.support }),
       h('p', { text: 'Je kiest zelf het bedrag en betaalt via je eigen bank.' }),
-      h('a', { class: 'btn btn-go btn-block', href: SUPPORT_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Bijdragen met iDEAL'),
+      h('a', { class: 'btn btn-go btn-block', href: url, target: '_blank', rel: 'noopener noreferrer' }, 'Bijdragen met iDEAL'),
     ],
   });
 }
@@ -264,7 +265,7 @@ function openSupport() {
 // ---------- easter egg ----------
 
 // A game may hide something under the version (game.home.egg; klaverjas:
-// the expert mode, design §9 Expert): five quick taps on it open it.
+// the expert mode; docs/frontend.md#home): five quick taps on it open it.
 const EGG_TAPS = 5;
 const EGG_GAP_MS = 1500;
 let taps = 0;

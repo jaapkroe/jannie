@@ -1,9 +1,9 @@
 // Package server runs the rooms of one card game over websockets: codes,
-// lobby, the match loop with pacing, bots, chat and limits (design §4.3,
-// §6, §7). Klaverjas is built in (Klaverjas): most of its code is in the
-// klaverjas_*.go files, which the table's files call where klaverjas
-// differs, and only those files import its packages. Another game plugs in
-// on the exported API of api.go (Game, Play, Table).
+// lobby, the match loop with pacing, bots, chat and limits (docs/server.md,
+// docs/protocol.md). Klaverjas is built in (Klaverjas): most of its code
+// is in the klaverjas_*.go files, which the table's files call where
+// klaverjas differs, and only those files import its packages. Another
+// game plugs in on the exported API of api.go (Game, Play, Table).
 //
 // Each room is an actor: one goroutine owns all room state and runs
 // commands from a channel; timers post back into that channel. Each
@@ -36,7 +36,7 @@ type Config struct {
 	AllowedOrigins []string // websocket Origin patterns besides same-host
 	Version        string   // reported by /api/health
 	Logger         *slog.Logger
-	GameLog        string // directory of the game log (design §6); "" keeps none
+	GameLog        string // directory of the game log (docs/server.md#game-log); "" keeps none
 }
 
 // Server holds all rooms and connections.

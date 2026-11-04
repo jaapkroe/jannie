@@ -13,9 +13,10 @@ import (
 	"jannie/platform/server"
 )
 
-// play is a match of toepen at the table (design §11): rounds of four
-// cards, the last trick wins, toepen raises the stake, and the match goes
-// on until one player is left. In the lobby it only gives the state.
+// play is a match of toepen at the table
+// (games/toepen/README.md#server): rounds of four cards, the last trick
+// wins, toepen raises the stake, and the match goes on until one player
+// is left. In the lobby it only gives the state.
 type play struct {
 	t          *server.Table
 	ai         AI
@@ -278,7 +279,7 @@ func (p *play) afterWas() {
 
 // ---- decisions ----
 
-// The messages of toepen (design §11).
+// The messages of toepen (games/toepen/README.md#protocol).
 type toepMsg struct {
 	Card  string   `json:"card"`
 	Cards []string `json:"cards"`
@@ -620,7 +621,7 @@ func (p *play) chatCheck(res *toepen.Check) {
 	}
 }
 
-// ---- the reasoning of the AI (docs/toepen.md §8) ----
+// ---- the reasoning of the AI (games/toepen/README.md#redenering-van-de-ai) ----
 
 // whyAnswer is an explanation for seat's decision key.
 type whyAnswer struct {

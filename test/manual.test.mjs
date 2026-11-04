@@ -1,5 +1,6 @@
 // Checks the handleiding: section contract, rendering, and that every number and
-// worked example agrees with the rules in docs/design.md §2 (independent checker).
+// worked example agrees with the rules in
+// games/klaverjas/README.md#rules-as-implemented (independent checker).
 // Run: node --test test/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -70,7 +71,8 @@ globalThis.document = {
   createDocumentFragment: () => new Fragment(),
 };
 
-// cards.js is replaced by a stub so this test depends only on the section 9 contract.
+// cards.js is replaced by a stub so this test depends only on the
+// docs/frontend.md#shared-modules contract.
 const STUB = `
 export const SUITS = { C:{name:'klaveren',symbol:'♣',color:'black'}, D:{name:'ruiten',symbol:'♦',color:'red'},
   H:{name:'harten',symbol:'♥',color:'red'}, S:{name:'schoppen',symbol:'♠',color:'black'} };
@@ -103,7 +105,7 @@ registerHooks({
 const manual = await import(manualPath);
 const { SECTIONS, CONTENT, CARD_VALUES, ROEM_VALUES, BLOCK_TYPES, renderManual } = manual;
 
-// ---- Independent rules checker (design.md §2) ----
+// ---- Independent rules checker (games/klaverjas/README.md#rules-as-implemented) ----
 
 const NATURAL = ['7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
 const TRUMP_LOW_HIGH = ['7', '8', 'Q', 'K', 'T', 'A', '9', 'J'];
@@ -211,7 +213,7 @@ function allStrings(value, out = []) {
 
 // ---- Tests ----
 
-test('sections match the section 9 contract', () => {
+test('sections match the games/klaverjas/README.md#manualjs contract', () => {
   assert.deepEqual(SECTIONS, [
     { id: 'bediening', title: 'Bediening' }, { id: 'regels', title: 'Spelregels' },
     { id: 'twee-drie', title: 'Met 2 of 3' },
@@ -492,8 +494,9 @@ test('bediening names the game options exactly as the new-game sheet does', () =
 });
 
 test('bediening only promises a review of the last potje', () => {
-  // The state keeps the tricks of the last finished hand only (design section 7,
-  // prevHand), so the score sheet makes just that row tappable.
+  // The state keeps the tricks of the last finished hand only
+  // (games/klaverjas/README.md#state-s, prevHand), so the score sheet makes just
+  // that row tappable.
   const entry = blocksOf('dl').flat().find(([term]) => term === 'Scorebord');
   assert.ok(entry, 'Scorebord is explained');
   assert.match(entry[1], /Tik op het laatste potje/);
@@ -531,7 +534,7 @@ test('card value headers keep "(hier ♠)" together when they wrap', () => {
   assert.deepEqual(th.map((h) => h.textContent), ['#', 'Troef (hier ♥)', 'Geen troef (hier ♠)']);
 });
 
-test('seinen covers every signal from design section 8, op- en afseinen second', () => {
+test('seinen covers every signal from games/klaverjas/README.md#seinen-signals, op- en afseinen second', () => {
   const el = renderManual('seinen');
   const heads = byTag(el, 'h3').map((h) => h.textContent.toLowerCase());
   const order = ['met de aas seinen', 'op- en afseinen', 'kleintje boer', 'boer over boer', 'tegenkleur', 'spekken (ook wel smeren)', 'maat heeft de slag'];

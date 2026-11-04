@@ -122,7 +122,8 @@ const (
 	lowSigHeld, lowSigNotHeld = 2.0, 0.4
 )
 
-// signalHints reads what the play so far says about the aces (design §8):
+// signalHints reads what the play so far says about the aces
+// (games/klaverjas/README.md#seinen-signals):
 //   - a player who leads a side card other than the ace or the 10 while
 //     that ace is still out probably does not hold the ace (with it, one
 //     leads the ace, or the 10 first when holding both);

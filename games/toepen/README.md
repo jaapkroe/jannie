@@ -1,21 +1,24 @@
-# Toepen — design and contracts
+# Toepen
 
 The site **toepen.kroes.dev**: toepen and nothing else, for two to six
 players, with friends and bots. It is played at the same table as klaverjas
 (rooms and codes, seats and the lobby, bots, chat, calls, reconnects, the
-takeover question, limits: [`design.md`](design.md) §6 and the table's
-messages of §7), from its own server binary, web image and pod; how the
-sites share code is in [`games.md`](games.md). English for code and docs;
+takeover question, limits: [docs/server.md](../../docs/server.md) and the table's
+messages of [docs/protocol.md](../../docs/protocol.md)), from its own server binary,
+web image and pod; how the sites share code is in
+[docs/architecture.md](../../docs/architecture.md). English for code and docs;
 every user-visible string Dutch.
 
 Besides the table, the site keeps the score of toepen played at a real
-table, with real cards (*Score bijhouden*, §9).
+table, with real cards ([Score bijhouden](#score-bijhouden)).
 
 Sources: <https://nl.wikipedia.org/wiki/Toepen> and the common house rules;
 where groups differ, the choice is written down here and the commonest
 variants are options.
 
-## 1. Rules as implemented (`games/toepen/toepen`)
+## Rules as implemented
+
+The rules engine is `games/toepen/toepen`.
 
 - The 32 cards of klaverjas, under the same codes. Within a suit, low to
   high: boer, vrouw, heer, aas, 7, 8, 9, 10 (`Strength`). No trump. Two to
@@ -123,21 +126,21 @@ checking that each round ends, points only grow (but for the boer), the
 when everyone left is on armoede and ends the match, and the match ends
 with one player left.
 
-## 2. Options
+## Options
 
 | Key | Values | Default | Meaning |
 |---|---|---|---|
 | `players` | 2–6 | 4 | Seats at the table; empty seats at the start get random bots |
 | `limit` | 10, 15 | 10 | Penalty points that put a player out |
-| `was` | bool | true | The vuile was (§1) |
-| `armoede` | bool | true | Armoede (§1) |
-| `koning` | bool | true | The koningsspel (§1) |
-| `boer` | bool | true | The last trick with a boer: a point off (§1) |
-| `lijntoep` | bool | false | Anti-lijntoep (§1) |
-| `bluf` | bool | true | A caught bluff plays on face up, else sits the round out (§1) |
-| `ai` | `makkelijk`, `normaal`, `sterk` | `normaal` | Strength of every bot (§5) |
-| `tempo` | `rustig`, `normaal`, `snel` | `normaal` | Pacing (§3) |
-| `seed` | 1..999999999, or 0 / null | 0 | As klaverjas's (design §3): the same seed deals the same cards |
+| `was` | bool | true | The vuile was ([Rules as implemented](#rules-as-implemented)) |
+| `armoede` | bool | true | Armoede ([Rules as implemented](#rules-as-implemented)) |
+| `koning` | bool | true | The koningsspel ([Rules as implemented](#rules-as-implemented)) |
+| `boer` | bool | true | The last trick with a boer: a point off ([Rules as implemented](#rules-as-implemented)) |
+| `lijntoep` | bool | false | Anti-lijntoep ([Rules as implemented](#rules-as-implemented)) |
+| `bluf` | bool | true | A caught bluff plays on face up, else sits the round out ([Rules as implemented](#rules-as-implemented)) |
+| `ai` | `makkelijk`, `normaal`, `sterk` | `normaal` | Strength of every bot ([Bots](#bots)) |
+| `tempo` | `rustig`, `normaal`, `snel` | `normaal` | Pacing ([Server](#server)) |
+| `seed` | 1..999999999, or 0 / null | 0 | As at every table ([docs/server.md, "Table options"](../../docs/server.md#table-options)): the same seed deals the same cards |
 
 `s.opts` has exactly these eleven keys (default `{"players":4, "ai":
 "normaal", "tempo": "normaal", "seed": 0, "limit": 10, "was": true,
@@ -150,9 +153,10 @@ too); a `create` skips a bad value and keeps the default. There is no
 training and no expert mode: a `create` that asks for either plays an
 ordinary game.
 
-## 3. Server (`games/toepen/toepenserver`, `cmd/toepen`)
+## Server
 
-Toepen implements the table's `server.Game` (design §4.3) on its exported
+In `games/toepen/toepenserver` and `cmd/toepen`. Toepen implements the table's `server.Game`
+([docs/server.md, "The Game API"](../../docs/server.md#the-game-api)) on its exported
 `*Table`: `toepenserver.New(ai)` with seats (2, 6, 4), `Options{Limit, Was,
 Armoede, Koning, Boer, Lijntoep, Bluf}` and toepen's own pacing; its `AI`
 gives the personas, a `Brain` per bot seat (`Discard`, `Was`, `Check`,
@@ -185,15 +189,17 @@ toepen's bios; it does not import klaverjas's packages. Room phases:
   that; a completed trick lies for `trick`. The round summary moves on
   after rustig 6 s, normaal 4.5 s, snel 3 s, also for one player alone;
   `ready` from everyone connected moves on at once.
-- Bots decide once per turn as at klaverjas's table (design §6). The
+- Bots decide once per turn as at every table
+  ([docs/server.md, "Background decisions"](../../docs/server.md#background-decisions)). The
   takeover question works as there in `check`, `toep` and `play`.
 - Chat: bots greet, toep, overtoep, and say they go along or pass only
   with that decision, so the line and the deed agree; they claim a vuile
   was, are caught, check rightly or wrongly, win a round (with the boer),
   lose one, greet the koningsspel, go out, and win or lose the match
-  (`toepbot.Chat`, per persona; the limits of design §5).
-- Game log (design §6, its own volume `toepen-games`): `match` (`game`:
-  "toepen", and `opts` the eleven of §2; no `training` or `expert`), then
+  (`toepbot.Chat`, per persona; the limits of
+  [docs/server.md, "Bot chat"](../../docs/server.md#bot-chat)).
+- Game log ([docs/server.md, "Game log"](../../docs/server.md#game-log), its own volume `toepen-games`): `match` (`game`:
+  "toepen", and `opts` the eleven of [Options](#options); no `training` or `expert`), then
   per round `{"t":"round", "hand", "dealer", "cards" (per seat as dealt,
   before any vuile was; "" for a seat out), "acts", "result"}` with `acts`
   the seat and then `x` and the cards laid away (the koningsspel), `w`
@@ -201,19 +207,22 @@ toepen's bios; it does not import klaverjas's packages. Room phases:
   `t` (toep), `o` (overtoep), `a1`/`a0` (went along or passed) or a card;
   then `end` (`total`: the points, `winner`: the seat).
 
-## 4. Protocol
+## Protocol
 
-Client → server, besides the table's messages of design §7 (`create`,
+Client → server, besides the table's messages of
+[docs/protocol.md, "Client → server"](../../docs/protocol.md#client--server) (`create`,
 `join`, `sit`, `bot`, `unbot`, `opts`, `start`, `ready`, `vote`, `chat`,
 `call`, `rtc`, `rematch`, `lobby`, `leave`, `ping`): `play` `{card}`,
 `discard` `{cards}` (the koningsspel: exactly `lay` cards), `toep`,
 `overtoep` (asked about a toep), `answer` `{play}` (true: go
-along), `was` `{play}` (true: claim) and `check` `{play}` (true: check). Klaverjas's messages (`trump`, `bid`,
-`why`, …) are unknown here ("Dat bericht ken ik niet."). Errors as design
-§7 (`niet-jouw-beurt`, `ongeldig` with the engine's Dutch text).
+along), `was` `{play}` (true: claim), `check` `{play}` (true: check) and `why`
+(the expert's question, [Redenering van de AI](#redenering-van-de-ai)). Klaverjas's messages (`trump`,
+`bid`, `handReview`, `tipRead`, `feedback`, …) are unknown here ("Dat bericht
+ken ik niet."), so the shell's feedback form is not offered on this site. Errors as
+[docs/protocol.md, "Error codes"](../../docs/protocol.md#error-codes) (`niet-jouw-beurt`, `ongeldig` with the engine's Dutch text).
 
 The state `s`: `code`, `phase`, `opts`, `you`, `host`, `roster` (lobby),
-`players` (as design §7; `cards` 0 for a seat out of the round), `turn`,
+`players` (as [docs/protocol.md, "The shared state"](../../docs/protocol.md#the-shared-state); `cards` 0 for a seat out of the round), `turn`,
 `takeover`, `nextAt` (the end of the time for a was, or of the summary),
 `winner` (the seat left); `handNo` (the round), `dealer`, `voorhand`,
 `stake`, `toeper` (-1; the last to raise), `armoedeToep`, `koning`, `size`
@@ -241,11 +250,12 @@ overtoep); `answer` `{seat, stay, points, auto}` (points: what the pass
 cost; auto: went along unasked);
 `armoede` `{seats, stake}`; `play` `{seat, card}`; `trick` `{winner,
 last}`; `collect` `{winner}`; `handEnd` `{result}` (a score row);
-`gameOver` `{total, winner}`; and the seat events of design §7.
+`gameOver` `{total, winner}`; and the seat events of
+[docs/protocol.md, "Events"](../../docs/protocol.md#events).
 
-## 5. Bots (`games/toepen/toepbot`)
+## Bots
 
-All levels play their cards by the same rules of thumb: keep the best card
+In `games/toepen/toepbot`. All levels play their cards by the same rules of thumb: keep the best card
 for the last trick, lead low from another suit, take the trick before the
 last with a card other than the best, throw the weakest card when you
 cannot follow (also with the eight cards of the koningsspel).
@@ -301,15 +311,17 @@ record, so a bluff there buys nothing: it costs sterk about 0.03 a round,
 the price of being unreadable to people). A
 sterk decision takes about 4 ms.
 
-## 6. The site (`games/toepen/web`)
+## The site
 
-The shell of design §9 with toepen's `game.js`:
+`games/toepen/web`: the shell of [docs/frontend.md](../../docs/frontend.md) with toepen's `game.js`:
 
 - Home: the wordmark *Toepen* and *Wie haalt de laatste slag?*, the name,
   *Snel spelen* (its subtitle names what differs from the defaults), *Nieuw
-  spel* and *Score bijhouden* (§9; there is no Oefenen), *Meedoen* with a code,
+  spel* and *Score bijhouden* ([Score bijhouden](#score-bijhouden); there is no Oefenen), *Meedoen* with a code,
   *Spelregels en bediening*, and in the footer "Toepen zoals aan de
-  keukentafel." with the version and *Support deze app*.
+  keukentafel." with the version, and *Support deze app* when the
+  deployment has a payment link
+  ([docs/deployment.md, "SUPPORT_URL"](../../docs/deployment.md#support_url)).
 - New-game sheet and lobby: *Spelers* 2–6, *Eruit bij*, *Vuile was*,
   *Betrapte bluf* (*Open spelen* / *Potje uit*), *Armoede*,
   *Koningsspel*, *Boer* (*Punt eraf* / *Gewoon*), *Anti-lijntoep*,
@@ -345,7 +357,7 @@ The shell of design §9 with toepen's `game.js`:
   there, from the home screen what it is and its default), *Tips* (the
   bots' rules of thumb), *Begrippen* and *Bediening*.
 - Expert mode: the robot in the top bar and the sheet *Redenering van de
-  AI* (§8).
+  AI* ([Redenering van de AI](#redenering-van-de-ai)).
 - Game over → *Spelers of regels wijzigen*: the overlays close when the
   room is back in the lobby (`game.sync`).
 - Its look: blue café felt (`css/toepen.css` overrides the shell's
@@ -353,22 +365,22 @@ The shell of design §9 with toepen's `game.js`:
 - Page load: 17 requests (html, app.css, cards.css, toepen.css, favicon,
   manifest, a PNG icon, the shell's 6 modules, game.js, table.js, rules.js,
   the websocket); call.js is lazy, and so are score.js, scorecalc.js and
-  scorechart.js (§9), loaded when the score sheet opens.
+  scorechart.js ([Score bijhouden](#score-bijhouden)), loaded when the score sheet opens.
 
-## 7. Deployment
+## Deployment
 
-`games/toepen/toepen.mk`: SITE `toepen.kroes.dev`, ADDR `127.0.0.1:8095`,
-dev port 18095, e2e port 18096 (`test/e2e/toepen.mjs`), volume
-`toepen-games`; `make install GAME=toepen`, `make deploy GAME=toepen`
-(deploy/README-deploy.md). Outside the repo: the NPM proxy host
-toepen.kroes.dev → `http://127.0.0.1:8095` with websockets on, and the
-name's rate tier in shrek-infra before the link goes out. nginx gives
-`/api/score` (§9) the long timeouts of `/ws`; the volume also holds the
-score sheets (`scores/`).
+The settings are in `games/toepen/toepen.mk`; its site, address, ports and
+volume are in [docs/deployment.md, "The games"](../../docs/deployment.md#the-games).
+`make install GAME=toepen`, `make deploy GAME=toepen`. Outside the repo: a
+reverse-proxy host `SITE` → `http://ADDR` with websockets on, and a rate
+limit for the name that lets the page budget through before the link goes
+out ([docs/deployment.md, "Reverse proxy"](../../docs/deployment.md#reverse-proxy)).
+nginx gives `/api/score` ([Score bijhouden](#score-bijhouden)) the long
+timeouts of `/ws`; the volume also holds the score sheets (`scores/`).
 
-## 8. Redenering van de AI (expert mode)
+## Redenering van de AI
 
-Five taps on the version under the home screen switch the expert mode on
+Toepen's expert mode. Five taps on the version under the home screen switch the expert mode on
 or off for this device (`kj.expert`). In it, alone with bots (nobody else
 at the table is a person, so it is help nobody else lacks), a robot in the
 top bar asks the reasoning for your own decision now: `why` (no fields).
@@ -398,9 +410,9 @@ options, worlds}`, `options` each `{label | cards, value, points, best}`:
 
 The rules of thumb are also the manual's tab *Tips*.
 
-## 9. Score bijhouden (`games/toepen/scoresheet`, `js/score.js`)
+## Score bijhouden
 
-For toepen played at a real table, with real cards: the app only keeps the
+In `games/toepen/scoresheet` and `js/score.js`. For toepen played at a real table, with real cards: the app only keeps the
 score. The **host** makes a sheet (2–8 names, eruit bij 10 or 15), chooses
 and changes the names and enters every round; everyone with its code
 **watches** it live on their own phone and changes nothing. No seats, no

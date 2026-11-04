@@ -55,7 +55,8 @@ func Start(t testing.TB, g server.Game, tweak ...func(*server.Config)) *Server {
 	return &Server{Server: s, HTTP: ts, t: t}
 }
 
-// Msg is a server message (design §7) as a test sees it.
+// Msg is a server message (docs/protocol.md#server--client) as a test
+// sees it.
 type Msg struct {
 	T     string          `json:"t"`
 	Code  string          `json:"code"` // joined: the room; error: the error code

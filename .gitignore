@@ -1,5 +1,14 @@
-node_modules/
+node_modules
 /build/
 *.png
-!web/**/*.png
+# The sites' images and the docs' screenshots are kept.
+!**/web/**/*.png
+!docs/**/*.png
 /test/ui/out/
+# Each checkout's own: worktrees, editor and assistant settings, and the
+# deployment's settings (local.mk, see the top of the Makefile).
+.worktrees/
+.claude/
+.vscode/
+CLAUDE.local.md
+/local.mk

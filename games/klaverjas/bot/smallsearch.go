@@ -315,10 +315,11 @@ func (b *player) smallBid(v game.View) (play bool) {
 	return st[v.Turned].mean()+bidBias(b.persona.Aggression) > 0
 }
 
-// Auction bids in the three-player auction (design §2): the lowest bid
-// at which playing alone is worth more than defending, else it passes.
-// All levels estimate by playing sampled deals out, makkelijk with few
-// and carelessly. The estimate is kept for the hand.
+// Auction bids in the three-player auction
+// (games/klaverjas/README.md#three-players-wikipedia-klaverjassen-met-drie-personen):
+// the lowest bid at which playing alone is worth more than defending,
+// else it passes. All levels estimate by playing sampled deals out,
+// makkelijk with few and carelessly. The estimate is kept for the hand.
 func (b *player) Auction(v game.View) int {
 	if v.Players != 3 || v.Phase != game.PhaseAuction {
 		return 0

@@ -118,9 +118,9 @@ type evHandEnd struct {
 	Result game.HandResult `json:"result"`
 }
 
-// state is the full per-seat state `s` of an update (design §7). Fields
-// without omitempty are always present; roster, legal and rule only when
-// they apply.
+// state is the full per-seat state `s` of an update
+// (games/klaverjas/README.md#state-s). Fields without omitempty are
+// always present; roster, legal and rule only when they apply.
 type state struct {
 	Code        string              `json:"code"`
 	Phase       string              `json:"phase"`

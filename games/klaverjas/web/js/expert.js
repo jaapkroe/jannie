@@ -1,8 +1,8 @@
-// The sheet Redenering van de AI (design §9 Expert), in the expert mode and
-// in training, loaded when first needed: for the player's own decisions in
-// the hand in play or just played, made or awaited now, the engine's
-// reasoning (why) and a comment (feedback). Looking back at a hand is the
-// review's (panels.js openReplay), as in any game.
+// The sheet Redenering van de AI (games/klaverjas/README.md#expert), in the
+// expert mode and in training, loaded when first needed: for the player's
+// own decisions in the hand in play or just played, made or awaited now,
+// the engine's reasoning (why) and a comment (feedback). Looking back at a
+// hand is the review's (panels.js openReplay), as in any game.
 import { cardShort } from './cards.js';
 import { sound } from './sound.js';
 import { app, h, icon, suitSym, suitify, toast } from './util.js';
@@ -188,11 +188,12 @@ const same = (a, b) => !!a && !!b && label(a) === label(b);
 const num = x => (x > 0 ? '+' : x < 0 ? '−' : '') + Math.abs(x).toFixed(1).replace('.', ',');
 const pct = x => `${Math.round(100 * x)}%`;
 
-// The engine's reasoning (design §7 why): the choices of normaal (with its
-// rule's reason), sterk and the hint, and the value of every option. A
-// card's row, tapped, says under the table why the best brings more (its
-// `why`); the card played starts picked, else normaal's, when it has one.
-// The pick stays with the answer, for the life of the sheet's answers.
+// The engine's reasoning (games/klaverjas/README.md#server--client): the
+// choices of normaal (with its rule's reason), sterk and the hint, and the
+// value of every option. A card's row, tapped, says under the table why the
+// best brings more (its `why`); the card played starts picked, else
+// normaal's, when it has one. The pick stays with the answer, for the life
+// of the sheet's answers.
 function whyView(w) {
   if (!w.options.length) return h('p', { class: 'xp-note', text: 'Voor deze beslissing heeft de AI geen redenering.' });
   const cards = w.options.some(o => o.parts);

@@ -15,6 +15,9 @@
 # - `make deploy` refuses a working tree with uncommitted changes, and every
 #   image build gets a tag of its own, with the commit (-dirty when the tree is
 #   not one) as its revision;
+# - the deployment's SUPPORT_URL (local.mk, which git ignores) reaches every
+#   web image build, and only from there or make's command line; a value that
+#   is not an https URL is refused; the repository itself holds no payment link;
 # - the Containerfile has a server target per game with the game's binary, and
 #   a web target that refuses an empty GAME, and a Go stage that copies no
 #   site; cmd/<game>, games/<game>/web and the game's E2E_SIM are checked where
@@ -51,7 +54,7 @@ note() { echo "deploy-test: $*" >&2; }
 # ---- the throwaway repository and the stubs ---------------------------------
 repo=$tmp/repo calls=$tmp/calls
 mkdir -p "$repo/deploy" "$repo/scripts" "$tmp/bin" "$tmp/set"
-cp "$root/Makefile" "$root/Containerfile" "$repo/"
+cp "$root/Makefile" "$root/Containerfile" "$root/.gitignore" "$repo/"
 cp "$root"/deploy/*.in "$repo/deploy/"
 for f in "$root"/games/*/*.mk; do
   g=$(basename "$f" .mk)
@@ -127,7 +130,7 @@ for g in $games; do
   done
   expect "$g: SITE a host name" 1 "$(val "$g" SITE | grep -c '^[a-z0-9.-]*\.[a-z]*$' || true)"
   expect "$g: E2E_SIM a path" 1 "$(val "$g" E2E_SIM | grep -c '^[A-Za-z0-9_./-]*$' || true)"
-  # Only NPM, on the same machine, may reach a pod.
+  # Only the reverse proxy, on the same machine, may reach a pod.
   addr=$(val "$g" ADDR) p=${addr##*:}
   case $p in '' | *[!0-9]*) p=0 ;; esac
   expect "$g: ADDR on loopback" 1 "$(printf '%s\n' "$addr" | grep -c '^127\.0\.0\.1:[1-9][0-9]*$' || true)"
@@ -198,8 +201,9 @@ for l in 'Description=Klaverjas game server, https://klaverjas.kroes.dev/' \
 done
 
 # ---- the units, through podman's quadlet generator ----------------------------
-# All games' units in one directory, as on shrek: a unit naming another game's
-# pod would pass the generator alone, but not the checks of its game below.
+# All games' units in one directory, as `make install` puts them: a unit naming
+# another game's pod would pass the generator alone, but not the checks of its
+# game below.
 quadlet=
 for q in /usr/lib/podman/quadlet /usr/libexec/podman/quadlet; do
   [ -x "$q" ] && { quadlet=$q; break; }
@@ -224,7 +228,7 @@ else
     # With podman's default (stop), both containers dying at once stops the pod for good.
     expect "$g-pod: --exit-policy continue" 1 "$(has ' --exit-policy continue ' "$pod")"
     expect "$g-pod: published on loopback only" 1 "$(has " --publish $(val "$g" ADDR):8080 " "$pod")"
-    expect "$g-pod: NPM's connections arrive from 127.0.0.1" 1 \
+    expect "$g-pod: the proxy's connections arrive from 127.0.0.1" 1 \
       "$(has ' --network pasta:--host-lo-to-ns-lo ' "$pod")"
     for c in web server; do
       f=$tmp/$g-$c
@@ -282,13 +286,14 @@ for c in server web; do
     "$(if [ "$t" -gt 0 ] && [ "$t" -lt "$(line 'systemctl --user restart')" ]; then echo 1; else echo 0; fi)"
 done
 expect "make deploy runs pod-check" 1 "$(hasline 'pod-check 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas' "$calls")"
-# klaverjas's images, as they were before the other games.
+# klaverjas's images, as they were before the other games; the web image with
+# the deployment's support link, none here (no local.mk).
 expect "klaverjas's server image" 1 \
   "$(has "podman build --target server-klaverjas --pull=newer --build-arg GIT_SHA=$head -t localhost/klaverjas-server:" "$calls")"
 expect "klaverjas's web image" 1 "$(has "podman build --target web --pull=newer --build-arg GIT_SHA=$head \
 --build-arg GAME=klaverjas --build-arg SITE=klaverjas.kroes.dev --build-arg TITLE=Klaverjas \
---build-arg VERB=klaverjassen -t localhost/klaverjas-web:" "$calls")"
-# A rebuild of the same commit (a Trivy finding) keeps the build before it.
+--build-arg VERB=klaverjassen --build-arg SUPPORT_URL= -t localhost/klaverjas-web:" "$calls")"
+# A rebuild of the same commit (for a fixed base image) keeps the build before it.
 sleep 1
 mk image GAME=klaverjas || true
 expect "a rebuild of the same commit gets a tag of its own" 1 \
@@ -303,7 +308,7 @@ for g in $games; do
   expect "make deploy GAME=$g builds its server" 1 "$(grep -c "^podman build --target server-$g " "$calls" || true)"
   expect "make deploy GAME=$g builds its web image" 1 "$(has "podman build --target web --pull=newer \
 --build-arg GIT_SHA=$head --build-arg GAME=$g --build-arg SITE=$(val "$g" SITE) --build-arg TITLE=$(val "$g" TITLE) \
---build-arg VERB=$(val "$g" VERB) -t localhost/$g-web:" "$calls")"
+--build-arg VERB=$(val "$g" VERB) --build-arg SUPPORT_URL= -t localhost/$g-web:" "$calls")"
   expect "make deploy GAME=$g tags only its images" "localhost/$g-server localhost/$g-web " \
     "$(sed -n 's|^podman tag localhost/\([^:]*\):[^ ]* localhost/\1:current$|localhost/\1|p' "$calls" | sort | tr '\n' ' ')"
   expect "make deploy GAME=$g restarts only its pod" "$g-pod.service" \
@@ -418,6 +423,54 @@ run help GAME="$first"
 expect "make help, the same for a game" "$(cat "$tmp/help")" "$(cat "$tmp/out")"
 expect "make help lists deploy" 1 "$(grep -c "^deploy$(printf '\t')" "$tmp/out" || true)"
 
+# ---- SUPPORT_URL, the deployment's payment link -----------------------------------
+# In local.mk, which git ignores: the tree is still the commit, and every web
+# image gets the link as it is (the stub shows it unquoted), the server images
+# nothing of it.
+pay='https://pay.example/r/AbC123?a=1&b=2'
+printf '# This deployment only.\nSUPPORT_URL = %s\n' "$pay" > "$repo/local.mk"
+run deploy GAME=all
+expect "make deploy GAME=all with local.mk, exit status" 0 "$status"
+expect "make deploy GAME=all with local.mk: the tree is the commit" 0 "$(has "$head-dirty" "$calls")"
+for g in $games; do
+  expect "make deploy GAME=all with local.mk: $g's web image gets SUPPORT_URL" 1 \
+    "$(has "--build-arg VERB=$(val "$g" VERB) --build-arg SUPPORT_URL=$pay -t localhost/$g-web:" "$calls")"
+done
+expect "make deploy GAME=all with local.mk: no server image gets SUPPORT_URL" 0 \
+  "$(grep '^podman build --target server-' "$calls" | grep -c 'SUPPORT_URL' || true)"
+# A space after the value, easily left in local.mk, is not part of it.
+printf 'SUPPORT_URL = %s  \n' "$pay" > "$repo/local.mk"
+run image-web GAME=klaverjas
+expect "SUPPORT_URL in local.mk with a space after it" 1 "$(has "--build-arg SUPPORT_URL=$pay -t " "$calls")"
+# The command line wins over local.mk: a build without the link.
+run image-web GAME=klaverjas SUPPORT_URL=
+expect "SUPPORT_URL= on the command line, over local.mk" 1 "$(has '--build-arg SUPPORT_URL= -t ' "$calls")"
+# A value that is not one https URL stops make before it builds anything.
+for bad in 'http://pay.example/r' 'pay.example/r' 'https://' 'https://pay.example/a b' "https://pay.example/a'b" \
+           'https://pay.example/a"b' 'https://pay.example/<b>'; do
+  printf 'SUPPORT_URL = %s\n' "$bad" > "$repo/local.mk"
+  run image-web GAME=klaverjas
+  expect "SUPPORT_URL=$bad in local.mk, exit status" 2 "$status"
+  expect "SUPPORT_URL=$bad in local.mk names SUPPORT_URL" 1 "$(has 'SUPPORT_URL=' "$tmp/out")"
+  expect "SUPPORT_URL=$bad in local.mk builds nothing" "" "$(cat "$calls")"
+done
+rm "$repo/local.mk"
+# One left in the shell's environment is not the deployment's.
+SUPPORT_URL=https://elsewhere.example/r
+export SUPPORT_URL
+run image-web GAME=klaverjas
+unset SUPPORT_URL
+expect "a SUPPORT_URL in the environment changes no build" 0 "$(has 'elsewhere' "$calls")"
+expect "a SUPPORT_URL in the environment: a build without the link" 1 "$(has '--build-arg SUPPORT_URL= -t ' "$calls")"
+# The repository holds no payment link: it would show on every fork's site.
+if command git -C "$root" rev-parse --is-inside-work-tree > /dev/null 2>&1; then
+  expect "local.mk ignored by git" 1 "$(holds command git -C "$root" check-ignore -q --no-index local.mk)"
+  expect "no payment link in the repository" "" "$(command git -C "$root" grep -I -l --untracked -E \
+    'ing\.nl/pay[r]eq|bunq\.me/|tikkie\.me/|paypal\.me/' -- . ':!local.mk' | tr '\n' ' ')"
+else
+  note "$root is not a git work tree; the payment link checks are skipped"
+fi
+
 # ---- a tree that is not a commit ------------------------------------------------
 # An untracked file: the build would copy it, so the tree is not the commit.
 touch "$repo/untracked"
@@ -468,6 +521,10 @@ expect "web: labelled with its game" 1 "$(has 'org.opencontainers.image.title="$
 expect "web-conf: an empty GAME refused before games/\${GAME}/web/ is copied" 1 \
   "$(holds [ "$(grep -n -m 1 'test -n "$GAME"' "$cf" | cut -d: -f1)" -lt \
            "$(grep -n -m 1 'COPY games/${GAME}/web/' "$cf" | cut -d: -f1)" ])"
+awk '$1 == "FROM" { p = ($NF == "web-conf") } p' "$cf" > "$tmp/stage"
+expect "web-conf: SUPPORT_URL, empty by default" 1 "$(hasline 'ARG SUPPORT_URL=' "$tmp/stage")"
+expect "web-conf: fills in @SUPPORT_URL@" 1 "$(has '-e "s|@SUPPORT_URL@|' "$tmp/stage")"
+expect "web-conf: no @SUPPORT_URL@ left in index.html" 1 "$(has '-e @SUPPORT_URL@ /tmp/index.html' "$tmp/stage")"
 expect "web: nothing copied from the sites but what web-conf checked" \
   "COPY platform/web/ /tmp/shared/ COPY games/\${GAME}/web/ /tmp/game/ " \
   "$(grep -E '^COPY (platform/web|games/\$\{GAME\}/web)' "$cf" | tr '\n' ' ')"
@@ -484,9 +541,11 @@ for g in $games; do
   site=$root/games/$g/web html=$root/games/$g/web/index.html
   if [ -f "$html" ]; then
     expect "games/$g/web/index.html: the title, TITLE" 1 "$(has "<title>$(val "$g" TITLE)</title>" "$html")"
-    for ph in @SITE@ @VERSION@; do
+    for ph in @SITE@ @VERSION@ @SUPPORT_URL@; do
       expect "games/$g/web/index.html: $ph, which the build fills in" 1 "$(has "$ph" "$html")"
     done
+    expect "games/$g/web/index.html: the support link's meta" 1 \
+      "$(hasline '<meta name="support" content="@SUPPORT_URL@">' "$html")"
     expect "games/$g/web/manifest.webmanifest: the name, TITLE" "\"$(val "$g" TITLE)\"" \
       "$(tr -d '\n' < "$site/manifest.webmanifest" 2>/dev/null \
         | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n 1 | sed 's/^[^:]*:[[:space:]]*//')"

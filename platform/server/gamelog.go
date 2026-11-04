@@ -10,14 +10,14 @@ import (
 	"time"
 )
 
-// gameLog keeps a compact record of every match (design §6 Game log): one
-// JSON line per event in a file per month, games-2026-10.jsonl, in dir. It
-// holds what was dealt and played, the reviews and feedback, and who
-// played (name, address, device), so games can be looked at again, shown
-// as statistics and the engine tuned on them. Lines go through a bounded
-// queue to one writer goroutine: a slow disk never holds up a room, and a
-// full queue drops lines (and says so in the server log) rather than
-// block. The writer keeps gameLogMonths of files (prune).
+// gameLog keeps a compact record of every match (docs/server.md#game-log):
+// one JSON line per event in a file per month, games-2026-10.jsonl, in
+// dir. It holds what was dealt and played, the reviews and feedback, and
+// who played (name, address, device), so games can be looked at again,
+// shown as statistics and the engine tuned on them. Lines go through a
+// bounded queue to one writer goroutine: a slow disk never holds up a
+// room, and a full queue drops lines (and says so in the server log)
+// rather than block. The writer keeps gameLogMonths of files (prune).
 type gameLog struct {
 	dir  string
 	log  *slog.Logger
@@ -169,7 +169,7 @@ func (g *gameLog) prune() {
 	}
 }
 
-// ---- records (design §6 Game log) ------------------------------------------
+// ---- records (docs/server.md#game-log) -------------------------------------
 
 // logPlayer is who sits at a seat: a person with name, address and device,
 // or a bot by persona and level.

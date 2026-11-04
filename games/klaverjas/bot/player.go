@@ -128,8 +128,8 @@ func (b *player) Play(v game.View) (c game.Card) {
 
 // Signals at sterk: the search alone would rarely give kleintje boer and
 // would sometimes fake a signal, but partners (and humans following the
-// manual) read the signals of design §8 as promises. The search may break
-// them only for a clear gain.
+// manual) read the signals of games/klaverjas/README.md#seinen-signals as
+// promises. The search may break them only for a clear gain.
 const (
 	fakeSignalGain  = 10 // points a false kleintje boer must gain over the best honest card
 	fakeLowGain     = 20 // the same for a false opseinen or met de aas seinen

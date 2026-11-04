@@ -123,9 +123,9 @@ async function scenario(browser, name, fn) {
 // Home, new game, lobby, a full short game with all overlays.
 async function mainFlow(P) {
   const { page } = P;
-  // Request budget (design §9): at most 17 requests per page load with the
-  // websocket, so 16 over HTTP (a headed browser adds the favicon and a PNG
-  // icon for its install check; headless fetches neither).
+  // Request budget (docs/frontend.md#request-budget): at most 17 requests per
+  // page load with the websocket, so 16 over HTTP (a headed browser adds the
+  // favicon and a PNG icon for its install check; headless fetches neither).
   const requests = [];
   const count = r => { if (!r.url().includes('/ws')) requests.push(r.url()); };
   page.on('request', count);

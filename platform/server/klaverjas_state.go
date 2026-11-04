@@ -2,7 +2,8 @@ package server
 
 import "jannie/games/klaverjas/game"
 
-// stateFor builds the full state `s` for the player at seat i (design §7).
+// stateFor builds the full state `s` for the player at seat i
+// (games/klaverjas/README.md#state-s).
 func (r *room) stateFor(i game.Seat) *state {
 	s := &state{
 		Code:        r.code,

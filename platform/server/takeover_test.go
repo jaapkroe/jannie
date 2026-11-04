@@ -95,11 +95,12 @@ func (c *tclient) voteOn(i int, left, ai bool) {
 }
 
 // checkConsent verifies, on every update a test client reads (see track),
-// that no AI plays a human's seat without everyone's consent (design §6):
-// nobody moves for an absent human but the substitute, and never for a
-// seat its player left; the substitute starts only with a takeover event;
-// away comes once per lost connection; and only an open question gets
-// answers. prev is the state before, nil after a join.
+// that no AI plays a human's seat without everyone's consent
+// (docs/server.md#takeover-consent): nobody moves for an absent human but
+// the substitute, and never for a seat its player left; the substitute
+// starts only with a takeover event; away comes once per lost connection;
+// and only an open question gets answers. prev is the state before, nil
+// after a join.
 func checkConsent(t *testing.T, prev *state, m *msg) {
 	t.Helper()
 	s, ev := m.state, m.evType()
@@ -613,7 +614,8 @@ func TestVoters(t *testing.T) {
 // TestOnlyAIPauses: with every human gone the game pauses and nobody is
 // asked; whoever returns finds the question again if the game still waits
 // for an absent player: at once if it was open, or once that player has
-// been gone askAfter, which the pause does not reset (design §6).
+// been gone askAfter, which the pause does not reset
+// (docs/server.md#pauses).
 func TestOnlyAIPauses(t *testing.T) {
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.05 }) // askAfter: 500 ms
 	cs := startTable(t, ts, "Anna", "Bert")
@@ -906,7 +908,8 @@ func TestVoteAnswersOneQuestion(t *testing.T) {
 	b.waitState("the question", func(s *state) bool { return s.Takeover != nil && !s.Takeover.Left })
 	b.send(map[string]any{"t": "vote", "seat": 0, "ai": false})
 	b.waitState("Bert's no", func(s *state) bool { v := s.Players[b.seat].Vote; return v != nil && !*v })
-	// Leaving while offline: join with the token, then leave (§9).
+	// Leaving while offline: join with the token, then leave
+	// (docs/frontend.md#connection).
 	a2 := dial(t, ts)
 	a2.join(a.code, "Anna", a.token)
 	a2.send(map[string]any{"t": "leave"})

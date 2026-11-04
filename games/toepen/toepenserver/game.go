@@ -1,8 +1,8 @@
-// Package toepenserver is toepen (design §11) as a game for package
-// server: its options, the rounds at the table, the bots' decisions, the
-// state and events on the wire and the game log's rounds. The rules are
-// package toepen's; the bots come in through AI (cmd/toepen adapts package
-// toepbot to it).
+// Package toepenserver is toepen (games/toepen/README.md) as a game for
+// package server: its options, the rounds at the table, the bots'
+// decisions, the state and events on the wire and the game log's rounds.
+// The rules are package toepen's; the bots come in through AI
+// (cmd/toepen adapts package toepbot to it).
 package toepenserver
 
 import (
@@ -38,7 +38,7 @@ type Explainer interface {
 
 // Explanation is the reasoning for one decision of a player, from what it
 // knows: what the strongest bot would do and why, every option's value,
-// and the rule of thumb (docs/toepen.md §8).
+// and the rule of thumb (games/toepen/README.md#redenering-van-de-ai).
 type Explanation struct {
 	Decision string      `json:"decision"` // kaart, antwoord, was, controle, wegleggen
 	Advice   string      `json:"advice"`
@@ -99,10 +99,10 @@ func (g toepGame) Chat(personaID string, ev server.ChatEvent, rng *rand.Rand) st
 
 // ---- options ----
 
-// Options are toepen's own options (docs/toepen.md §2): the penalty
-// points that put a player out, and which of the rules that groups play
-// differently are played: the witte and vuile was, armoede, the
-// koningsspel, a point off for the last trick with a boer,
+// Options are toepen's own options (games/toepen/README.md#options): the
+// penalty points that put a player out, and which of the rules that
+// groups play differently are played: the witte and vuile was, armoede,
+// the koningsspel, a point off for the last trick with a boer,
 // anti-lijntoep, and playing on face up after a bluff that was caught.
 type Options struct {
 	Limit    int
@@ -199,8 +199,9 @@ func (o *Options) variant() string {
 
 // ---- pacing ----
 
-// pacing is toepen's own delays of a tempo (design §11): the time to say
-// whether you have a was, and the summary of a round.
+// pacing is toepen's own delays of a tempo
+// (games/toepen/README.md#server): the time to say whether you have a
+// was, and the summary of a round.
 type pacing struct{ was, round time.Duration }
 
 var pacings = map[string]pacing{

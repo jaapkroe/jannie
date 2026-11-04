@@ -1,11 +1,11 @@
 #!/bin/sh
-# Checks a game's running pod from the host, without NPM: the page and its
-# title, a join link, a 404 (with the game's name), the server through nginx,
-# the websocket upgrade and its Origin check, the link preview (og:image for
-# SITE, the image itself), the manifest's name, the version in the page (the
-# server's), that the CSP allows the websocket of SITE and of no other site,
-# and that every kind of path carries each security header exactly once (a
-# location with an add_header of its own would drop them all; see
+# Checks a game's running pod from the host, without the reverse proxy: the
+# page and its title, a join link, a 404 (with the game's name), the server
+# through nginx, the websocket upgrade and its Origin check, the link preview
+# (og:image for SITE, the image itself), the manifest's name, the version in
+# the page (the server's), that the CSP allows the websocket of SITE and of no
+# other site, and that every kind of path carries each security header exactly
+# once (a location with an add_header of its own would drop them all; see
 # deploy/nginx.conf).
 #   scripts/pod-check ADDR SITE TITLE     the settings of games/<game>/<game>.mk, e.g.
 #   scripts/pod-check 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas
@@ -72,7 +72,7 @@ done
 expect "the CSP's wss: sources" "wss://$site" \
   "$(curl -s -D - -o /dev/null --max-time 5 "$base/" | tr -d '\r' | sed -n 's/^[Cc]ontent-[Ss]ecurity-[Pp]olicy: //p' \
     | grep -o 'wss://[^ ;]*' | tr '\n' ' ' | sed 's/ $//')"
-# The call (issue #43) needs the camera and microphone for the page itself.
+# The call needs the camera and microphone for the page itself.
 expect "Permissions-Policy lets the page call" "camera=(self) microphone=(self)" \
   "$(curl -s -D - -o /dev/null --max-time 5 "$base/" | tr -d '\r' | sed -n 's/^[Pp]ermissions-[Pp]olicy: //p' \
     | grep -o '\(camera\|microphone\)=([^)]*)' | sort | tr '\n' ' ' | sed 's/ $//')"

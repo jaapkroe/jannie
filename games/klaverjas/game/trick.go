@@ -231,7 +231,8 @@ func RoemAdded(cards []Card, c Card, trump Suit) int {
 }
 
 // SetRoem returns the roem in a set of cards that lie together, such as
-// the open cards in front of a player in the two-player game (design §2):
+// the open cards in front of a player in the two-player game
+// (games/klaverjas/README.md#two-players-wikipedia-klaverjassen-met-twee-personen):
 // every run of three (20) or of four or more (50) in one suit, all four
 // cards of a rank (100, boeren 200) and stuk (20). nil if there is none.
 func SetRoem(cards []Card, trump Suit) []RoemItem {

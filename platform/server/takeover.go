@@ -25,11 +25,11 @@ func (r *room) waitingFor() cards.Seat {
 
 // question is the seat the others are asked about, NoSeat when nothing is
 // asked. No AI plays a human's seat unless every other human at the table
-// agrees (design §6): when the game waits for an absent player, the others
-// are asked whether an AI may play for them, at once for a seat its player
-// left and after askAfter for one who dropped out, as long as anyone is
-// connected to answer. Each answers with vote; once all said yes, an AI
-// takes the seat (takeOver).
+// agrees (docs/server.md#takeover-consent): when the game waits for an
+// absent player, the others are asked whether an AI may play for them, at
+// once for a seat its player left and after askAfter for one who dropped
+// out, as long as anyone is connected to answer. Each answers with vote;
+// once all said yes, an AI takes the seat (takeOver).
 func (r *room) question() cards.Seat {
 	if r.connectedHumans() == 0 {
 		return cards.NoSeat

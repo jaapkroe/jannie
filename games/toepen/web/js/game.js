@@ -1,6 +1,7 @@
 // Toepen at toepen.kroes.dev: what the shell (main.js, home.js, panels.js)
-// needs from the game of this site (design §9, "The game module";
-// docs/toepen.md). No side effects when imported: node tests read it.
+// needs from the game of this site (docs/frontend.md#the-game-module;
+// games/toepen/README.md#the-site). No side effects when imported: node
+// tests read it.
 import { h, icon, store, countWord, cap, toast } from './util.js';
 import * as table from './table.js';
 import * as R from './rules.js';

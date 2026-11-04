@@ -1,10 +1,10 @@
-// Score bijhouden (docs/toepen.md §9): the score of toepen played at a real
-// table, with real cards. The host, who makes the sheet, chooses the names
-// and enters every round (who won, who went away, the points, + and −);
-// everyone with the code watches on their own phone. No seats, no bots, no
-// chat, no call: its own websocket (/api/score, games/toepen/scoresheet) and
-// its own overlay. Loaded on demand (game.js), so a page load stays within
-// its requests.
+// Score bijhouden (games/toepen/README.md#score-bijhouden): the score of
+// toepen played at a real table, with real cards. The host, who makes the
+// sheet, chooses the names and enters every round (who won, who went away,
+// the points, + and −); everyone with the code watches on their own phone.
+// No seats, no bots, no chat, no call: its own websocket (/api/score,
+// games/toepen/scoresheet) and its own overlay. Loaded on demand
+// (game.js), so a page load stays within its requests.
 import { h, icon, toast, store, avatar, playerName, vibrate, copyText } from './util.js';
 import * as panels from './panels.js';
 import { sound } from './sound.js';

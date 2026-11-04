@@ -43,9 +43,10 @@ type IllegalError struct {
 func (e *IllegalError) Error() string { return e.Reason }
 func (e *IllegalError) Unwrap() error { return ErrIllegal }
 
-// Bidding with three players (design §2): a bid is the points (roem
-// included) the soloist promises to make, from MinBid up in steps of
-// BidStep, at most MaxBid.
+// Bidding with three players
+// (games/klaverjas/README.md#three-players-wikipedia-klaverjassen-met-drie-personen):
+// a bid is the points (roem included) the soloist promises to make, from
+// MinBid up in steps of BidStep, at most MaxBid.
 const (
 	MinBid  = 80
 	BidStep = 10
@@ -358,12 +359,13 @@ func NewDeal(dealer Seat, hands [4][]Card, mode TrumpMode, rules Rules, turned S
 	return d
 }
 
-// NewDealFor starts a hand for 2, 3 or 4 players (design §2), with the
-// cards as ShuffleFor deals them: hands[s] for the seats 0..players-1 (all
-// the same length, at most a full hand; with two players 16 cards, the
-// tops of the eight piles and then the cards under them) and with three
-// players the two cards of the talon. With three players the mode is
-// ignored: the auction decides. It panics on a bad layout.
+// NewDealFor starts a hand for 2, 3 or 4 players
+// (games/klaverjas/README.md#rules-as-implemented), with the cards as
+// ShuffleFor deals them: hands[s] for the seats 0..players-1 (all the same
+// length, at most a full hand; with two players 16 cards, the tops of the
+// eight piles and then the cards under them) and with three players the
+// two cards of the talon. With three players the mode is ignored: the
+// auction decides. It panics on a bad layout.
 func NewDealFor(players int, dealer Seat, hands [4][]Card, talon []Card, mode TrumpMode, rules Rules, turned Suit) *Deal {
 	// Small enough to be inlined, so that a deal which does not outlive
 	// its caller (a simulation's) stays off the heap.
@@ -438,11 +440,11 @@ func Shuffle(rng *rand.Rand) [4][]Card {
 	return hands
 }
 
-// ShuffleFor shuffles a deck and deals it for 2, 3 or 4 players (design
-// §2): with four 3-2-3 to seats 0..3; with three 3, then two cards to the
-// talon, then 4 and 3 to seats 0..2; with two the first 16 cards to seat 0
-// and the rest to seat 1 (the tops of the piles first). A nil rng uses the
-// global source.
+// ShuffleFor shuffles a deck and deals it for 2, 3 or 4 players
+// (games/klaverjas/README.md#rules-as-implemented): with four 3-2-3 to
+// seats 0..3; with three 3, then two cards to the talon, then 4 and 3 to
+// seats 0..2; with two the first 16 cards to seat 0 and the rest to seat 1
+// (the tops of the piles first). A nil rng uses the global source.
 func ShuffleFor(players int, rng *rand.Rand) (hands [4][]Card, talon []Card) {
 	deck := NewDeck()
 	swap := func(i, j int) { deck[i], deck[j] = deck[j], deck[i] }
@@ -490,7 +492,8 @@ func (d *Deal) Clone() *Deal {
 	return &c
 }
 
-// Simple accessors; see the design for their meaning.
+// Simple accessors; see games/klaverjas/README.md#package-game for
+// their meaning.
 func (d *Deal) Players() int        { return int(d.n) }
 func (d *Deal) Phase() Phase        { return d.phase }
 func (d *Deal) Dealer() Seat        { return d.dealer }

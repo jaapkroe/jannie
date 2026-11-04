@@ -5,7 +5,8 @@ import (
 	"testing"
 )
 
-// mainOptsKeys are klaverjas's options on the wire (design §7).
+// mainOptsKeys are klaverjas's options on the wire
+// (games/klaverjas/README.md#options).
 var mainOptsKeys = []string{"players", "hands", "trumpMode", "rules", "ai", "tempo", "open", "lesson", "tips", "signals", "seed", "from"}
 
 // TestKlaverjasKnowsNoOtherGame: a klaverjas server knows nothing of

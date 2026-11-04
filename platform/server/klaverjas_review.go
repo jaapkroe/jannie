@@ -14,12 +14,12 @@ import (
 	"jannie/games/klaverjas/game"
 )
 
-// The review (design §9 Spelanalyse) grades every decision a human makes
-// with a choice, in the background, and shows the result to that player
-// alone when the match is over; each finished hand with the player's
-// graded decisions in it on request (handReview). It grades with the
-// search of the hints, which plays four players: at a table of three or
-// two there is none.
+// The review (games/klaverjas/README.md#spelanalyse-on-the-server) grades
+// every decision a human makes with a choice, in the background, and
+// shows the result to that player alone when the match is over; each
+// finished hand with the player's graded decisions in it on request
+// (handReview). It grades with the search of the hints, which plays four
+// players: at a table of three or two there is none.
 
 const (
 	riskyNat     = 0.4 // a bid to play with a higher chance of nat is listed as risky
@@ -107,10 +107,11 @@ type moment struct {
 	Table   *game.Trick `json:"table,omitempty"` // a card: the trick it went into
 }
 
-// gradedJSON is a graded decision in the replay of its hand (design §7):
-// the choice, and as in a moment the better option or the obvious one it
-// beat, with the points and outcomes, when it lost or gained points. A
-// decision without either has only its trick and the choice.
+// gradedJSON is a graded decision in the replay of its hand
+// (games/klaverjas/README.md#the-review): the choice, and as in a moment
+// the better option or the obvious one it beat, with the points and
+// outcomes, when it lost or gained points. A decision without either has
+// only its trick and the choice.
 type gradedJSON struct {
 	Trick   int         `json:"trick"` // 1–8; 0 for a trump choice or bid
 	Played  choiceJSON  `json:"played"`
@@ -131,7 +132,8 @@ type choiceJSON struct {
 	Play *bool      `json:"play,omitempty"`
 }
 
-// reviewState is the review for the player of a state (design §7).
+// reviewState is the review for the player of a state
+// (games/klaverjas/README.md#the-review).
 type reviewState struct {
 	ID      string   `json:"id"` // the match, for the history kept on the device
 	Pending bool     `json:"pending"`
@@ -151,10 +153,11 @@ type reviewState struct {
 
 	Speed  *speedState  `json:"speed"`  // null when no decision was timed
 	Replay []replayHand `json:"replay"` // the finished hands of the match
-	Seed   uint64       `json:"seed"`   // of the match (design §3)
+	Seed   uint64       `json:"seed"`   // of the match (docs/server.md#table-options)
 }
 
-// speedState is how fast the player decided (design §7): times in ms.
+// speedState is how fast the player decided
+// (games/klaverjas/README.md#the-review): times in ms.
 type speedState struct {
 	speedSum
 	Slowest struct {
@@ -561,9 +564,9 @@ func (r *room) finished(h int) bool {
 }
 
 // cmdHandReview sends the asker a finished hand of the match as the replay
-// shows it, with their graded decisions in it (design §7 handReview), and
-// again each time a grade of that hand comes in, until they ask for
-// another (watch).
+// shows it, with their graded decisions in it
+// (games/klaverjas/README.md#client--server), and again each time a grade
+// of that hand comes in, until they ask for another (watch).
 func (r *room) cmdHandReview(c *client, i game.Seat, m *inMsg) {
 	if !r.reviewing() {
 		c.sendError(errInvalid, "Terugkijken kan alleen met z'n vieren.")
@@ -605,9 +608,10 @@ const (
 )
 
 // cmdFeedback keeps a player's free text about the game in the game log
-// (design §7 feedback), at game over with a review. The expert and a
-// player in training give it while the match runs too, also about one of
-// their own decisions (hand and trick), from the reasoning sheet.
+// (games/klaverjas/README.md#client--server), at game over with a review.
+// The expert and a player in training give it while the match runs too,
+// also about one of their own decisions (hand and trick), from the
+// reasoning sheet.
 func (r *room) cmdFeedback(c *client, i game.Seat, m *inMsg) {
 	rv := r.seats[i].review
 	limit := maxFeedback

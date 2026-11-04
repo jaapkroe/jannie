@@ -9,10 +9,11 @@ import (
 	"jannie/platform/server"
 )
 
-// state is the full per-seat state `s` of an update (design §11): the
-// table's keys (server.Shared: code, phase, opts, you, host, roster in the
-// lobby, players, turn, takeover, nextAt) and toepen's. nextAt is also
-// the end of the time for a was.
+// state is the full per-seat state `s` of an update
+// (games/toepen/README.md#protocol): the table's keys (server.Shared:
+// code, phase, opts, you, host, roster in the lobby, players, turn,
+// takeover, nextAt) and toepen's. nextAt is also the end of the time for
+// a was.
 type state struct {
 	server.Shared
 	Winner int `json:"winner"` // game over: the seat left
@@ -273,9 +274,9 @@ type evRound struct {
 
 // ---- the game log ----
 
-// logRound is a round of toepen in the game log (design §11): the cards as
-// dealt per seat ("" for a seat out of the match), the decisions (act) and
-// how it ended.
+// logRound is a round of toepen in the game log
+// (games/toepen/README.md#server): the cards as dealt per seat ("" for a
+// seat out of the match), the decisions (act) and how it ended.
 type logRound struct {
 	T      string     `json:"t"` // "round"
 	Match  string     `json:"match"`

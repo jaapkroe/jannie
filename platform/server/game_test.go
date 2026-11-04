@@ -476,7 +476,8 @@ func TestReconnectMidGame(t *testing.T) {
 	if !u.state.Players[seat].Connected || u.state.Players[seat].Name != "Anna" {
 		t.Errorf("after reconnect: %+v", u.state.Players[seat])
 	}
-	// Nobody played for Anna meanwhile (design §6): she has her cards.
+	// Nobody played for Anna meanwhile (docs/server.md#takeover-consent):
+	// she has her cards.
 	if !sameCards(u.state.Hand, hand) {
 		t.Errorf("hand %v after reconnect, %v before", u.state.Hand, hand)
 	}
