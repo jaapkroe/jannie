@@ -25,8 +25,9 @@ The Dutch trick-taking game, with the rules as played in cafés.
   three strengths. The strongest counts cards and plays each choice out in
   sampled deals.
 - **Signals** (*seinen*), agreed per table: *met de aas seinen*, *op- en
-  afseinen*, *kleintje boer* and *boer over boer*. The bots give and read
-  the signals the table has agreed.
+  afseinen*, *kleintje boer* and *boer over boer*. Bots at *normaal* and
+  *sterk* give and read the signals the table has agreed; *makkelijk* bots
+  play without signals.
 - **Oefenen**: lessons with Juf Jannie as your partner (*Basisspel*, *Roem en
   tellen*, *Seinen*), taught step by step, with a hint on every turn and a
   tip after every trick.
@@ -47,9 +48,9 @@ the round.
 
 - **Two to six players**, each for themselves. Whoever reaches the limit of
   penalty points (*strafpunten*) is out, and the last player left wins.
-- **House rules as options**: *Eruit bij* 10 or 15, *Vuile was* (and what a
-  caught bluff costs), *Armoede*, *Koningsspel*, *Boer* and
-  *Anti-lijntoep*.
+- **House rules as options**: *Eruit bij* 10 or 15, *Vuile was* (and
+  whether a caught bluffer plays the round with open cards or sits it out),
+  *Armoede*, *Koningsspel*, *Boer* and *Anti-lijntoep*.
 - **Bots at three strengths.** They bluff now and then, and the stronger
   two remember who bluffs at the table.
 - **Score bijhouden**, for a game at a real table with real cards: one
@@ -79,8 +80,11 @@ the round.
 Each game's server keeps a log of every game, with the players' names, IP
 addresses and browser (User-Agent), for at most 12 months. It is used for
 statistics and to improve the games. Toepen's score sheets are deleted seven
-days after their last change. Calls go from browser to browser, not through
-the server; a public STUN server tells each browser its own address.
+days after their last change.
+
+Calls go from browser to browser, not through the server, so the others in
+a call see your IP address. Each browser learns its own address from two
+public STUN servers, Google's and Cloudflare's, which see it too.
 
 ## Development
 
@@ -92,6 +96,7 @@ platform/        the shared table and web shell
                  (klaverjas is still built in here)
   serve/         what every game's binary shares: flags, HTTP server, dev static handler
   persona/       the bots' names and characters
+  cards/         the seats and the 32-card deck the games share
   web/           the shell every game's site is built on (js/, css/)
 games/<game>/    everything of one game: its Go packages, its site (web/), its settings
                  (<game>.mk) and a README with its design
@@ -107,8 +112,8 @@ CSS, with no build step and nothing loaded from other sites.
 
 ### Quick start
 
-Only podman, make and Node are needed: the Go toolchain runs in a container
-(`scripts/go`).
+The servers need podman, make and curl: the Go toolchain runs in a
+container (`scripts/go`). The tests need Node 22.15 or later as well.
 
 ```sh
 make dev GAME=klaverjas   # klaverjas from source on http://127.0.0.1:18093/

@@ -63,7 +63,8 @@ done; `make test` checks the ones in the repository.
    support meta and that the three placeholders are there),
    `manifest.webmanifest` (name `TITLE`), `favicon.svg`, `icon-full.svg`
    and the rendered PNG icons, `og.png`, `js/game.js` and its table, and
-   its stylesheet; no path that
+   its stylesheet, linked after `app.css`
+   ([frontend.md, "Stylesheets"](frontend.md#stylesheets)); no path that
    `platform/web` has too, and within the request budget
    ([frontend.md, "One site per game"](frontend.md#one-site-per-game)).
    Add it to the felt table of `test/ui/app-icons.test.mjs` and a scene to

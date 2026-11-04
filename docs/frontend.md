@@ -35,6 +35,25 @@ Each game lists its own
 The budget is what the reverse proxy's rate limit for the site must let
 through ([deployment.md, "Reverse proxy"](deployment.md#reverse-proxy)).
 
+## Stylesheets
+
+Every site links the shell's two stylesheets and one of its own:
+`app.css` (the tokens, layout, home, lobby, table chrome, seats, overlays
+and chat), `cards.css` (the card faces, with `cards.js`) and the game's,
+with its table and overlays. The order in each `index.html`:
+
+- klaverjas: `app.css`, `klaverjas.css`, `cards.css`. `klaverjas.css`
+  comes before `cards.css`, so a card's state there (`.card.selected`,
+  `.card.disabled`) keeps winning its ties with rules of the same weight in
+  `klaverjas.css` (`.hand > .card`, `.pile > .card`). The manual's styles
+  (classes `man-…`) are the last section of `klaverjas.css`.
+- toepen: `app.css`, `cards.css`, `toepen.css`; what `toepen.css` sets on
+  `:root` gives the site its own colours.
+
+The shell's colour tokens (`--bg`, `--felt-1..3`, …) are klaverjas's green
+felt; toepen's blue overrides them. What of klaverjas is still in `app.css`
+is in [architecture.md, "What is not generic yet"](architecture.md#what-is-not-generic-yet).
+
 ## Storage
 
 `localStorage` access wrapped in try/catch (keys prefixed `kj.`, on every
@@ -84,8 +103,8 @@ built from the same shell:
   `home.js` and `panels.js` get it at boot (`home.init(game)`,
   `panels.useGame(game)`). `game.js` has no side effects on import.
 - Nothing a player sees on one site names another game
-  (`test/sites.test.mjs`, below). The look of a site comes from its stylesheet,
-  which overrides the shell's colour tokens (`--bg`, `--felt-1..3`, …).
+  (`test/sites.test.mjs`, below). The look of a site comes from its
+  stylesheet ("Stylesheets" above).
 
 `test/sites.test.mjs` checks every site: the two trees share no path, the
 budget holds and every module main.js imports is preloaded, the shell

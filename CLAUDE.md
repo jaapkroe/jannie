@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Notes for coding agents in this repository. README.md has the overview and
-the layout; docs/ and games/<game>/README.md are the design.
+the layout; `docs/` and `games/<game>/README.md` are the design.
 
 ## Conventions
 
@@ -10,15 +10,18 @@ the layout; docs/ and games/<game>/README.md are the design.
   comment density: short, plain comments in full sentences.
 - The docs are the contract. A change to behaviour, an exported Go
   identifier, the protocol or a rule updates the doc that describes it in
-  the same commit. Code cites a doc by path and heading anchor
-  (`docs/server.md#pacing`, `games/klaverjas/README.md#seinen-signals`);
-  `test/docs.test.mjs` checks every such reference and every link in the
-  docs.
-- Player-facing feedback (Spelanalyse, hints, tips, chat lines from the
-  game) is plain and factual: facts, card names and numbers, with no praise,
-  consolation, exclamation marks or emoji. The one exception: Juf Jannie's
-  lessons may give short praise tied to a fact (the first trick won, a hand
-  won); a lost hand gets no comment.
+  the same commit.
+- Code cites the docs by path and heading anchor:
+  `docs/<file>.md#<anchor>` or `games/<game>/README.md#<anchor>`
+  (`docs/server.md#pacing`, `games/klaverjas/README.md#seinen-signals`).
+  `test/docs.test.mjs` checks every relative link and anchor in the
+  markdown and every such reference in the code, so a renamed heading needs
+  its citations changed with it.
+- Feedback on a player's play (Spelanalyse, hints, tips, the explanation
+  after a trick) is plain and factual: facts, card names and numbers, with
+  no praise, consolation, exclamation marks or emoji. The one exception:
+  Juf Jannie's lessons may give short praise tied to a fact (the first
+  trick won, a hand won); a lost hand gets no comment.
 - A hint gives the reason of what chose the card: the policy rule that
   picked it, or the part of the search value where the search's card gains.
   Never a reason guessed separately in a text layer; add or change a reason
@@ -39,8 +42,13 @@ the layout; docs/ and games/<game>/README.md are the design.
 - **One site per game.** A site is `platform/web` plus `games/<game>/web`;
   the two trees share no path, and nothing on a site names another game
   (`test/sites.test.mjs`).
-- **Import boundaries** between `platform/` and `games/<game>/` are checked
-  by `test/layout.test.mjs`; a new import across them must pass it.
+- **Import boundaries**, checked by `test/layout.test.mjs` on the imports
+  of every Go file: nothing under `platform/` imports a package of
+  `games/`, except klaverjas's `platform/server/klaverjas_*.go` files and
+  the server's tests (`platform/server/*_test.go`), which may import
+  `games/klaverjas/`; no game imports another game's packages; `cmd/<g>`
+  imports only `platform/` and `games/<g>/`; and `platform/cards` imports
+  no package of the module. A new import must pass it.
 - **Production names never change**: per game the unit names
   (`<game>.pod`, `<game>-web.container`, `<game>-server.container`), the pod
   name, the images `localhost/<game>-server` and `localhost/<game>-web`, the
@@ -56,6 +64,13 @@ the layout; docs/ and games/<game>/README.md are the design.
   `E2E_PORT` 10001+P. A new game takes the next odd port.
 - `make install`, `deploy`, `uninstall` and `image` build, install or
   remove a game's production pod on this machine: run them only when asked.
+- **No payment link in the repository.** `SUPPORT_URL`, the link behind
+  the home page's *Support deze app*, comes from `local.mk` next to the
+  `Makefile`, which git ignores, or from make's command line
+  ([docs/deployment.md, "SUPPORT_URL"](docs/deployment.md#support_url)).
+  Never commit one: `scripts/deploy-test` (in `make test`) fails on a
+  payment link in any file but `local.mk`, untracked files included. A
+  server from source has no support button.
 
 ## Toolchain
 
@@ -67,6 +82,8 @@ the layout; docs/ and games/<game>/README.md are the design.
   `podman run --rm --network host -v $PWD:/src -w /src -e GOFLAGS=-buildvcs=false docker.io/library/golang:1.27 go test -race ./...`
 - Node 22.15 or later (`module.registerHooks`; developed on 26) for
   `node --test`. The unit tests import no packages.
+- `curl`: `make dev`, `make e2e` and `make deploy` poll `/api/health` with
+  it.
 - Go module `jannie`, Go 1.27, one dependency: `github.com/coder/websocket`.
 
 ## Tests and benchmarks
@@ -112,8 +129,8 @@ node og-image.mjs --site klaverjas         # rewrites games/<site>/web/og.png (-
 ```
 
 The scripts default to the mock's 18100 and Chromium's 9301; `--url` and
-`--cdp` choose others. Lessons, tables of two and three, calls and the
-checks need the real server with `-fast`:
+`--cdp` choose others. Lessons, tables of two and three and `app-checks.mjs`
+need the real server with `-fast`:
 
 ```sh
 GAME=klaverjas scripts/dev-server 18300 -fast && scripts/chrome 9303
@@ -123,9 +140,36 @@ node app-play.mjs $U [--gedraaid | --multi | --training | --players 2|3]   # ful
 node app-checks.mjs $U [--only lessons,call]   # 34 checks, about 15 minutes for all
 ```
 
-`app-*.mjs` and the mock are klaverjas only; `test/ui/toepen-screens.mjs`
-drives toepen's site against `GAME=toepen scripts/dev-server`. Other
-scripts start their own Chromium: `manual-shot.mjs` (18120, 9321),
+`app-screens.mjs`, `app-play.mjs`, `app-checks.mjs`, `app-perf.mjs` and the
+mock are klaverjas's. `app-lib.mjs`, their shared helpers, is also used by
+`toepen-screens.mjs`, `css-same.mjs` and `og-image.mjs`;
+`app-icons.test.mjs` checks every site's icons and link preview, and
+`app-util.test.mjs` tests the shell's `util.js`.
+
+Toepen has no mock: `toepen-screens.mjs` drives its site through every
+screen at six sizes against the server from source, into `test/ui/out/`:
+
+```sh
+GAME=toepen scripts/dev-server 18400 -fast && scripts/chrome 9301
+cd test/ui
+node toepen-screens.mjs --url http://127.0.0.1:18400 [--only phone,desktop] [--dpr 2]
+```
+
+`css-same.mjs` rides along with a browser check (its own flags, then the
+check and the check's flags): at every screenshot it compares the computed
+style and box of every element with those under the stylesheets the site's
+`index.html` linked at `--base` (default `main`), and exits 1 on a
+difference. Run it for a change to the stylesheets that must not change
+what is on screen:
+
+```sh
+cd test/ui
+node css-same.mjs --base main app-screens.mjs          # with the mock and Chromium as above
+node css-same.mjs --base main toepen-screens.mjs --url http://127.0.0.1:18400
+node css-same.mjs --base main --waits app-checks.mjs --only lessons $U   # also at every condition waitFor sees
+```
+
+Other scripts start their own Chromium: `manual-shot.mjs` (18120, 9321),
 `manual-app.mjs` (18121, 9321), `sound-render.mjs` (9331); `cards-shot.mjs`
 needs `scripts/chrome 9311` and a static server on 18110.
 
@@ -134,7 +178,7 @@ needs `scripts/chrome 9311` and a static server on 18110.
   phones, and on main too. Run the same command on main before calling such
   a failure a regression.
 - **In a git worktree**, link the main checkout's packages
-  (`ln -s <main checkout>/test/ui/node_modules test/ui/node_modules`) and
-  start `scripts/dev-server` and `scripts/chrome` from the worktree, so they
-  serve its sources. Remove the link before committing: `.gitignore`'s
-  `node_modules/` does not match a symlink.
+  (`ln -s <main checkout>/test/ui/node_modules test/ui/node_modules`;
+  `.gitignore`'s `node_modules` ignores the link) and start
+  `scripts/dev-server` and the mock from the worktree, so they serve its
+  sources. `scripts/chrome` serves nothing and may run from anywhere.

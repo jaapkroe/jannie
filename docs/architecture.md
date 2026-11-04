@@ -63,8 +63,10 @@ games, their addresses and ports are listed in
 - Its link preview and install: the og texts and `og.png`
   (`test/ui/og-image.mjs --site <game>`), the manifest's name and colours,
   `favicon.svg`, `icon-full.svg` and the PNG icons.
-- Its look: its stylesheet overrides the shell's colour tokens (`--bg`,
-  `--felt-1..3`, …); klaverjas has green felt, toepen blue. Structure,
+- Its look: its stylesheet, with its table's styles. The shell's colour
+  tokens (`--bg`, `--felt-1..3`, …) are klaverjas's green felt, and
+  toepen's stylesheet overrides them with blue
+  ([frontend.md, "Stylesheets"](frontend.md#stylesheets)). Structure,
   placement, icons and interaction are the same on every site.
 - Its content: the option rows of the new-game sheet and the lobby,
   Snel spelen's options and subtitle, extra tiles (klaverjas: Oefenen;
@@ -111,7 +113,7 @@ games/klaverjas/
   bot/                       bot personalities, play levels, hints and advice, the review, chat lines
   web/                       index.html  favicon.svg  manifest.webmanifest  og.png (link preview)
                              icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
-                             css/klaverjas.css
+                             css/klaverjas.css (linked between app.css and cards.css; the manual's styles last)
                              js/game.js (the game module)  js/table.js (the table and its overlays)  js/manual.js
                              js/expert.js (the sheet Redenering van de AI, loaded only when first opened)
 games/toepen/
@@ -134,9 +136,11 @@ test/e2e/                    node scripts that play full games over the websocke
 test/ui/                     puppeteer-core browser checks (`npm ci` there first; node_modules is ignored):
                              app-checks.mjs, behaviour checks on klaverjas's site; app-screens.mjs and
                              toepen-screens.mjs, every screen of a site at six sizes; app-perf.mjs, a
-                             benchmark of the frontend on two emulated phones; og-image.mjs, which renders
-                             a site's og.png; site.mjs, a site's files; and node tests of the shell's and
-                             the games' pure modules (*.test.mjs)
+                             benchmark of the frontend on two emulated phones; css-same.mjs, which checks
+                             along any of them that a change of stylesheets changes nothing on screen;
+                             og-image.mjs, which renders a site's og.png; site.mjs, a site's files; and
+                             node tests of the sites' icons and of the shell's and the games' pure modules
+                             (*.test.mjs)
 scripts/go                   Go toolchain in a container: `scripts/go test ./...`
 GAME=<game> scripts/dev-server PORT  run the game's server from source on 127.0.0.1:PORT, serving
                              platform/web and games/<game>/web (flags after PORT)
@@ -199,11 +203,25 @@ Containerfile: Go is vetted and tested once, every binary built; a
   `cards.js` knows the ranks 7–A only. A 52-card game brings its own `Card`
   and `Rank` and shares `Seat` and `Suit`; `cards.js` needs 2–6 and the
   jokers.
-- **The shell's klaverjas leftovers.** `util.js` still holds klaverjas's
-  helpers (sides, scorers, roem, headlines, review lines); they load on
-  toepen's site unused, and move to klaverjas's game modules in a change of
-  their own. Klaverjas's table styles are its own stylesheet,
-  `klaverjas.css`.
+- **The shell's klaverjas leftovers.** `util.js` still holds 27 helpers
+  of klaverjas's (seats and sides, scorers, suit names, roem, the hand's
+  headline, the review's lines); they load on toepen's site unused, and
+  move to klaverjas's own `rules.js` in a change of their own. Klaverjas's
+  table styles are its own stylesheet, `klaverjas.css`
+  ([frontend.md, "Stylesheets"](frontend.md#stylesheets)), but for two
+  kinds of leftovers in `app.css`, kept on purpose:
+  - Klaverjas-only alternatives inside the `:is()` lists of four shell
+    rules: `.rule:not(.mine)` and `.rv-text` in the two four-colour suit
+    colours of text, `.seat-id.spot` and `.rule.spot` where the manual
+    holds the pulses still, and `.trump-tag` beside the dealer's chip on a
+    video ring. In all but the last a klaverjas alternative is the most
+    specific of its list, so taking it out would lower the specificity of
+    the shell's alternatives.
+  - The team colours are split: `.wij` and `.msg-name.wij` are in
+    `app.css` (toepen's lobby marks your own seat `wij`), `.zij` and
+    `.msg-name.zij` in `klaverjas.css`. They go with `util.js`'s `teamCls`
+    and the game module's `chatCls` hook, which gives a chat sender a
+    side's colour.
 - **The extras.** Hints, lessons, the review after a match and the expert
   mode are klaverjas's; toepen has a reasoning sheet of its own for the
   expert alone with bots

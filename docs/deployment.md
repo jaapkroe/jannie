@@ -92,10 +92,15 @@ SUPPORT_URL = https://…
 ```
 
 or on make's command line; one in the shell's environment is ignored, as
-`GAME` is. It must be a single `https://` URL without quotes, spaces, `<`
-or `>`: the `Makefile` stops at anything else, before it builds. It is part
-of every web image, so a change needs `make deploy GAME=all`. Without it
-the sites have no support button, and neither has a server run from source.
+`GAME` is. Make reads `local.mk` as part of the `Makefile`, so a `#` in the
+link is written `\#` there, and a `$` as `$$`; spaces around the value are
+dropped. It must be a single `https://` URL without quotes, spaces, `<` or
+`>`: make stops at anything else, a bare `https://` included, before it
+builds (the `Containerfile` checks it again). It is part of every web
+image, so a change needs `make deploy GAME=all`. Without it the sites have
+no support button, and `make image-web` (so also `make deploy`) says so:
+"No SUPPORT_URL (local.mk): toepen's web image has no support button." A
+server run from source has none either.
 
 ### GAME
 
@@ -133,7 +138,8 @@ The `Containerfile`'s stages:
 - `web-conf` and `web` (`nginxinc/nginx-unprivileged`, Alpine), with `ARG
   GAME`, `SITE`, `TITLE`, `VERB` and `SUPPORT_URL` (empty by default):
   `web-conf` refuses an empty or odd `GAME`, a `SUPPORT_URL` that is not an
-  `https://` URL without quotes, spaces, `<` or `>`, and any path in both
+  `https://` URL (with more than `https://`) without quotes, spaces, `<` or
+  `>`, and any path in both
   `platform/web` and `games/G/web`; renders `@SITE@`, `@TITLE@` and
   `@VERB@` into `nginx.conf` (checked with `nginx -t`) and `@SITE@`,
   `@VERSION@` and `@SUPPORT_URL@` into the game's `index.html` (`og:image`,
@@ -562,5 +568,5 @@ game.
 | The page stays on its loading dots, or loads without styles | The proxy refused part of the load with `429`, its rate limit: many players behind one address loaded at the same moment. A reload a few seconds later works. If it happens to one player alone, the limit for the name is too tight for the page budget ("Reverse proxy" above) |
 | `make deploy` stops with "which game?" | Add `GAME=<game>`, or `GAME=all` |
 | `make deploy` stops with "changes that are not committed" | `git status` lists something: commit it, or deploy anyway with `ALLOW_DIRTY=1` |
-| No *Support deze app* on the home page | No `SUPPORT_URL` in `local.mk` when the web image was built ("SUPPORT_URL" above) |
+| No *Support deze app* on the home page | No `SUPPORT_URL` in `local.mk` when the web image was built (`make image-web` said so; "SUPPORT_URL" above) |
 | Unit fails with `image not known` | `make deploy GAME=<game>` has not built the game's images yet (`Pull=never`) |
