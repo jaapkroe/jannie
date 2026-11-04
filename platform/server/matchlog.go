@@ -54,12 +54,7 @@ func (r *room) logMatch() {
 		r.srv.games.write(rec)
 		return
 	}
-	rec := logMatch{T: "match", Match: r.matchID, Room: r.code, At: time.Now().UTC(), Version: r.srv.cfg.Version, Seed: r.seed,
-		Training: r.training, Expert: r.expert, Opts: r.opts}
-	for i := range r.players() {
-		rec.Players = append(rec.Players, r.logPlayerAt(game.Seat(i)))
-	}
-	r.srv.games.write(rec)
+	r.logMatchKlaverjas()
 }
 
 // logSeat records that seat i changed hands during the match.
@@ -68,16 +63,6 @@ func (r *room) logSeat(i game.Seat) {
 		return
 	}
 	r.srv.games.write(logSeat{T: "seat", Match: r.matchID, At: time.Now().UTC(), Hand: r.handNo, Player: r.logPlayerAt(i)})
-}
-
-// logHand records the hand just finished.
-func (r *room) logHand(res game.HandResult) {
-	rec := logHand{T: "hand", Match: r.matchID, At: time.Now().UTC(), Hand: r.handNo, Dealer: r.deal.Dealer(),
-		Turned: r.deal.Turned(), Acts: r.acts, Talon: cardsString(r.dealt.talon), Result: res}
-	for i := range r.players() {
-		rec.Cards = append(rec.Cards, cardsString(r.dealt.hands[i]))
-	}
-	r.srv.games.write(rec)
 }
 
 // logEnd records the end of the match.
@@ -91,18 +76,4 @@ func (r *room) logClose(reason string) {
 		return
 	}
 	r.srv.games.write(logClose{T: "close", Match: r.matchID, At: time.Now().UTC(), Hand: r.handNo, Reason: reason})
-}
-
-// logReview records the review of seat i once, when it is complete.
-func (r *room) logReview(i game.Seat, rv *review) {
-	if rv.logged {
-		return
-	}
-	out := r.reviewFor(i)
-	if out == nil || out.Pending {
-		return
-	}
-	rv.logged = true
-	out.Replay = nil
-	r.srv.games.write(logReview{T: "review", Match: r.matchID, At: time.Now().UTC(), Seat: int(i), Name: r.displayName(i), Review: out})
 }

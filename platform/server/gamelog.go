@@ -5,12 +5,9 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
-
-	"jannie/games/klaverjas/game"
 )
 
 // gameLog keeps a compact record of every match (design §6 Game log): one
@@ -185,19 +182,6 @@ type logPlayer struct {
 	Level  string `json:"level,omitempty"`
 }
 
-type logMatch struct {
-	T        string      `json:"t"` // "match"
-	Match    string      `json:"match"`
-	Room     string      `json:"room"`
-	At       time.Time   `json:"at"`
-	Version  string      `json:"version"` // of the server: the git commit it was built from ("dev" from source)
-	Seed     uint64      `json:"seed"`
-	Training bool        `json:"training"`
-	Expert   bool        `json:"expert,omitempty"`
-	Opts     Options     `json:"opts"`
-	Players  []logPlayer `json:"players"`
-}
-
 // logGameMatch is logMatch for a game on the exported API (api.go): its
 // name and its options (GameOptions.Wire), without training and expert.
 type logGameMatch struct {
@@ -222,21 +206,6 @@ type logSeat struct {
 	Player logPlayer `json:"player"`
 }
 
-// logHand is a finished hand: the cards dealt per seat (and the talon with
-// three players), every decision in order (see actToken) and the result.
-type logHand struct {
-	T      string          `json:"t"` // "hand"
-	Match  string          `json:"match"`
-	At     time.Time       `json:"at"`
-	Hand   int             `json:"hand"`
-	Dealer game.Seat       `json:"dealer"`
-	Turned game.Suit       `json:"turned"`
-	Cards  []string        `json:"cards"`
-	Talon  string          `json:"talon,omitempty"`
-	Acts   string          `json:"acts"`
-	Result game.HandResult `json:"result"`
-}
-
 type logEnd struct {
 	T      string    `json:"t"` // "end"
 	Match  string    `json:"match"`
@@ -252,64 +221,6 @@ type logClose struct {
 	At     time.Time `json:"at"`
 	Hand   int       `json:"hand"`
 	Reason string    `json:"reason"`
-}
-
-// logReview is a player's review once every grade is in, without the
-// replay (the hand records hold the cards).
-type logReview struct {
-	T      string       `json:"t"` // "review"
-	Match  string       `json:"match"`
-	At     time.Time    `json:"at"`
-	Seat   int          `json:"seat"`
-	Name   string       `json:"name"`
-	Review *reviewState `json:"review"`
-}
-
-type logFeedback struct {
-	T      string    `json:"t"` // "feedback"
-	Match  string    `json:"match"`
-	At     time.Time `json:"at"`
-	Seat   int       `json:"seat"`
-	Name   string    `json:"name"`
-	IP     string    `json:"ip"`
-	Device string    `json:"device"`
-	Hand   int       `json:"hand,omitempty"` // 0: about the game as a whole
-	Trick  int       `json:"trick,omitempty"`
-	By     *int      `json:"by,omitempty"` // the reasoning sheet (expert, training): the seat of the decision commented on (their own)
-	Text   string    `json:"text"`
-}
-
-// actToken is one decision of a hand in the "acts" of a hand record: the
-// seat, then for a card the card ("2AS"), else a letter and its value:
-// b1/b0 spelen or passen (gedraaid), tH a trump suit, a90 a bid in the
-// auction (a0: pas), dJS7H the two cards laid away.
-func actToken(i game.Seat, a action) string {
-	s := string(rune('0' + i))
-	switch a.kind {
-	case actPlay:
-		return s + a.card.String()
-	case actBid:
-		if a.play {
-			return s + "b1"
-		}
-		return s + "b0"
-	case actTrump:
-		return s + "t" + a.suit.String()
-	case actAuction:
-		return s + "a" + strconv.Itoa(a.bid)
-	case actDiscard:
-		return s + "d" + a.cards[0].String() + a.cards[1].String()
-	}
-	return s + "?"
-}
-
-// cardsString is cards as one compact string: "7SAS9H".
-func cardsString(cards []game.Card) string {
-	var b strings.Builder
-	for _, c := range cards {
-		b.WriteString(c.String())
-	}
-	return b.String()
 }
 
 // maxDevice is how much of a browser's User-Agent the log keeps.

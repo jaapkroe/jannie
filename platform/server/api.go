@@ -166,25 +166,6 @@ type Shared struct {
 	NextAt   int64          `json:"nextAt"`
 }
 
-// Klaverjas is the built-in game, played by the server's own code with
-// ai's bots and analysis: New recognises it, and its NewOptions and New
-// are not used.
-func Klaverjas(ai AI) Game { return klaverjasGame{ai} }
-
-type klaverjasGame struct{ ai AI }
-
-func (klaverjasGame) Name() string            { return "klaverjas" }
-func (klaverjasGame) Seats() (int, int, int)  { return 2, 4, 4 }
-func (g klaverjasGame) Personas() []Persona   { return g.ai.Personas() }
-func (klaverjasGame) NewOptions() GameOptions { return nil }
-func (klaverjasGame) New(*Table) Play         { return nil }
-func (g klaverjasGame) NewBrain(personaID, level string, seed uint64) any {
-	return g.ai.NewBrain(personaID, level, seed)
-}
-func (g klaverjasGame) Chat(personaID string, ev ChatEvent, rng *rand.Rand) string {
-	return g.ai.Chat(personaID, ev, rng)
-}
-
 // maxTable is the largest table of any game (Game.Seats).
 const maxTable = 8
 
