@@ -1,10 +1,10 @@
-// Calling the table (issue #43): sound and video between the people at a
-// table, straight from browser to browser (WebRTC, a connection for every
-// two of them). The server keeps who is in the call, with microphone and
-// camera, and passes the session descriptions on (`call`, `rtc`, design
-// §7). Loaded once another person sits at the table, like expert.js. In
-// the call one hears and sees the others at once; one's own microphone and
-// camera are switched on apart from that (issue #61).
+// Calling the table: sound and video between the people at a table,
+// straight from browser to browser (WebRTC, a connection for every two of
+// them). The server keeps who is in the call, with microphone and camera,
+// and passes the session descriptions on (`call`, `rtc`, design §7).
+// Loaded once another person sits at the table, like expert.js. In the
+// call one hears and sees the others at once; one's own microphone and
+// camera are switched on apart from that.
 import { sound } from './sound.js';
 import { app, h, icon, store, toast } from './util.js';
 import * as panels from './panels.js';

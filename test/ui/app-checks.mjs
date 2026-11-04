@@ -277,13 +277,13 @@ CHECKS.coach = async browser => {
   });
 };
 
-// The lesson Basisspel, its first hand (issues #41, #45, #54): Juf Jannie's
-// steps wait for Verder, a tap on the table or Enter, without a countdown,
-// and light up what they are about; a double tap reads one step; the trump
-// step's link opens the manual at Kaartwaarden and reads nothing; every
-// trick of the first hand stays until its explanation is read; on the
-// player's turn the hint follows the step; every step is a line of Juf
-// Jannie in the chat, without a speech bubble at her seat.
+// The lesson Basisspel, its first hand: Juf Jannie's steps wait for
+// Verder, a tap on the table or Enter, without a countdown, and light up
+// what they are about; a double tap reads one step; the trump step's link
+// opens the manual at Kaartwaarden and reads nothing; every trick of the
+// first hand stays until its explanation is read; on the player's turn the
+// hint follows the step; every step is a line of Juf Jannie in the chat,
+// without a speech bubble at her seat.
 CHECKS.lessons = async browser => {
   for (const vp of ['iphone', 'desktop']) {
     const P = await page(browser, VP[vp], `lessons-${vp}`);
@@ -417,9 +417,9 @@ CHECKS.lessons = async browser => {
   }
 };
 
-// The sheet Oefenen (issue #54): title, Juf Jannie's intro, the four lessons,
-// the fold Spelopties and the start button, in that order. The fold is shut
-// at first; Potjes shows for Vrij spelen only, Seinen for Seinen and Vrij
+// The sheet Oefenen: title, Juf Jannie's intro, the four lessons, the fold
+// Spelopties and the start button, in that order. The fold is shut at
+// first; Potjes shows for Vrij spelen only, Seinen for Seinen and Vrij
 // spelen, and the button follows the lesson, at once. Every choice is kept
 // in kj.train and read back with care: what is corrupt or stale falls back
 // to its default, and who switched Speluitleg off before there were lessons
@@ -919,14 +919,14 @@ CHECKS.review = async browser => {
   });
 };
 
-// The expert mode (issues #34, #54): five taps on the version open its
-// sheet; seed 4242, potje 3 and Plaats 3 deal that hand alone with the
-// player at seat 2, the chat names the seed at the start. On the player's
-// turn the search button opens the sheet Redenering van de AI on the
-// decision awaited, with the reasoning; ‹ goes to their card before,
-// asked about and commented on (hand and trick, no seat). Over the hand
-// summary the button opens the sheet again; the summary and game over
-// have no replay of their own (the trick view's, as anyone) and no lobby.
+// The expert mode: five taps on the version open its sheet; seed 4242,
+// potje 3 and Plaats 3 deal that hand alone with the player at seat 2,
+// the chat names the seed at the start. On the player's turn the search
+// button opens the sheet Redenering van de AI on the decision awaited,
+// with the reasoning; ‹ goes to their card before, asked about and
+// commented on (hand and trick, no seat). Over the hand summary the
+// button opens the sheet again; the summary and game over have no replay
+// of their own (the trick view's, as anyone) and no lobby.
 CHECKS.expert = async browser => {
   const P = await page(browser, VP.iphone, 'expert', { hooks: true });
   await run(P, async () => {
@@ -2917,27 +2917,26 @@ CHECKS.takeover = async browser => {
   await L2.ctx.close().catch(() => {});
 };
 
-// Calling (issues #43, #61): the call is offered in the lobby, not
-// proposed, and not at all alone with bots. The first time one calls, the
-// sheet asks whether to come into the call by oneself from then on
-// (Automatisch meebellen, off); Niet nu keeps nothing. A page with that on
-// is in the call by itself, already in the lobby, and asked once for the
-// microphone and camera. One that joins with both off listens, and still
-// hears and sees the other. A page that hung up stays out of the call in
-// that room: neither proposed it nor put in it. A video takes the place of
-// a face, with the dealer's and trump's marks outside it; a muted
-// microphone has a mark in the circle. Microphone and camera switch with
-// one tap and are remembered (a refused one as off), and a refused camera
-// leaves the microphone; a new connection starts a new call session; the
-// phone's menu hangs up; a reload comes back into the call with
-// Automatisch meebellen, with the devices as last chosen, and never
-// answered is proposed it, with the question, its answers in view in
-// short landscape. A camera or microphone that goes by itself is switched
-// off, also a microphone that went while the camera was asked for; video
-// goes under a ceiling, and a muted microphone sends nothing until it is
-// on. The iOS audio session records from before the microphone is asked
-// until it has stopped: after a hang-up and after leaving while the
-// devices were asked for.
+// Calling: the call is offered in the lobby, not proposed, and not at all
+// alone with bots. The first time one calls, the sheet asks whether to
+// come into the call by oneself from then on (Automatisch meebellen, off);
+// Niet nu keeps nothing. A page with that on is in the call by itself,
+// already in the lobby, and asked once for the microphone and camera. One
+// that joins with both off listens, and still hears and sees the other. A
+// page that hung up stays out of the call in that room: neither proposed
+// it nor put in it. A video takes the place of a face, with the dealer's
+// and trump's marks outside it; a muted microphone has a mark in the
+// circle. Microphone and camera switch with one tap and are remembered (a
+// refused one as off), and a refused camera leaves the microphone; a new
+// connection starts a new call session; the phone's menu hangs up; a
+// reload comes back into the call with Automatisch meebellen, with the
+// devices as last chosen, and never answered is proposed it, with the
+// question, its answers in view in short landscape. A camera or microphone
+// that goes by itself is switched off, also a microphone that went while
+// the camera was asked for; video goes under a ceiling, and a muted
+// microphone sends nothing until it is on. The iOS audio session records
+// from before the microphone is asked until it has stopped: after a
+// hang-up and after leaving while the devices were asked for.
 CHECKS.call = async browser => {
   // The host's browser has an iOS audio session (Chromium has none): each
   // type set goes in __session with the number of live tracks then, and
@@ -3034,7 +3033,7 @@ CHECKS.call = async browser => {
     for (const r of await P.page.$$('.m-call .set-row')) if (await r.$eval('b', e => e.textContent) === label) return pressEl(P, await r.$('.switch'));
     throw new Error(`[${P.name}] no switch ${label}`);
   };
-  // The call marks lie in their circles (issue #61).
+  // The call marks lie in their circles.
   const tagsIn = async P => {
     const bad = await P.page.evaluate(() => [...document.querySelectorAll('.seat:not([hidden]) .ring > .call-tag')].flatMap(tag => {
       const r = tag.parentElement.getBoundingClientRect();
@@ -3143,7 +3142,7 @@ CHECKS.call = async browser => {
     await tapCall(G, '.prompt .call-dock .tb-cam');
     await shows(H, 'guest video on the host page', 'Gast,Host');
     await shows(G, 'both videos on the guest page', 'Gast,Host');
-    // The dealer's and trump's marks lie outside a ring with a video (issue #53).
+    // The dealer's and trump's marks lie outside a ring with a video.
     for (const P of [H, G]) {
       const over = await P.page.evaluate(() => [...document.querySelectorAll('.seat:not([hidden]) .ring.cam')].flatMap(r => {
         const b = r.getBoundingClientRect();
@@ -3266,9 +3265,9 @@ CHECKS.call = async browser => {
     if (await G.page.$('.m-call')) throw new Error('asked after a reload');
     const refused = await stored(G);
     if (refused.mic !== true || refused.cam !== false) throw new Error(`a refused camera not remembered as off: ${JSON.stringify(refused)}`);
-    // Never answered (as before #61), a reload proposes the call: the
-    // switches as last chosen, and the question whether to call by itself,
-    // off. In short landscape it and the answers stay in reach. Niet nu keeps
+    // Never answered (no auto stored, as before Automatisch meebellen
+    // existed), a reload proposes the call: the switches as last chosen, and
+    // the question whether to call by itself, off. In short landscape it and the answers stay in reach. Niet nu keeps
     // nothing, and the guest stays out of the call.
     await G.page.evaluate(() => {
       const c = JSON.parse(localStorage.getItem('kj.call'));
