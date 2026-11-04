@@ -10,7 +10,7 @@ import (
 	"math/rand/v2"
 	"slices"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
 const (
@@ -30,37 +30,37 @@ const (
 
 // strength is the order within a suit, 0 (lowest) .. 7 (highest): boer,
 // vrouw, heer, aas, 7, 8, 9, 10.
-var strength = [game.NumRanks]int8{
-	game.Jack: 0, game.Queen: 1, game.King: 2, game.Ace: 3,
-	game.Seven: 4, game.Eight: 5, game.Nine: 6, game.Ten: 7,
+var strength = [cards.NumRanks]int8{
+	cards.Jack: 0, cards.Queen: 1, cards.King: 2, cards.Ace: 3,
+	cards.Seven: 4, cards.Eight: 5, cards.Nine: 6, cards.Ten: 7,
 }
 
 // Strength is the place of rank r in the order of a suit, 0 (boer) .. 7
 // (10).
-func Strength(r game.Rank) int { return int(strength[r]) }
+func Strength(r cards.Rank) int { return int(strength[r]) }
 
 // Beats reports whether a beats b: the same suit and higher. A card of
 // another suit than the one led never wins, so it beats nothing.
-func Beats(a, b game.Card) bool { return a.Suit == b.Suit && strength[a.Rank] > strength[b.Rank] }
+func Beats(a, b cards.Card) bool { return a.Suit == b.Suit && strength[a.Rank] > strength[b.Rank] }
 
 // Plaatje reports whether r is one of the four lowest ranks, the pictures
 // of a was: boer, vrouw, heer and aas.
-func Plaatje(r game.Rank) bool { return strength[r] < strength[game.Seven] }
+func Plaatje(r cards.Rank) bool { return strength[r] < strength[cards.Seven] }
 
 // Shuffle returns the 32 cards in an order drawn from rng.
-func Shuffle(rng *rand.Rand) []game.Card {
-	deck := game.NewDeck()
+func Shuffle(rng *rand.Rand) []cards.Card {
+	deck := cards.NewDeck()
 	rng.Shuffle(len(deck), func(i, j int) { deck[i], deck[j] = deck[j], deck[i] })
 	return deck
 }
 
 // SortHand orders a hand for display: suits alternating in colour, each
 // suit from low to high in the order of toepen.
-func SortHand(hand []game.Card) []game.Card {
+func SortHand(hand []cards.Card) []cards.Card {
 	out := slices.Clone(hand)
 	// Clubs, hearts, spades, diamonds: black and red alternate.
-	place := [game.NumSuits]int{game.Clubs: 0, game.Hearts: 1, game.Spades: 2, game.Diamonds: 3}
-	slices.SortFunc(out, func(a, b game.Card) int {
+	place := [cards.NumSuits]int{cards.Clubs: 0, cards.Hearts: 1, cards.Spades: 2, cards.Diamonds: 3}
+	slices.SortFunc(out, func(a, b cards.Card) int {
 		if a.Suit != b.Suit {
 			return place[a.Suit] - place[b.Suit]
 		}
@@ -79,7 +79,7 @@ const (
 )
 
 // Was tells whether hand is a was, and which.
-func Was(hand []game.Card) WasKind {
+func Was(hand []cards.Card) WasKind {
 	if len(hand) != HandSize {
 		return NoWas
 	}
@@ -88,7 +88,7 @@ func Was(hand []game.Card) WasKind {
 		switch {
 		case Plaatje(c.Rank):
 			pictures++
-		case c.Rank == game.Seven:
+		case c.Rank == cards.Seven:
 			sevens++
 		}
 	}
@@ -141,13 +141,13 @@ func (k *WasKind) UnmarshalText(b []byte) error {
 // playing to the trick leaves the card on the table, but it no longer
 // counts (Winner).
 type Trick struct {
-	Leader game.Seat     `json:"leader"`
-	Cards  []game.Played `json:"cards"`
-	Winner game.Seat     `json:"winner"` // NoSeat until the trick is complete
+	Leader cards.Seat     `json:"leader"`
+	Cards  []cards.Played `json:"cards"`
+	Winner cards.Seat     `json:"winner"` // NoSeat until the trick is complete
 }
 
 // Led returns the suit of the first card, false for an empty trick.
-func (t Trick) Led() (game.Suit, bool) {
+func (t Trick) Led() (cards.Suit, bool) {
 	if len(t.Cards) == 0 {
 		return 0, false
 	}
@@ -155,7 +155,7 @@ func (t Trick) Led() (game.Suit, bool) {
 }
 
 // Played reports whether seat has a card in the trick.
-func (t Trick) Played(seat game.Seat) bool {
+func (t Trick) Played(seat cards.Seat) bool {
 	for _, p := range t.Cards {
 		if p.Seat == seat {
 			return true
@@ -168,10 +168,10 @@ func (t Trick) Played(seat game.Seat) bool {
 // which in is true: the highest card of the suit led. When nobody still in
 // followed it (the leader passed), the suit of the first card of a seat
 // still in decides. False when no seat still in has played.
-func (t Trick) Winning(in func(game.Seat) bool) (game.Seat, bool) {
+func (t Trick) Winning(in func(cards.Seat) bool) (cards.Seat, bool) {
 	led, ok := t.Led()
 	if !ok {
-		return game.NoSeat, false
+		return cards.NoSeat, false
 	}
 	best := -1
 	for k, p := range t.Cards {
@@ -190,19 +190,19 @@ func (t Trick) Winning(in func(game.Seat) bool) (game.Seat, bool) {
 		}
 	}
 	if best < 0 {
-		return game.NoSeat, false
+		return cards.NoSeat, false
 	}
 	return t.Cards[best].Seat, true
 }
 
 // Legal returns the cards of hand that may go into trick t: a card of the
 // suit led when the hand holds one, else any card; any card leads.
-func Legal(hand []game.Card, t Trick) []game.Card {
+func Legal(hand []cards.Card, t Trick) []cards.Card {
 	led, ok := t.Led()
 	if !ok {
 		return slices.Clone(hand)
 	}
-	var out []game.Card
+	var out []cards.Card
 	for _, c := range hand {
 		if c.Suit == led {
 			out = append(out, c)
@@ -215,7 +215,7 @@ func Legal(hand []game.Card, t Trick) []game.Card {
 }
 
 // IsLegal reports whether c, which must be in hand, may go into t.
-func IsLegal(c game.Card, hand []game.Card, t Trick) bool {
+func IsLegal(c cards.Card, hand []cards.Card, t Trick) bool {
 	led, ok := t.Led()
 	if !ok || c.Suit == led {
 		return true
@@ -229,19 +229,19 @@ func IsLegal(c game.Card, hand []game.Card, t Trick) bool {
 }
 
 // Constraint is the short Dutch rule shown above the hand on a turn.
-func Constraint(hand []game.Card, t Trick) string {
+func Constraint(hand []cards.Card, t Trick) string {
 	led, ok := t.Led()
 	switch {
 	case !ok:
 		return "Je komt uit: speel wat je wilt"
-	case slices.ContainsFunc(hand, func(c game.Card) bool { return c.Suit == led }):
+	case slices.ContainsFunc(hand, func(c cards.Card) bool { return c.Suit == led }):
 		return "Bekennen: speel " + led.Symbol()
 	}
 	return "Je kunt niet bekennen: vrije keuze (die kaart wint niet)"
 }
 
 // ExplainIllegal says why c may not go into t (Dutch), "" when it may.
-func ExplainIllegal(c game.Card, hand []game.Card, t Trick) string {
+func ExplainIllegal(c cards.Card, hand []cards.Card, t Trick) string {
 	if !slices.Contains(hand, c) {
 		return "Die kaart heb je niet."
 	}

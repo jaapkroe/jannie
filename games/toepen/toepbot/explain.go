@@ -6,8 +6,8 @@ import (
 	"slices"
 	"strings"
 
-	"jannie/games/klaverjas/game"
 	"jannie/games/toepen/toepen"
+	"jannie/platform/cards"
 )
 
 // Explanation is the reasoning of the engine for one decision of a player
@@ -16,22 +16,22 @@ import (
 // the asker's own decision now, from what that player knows (its view):
 // it gives nothing of the others' hands away.
 type Explanation struct {
-	Decision string     // "kaart", "antwoord", "was", "controle", "wegleggen"
-	Advice   string     // what sterk would do, in Dutch
-	Why      string     // why, in Dutch
-	Rule     string     // the rule of thumb, in Dutch; "" when none applies
-	RuleCard *game.Card // the rule's card, when it is one
-	Chance   float64    // the chance to take the last trick (0..1); -1 when not asked
-	Options  []Option   // every option with its value
-	Worlds   int        // the deals sampled
+	Decision string      // "kaart", "antwoord", "was", "controle", "wegleggen"
+	Advice   string      // what sterk would do, in Dutch
+	Why      string      // why, in Dutch
+	Rule     string      // the rule of thumb, in Dutch; "" when none applies
+	RuleCard *cards.Card // the rule's card, when it is one
+	Chance   float64     // the chance to take the last trick (0..1); -1 when not asked
+	Options  []Option    // every option with its value
+	Worlds   int         // the deals sampled
 }
 
 // Option is one choice and its value: a share of the sampled deals in
 // which it takes the last trick (or, for a check, the chance of a bluff),
 // or expected penalty points (Points: lower is better); -1 for none.
 type Option struct {
-	Label  string      // a choice in words ("Meegaan"); "" for cards
-	Cards  []game.Card // the card played, or the cards laid away
+	Label  string       // a choice in words ("Meegaan"); "" for cards
+	Cards  []cards.Card // the card played, or the cards laid away
 	Value  float64
 	Points bool
 	Best   bool // what sterk chooses
@@ -62,9 +62,9 @@ func Explain(v toepen.View, seed uint64) Explanation {
 }
 
 // cardNL is a card as the table writes it: "♥10", "♠B".
-func cardNL(c game.Card) string { return c.Suit.Symbol() + c.Rank.Letter() }
+func cardNL(c cards.Card) string { return c.Suit.Symbol() + c.Rank.Letter() }
 
-func cardsNL(cs []game.Card) string {
+func cardsNL(cs []cards.Card) string {
 	out := make([]string, len(cs))
 	for k, c := range cs {
 		out[k] = cardNL(c)
@@ -83,7 +83,7 @@ func pts(x float64) string {
 
 // shares is, per card of legal, the weighted share of sampled deals in
 // which v.Seat takes the last trick when it plays that card.
-func (p *Player) shares(v *toepen.View, legal []game.Card) []float64 {
+func (p *Player) shares(v *toepen.View, legal []cards.Card) []float64 {
 	s := newSampler(v)
 	wins := make([]float64, len(legal))
 	total := 0.0
@@ -106,7 +106,7 @@ func (p *Player) shares(v *toepen.View, legal []game.Card) []float64 {
 }
 
 // ruleCard is normal's card with the rule of thumb that chose it.
-func ruleCard(hand []game.Card, t toepen.Trick, in func(game.Seat) bool) (game.Card, string) {
+func ruleCard(hand []cards.Card, t toepen.Trick, in func(cards.Seat) bool) (cards.Card, string) {
 	c := normalCard(hand, t, in)
 	legal := toepen.Legal(hand, t)
 	led, leads := t.Led()
@@ -120,7 +120,7 @@ func ruleCard(hand []game.Card, t toepen.Trick, in func(game.Seat) bool) (game.C
 		return c, "Kom laag uit: je beste kaart bewaar je voor de laatste slag."
 	case legal[0].Suit != led:
 		return c, "Je kunt niet bekennen: gooi je zwakste kaart weg."
-	case len(hand) == 2 && c != keep && slices.ContainsFunc(t.Cards, func(p game.Played) bool { return toepen.Beats(c, p.Card) }):
+	case len(hand) == 2 && c != keep && slices.ContainsFunc(t.Cards, func(p cards.Played) bool { return toepen.Beats(c, p.Card) }):
 		return c, "De voorlaatste slag: neem hem met een andere kaart dan je beste, dan kom je in de laatste slag uit met je beste."
 	}
 	return c, "Beken met je laagste kaart: je beste bewaar je voor de laatste slag."
@@ -152,7 +152,7 @@ func (p *Player) explainPlay(v *toepen.View) Explanation {
 		}
 	}
 	for k, c := range legal {
-		e.Options = append(e.Options, Option{Cards: []game.Card{c}, Value: sh[k], Best: k == best})
+		e.Options = append(e.Options, Option{Cards: []cards.Card{c}, Value: sh[k], Best: k == best})
 	}
 	q := sh[best]
 	e.Chance = q
@@ -203,7 +203,7 @@ func (p *Player) explainAnswer(v *toepen.View) Explanation {
 	}
 	why := fmt.Sprintf("Je kans op de laatste slag is %s. Meegaan kost gemiddeld %s strafpunten (de inzet %d maal je kans om te verliezen), passen kost er %d (de inzet waarmee je het laatst akkoord ging).%s",
 		pct(q), pts(lose), v.Stake, passCost(v), out)
-	if o := v.Toeper; o != game.NoSeat && v.Record[o].Toeps > 0 {
+	if o := v.Toeper; o != cards.NoSeat && v.Record[o].Toeps > 0 {
 		r := v.Record[o]
 		why += fmt.Sprintf(" Van de %d toeps van de toeper die op tafel kwamen, waren er %d bluf: zo vaak telt een zwakke hand mee in die kans.",
 			r.Toeps, r.ToepBluffs)

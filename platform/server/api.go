@@ -6,7 +6,7 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
 // The API a game other than klaverjas plays on (design §4.3). The server
@@ -76,25 +76,25 @@ type Play interface {
 	Start()
 	// Turn is the seat whose decision the match waits for, NoSeat when it
 	// waits for nobody in particular (a pause, or everyone at once).
-	Turn() game.Seat
+	Turn() cards.Seat
 	// HandLen is the number of cards seat i holds (players[i].cards).
-	HandLen(i game.Seat) int
+	HandLen(i cards.Seat) int
 	// State is the full state `s` of an update for seat i: Table.Shared
 	// embedded, and the game's own keys.
-	State(i game.Seat) any
+	State(i cards.Seat) any
 	// Move handles a message of the human at seat i that is none of the
 	// table's. It returns ErrUnknownMsg for none of the game's either,
 	// ErrIgnore for one to drop without a reply (a late tap), an error
 	// marked NotYourTurn or ErrPaused (niet-jouw-beurt), or another error
 	// whose text goes back as ongeldig.
-	Move(i game.Seat, m Msg) error
+	Move(i cards.Seat, m Msg) error
 	// Decision is the decision of the bot (or substitute) at seat i on its
 	// turn: think works it out off the room goroutine with brain (it must
 	// not touch the match), and safe is a legal one, played when think
 	// panics or its answer is refused by Apply.
-	Decision(i game.Seat, brain any) (think func() any, safe any)
+	Decision(i cards.Seat, brain any) (think func() any, safe any)
 	// Apply plays a decision of Decision for seat i.
-	Apply(i game.Seat, a any) error
+	Apply(i cards.Seat, a any) error
 	// Single reports whether the decision on turn has one option: a bot
 	// then thinks shorter.
 	Single() bool

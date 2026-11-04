@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"jannie/games/klaverjas/game"
 	"jannie/games/toepen/toepen"
 	"jannie/games/toepen/toepenserver"
+	"jannie/platform/cards"
 	"jannie/platform/server"
 )
 
@@ -72,7 +72,7 @@ func TestToepAI(t *testing.T) {
 func decide(d *toepen.Deal, brains []toepenserver.Brain) error {
 	switch d.Phase() {
 	case toepen.PhaseWas:
-		for s := range game.Seat(d.Players()) {
+		for s := range cards.Seat(d.Players()) {
 			if d.Status(s) == toepen.StatusIn && !d.Answered(s) {
 				v := d.View(s)
 				if err := d.Was(s, v.CanClaim && brains[s].Was(v)); err != nil || d.Phase() != toepen.PhaseWas {

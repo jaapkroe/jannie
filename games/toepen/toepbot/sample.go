@@ -4,28 +4,28 @@ import (
 	"math/rand/v2"
 	"slices"
 
-	"jannie/games/klaverjas/game"
 	"jannie/games/toepen/toepen"
+	"jannie/platform/cards"
 )
 
 // world is one guess at the hidden cards: the hand of every other seat
 // still in the round, consistent with the suits it showed it lacks; a hand
 // played face up is known.
-type world [toepen.MaxPlayers][]game.Card
+type world [toepen.MaxPlayers][]cards.Card
 
 // unseen lists the cards v.Seat has not seen: not in its hand, not played,
 // not shown by a check. The hidden hands, the stock and the cards given
 // back or thrown in are among them.
-func unseen(v *toepen.View) []game.Card {
-	known := make(map[game.Card]bool, 32)
+func unseen(v *toepen.View) []cards.Card {
+	known := make(map[cards.Card]bool, 32)
 	for _, c := range v.Hand {
 		known[c] = true
 	}
 	for _, c := range v.Seen() {
 		known[c] = true
 	}
-	var out []game.Card
-	for _, c := range game.NewDeck() {
+	var out []cards.Card
+	for _, c := range cards.NewDeck() {
 		if !known[c] {
 			out = append(out, c)
 		}
@@ -35,8 +35,8 @@ func unseen(v *toepen.View) []game.Card {
 
 // voids lists per seat the suits it showed it lacks: it played another
 // suit to a trick in which that suit was led.
-func voids(v *toepen.View) [toepen.MaxPlayers][game.NumSuits]bool {
-	var out [toepen.MaxPlayers][game.NumSuits]bool
+func voids(v *toepen.View) [toepen.MaxPlayers][cards.NumSuits]bool {
+	var out [toepen.MaxPlayers][cards.NumSuits]bool
 	mark := func(t toepen.Trick) {
 		led, ok := t.Led()
 		if !ok {
@@ -58,19 +58,19 @@ func voids(v *toepen.View) [toepen.MaxPlayers][game.NumSuits]bool {
 // sampler draws worlds for one view.
 type sampler struct {
 	v     *toepen.View
-	pool  []game.Card
-	voids [toepen.MaxPlayers][game.NumSuits]bool
-	order []game.Seat // the other seats in the round, most constrained first
+	pool  []cards.Card
+	voids [toepen.MaxPlayers][cards.NumSuits]bool
+	order []cards.Seat // the other seats in the round, most constrained first
 }
 
 func newSampler(v *toepen.View) *sampler {
 	s := &sampler{v: v, pool: unseen(v), voids: voids(v)}
-	for o := range game.Seat(v.Players) {
+	for o := range cards.Seat(v.Players) {
 		if o != v.Seat && v.In(o) && v.Open[o] == nil {
 			s.order = append(s.order, o)
 		}
 	}
-	count := func(o game.Seat) int {
+	count := func(o cards.Seat) int {
 		n := 0
 		for _, b := range s.voids[o] {
 			if b {
@@ -79,7 +79,7 @@ func newSampler(v *toepen.View) *sampler {
 		}
 		return n
 	}
-	slices.SortStableFunc(s.order, func(a, b game.Seat) int { return count(b) - count(a) })
+	slices.SortStableFunc(s.order, func(a, b cards.Seat) int { return count(b) - count(a) })
 	return s
 }
 
@@ -103,7 +103,7 @@ func (s *sampler) draw(rng *rand.Rand) world {
 	return w
 }
 
-func (s *sampler) fill(w *world, pool []game.Card, strict bool) bool {
+func (s *sampler) fill(w *world, pool []cards.Card, strict bool) bool {
 	used := make([]bool, len(pool))
 	for _, o := range s.order {
 		need := s.v.Cards[o]
@@ -127,7 +127,7 @@ func (s *sampler) fill(w *world, pool []game.Card, strict bool) bool {
 
 // strength of a hand for a toep: the best card it holds, 0 (boer) .. 1 (a
 // 10), squared and a bit more for a second high card.
-func toepStrength(hand []game.Card) float64 {
+func toepStrength(hand []cards.Card) float64 {
 	best, second := -1, -1
 	for _, c := range hand {
 		switch st := toepen.Strength(c.Rank); {

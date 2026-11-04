@@ -216,7 +216,7 @@ func TestLegalMoves(t *testing.T) {
 				}
 				legal := map[Card]bool{}
 				for _, c := range cards(tc.want) {
-					legal[Card{c.Rank, p[c.Suit]}] = true
+					legal[Card{Rank: c.Rank, Suit: p[c.Suit]}] = true
 				}
 				for _, c := range hand {
 					msg := ExplainIllegal(c, hand, trick, seat, trump, rules)

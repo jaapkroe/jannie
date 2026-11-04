@@ -11,8 +11,8 @@ import (
 	"math/rand/v2"
 	"slices"
 
-	"jannie/games/klaverjas/game"
 	"jannie/games/toepen/toepen"
+	"jannie/platform/cards"
 )
 
 // Level is a playing strength.
@@ -74,7 +74,7 @@ func (p *Player) worlds() int {
 // ---- cards ----
 
 // Play chooses a card of v.Legal.
-func (p *Player) Play(v toepen.View) game.Card {
+func (p *Player) Play(v toepen.View) cards.Card {
 	legal := v.Legal
 	if len(legal) == 0 {
 		legal = toepen.Legal(v.Hand, v.Current)
@@ -96,7 +96,7 @@ func (p *Player) Play(v toepen.View) game.Card {
 // search plays every legal card out in the same sampled deals and keeps
 // the one that takes the last trick most often; a tie goes to the rule's
 // card.
-func (p *Player) search(v *toepen.View, legal []game.Card) game.Card {
+func (p *Player) search(v *toepen.View, legal []cards.Card) cards.Card {
 	rule := normalCard(v.Hand, v.Current, v.In)
 	s := newSampler(v)
 	wins := make([]float64, len(legal))
@@ -145,18 +145,18 @@ const priorBluffs, priorSeen = 1.0, 8.0
 
 // toepBluffRate is how often seat o bluffs a toep, as far as the table saw
 // (its toeps whose cards came on the table), with the prior.
-func toepBluffRate(v *toepen.View, o game.Seat) float64 {
+func toepBluffRate(v *toepen.View, o cards.Seat) float64 {
 	r := v.Record[o]
 	return (float64(r.ToepBluffs) + priorBluffs) / (float64(r.Toeps) + priorSeen)
 }
 
 // claimBluffRate is how often seat o bluffs a vuile was, as far as the
 // table saw (its claims checked, this round's too), with the prior.
-func claimBluffRate(v *toepen.View, o game.Seat) float64 {
+func claimBluffRate(v *toepen.View, o cards.Seat) float64 {
 	r := v.Record[o]
 	bluffs, seen := float64(r.ClaimBluffs), float64(r.Claims)
 	for _, c := range v.Checks {
-		if c.Claimant == o && c.Checker != game.NoSeat && !c.Shown {
+		if c.Claimant == o && c.Checker != cards.NoSeat && !c.Shown {
 			seen++
 			if !c.Genuine() {
 				bluffs++
@@ -210,7 +210,7 @@ func (p *Player) winChance(v *toepen.View) float64 {
 // choice in the same sampled deals (the others holding eight of the cards
 // it does not) and keeps the eight that take the last trick most often;
 // the others lay away their weakest cards, makkelijk now and then any.
-func (p *Player) Discard(v toepen.View) []game.Card {
+func (p *Player) Discard(v toepen.View) []cards.Card {
 	n := v.Lay
 	if n <= 0 || n >= len(v.Hand) {
 		return nil
@@ -227,13 +227,13 @@ func (p *Player) Discard(v toepen.View) []game.Card {
 }
 
 // weakestN is the n weakest cards of hand.
-func weakestN(hand []game.Card, n int) []game.Card {
+func weakestN(hand []cards.Card, n int) []cards.Card {
 	h := slices.Clone(hand)
-	slices.SortStableFunc(h, func(a, b game.Card) int { return toepen.Strength(a.Rank) - toepen.Strength(b.Rank) })
+	slices.SortStableFunc(h, func(a, b cards.Card) int { return toepen.Strength(a.Rank) - toepen.Strength(b.Rank) })
 	return h[:n]
 }
 
-func (p *Player) bestDiscard(v *toepen.View, n int) []game.Card {
+func (p *Player) bestDiscard(v *toepen.View, n int) []cards.Card {
 	lays, wins := p.discardScores(v, n, 24)
 	best := 0
 	for k := range lays {
@@ -247,9 +247,9 @@ func (p *Player) bestDiscard(v *toepen.View, n int) []game.Card {
 // discardScores plays every choice of n cards to lay away out in the same
 // sampled deals (the others holding as many cards as v.Seat keeps) and
 // counts the deals in which v.Seat takes the last trick.
-func (p *Player) discardScores(v *toepen.View, n, worlds int) ([][]game.Card, []int) {
+func (p *Player) discardScores(v *toepen.View, n, worlds int) ([][]cards.Card, []int) {
 	all := *v
-	for o := range game.Seat(v.Players) {
+	for o := range cards.Seat(v.Players) {
 		if v.In(o) {
 			all.Cards[o] = v.Size // everyone plays with eight
 		}
@@ -274,10 +274,10 @@ func (p *Player) discardScores(v *toepen.View, n, worlds int) ([][]game.Card, []
 }
 
 // combinations lists every choice of n cards of hand.
-func combinations(hand []game.Card, n int) [][]game.Card {
-	var out [][]game.Card
-	var pick func(from int, got []game.Card)
-	pick = func(from int, got []game.Card) {
+func combinations(hand []cards.Card, n int) [][]cards.Card {
+	var out [][]cards.Card
+	var pick func(from int, got []cards.Card)
+	pick = func(from int, got []cards.Card) {
 		if len(got) == n {
 			out = append(out, slices.Clone(got))
 			return
@@ -326,7 +326,7 @@ func lostForSure(v *toepen.View) bool {
 		if len(v.Hand) != 1 {
 			return false
 		}
-		t.Cards = append(slices.Clone(t.Cards), game.Played{Seat: v.Seat, Card: v.Hand[0]})
+		t.Cards = append(slices.Clone(t.Cards), cards.Played{Seat: v.Seat, Card: v.Hand[0]})
 	}
 	w, ok := t.Winning(v.In)
 	return ok && w != v.Seat
@@ -340,7 +340,7 @@ func knownWinner(v *toepen.View) bool {
 	if !ok || !lastTrick(v) {
 		return false
 	}
-	seen := map[game.Card]bool{}
+	seen := map[cards.Card]bool{}
 	for _, tr := range append(slices.Clone(v.Tricks), v.Current) {
 		for _, p := range tr.Cards {
 			seen[p.Card] = true
@@ -358,7 +358,7 @@ func knownWinner(v *toepen.View) bool {
 			}
 		}
 	}
-	for _, c := range game.NewDeck() {
+	for _, c := range cards.NewDeck() {
 		if !seen[c] && toepen.Beats(c, w) {
 			return false
 		}
@@ -430,7 +430,7 @@ func passCost(v *toepen.View) int {
 // Not when losing would put it out: a bluffer's toep still ends the match
 // of whoever calls it and loses.
 func (p *Player) distrust(v *toepen.View) float64 {
-	if v.Toeper == game.NoSeat || p.outIfLost(v, v.Stake) {
+	if v.Toeper == cards.NoSeat || p.outIfLost(v, v.Stake) {
 		return 1
 	}
 	b := toepBluffRate(v, v.Toeper)
@@ -535,13 +535,13 @@ func (p *Player) Check(v toepen.View) bool {
 }
 
 // wasChance is the chance that four cards drawn from pool are a was.
-func wasChance(pool []game.Card) float64 {
+func wasChance(pool []cards.Card) float64 {
 	pics, sevens := 0, 0
 	for _, c := range pool {
 		switch {
 		case toepen.Plaatje(c.Rank):
 			pics++
-		case c.Rank == game.Seven:
+		case c.Rank == cards.Seven:
 			sevens++
 		}
 	}

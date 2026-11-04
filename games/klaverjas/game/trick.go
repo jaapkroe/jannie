@@ -2,12 +2,6 @@ package game
 
 import "encoding/json"
 
-// Played is one card in a trick and the seat that played it.
-type Played struct {
-	Seat Seat `json:"seat"`
-	Card Card `json:"card"`
-}
-
 // Trick is a trick in progress or complete. Winner is NoSeat until four
 // cards are in; Points (card points, +10 for the last trick) and Roem are
 // filled when the trick is complete.

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"jannie/games/klaverjas/game"
 	"jannie/games/toepen/toepen"
+	"jannie/platform/cards"
 	"jannie/platform/server"
 )
 
@@ -62,8 +62,8 @@ const (
 type action struct {
 	kind  actKind
 	play  bool
-	card  game.Card
-	cards []game.Card
+	card  cards.Card
+	cards []cards.Card
 }
 
 func (p *play) opts() *Options { return p.t.Options().(*Options) }
@@ -83,7 +83,7 @@ func (p *play) Start() {
 	n := t.Players()
 	p.total = make([]int, n)
 	p.winner = -1
-	p.m = toepen.NewMatch(n, p.opts().rules(), game.Seat(t.Deals().IntN(n)))
+	p.m = toepen.NewMatch(n, p.opts().rules(), cards.Seat(t.Deals().IntN(n)))
 	p.rounds = nil
 	t.SysChat("Spel (%d) begint: %s. Wie de laatste slag haalt, krijgt geen strafpunten. Veel plezier!", t.Seed(), p.Variant())
 	p.deal()
@@ -106,7 +106,7 @@ func (p *play) deal() {
 		}
 		t.SysChat("Koningsspel: iedereen die nog meedoet, staat op armoede. %d kaarten elk; je speelt met %d, zonder vuile was en zonder toepen: wie de laatste slag haalt, wint het spel.%s",
 			d.DealtSize(), d.Size(), lay)
-		t.BotsReact(1, 1200*time.Millisecond, func(i game.Seat) (server.ChatEvent, bool) {
+		t.BotsReact(1, 1200*time.Millisecond, func(i cards.Seat) (server.ChatEvent, bool) {
 			return server.ChatEvent{Kind: "koning", Mine: true}, p.d.Status(i) == toepen.StatusIn
 		})
 	}
@@ -127,14 +127,14 @@ func (p *play) phase() string {
 	return phasePlay
 }
 
-func (p *play) Turn() game.Seat {
+func (p *play) Turn() cards.Seat {
 	if p.d == nil {
-		return game.NoSeat
+		return cards.NoSeat
 	}
 	return p.d.Turn()
 }
 
-func (p *play) HandLen(i game.Seat) int {
+func (p *play) HandLen(i cards.Seat) int {
 	if p.d == nil {
 		return 0
 	}
@@ -188,9 +188,9 @@ func (p *play) proceed() {
 		p.openWas() // new cards for a was: who got them may wash again
 	case d.ArmoedeToep() && p.poorAt != p.handNo:
 		p.poorAt = p.handNo
-		var poor []game.Seat
+		var poor []cards.Seat
 		var names []string
-		for s := range game.Seat(t.Players()) {
+		for s := range cards.Seat(t.Players()) {
 			if d.Armoede(s) && d.Status(s) == toepen.StatusIn {
 				poor = append(poor, s)
 				names = append(names, t.DisplayName(s))
@@ -218,7 +218,7 @@ func (p *play) openWas() {
 	t.Pause(stepWas, p.pace().was)
 	p.wasGen++
 	gen := p.wasGen
-	for s := range game.Seat(t.Players()) {
+	for s := range cards.Seat(t.Players()) {
 		if d.Status(s) != toepen.StatusIn || !t.BotPlays(s) || d.Answered(s) {
 			continue
 		}
@@ -235,7 +235,7 @@ func (p *play) openWas() {
 
 // was records the answer of seat i in the time for a was; after the last
 // answer it is over at once.
-func (p *play) was(i game.Seat, claim bool) error {
+func (p *play) was(i cards.Seat, claim bool) error {
 	t, d := p.t, p.d
 	if t.Pending() != stepWas || d.Phase() != toepen.PhaseWas {
 		return toepen.ErrWrongPhase
@@ -258,8 +258,8 @@ func (p *play) was(i game.Seat, claim bool) error {
 // afterWas announces the claims, if any, once the time for a was is over.
 func (p *play) afterWas() {
 	t, d := p.t, p.d
-	var claims []game.Seat
-	for s := range game.Seat(t.Players()) {
+	var claims []cards.Seat
+	for s := range cards.Seat(t.Players()) {
 		if d.Claimed(s) {
 			claims = append(claims, s)
 		}
@@ -285,13 +285,13 @@ type toepMsg struct {
 	Play  *bool    `json:"play"`
 }
 
-func (p *play) Move(i game.Seat, m server.Msg) error {
+func (p *play) Move(i cards.Seat, m server.Msg) error {
 	var msg toepMsg
 	json.Unmarshal(m.Raw, &msg)
 	var a action
 	switch m.T {
 	case "play":
-		card, err := game.ParseCard(msg.Card)
+		card, err := cards.ParseCard(msg.Card)
 		if err != nil {
 			return errors.New("Die kaart bestaat niet.")
 		}
@@ -299,7 +299,7 @@ func (p *play) Move(i game.Seat, m server.Msg) error {
 	case "discard":
 		a = action{kind: actDiscard}
 		for _, s := range msg.Cards {
-			c, err := game.ParseCard(s)
+			c, err := cards.ParseCard(s)
 			if err != nil {
 				return errors.New("Die kaart bestaat niet.")
 			}
@@ -334,7 +334,7 @@ func (p *play) Move(i game.Seat, m server.Msg) error {
 	return err
 }
 
-func (p *play) Decision(i game.Seat, brain any) (func() any, any) {
+func (p *play) Decision(i cards.Seat, brain any) (func() any, any) {
 	v := p.d.View(i)
 	log := p.t.Logger()
 	return func() any {
@@ -394,7 +394,7 @@ func safe(v toepen.View) action {
 }
 
 // Apply plays decision a of seat i and emits the events.
-func (p *play) Apply(i game.Seat, a any) error {
+func (p *play) Apply(i cards.Seat, a any) error {
 	act, ok := a.(action)
 	if !ok {
 		return errors.New("onbekende actie")
@@ -449,7 +449,7 @@ func (p *play) Apply(i game.Seat, a any) error {
 		ev := evAnswer{Type: "answer", Seat: i, Stay: act.play}
 		// The bot says what it did, never before: a line and a decision that agree.
 		if act.play {
-			if d.Toeper() != game.NoSeat {
+			if d.Toeper() != cards.NoSeat {
 				t.BotSay(i, server.ChatEvent{Kind: "stay", Mine: true, Points: stake}, 300*time.Millisecond)
 			}
 		} else {
@@ -492,7 +492,7 @@ func (p *play) Apply(i game.Seat, a any) error {
 			t.SetPhase(p.phase())
 		}
 		wait := pace.Announce
-		if res.Checker != game.NoSeat {
+		if res.Checker != cards.NoSeat {
 			wait = 3 * pace.Announce // the hand is shown: time to look
 		}
 		t.Pause(stepAnnounced, wait)
@@ -527,7 +527,7 @@ func (p *play) Apply(i game.Seat, a any) error {
 // cards laid away (the koningsspel), "w" (a was claimed), "c1"/"c0"
 // (checked or not), "t" (toep), "o" (overtoep), "a1"/"a0" (went along or
 // passed) or a card.
-func (p *play) act(i game.Seat, what string) {
+func (p *play) act(i cards.Seat, what string) {
 	if p.acts != "" {
 		p.acts += " "
 	}
@@ -542,7 +542,7 @@ func (p *play) endRound() {
 	res := d.Result()
 	wasOut := make([]bool, t.Players())
 	for s := range wasOut {
-		wasOut[s] = !p.m.Alive(game.Seat(s))
+		wasOut[s] = !p.m.Alive(cards.Seat(s))
 	}
 	p.m.Settle(d)
 	copy(p.total, res.Points)
@@ -551,7 +551,7 @@ func (p *play) endRound() {
 	p.rounds = append(p.rounds, row)
 	p.logRound(row)
 	t.Summary(evRound{Type: "handEnd", Result: row}, p.pace().round) // short, as a round: on by itself, also alone
-	for s := range game.Seat(t.Players()) {
+	for s := range cards.Seat(t.Players()) {
 		if res.Out[s] && !wasOut[s] {
 			t.SysChat("%s ligt eruit met %d strafpunten.", t.DisplayName(s), res.Points[s])
 			t.BotSay(s, server.ChatEvent{Kind: "out", Mine: true}, 900*time.Millisecond)
@@ -566,7 +566,7 @@ func (p *play) endRound() {
 	}
 	if !res.Out[res.Winner] && !t.BotSay(res.Winner, server.ChatEvent{Kind: won, Mine: true, Points: res.Stake}, 700*time.Millisecond) &&
 		res.Stake >= 3 {
-		t.BotsReact(1, 1100*time.Millisecond, func(i game.Seat) (server.ChatEvent, bool) {
+		t.BotsReact(1, 1100*time.Millisecond, func(i cards.Seat) (server.ChatEvent, bool) {
 			return server.ChatEvent{Kind: "lostRound", Mine: true, Points: res.Gains[i]}, i != res.Winner && res.Gains[i] > 0
 		})
 	}
@@ -583,7 +583,7 @@ func (p *play) Next() {
 	p.winner = int(w)
 	t.GameOver(slices.Clone(p.total), p.winner)
 	t.SysChat("%s wint het spel na %d potjes!", t.DisplayName(w), p.handNo)
-	t.BotsReact(2, 1800*time.Millisecond, func(i game.Seat) (server.ChatEvent, bool) {
+	t.BotsReact(2, 1800*time.Millisecond, func(i cards.Seat) (server.ChatEvent, bool) {
 		if i == w {
 			return server.ChatEvent{Kind: "gameWon", Mine: true}, true
 		}
@@ -601,7 +601,7 @@ func (p *play) chatCheck(res *toepen.Check) {
 	switch {
 	case res.Shown:
 		t.SysChat("%s staat op armoede en legt een echte %s open op tafel: vier nieuwe kaarten.", who, res.Kind.NameNL())
-	case res.Checker == game.NoSeat:
+	case res.Checker == cards.NoSeat:
 		t.SysChat("Niemand controleert de vuile was van %s: die legt vier kaarten dicht weg en krijgt vier nieuwe.", who)
 	case res.Genuine():
 		t.SysChat("%s controleert de vuile was van %s: een echte %s. %s krijgt een strafpunt, %s vier nieuwe kaarten.",
@@ -624,14 +624,14 @@ func (p *play) chatCheck(res *toepen.Check) {
 
 // whyAnswer is an explanation for seat's decision key.
 type whyAnswer struct {
-	seat game.Seat
+	seat cards.Seat
 	key  string
 	e    Explanation
 }
 
 // yours reports whether the round awaits a decision of seat i: its turn,
 // or its answer in the time for a was.
-func (p *play) yours(i game.Seat) bool {
+func (p *play) yours(i cards.Seat) bool {
 	t, d := p.t, p.d
 	switch {
 	case d == nil || !t.InHand():
@@ -643,7 +643,7 @@ func (p *play) yours(i game.Seat) bool {
 }
 
 // decisionKey names the decision the round awaits now.
-func (p *play) decisionKey(i game.Seat) string {
+func (p *play) decisionKey(i cards.Seat) string {
 	d := p.d
 	return fmt.Sprintf("%d/%d/%s/%d/%d/%d/%d/%d", p.handNo, i, d.Phase(), d.WasRound(), len(d.Tricks()), len(d.Current().Cards),
 		d.Stake(), len(d.Asking()))
@@ -652,7 +652,7 @@ func (p *play) decisionKey(i game.Seat) string {
 // askWhy works out the reasoning for seat i's decision now, in the
 // background, and puts it in that player's state. Only for a player alone
 // with bots: at a table with friends it would be help nobody else has.
-func (p *play) askWhy(i game.Seat) error {
+func (p *play) askWhy(i cards.Seat) error {
 	t := p.t
 	ex, ok := p.ai.(Explainer)
 	switch {
@@ -681,7 +681,7 @@ func (p *play) askWhy(i game.Seat) error {
 }
 
 // whyFor is the explanation for seat i's decision now, if it asked.
-func (p *play) whyFor(i game.Seat) *Explanation {
+func (p *play) whyFor(i cards.Seat) *Explanation {
 	if w := p.why; w != nil && w.seat == i && p.yours(i) && w.key == p.decisionKey(i) {
 		return &w.e
 	}
@@ -689,12 +689,12 @@ func (p *play) whyFor(i game.Seat) *Explanation {
 }
 
 // safeLay is the cards to lay away without any thought: the weakest.
-func safeLay(v toepen.View) []game.Card {
+func safeLay(v toepen.View) []cards.Card {
 	if v.Lay <= 0 || v.Lay > len(v.Hand) {
 		return nil
 	}
 	h := slices.Clone(v.Hand)
-	slices.SortStableFunc(h, func(a, b game.Card) int { return toepen.Strength(a.Rank) - toepen.Strength(b.Rank) })
+	slices.SortStableFunc(h, func(a, b cards.Card) int { return toepen.Strength(a.Rank) - toepen.Strength(b.Rank) })
 	return h[:v.Lay]
 }
 

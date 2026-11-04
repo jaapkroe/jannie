@@ -6,7 +6,7 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
 // maxSeed bounds a seed someone types (option seed) and every seed drawn,
@@ -28,7 +28,7 @@ func dealRNG(seed uint64) *rand.Rand {
 }
 
 // logPlayerAt is who sits at seat i now.
-func (r *room) logPlayerAt(i game.Seat) logPlayer {
+func (r *room) logPlayerAt(i cards.Seat) logPlayer {
 	st := &r.seats[i]
 	p := logPlayer{Seat: int(i), Name: r.displayName(i)}
 	switch {
@@ -49,7 +49,7 @@ func (r *room) logMatch() {
 		rec := logGameMatch{T: "match", Match: r.matchID, Room: r.code, At: time.Now().UTC(), Version: r.srv.cfg.Version,
 			Game: r.x.g.Name(), Seed: r.seed, Opts: r.x.wire()}
 		for i := range r.players() {
-			rec.Players = append(rec.Players, r.logPlayerAt(game.Seat(i)))
+			rec.Players = append(rec.Players, r.logPlayerAt(cards.Seat(i)))
 		}
 		r.srv.games.write(rec)
 		return
@@ -58,7 +58,7 @@ func (r *room) logMatch() {
 }
 
 // logSeat records that seat i changed hands during the match.
-func (r *room) logSeat(i game.Seat) {
+func (r *room) logSeat(i cards.Seat) {
 	if r.matchID == "" || r.phase == phaseLobby {
 		return
 	}

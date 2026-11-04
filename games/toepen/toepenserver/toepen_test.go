@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"jannie/games/klaverjas/game"
 	"jannie/games/toepen/toepen"
+	"jannie/platform/cards"
 	"jannie/platform/persona"
 	"jannie/platform/server"
 	"jannie/platform/server/servertest"
@@ -73,13 +73,13 @@ func (b *testBrain) chance(p float64) bool {
 	return b.rng.Float64() < p
 }
 
-func (b *testBrain) Was(v toepen.View) bool            { return b.chance(0.2) }
-func (b *testBrain) Check(v toepen.View) bool          { return b.chance(0.4) }
-func (b *testBrain) Toep(v toepen.View) bool           { return b.chance(0.15) }
-func (b *testBrain) Overtoep(toepen.View) bool         { return b.chance(0.1) }
-func (b *testBrain) Discard(v toepen.View) []game.Card { return v.Hand[len(v.Hand)-v.Lay:] }
-func (b *testBrain) Answer(v toepen.View) bool         { return b.chance(0.7) }
-func (b *testBrain) Play(v toepen.View) game.Card {
+func (b *testBrain) Was(v toepen.View) bool             { return b.chance(0.2) }
+func (b *testBrain) Check(v toepen.View) bool           { return b.chance(0.4) }
+func (b *testBrain) Toep(v toepen.View) bool            { return b.chance(0.15) }
+func (b *testBrain) Overtoep(toepen.View) bool          { return b.chance(0.1) }
+func (b *testBrain) Discard(v toepen.View) []cards.Card { return v.Hand[len(v.Hand)-v.Lay:] }
+func (b *testBrain) Answer(v toepen.View) bool          { return b.chance(0.7) }
+func (b *testBrain) Play(v toepen.View) cards.Card {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return v.Legal[b.rng.IntN(len(v.Legal))]
@@ -182,7 +182,7 @@ func playToepen(t *testing.T, c *servertest.Client, rng *rand.Rand) (map[string]
 		if prev != nil && prev.HandNo == s.HandNo {
 			for k := range s.Points {
 				// The boer takes a point off the winner of the last trick.
-				boer := s.Tricks == s.Size && s.LastTrick != nil && s.LastTrick.Winner == game.Seat(k)
+				boer := s.Tricks == s.Size && s.LastTrick != nil && s.LastTrick.Winner == cards.Seat(k)
 				if s.Points[k] < prev.Points[k]-btoi(boer) {
 					t.Fatalf("points went down: %v → %v", prev.Points, s.Points)
 				}
@@ -506,7 +506,7 @@ func TestToepenToepAndPass(t *testing.T) {
 	var row round
 	b, _ := json.Marshal(m.Event()["result"])
 	json.Unmarshal(b, &row)
-	if row.Winner != game.Seat(toeper.Seat) || row.Tricks || row.Gains[other.Seat] != 1 || row.Gains[toeper.Seat] != 0 {
+	if row.Winner != cards.Seat(toeper.Seat) || row.Tricks || row.Gains[other.Seat] != 1 || row.Gains[toeper.Seat] != 0 {
 		t.Errorf("round %+v", row)
 	}
 	if s := toepS(t, m); s.Points[other.Seat] != 1 || len(s.Rounds) != 1 || s.NextAt == 0 {
@@ -643,31 +643,31 @@ func TestToepenBadBots(t *testing.T) {
 
 type panicBrain struct{}
 
-func (panicBrain) Was(toepen.View) bool            { panic("was") }
-func (panicBrain) Check(toepen.View) bool          { panic("check") }
-func (panicBrain) Toep(toepen.View) bool           { panic("toep") }
-func (panicBrain) Overtoep(toepen.View) bool       { panic("overtoep") }
-func (panicBrain) Discard(toepen.View) []game.Card { panic("discard") }
-func (panicBrain) Answer(toepen.View) bool         { panic("answer") }
-func (panicBrain) Play(v toepen.View) game.Card    { panic("play") }
+func (panicBrain) Was(toepen.View) bool             { panic("was") }
+func (panicBrain) Check(toepen.View) bool           { panic("check") }
+func (panicBrain) Toep(toepen.View) bool            { panic("toep") }
+func (panicBrain) Overtoep(toepen.View) bool        { panic("overtoep") }
+func (panicBrain) Discard(toepen.View) []cards.Card { panic("discard") }
+func (panicBrain) Answer(toepen.View) bool          { panic("answer") }
+func (panicBrain) Play(v toepen.View) cards.Card    { panic("play") }
 
 // illegalBrain claims every was it may, checks every claim, never toeps
 // and plays a card it does not hold.
 type illegalBrain struct{}
 
-func (illegalBrain) Was(toepen.View) bool              { return true }
-func (illegalBrain) Check(toepen.View) bool            { return true }
-func (illegalBrain) Toep(toepen.View) bool             { return false }
-func (illegalBrain) Overtoep(toepen.View) bool         { return true }
-func (illegalBrain) Discard(v toepen.View) []game.Card { return v.Hand[:1] }
-func (illegalBrain) Answer(toepen.View) bool           { return true }
-func (illegalBrain) Play(v toepen.View) game.Card {
-	for _, c := range game.NewDeck() {
+func (illegalBrain) Was(toepen.View) bool               { return true }
+func (illegalBrain) Check(toepen.View) bool             { return true }
+func (illegalBrain) Toep(toepen.View) bool              { return false }
+func (illegalBrain) Overtoep(toepen.View) bool          { return true }
+func (illegalBrain) Discard(v toepen.View) []cards.Card { return v.Hand[:1] }
+func (illegalBrain) Answer(toepen.View) bool            { return true }
+func (illegalBrain) Play(v toepen.View) cards.Card {
+	for _, c := range cards.NewDeck() {
 		if !slices.Contains(v.Hand, c) {
 			return c
 		}
 	}
-	return game.Card{}
+	return cards.Card{}
 }
 
 // Without an AI of its own, toepen plays with plain bots.

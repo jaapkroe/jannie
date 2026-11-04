@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
 // step is a pause in the match flow; while one is pending nobody may act.
@@ -85,14 +85,14 @@ func (r *room) openTurn() {
 	r.turnAt = time.Now()
 	r.openedAt = r.turnAt
 	turn := r.gp.turn()
-	r.openedOn = turn != game.NoSeat && r.seats[turn].client != nil
+	r.openedOn = turn != cards.NoSeat && r.seats[turn].client != nil
 	r.step++
 	r.think = r.thinkTime(turn)
 	r.turnLesson(turn)
 }
 
-func (r *room) thinkTime(i game.Seat) time.Duration {
-	if i == game.NoSeat {
+func (r *room) thinkTime(i cards.Seat) time.Duration {
+	if i == cards.NoSeat {
 		return 0
 	}
 	speed := 1.0
@@ -135,7 +135,7 @@ func (r *room) drive() {
 		return
 	}
 	turn := r.gp.turn()
-	if turn == game.NoSeat {
+	if turn == cards.NoSeat {
 		return
 	}
 	st := &r.seats[turn]
@@ -177,7 +177,7 @@ func (r *room) runPending() {
 // drive only schedules when the decision is played.
 type botTurn struct {
 	step  int // r.step of the turn; 0: none
-	seat  game.Seat
+	seat  cards.Seat
 	ready bool // the decision is in
 	act   any  // the decision, once ready (klaverjas: an action)
 	safe  any  // a legal decision, should act come out illegal
@@ -186,7 +186,7 @@ type botTurn struct {
 // botMove makes sure seat i, played by a bot, moves at due: it starts the
 // turn's decision in the background, or schedules the decision once it is
 // in. When the brain finishes, it drives again.
-func (r *room) botMove(i game.Seat, due time.Time) {
+func (r *room) botMove(i cards.Seat, due time.Time) {
 	b := &r.bot
 	if b.step != r.step || b.seat != i {
 		r.decide(i)
@@ -198,7 +198,7 @@ func (r *room) botMove(i game.Seat, due time.Time) {
 }
 
 // decide asks the brain of seat i for the decision of this turn.
-func (r *room) decide(i game.Seat) {
+func (r *room) decide(i cards.Seat) {
 	st := &r.seats[i]
 	if st.brain == nil { // the substitute of a human
 		st.brain = r.newBrain("", "normaal")
@@ -219,7 +219,7 @@ func (r *room) decide(i game.Seat) {
 
 // applyBot plays the decision of this turn for seat i, if the turn is still
 // theirs and a bot still plays it.
-func (r *room) applyBot(i game.Seat) {
+func (r *room) applyBot(i cards.Seat) {
 	b := r.bot
 	if !b.ready || b.step != r.step || b.seat != i || r.pending != stepNone || !r.inHand() ||
 		r.gp.turn() != i || !r.botPlays(i) || !r.live() {

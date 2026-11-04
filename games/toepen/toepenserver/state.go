@@ -4,8 +4,8 @@ import (
 	"slices"
 	"time"
 
-	"jannie/games/klaverjas/game"
 	"jannie/games/toepen/toepen"
+	"jannie/platform/cards"
 	"jannie/platform/server"
 )
 
@@ -35,7 +35,7 @@ type state struct {
 	Status      []toepen.Status `json:"status"`      // per seat this round: in, gepast, betrapt, eruit, uit
 	Armoede     []bool          `json:"armoede"`     // per seat: one point from out this round
 	Washed      []bool          `json:"washed"`      // got four new cards for a was
-	Open        [][]game.Card   `json:"open"`        // per seat: its hand when played face up (a bluff caught), else empty
+	Open        [][]cards.Card  `json:"open"`        // per seat: its hand when played face up (a bluff caught), else empty
 	Answered    []bool          `json:"answered"`    // the time for a was: who said whether they have one
 	Claims      []bool          `json:"claims"`      // who claimed a was (once that time is over)
 	CanClaim    bool            `json:"canClaim"`    // you may still claim a was
@@ -43,8 +43,8 @@ type state struct {
 	Asking      []int           `json:"asking"`      // check, toep: who still answers, in order
 	Checks      []toepen.Check  `json:"checks"`      // the claims settled this round
 	Stock       int             `json:"stock"`
-	Hand        []game.Card     `json:"hand"` // yours, display-sorted
-	Legal       []game.Card     `json:"legal,omitempty"`
+	Hand        []cards.Card    `json:"hand"` // yours, display-sorted
+	Legal       []cards.Card    `json:"legal,omitempty"`
 	Rule        string          `json:"rule,omitempty"`
 	CanToep     bool            `json:"canToep"`
 	Trick       *toepen.Trick   `json:"trick"`
@@ -56,31 +56,31 @@ type state struct {
 
 // round is one line of the score sheet: how a round ended.
 type round struct {
-	Hand   int       `json:"hand"`
-	Dealer game.Seat `json:"dealer"`
-	Winner game.Seat `json:"winner"`
-	Stake  int       `json:"stake"`
-	Tricks bool      `json:"tricks"` // won with the last trick, else everyone else passed or sat out
-	Boer   bool      `json:"boer"`   // the last trick taken with a boer: the winner had a point off (if any)
-	Koning bool      `json:"koning"` // the koningsspel
-	Gains  []int     `json:"gains"`  // penalty points this round, per seat (-1: the boer)
-	Points []int     `json:"points"` // after it
-	Out    []bool    `json:"out"`    // out of the match after it
+	Hand   int        `json:"hand"`
+	Dealer cards.Seat `json:"dealer"`
+	Winner cards.Seat `json:"winner"`
+	Stake  int        `json:"stake"`
+	Tricks bool       `json:"tricks"` // won with the last trick, else everyone else passed or sat out
+	Boer   bool       `json:"boer"`   // the last trick taken with a boer: the winner had a point off (if any)
+	Koning bool       `json:"koning"` // the koningsspel
+	Gains  []int      `json:"gains"`  // penalty points this round, per seat (-1: the boer)
+	Points []int      `json:"points"` // after it
+	Out    []bool     `json:"out"`    // out of the match after it
 }
 
-func (p *play) State(i game.Seat) any {
+func (p *play) State(i cards.Seat) any {
 	t := p.t
 	n := t.Players()
 	s := &state{
 		Shared: t.Shared(i), Winner: -1, HandNo: p.handNo,
 		Dealer: -1, Voorhand: -1, Toeper: -1, Claimant: -1,
 		Points: make([]int, n), Status: make([]toepen.Status, n), Armoede: make([]bool, n),
-		Washed: make([]bool, n), Answered: make([]bool, n), Claims: make([]bool, n), Open: make([][]game.Card, n),
+		Washed: make([]bool, n), Answered: make([]bool, n), Claims: make([]bool, n), Open: make([][]cards.Card, n),
 		Laid:   make([]int, n),
-		Asking: []int{}, Checks: []toepen.Check{}, Hand: []game.Card{}, Rounds: nonNil(p.rounds),
+		Asking: []int{}, Checks: []toepen.Check{}, Hand: []cards.Card{}, Rounds: nonNil(p.rounds),
 	}
 	for k := range s.Open {
-		s.Open[k] = []game.Card{}
+		s.Open[k] = []cards.Card{}
 	}
 	if p.m != nil {
 		copy(s.Points, p.m.Points[:n])
@@ -101,7 +101,7 @@ func (p *play) State(i game.Seat) any {
 	s.Checks = nonNil(d.Checks())
 	s.Stock = d.Stock()
 	s.Tricks = len(d.Tricks())
-	for k := range game.Seat(n) {
+	for k := range cards.Seat(n) {
 		s.Points[k] = d.Points(k)
 		s.Status[k] = d.Status(k)
 		s.Armoede[k] = d.Armoede(k)
@@ -120,12 +120,12 @@ func (p *play) State(i game.Seat) any {
 	if d.Status(i) == toepen.StatusIn {
 		s.Hand = toepen.SortHand(d.Hand(i))
 	}
-	for k := range game.Seat(n) {
+	for k := range cards.Seat(n) {
 		if d.Open(k) {
 			s.Open[k] = toepen.SortHand(d.Hand(k))
 		}
 	}
-	if c := d.Claimant(); c != game.NoSeat {
+	if c := d.Claimant(); c != cards.NoSeat {
 		s.Claimant = int(c)
 	}
 	for _, a := range d.Asking() {
@@ -140,7 +140,7 @@ func (p *play) State(i game.Seat) any {
 	}
 	if s.Turn == int(i) && d.Phase() == toepen.PhasePlay {
 		legal := d.Legal()
-		s.Legal = make([]game.Card, 0, len(legal))
+		s.Legal = make([]cards.Card, 0, len(legal))
 		for _, c := range s.Hand {
 			if slices.Contains(legal, c) {
 				s.Legal = append(s.Legal, c)
@@ -171,7 +171,7 @@ func (p *play) shownTrick() *toepen.Trick {
 		tr.Leader = p.d.Voorhand() // armoede: nobody has led yet
 	}
 	if tr.Cards == nil {
-		tr.Cards = []game.Played{}
+		tr.Cards = []cards.Played{}
 	}
 	return &tr
 }
@@ -179,24 +179,24 @@ func (p *play) shownTrick() *toepen.Trick {
 // ---- events (ev.type) ----
 
 type evDeal struct {
-	Type   string    `json:"type"` // "deal"
-	HandNo int       `json:"handNo"`
-	Dealer game.Seat `json:"dealer"`
-	Koning bool      `json:"koning"` // the koningsspel
+	Type   string     `json:"type"` // "deal"
+	HandNo int        `json:"handNo"`
+	Dealer cards.Seat `json:"dealer"`
+	Koning bool       `json:"koning"` // the koningsspel
 }
 
 // evClaims: the time for a was is over and these seats claimed one.
 type evClaims struct {
-	Type  string      `json:"type"` // "claims"
-	Seats []game.Seat `json:"seats"`
+	Type  string       `json:"type"` // "claims"
+	Seats []cards.Seat `json:"seats"`
 }
 
 // evCheck: seat, asked about the was of claimant, checks it or not.
 type evCheck struct {
-	Type     string    `json:"type"` // "check"
-	Seat     game.Seat `json:"seat"`
-	Claimant game.Seat `json:"claimant"`
-	Check    bool      `json:"check"`
+	Type     string     `json:"type"` // "check"
+	Seat     cards.Seat `json:"seat"`
+	Claimant cards.Seat `json:"claimant"`
+	Check    bool       `json:"check"`
 }
 
 // evWasDone: a claimed was is settled. Checked (checker not -1), the hand
@@ -205,10 +205,10 @@ type evCheck struct {
 // cards.
 type evWasDone struct {
 	Type     string         `json:"type"` // "wasDone"
-	Claimant game.Seat      `json:"claimant"`
-	Checker  game.Seat      `json:"checker"`
+	Claimant cards.Seat     `json:"claimant"`
+	Checker  cards.Seat     `json:"checker"`
 	Kind     toepen.WasKind `json:"kind"`
-	Cards    []game.Card    `json:"cards"`
+	Cards    []cards.Card   `json:"cards"`
 	Genuine  bool           `json:"genuine"`
 	Washed   bool           `json:"washed"`
 	Shown    bool           `json:"shown"`
@@ -218,52 +218,52 @@ type evWasDone struct {
 // to a toep (over: an overtoep).
 // evDiscard: in the koningsspel seat laid n cards away, face down.
 type evDiscard struct {
-	Type string    `json:"type"` // "discard"
-	Seat game.Seat `json:"seat"`
-	N    int       `json:"n"`
+	Type string     `json:"type"` // "discard"
+	Seat cards.Seat `json:"seat"`
+	N    int        `json:"n"`
 }
 
 type evToep struct {
-	Type  string    `json:"type"` // "toep"
-	Seat  game.Seat `json:"seat"`
-	Stake int       `json:"stake"`
-	Over  bool      `json:"over"`
+	Type  string     `json:"type"` // "toep"
+	Seat  cards.Seat `json:"seat"`
+	Stake int        `json:"stake"`
+	Over  bool       `json:"over"`
 }
 
 // evAnswer: seat goes along with the toep (stay), or passes and takes
 // points (the stake it last agreed to); auto: it went along unasked,
 // because passing would have put it out.
 type evAnswer struct {
-	Type   string    `json:"type"` // "answer"
-	Seat   game.Seat `json:"seat"`
-	Stay   bool      `json:"stay"`
-	Points int       `json:"points"`
-	Auto   bool      `json:"auto,omitempty"`
+	Type   string     `json:"type"` // "answer"
+	Seat   cards.Seat `json:"seat"`
+	Stay   bool       `json:"stay"`
+	Points int        `json:"points"`
+	Auto   bool       `json:"auto,omitempty"`
 }
 
 // evArmoede: these seats are one point from out; the stake starts at
 // stake.
 type evArmoede struct {
-	Type  string      `json:"type"` // "armoede"
-	Seats []game.Seat `json:"seats"`
-	Stake int         `json:"stake"`
+	Type  string       `json:"type"` // "armoede"
+	Seats []cards.Seat `json:"seats"`
+	Stake int          `json:"stake"`
 }
 
 type evPlay struct {
-	Type string    `json:"type"` // "play"
-	Seat game.Seat `json:"seat"`
-	Card game.Card `json:"card"`
+	Type string     `json:"type"` // "play"
+	Seat cards.Seat `json:"seat"`
+	Card cards.Card `json:"card"`
 }
 
 type evTrick struct {
-	Type   string    `json:"type"` // "trick"
-	Winner game.Seat `json:"winner"`
-	Last   bool      `json:"last"`
+	Type   string     `json:"type"` // "trick"
+	Winner cards.Seat `json:"winner"`
+	Last   bool       `json:"last"`
 }
 
 type evCollect struct {
-	Type   string    `json:"type"` // "collect"
-	Winner game.Seat `json:"winner"`
+	Type   string     `json:"type"` // "collect"
+	Winner cards.Seat `json:"winner"`
 }
 
 type evRound struct {
@@ -277,27 +277,27 @@ type evRound struct {
 // dealt per seat ("" for a seat out of the match), the decisions (act) and
 // how it ended.
 type logRound struct {
-	T      string    `json:"t"` // "round"
-	Match  string    `json:"match"`
-	At     time.Time `json:"at"`
-	Hand   int       `json:"hand"`
-	Dealer game.Seat `json:"dealer"`
-	Cards  []string  `json:"cards"`
-	Acts   string    `json:"acts"`
-	Result round     `json:"result"`
+	T      string     `json:"t"` // "round"
+	Match  string     `json:"match"`
+	At     time.Time  `json:"at"`
+	Hand   int        `json:"hand"`
+	Dealer cards.Seat `json:"dealer"`
+	Cards  []string   `json:"cards"`
+	Acts   string     `json:"acts"`
+	Result round      `json:"result"`
 }
 
 func (p *play) logRound(row round) {
 	rec := logRound{T: "round", Match: p.t.MatchID(), At: time.Now().UTC(), Hand: p.handNo, Dealer: row.Dealer,
 		Acts: p.acts, Result: row}
 	for s := range p.t.Players() {
-		rec.Cards = append(rec.Cards, cardsString(p.d.Dealt(game.Seat(s))))
+		rec.Cards = append(rec.Cards, cardsString(p.d.Dealt(cards.Seat(s))))
 	}
 	p.t.Log(rec)
 }
 
 // cardsString is cards as one compact string: "7SAS9H".
-func cardsString(cards []game.Card) string {
+func cardsString(cards []cards.Card) string {
 	b := make([]byte, 0, 2*len(cards))
 	for _, c := range cards {
 		b = append(b, c.String()...)

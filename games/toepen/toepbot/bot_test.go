@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"jannie/games/klaverjas/game"
 	"jannie/games/toepen/toepen"
+	"jannie/platform/cards"
 )
 
-var cards = game.MustParseCards
+var parseCards = cards.MustParseCards
 
 // decide applies the decision of the bot of the seat whose answer the
 // round of d awaits (or of every seat in the time for a was).
@@ -19,7 +19,7 @@ func decide(t testing.TB, d *toepen.Deal, bots []*Player) {
 	t.Helper()
 	switch d.Phase() {
 	case toepen.PhaseWas:
-		for s := range game.Seat(d.Players()) {
+		for s := range cards.Seat(d.Players()) {
 			if d.Status(s) == toepen.StatusIn && !d.Answered(s) {
 				if err := d.Was(s, bots[s].Was(d.View(s))); err != nil {
 					t.Fatal(err)
@@ -102,23 +102,23 @@ func TestLegalDecisions(t *testing.T) {
 }
 
 func TestNormalCard(t *testing.T) {
-	all := func(game.Seat) bool { return true }
+	all := func(cards.Seat) bool { return true }
 	lead := toepen.Trick{Leader: 0}
 	// Leading: low, and not from the suit of the card kept for the end.
-	if c := normalCard(cards("TH JH 8S QD"), lead, all); c != cards("QD")[0] {
+	if c := normalCard(parseCards("TH JH 8S QD"), lead, all); c != parseCards("QD")[0] {
 		t.Errorf("lead %v, want ♦V", c)
 	}
 	// Following: the lowest, keeping the best.
-	tr := toepen.Trick{Leader: 1, Cards: []game.Played{{Seat: 1, Card: cards("8H")[0]}}}
-	if c := normalCard(cards("TH JH 9H AS"), tr, all); c != cards("JH")[0] {
+	tr := toepen.Trick{Leader: 1, Cards: []cards.Played{{Seat: 1, Card: parseCards("8H")[0]}}}
+	if c := normalCard(parseCards("TH JH 9H AS"), tr, all); c != parseCards("JH")[0] {
 		t.Errorf("follow %v, want ♥B", c)
 	}
 	// Cannot follow: throw the weakest.
-	if c := normalCard(cards("TS QD 9C"), tr, all); c != cards("QD")[0] {
+	if c := normalCard(parseCards("TS QD 9C"), tr, all); c != parseCards("QD")[0] {
 		t.Errorf("discard %v, want ♦V", c)
 	}
 	// The trick before the last: take it with the card not kept.
-	if c := normalCard(cards("9H TH"), tr, all); c != cards("9H")[0] {
+	if c := normalCard(parseCards("9H TH"), tr, all); c != parseCards("9H")[0] {
 		t.Errorf("third trick %v, want ♥9", c)
 	}
 }
@@ -129,7 +129,7 @@ func TestAnswerWhenOutAnyway(t *testing.T) {
 	p := New(0, Normaal, 1)
 	v := toepen.View{
 		Players: 3, Seat: 0, Phase: toepen.PhaseToep, Turn: 0, Stake: 2, PassCost: 1,
-		Rules: toepen.Rules{Limit: 10}, Hand: cards("JH QS KD 8C"),
+		Rules: toepen.Rules{Limit: 10}, Hand: parseCards("JH QS KD 8C"),
 		Points: [toepen.MaxPlayers]int{9, 0, 0},
 		Status: [toepen.MaxPlayers]toepen.Status{toepen.StatusIn, toepen.StatusIn, toepen.StatusIn},
 		Cards:  [toepen.MaxPlayers]int{4, 4, 4},
@@ -140,7 +140,7 @@ func TestAnswerWhenOutAnyway(t *testing.T) {
 	// With nothing at risk and a hopeless hand it passes.
 	v.Points[0] = 0
 	v.Toeps = []toepen.Toep{{Seat: 1, Stake: 2}}
-	v.Current = toepen.Trick{Leader: 2, Cards: []game.Played{{Seat: 2, Card: cards("TH")[0]}}}
+	v.Current = toepen.Trick{Leader: 2, Cards: []cards.Played{{Seat: 2, Card: parseCards("TH")[0]}}}
 	v.Cards[2] = 3
 	if p.Answer(v) {
 		t.Error("went along with nothing")
@@ -150,14 +150,14 @@ func TestAnswerWhenOutAnyway(t *testing.T) {
 func TestWasChance(t *testing.T) {
 	// Against counting every hand of four from the 28 cards a hand of
 	// four eights leaves.
-	pool := slices.DeleteFunc(game.NewDeck(), func(c game.Card) bool { return c.Rank == game.Eight })
+	pool := slices.DeleteFunc(cards.NewDeck(), func(c cards.Card) bool { return c.Rank == cards.Eight })
 	n, was := 0, 0
 	for a := range pool {
 		for b := a + 1; b < len(pool); b++ {
 			for c := b + 1; c < len(pool); c++ {
 				for d := c + 1; d < len(pool); d++ {
 					n++
-					if toepen.Was([]game.Card{pool[a], pool[b], pool[c], pool[d]}) != toepen.NoWas {
+					if toepen.Was([]cards.Card{pool[a], pool[b], pool[c], pool[d]}) != toepen.NoWas {
 						was++
 					}
 				}
@@ -177,12 +177,12 @@ func TestCheck(t *testing.T) {
 	}
 	p := New(0.5, Sterk, 1)
 	// Holding four pictures, a real was is unlikely: check.
-	v.Hand = cards("JH QS KD AC")
+	v.Hand = parseCards("JH QS KD AC")
 	if !p.Check(v) {
 		t.Error("did not check with four pictures in hand")
 	}
 	// Holding no picture and no 7, a real one is likely: let it go.
-	v.Hand = cards("8H 9S TD 8C")
+	v.Hand = parseCards("8H 9S TD 8C")
 	if p.Check(v) {
 		t.Error("checked with no pictures in hand")
 	}
@@ -208,7 +208,7 @@ func TestArena(t *testing.T) {
 		var strong, weak float64
 		for range pr.deals {
 			deck := toepen.Shuffle(rng)
-			dealer := game.Seat(rng.IntN(4))
+			dealer := cards.Seat(rng.IntN(4))
 			for swap := range 2 {
 				bots := make([]*Player, 4)
 				for s := range bots {
@@ -351,7 +351,7 @@ func TestExplain(t *testing.T) {
 	must(d.Was(1, false))
 	must(d.Was(2, false))
 	v := d.View(1)
-	v.Hand = cards("JD QH KS AC")
+	v.Hand = parseCards("JD QH KS AC")
 	if e = Explain(v, 1); e.Decision != "controle" || e.Advice != "Controleer" || e.Chance != -1 {
 		t.Errorf("check: %+v", e)
 	}
@@ -365,12 +365,12 @@ func TestExplain(t *testing.T) {
 
 // deck lays out a deck for NewDeal: the hands in dealing order, then the
 // other cards in deck order.
-func deck(hands ...string) []game.Card {
-	var out []game.Card
+func deck(hands ...string) []cards.Card {
+	var out []cards.Card
 	for _, h := range hands {
-		out = append(out, cards(h)...)
+		out = append(out, parseCards(h)...)
 	}
-	for _, c := range game.NewDeck() {
+	for _, c := range cards.NewDeck() {
 		if !slices.Contains(out, c) {
 			out = append(out, c)
 		}
@@ -445,10 +445,10 @@ func lastTrickWithTen(t *testing.T, points [toepen.MaxPlayers]int) *toepen.Deal 
 	t.Helper()
 	d := toepen.NewDeal(2, toepen.Rules{Limit: 10}, 0, points, deck("9H 8H 7H TS", "7D QD KD JD"))
 	for _, p := range []struct {
-		s game.Seat
+		s cards.Seat
 		c string
 	}{{1, "9H"}, {0, "7D"}, {1, "8H"}, {0, "QD"}, {1, "7H"}, {0, "KD"}, {1, "TS"}} {
-		if err := d.Play(p.s, cards(p.c)[0]); err != nil {
+		if err := d.Play(p.s, parseCards(p.c)[0]); err != nil {
 			t.Fatal(p, err)
 		}
 	}
@@ -473,10 +473,10 @@ func TestNoPointlessToep(t *testing.T) {
 	// Seat 1 toeps, then leads the 10; seat 0 went along.
 	d := toepen.NewDeal(2, toepen.Rules{Limit: 10}, 0, [toepen.MaxPlayers]int{}, deck("9H 8H 7H TS", "7D QD KD JD"))
 	for _, p := range []struct {
-		s game.Seat
+		s cards.Seat
 		c string
 	}{{1, "9H"}, {0, "7D"}, {1, "8H"}, {0, "QD"}, {1, "7H"}, {0, "KD"}} {
-		if err := d.Play(p.s, cards(p.c)[0]); err != nil {
+		if err := d.Play(p.s, parseCards(p.c)[0]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -486,7 +486,7 @@ func TestNoPointlessToep(t *testing.T) {
 	if err := d.Answer(0, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := d.Play(1, cards("TS")[0]); err != nil {
+	if err := d.Play(1, parseCards("TS")[0]); err != nil {
 		t.Fatal(err)
 	}
 	// Now seat 0 may toep back (seat 1 toept last): pointless.
@@ -514,7 +514,7 @@ func TestNoPointlessToep(t *testing.T) {
 // at 8 of 10, a toep to 2 with a hopeless hand is passed for 1.
 func TestNoCallIntoGoingOut(t *testing.T) {
 	d := toepen.NewDeal(3, toepen.Rules{Limit: 10}, 2, [toepen.MaxPlayers]int{8, 0, 0}, deck("JH QS KD 8C", "TH 9H 8H 7H", "TS 9S 8S 7S"))
-	if err := d.Play(0, cards("8C")[0]); err != nil {
+	if err := d.Play(0, parseCards("8C")[0]); err != nil {
 		t.Fatal(err)
 	}
 	if err := d.Toep(1); err != nil {

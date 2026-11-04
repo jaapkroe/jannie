@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 	"jannie/platform/server"
 	"jannie/platform/server/servertest"
 )
@@ -74,33 +74,33 @@ func (o *toyOpts) Wire(t server.TableOpts) any {
 // toyBrain lays its card: there is nothing else to do.
 type toyBrain struct{}
 
-func (toyBrain) play(c game.Card) game.Card { return c }
+func (toyBrain) play(c cards.Card) cards.Card { return c }
 
 const stepShow server.Step = 1 // the round's cards lie open
 
 type toyPlay struct {
 	t      *server.Table
 	round  int
-	hands  []game.Card // this round's card per seat
-	table  []game.Played
-	turn   game.Seat
+	hands  []cards.Card // this round's card per seat
+	table  []cards.Played
+	turn   cards.Seat
 	points []int
 }
 
 type toyState struct {
 	server.Shared
-	Round  int           `json:"round"`
-	Hand   []game.Card   `json:"hand"`
-	Table  []game.Played `json:"table"`
-	Points []int         `json:"points"`
-	Winner int           `json:"winner"`
+	Round  int            `json:"round"`
+	Hand   []cards.Card   `json:"hand"`
+	Table  []cards.Played `json:"table"`
+	Points []int          `json:"points"`
+	Winner int            `json:"winner"`
 }
 
 type toyEv struct {
-	Type   string    `json:"type"`
-	Seat   game.Seat `json:"seat"`
-	Card   game.Card `json:"card"`
-	Winner game.Seat `json:"winner"`
+	Type   string     `json:"type"`
+	Seat   cards.Seat `json:"seat"`
+	Card   cards.Card `json:"card"`
+	Winner cards.Seat `json:"winner"`
 }
 
 func (p *toyPlay) rounds() int { return p.t.Options().(*toyOpts).Rounds }
@@ -116,43 +116,43 @@ func (p *toyPlay) deal() {
 	n := p.t.Players()
 	p.round++
 	p.t.SetHand(p.round)
-	deck := game.NewDeck()
+	deck := cards.NewDeck()
 	p.t.Deals().Shuffle(len(deck), func(i, j int) { deck[i], deck[j] = deck[j], deck[i] })
-	p.hands, p.table = deck[:n], []game.Played{}
-	p.turn = game.Seat((p.round - 1) % n)
+	p.hands, p.table = deck[:n], []cards.Played{}
+	p.turn = cards.Seat((p.round - 1) % n)
 	p.t.SetPhase("play")
 	p.t.OpenTurn()
 	p.t.Emit(toyEv{Type: "deal", Seat: p.turn})
 }
 
-func (p *toyPlay) Turn() game.Seat {
+func (p *toyPlay) Turn() cards.Seat {
 	if p.hands == nil || len(p.table) == len(p.hands) {
-		return game.NoSeat
+		return cards.NoSeat
 	}
 	return p.turn
 }
 
-func (p *toyPlay) laid(i game.Seat) bool {
-	return slices.ContainsFunc(p.table, func(c game.Played) bool { return c.Seat == i })
+func (p *toyPlay) laid(i cards.Seat) bool {
+	return slices.ContainsFunc(p.table, func(c cards.Played) bool { return c.Seat == i })
 }
 
-func (p *toyPlay) HandLen(i game.Seat) int {
+func (p *toyPlay) HandLen(i cards.Seat) int {
 	if p.hands == nil || p.laid(i) {
 		return 0
 	}
 	return 1
 }
 
-func (p *toyPlay) State(i game.Seat) any {
-	s := toyState{Shared: p.t.Shared(i), Round: p.round, Hand: []game.Card{}, Table: p.table, Points: p.points, Winner: -1}
+func (p *toyPlay) State(i cards.Seat) any {
+	s := toyState{Shared: p.t.Shared(i), Round: p.round, Hand: []cards.Card{}, Table: p.table, Points: p.points, Winner: -1}
 	if s.Table == nil {
-		s.Table = []game.Played{}
+		s.Table = []cards.Played{}
 	}
 	if s.Points == nil {
 		s.Points = make([]int, p.t.Players())
 	}
 	if p.t.InHand() && !p.laid(i) {
-		s.Hand = []game.Card{p.hands[i]}
+		s.Hand = []cards.Card{p.hands[i]}
 	}
 	if s.Phase == "gameOver" {
 		s.Winner = top(p.points)
@@ -160,26 +160,26 @@ func (p *toyPlay) State(i game.Seat) any {
 	return s
 }
 
-func (p *toyPlay) Move(i game.Seat, m server.Msg) error {
+func (p *toyPlay) Move(i cards.Seat, m server.Msg) error {
 	if m.T != "play" {
 		return server.ErrUnknownMsg
 	}
 	var b struct{ Card string }
 	json.Unmarshal(m.Raw, &b)
-	c, err := game.ParseCard(b.Card)
+	c, err := cards.ParseCard(b.Card)
 	if err != nil {
 		return errors.New("Die kaart bestaat niet.")
 	}
 	return p.Apply(i, c)
 }
 
-func (p *toyPlay) Decision(i game.Seat, brain any) (func() any, any) {
+func (p *toyPlay) Decision(i cards.Seat, brain any) (func() any, any) {
 	c := p.hands[i]
 	return func() any { return brain.(toyBrain).play(c) }, c
 }
 
-func (p *toyPlay) Apply(i game.Seat, a any) error {
-	c, _ := a.(game.Card)
+func (p *toyPlay) Apply(i cards.Seat, a any) error {
+	c, _ := a.(cards.Card)
 	switch {
 	case !p.t.InHand() || p.hands == nil:
 		return errors.New("Dat kan nu niet.")
@@ -190,10 +190,10 @@ func (p *toyPlay) Apply(i game.Seat, a any) error {
 	case c != p.hands[i]:
 		return errors.New("Die kaart heb je niet.")
 	}
-	p.table = append(p.table, game.Played{Seat: i, Card: c})
-	ev := toyEv{Type: "play", Seat: i, Card: c, Winner: game.NoSeat}
+	p.table = append(p.table, cards.Played{Seat: i, Card: c})
+	ev := toyEv{Type: "play", Seat: i, Card: c, Winner: cards.NoSeat}
 	if len(p.table) < len(p.hands) {
-		p.turn = (p.turn + 1) % game.Seat(len(p.hands))
+		p.turn = (p.turn + 1) % cards.Seat(len(p.hands))
 		p.t.OpenTurn()
 		p.t.Emit(ev)
 		return nil

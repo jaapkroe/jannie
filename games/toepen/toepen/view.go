@@ -3,54 +3,54 @@ package toepen
 import (
 	"slices"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
 // View is everything seat may know of a round: the bots decide on it.
 type View struct {
 	Players  int
-	Seat     game.Seat
+	Seat     cards.Seat
 	Rules    Rules
 	Phase    Phase
-	Turn     game.Seat
-	Dealer   game.Seat
-	Voorhand game.Seat
+	Turn     cards.Seat
+	Dealer   cards.Seat
+	Voorhand cards.Seat
 	Stake    int
-	Toeper   game.Seat   // the last to toep, NoSeat before anyone did
-	Toeps    []Toep      // every raise so far
-	CanToep  bool        // Seat may toep now
-	CanRaise bool        // PhaseToep: Seat may toep again instead of answering (Overtoep)
-	MustStay bool        // PhaseToep: Seat may not pass (anti-lijntoep)
-	PassCost int         // what passing costs Seat: the stake it last agreed to
-	Koning   bool        // the koningsspel
-	Size     int         // cards each plays with (eight in the koningsspel)
-	Lay      int         // PhaseDiscard: how many cards Seat lays away now
-	Laid     []game.Card // the cards Seat laid away (the koningsspel)
-	Hand     []game.Card
-	Legal    []game.Card // Seat's turn in PhasePlay
+	Toeper   cards.Seat   // the last to toep, NoSeat before anyone did
+	Toeps    []Toep       // every raise so far
+	CanToep  bool         // Seat may toep now
+	CanRaise bool         // PhaseToep: Seat may toep again instead of answering (Overtoep)
+	MustStay bool         // PhaseToep: Seat may not pass (anti-lijntoep)
+	PassCost int          // what passing costs Seat: the stake it last agreed to
+	Koning   bool         // the koningsspel
+	Size     int          // cards each plays with (eight in the koningsspel)
+	Lay      int          // PhaseDiscard: how many cards Seat lays away now
+	Laid     []cards.Card // the cards Seat laid away (the koningsspel)
+	Hand     []cards.Card
+	Legal    []cards.Card // Seat's turn in PhasePlay
 
 	Cards   [MaxPlayers]int    // cards each seat holds
 	Points  [MaxPlayers]int    // penalty points now
 	Status  [MaxPlayers]Status //
 	Armoede [MaxPlayers]bool
-	Washed  [MaxPlayers]bool        // got new cards for a was
-	Claimed [MaxPlayers]bool        // claimed a was (once the time for it is over)
-	Open    [MaxPlayers][]game.Card // the hands played face up (a bluff caught, rule Bluf)
-	Record  [MaxPlayers]Record      // what the table saw of each seat's bluffs in the rounds before
+	Washed  [MaxPlayers]bool         // got new cards for a was
+	Claimed [MaxPlayers]bool         // claimed a was (once the time for it is over)
+	Open    [MaxPlayers][]cards.Card // the hands played face up (a bluff caught, rule Bluf)
+	Record  [MaxPlayers]Record       // what the table saw of each seat's bluffs in the rounds before
 
-	WasRound int       // the time for a was: 1, more when new cards may be washed again
-	Answered bool      // PhaseWas: Seat said whether it has a was
-	CanClaim bool      // PhaseWas: Seat may still claim one
-	Claimant game.Seat // PhaseCheck: whose was is asked about
-	Checks   []Check   // the claims settled so far
-	Stock    int       // cards left for a was
+	WasRound int        // the time for a was: 1, more when new cards may be washed again
+	Answered bool       // PhaseWas: Seat said whether it has a was
+	CanClaim bool       // PhaseWas: Seat may still claim one
+	Claimant cards.Seat // PhaseCheck: whose was is asked about
+	Checks   []Check    // the claims settled so far
+	Stock    int        // cards left for a was
 
 	Current Trick
 	Tricks  []Trick
 }
 
 // View returns what seat may know.
-func (d *Deal) View(seat game.Seat) View {
+func (d *Deal) View(seat cards.Seat) View {
 	v := View{
 		Players:  d.players,
 		Seat:     seat,
@@ -88,7 +88,7 @@ func (d *Deal) View(seat game.Seat) View {
 	if d.status[seat] != StatusIn {
 		v.Hand = nil
 	}
-	for s := range game.Seat(d.players) {
+	for s := range cards.Seat(d.players) {
 		v.Cards[s] = d.HandLen(s)
 		v.Claimed[s] = d.Claimed(s)
 		if d.Open(s) {
@@ -102,7 +102,7 @@ func (d *Deal) View(seat game.Seat) View {
 }
 
 // In reports whether s still plays the round.
-func (v *View) In(s game.Seat) bool {
+func (v *View) In(s cards.Seat) bool {
 	return s >= 0 && int(s) < v.Players && v.Status[s] == StatusIn
 }
 
@@ -118,12 +118,12 @@ func (v *View) InCount() int {
 }
 
 // Next is the seat after s, clockwise.
-func (v *View) Next(s game.Seat) game.Seat { return (s + 1) % game.Seat(v.Players) }
+func (v *View) Next(s cards.Seat) cards.Seat { return (s + 1) % cards.Seat(v.Players) }
 
 // Seen lists every card Seat has seen: the cards played, the hands shown
 // by a check and the hands played face up.
-func (v *View) Seen() []game.Card {
-	var out []game.Card
+func (v *View) Seen() []cards.Card {
+	var out []cards.Card
 	for _, t := range v.Tricks {
 		for _, p := range t.Cards {
 			out = append(out, p.Card)
@@ -159,7 +159,7 @@ type Record struct {
 // seen adds what round d showed of each seat's bluffs to rec.
 func (d *Deal) seen(rec *[MaxPlayers]Record) {
 	for _, c := range d.checks {
-		if c.Checker == game.NoSeat || c.Shown {
+		if c.Checker == cards.NoSeat || c.Shown {
 			continue // let through, or on armoede: no bluff could be seen
 		}
 		rec[c.Claimant].Claims++
@@ -184,7 +184,7 @@ func (d *Deal) seen(rec *[MaxPlayers]Record) {
 			}
 		}
 		rec[t.Seat].Toeps++
-		if best <= Strength(game.Ace) {
+		if best <= Strength(cards.Ace) {
 			rec[t.Seat].ToepBluffs++
 		}
 	}
@@ -198,24 +198,24 @@ type Match struct {
 	Points  [MaxPlayers]int
 	Record  [MaxPlayers]Record // the bluffs seen so far
 	Streak  [MaxPlayers]int    // passes on a toep in a row (anti-lijntoep)
-	Dealer  game.Seat          // of the round in play or last played
+	Dealer  cards.Seat         // of the round in play or last played
 	Round   int                // rounds dealt
 }
 
 // NewMatch starts a match; first is the first dealer.
-func NewMatch(players int, rules Rules, first game.Seat) *Match {
+func NewMatch(players int, rules Rules, first cards.Seat) *Match {
 	return &Match{Players: players, Rules: rules, Dealer: first}
 }
 
 // Alive reports whether s is still in the match.
-func (m *Match) Alive(s game.Seat) bool {
+func (m *Match) Alive(s cards.Seat) bool {
 	return s >= 0 && int(s) < m.Players && m.Points[s] < m.Rules.Limit
 }
 
 // Left is the number of players still in.
 func (m *Match) Left() int {
 	n := 0
-	for s := range game.Seat(m.Players) {
+	for s := range cards.Seat(m.Players) {
 		if m.Alive(s) {
 			n++
 		}
@@ -227,25 +227,25 @@ func (m *Match) Left() int {
 func (m *Match) Over() bool { return m.Left() <= 1 }
 
 // Winner is the last player in, NoSeat while more are.
-func (m *Match) Winner() game.Seat {
+func (m *Match) Winner() cards.Seat {
 	if !m.Over() {
-		return game.NoSeat
+		return cards.NoSeat
 	}
-	for s := range game.Seat(m.Players) {
+	for s := range cards.Seat(m.Players) {
 		if m.Alive(s) {
 			return s
 		}
 	}
-	return game.NoSeat
+	return cards.NoSeat
 }
 
 // Deal deals the next round from deck. The first round is dealt by the
 // first dealer; then the deal passes clockwise to the next player still in.
-func (m *Match) Deal(deck []game.Card) *Deal {
+func (m *Match) Deal(deck []cards.Card) *Deal {
 	if m.Round > 0 || !m.Alive(m.Dealer) {
 		s := m.Dealer
 		for range m.Players {
-			s = (s + 1) % game.Seat(m.Players)
+			s = (s + 1) % cards.Seat(m.Players)
 			if m.Alive(s) {
 				break
 			}

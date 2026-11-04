@@ -3,24 +3,24 @@ package server
 import (
 	"time"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
 // waitingFor is the absent player the game waits for: it is their turn,
 // no pause is pending, and they dropped out (and nobody let an AI play for
 // them yet) or left. NoSeat otherwise.
-func (r *room) waitingFor() game.Seat {
+func (r *room) waitingFor() cards.Seat {
 	if !r.inHand() || r.pending != stepNone {
-		return game.NoSeat
+		return cards.NoSeat
 	}
 	i := r.gp.turn()
-	if i == game.NoSeat {
-		return game.NoSeat
+	if i == cards.NoSeat {
+		return cards.NoSeat
 	}
 	if st := &r.seats[i]; st.kind == seatLeft || st.kind == seatHuman && st.client == nil && !st.away {
 		return i
 	}
-	return game.NoSeat
+	return cards.NoSeat
 }
 
 // question is the seat the others are asked about, NoSeat when nothing is
@@ -30,9 +30,9 @@ func (r *room) waitingFor() game.Seat {
 // left and after askAfter for one who dropped out, as long as anyone is
 // connected to answer. Each answers with vote; once all said yes, an AI
 // takes the seat (takeOver).
-func (r *room) question() game.Seat {
+func (r *room) question() cards.Seat {
 	if r.connectedHumans() == 0 {
-		return game.NoSeat
+		return cards.NoSeat
 	}
 	return r.questionAbout()
 }
@@ -40,10 +40,10 @@ func (r *room) question() game.Seat {
 // questionAbout is the seat the question is about whether or not anyone is
 // connected to answer it: while nobody is, it rests (nobody sees or
 // answers it, the game pauses) and keeps its votes.
-func (r *room) questionAbout() game.Seat {
+func (r *room) questionAbout() cards.Seat {
 	i := r.waitingFor()
-	if i == game.NoSeat || r.seats[i].kind == seatHuman && !r.seats[i].asked {
-		return game.NoSeat
+	if i == cards.NoSeat || r.seats[i].kind == seatHuman && !r.seats[i].asked {
+		return cards.NoSeat
 	}
 	return i
 }
@@ -65,7 +65,7 @@ func (r *room) settleQuestion() {
 
 // ask puts the question to the others: the player at seat i has been gone
 // askAfter on their turn.
-func (r *room) ask(i game.Seat) {
+func (r *room) ask(i cards.Seat) {
 	st := &r.seats[i]
 	if st.kind != seatHuman || st.client != nil || st.away || st.asked {
 		return
@@ -77,7 +77,7 @@ func (r *room) ask(i game.Seat) {
 
 // cmdVote records whether the player at seat i lets an AI play the seat
 // the question is about; the answer may change while the question is open.
-func (r *room) cmdVote(c *client, i game.Seat, m *inMsg) {
+func (r *room) cmdVote(c *client, i cards.Seat, m *inMsg) {
 	to, ok := r.seatArg(m)
 	switch {
 	case !ok:
@@ -128,7 +128,7 @@ func (r *room) agreed() bool {
 // dropVote ends the no of a voter who dropped out at `at` and has not been
 // back since: gone askAfter, they no longer answer, and the others' yes
 // may now be everyone's.
-func (r *room) dropVote(i game.Seat, at time.Time) {
+func (r *room) dropVote(i cards.Seat, at time.Time) {
 	st := &r.seats[i]
 	if st.kind != seatHuman || st.client != nil || !st.leftAt.Equal(at) || st.vote == nil {
 		return
@@ -146,7 +146,7 @@ func (r *room) dropVote(i game.Seat, at time.Time) {
 // yet, so they cannot complete it.
 func (r *room) tally() bool {
 	q := r.question()
-	if q == game.NoSeat || !r.agreed() {
+	if q == cards.NoSeat || !r.agreed() {
 		return false
 	}
 	r.takeOver(q)
@@ -157,7 +157,7 @@ func (r *room) tally() bool {
 // plays for a player who dropped out until they return; a seat its player
 // left goes to a random persona at the room's level, which a joiner may
 // still take over.
-func (r *room) takeOver(i game.Seat) {
+func (r *room) takeOver(i cards.Seat) {
 	st := &r.seats[i]
 	name := st.name
 	left := st.kind == seatLeft

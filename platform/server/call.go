@@ -3,7 +3,7 @@ package server
 import (
 	"time"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
 // Calls (issue #43): the people at a table may call each other with sound
@@ -47,7 +47,7 @@ func validCallID(id string) bool {
 
 // signalled takes a token from the seat's call bucket: joining, switching
 // the microphone or camera and the descriptions all count.
-func (r *room) signalled(c *client, i game.Seat) bool {
+func (r *room) signalled(c *client, i cards.Seat) bool {
 	if r.seats[i].signal.take(time.Now()) {
 		return true
 	}
@@ -57,7 +57,7 @@ func (r *room) signalled(c *client, i game.Seat) bool {
 
 // cmdCall joins the call, switches the microphone or camera, or (id "")
 // hangs up. Everyone sees the change in players[i].call.
-func (r *room) cmdCall(c *client, i game.Seat, m *inMsg) {
+func (r *room) cmdCall(c *client, i cards.Seat, m *inMsg) {
 	st := &r.seats[i]
 	var next *callState
 	if m.ID != "" {
@@ -66,7 +66,7 @@ func (r *room) cmdCall(c *client, i game.Seat, m *inMsg) {
 			return
 		}
 		for k := range r.seats {
-			if o := r.seats[k].call; game.Seat(k) != i && o != nil && o.ID == m.ID {
+			if o := r.seats[k].call; cards.Seat(k) != i && o != nil && o.ID == m.ID {
 				c.sendError(errInvalid, "Dat bericht begrijp ik niet.")
 				return
 			}
@@ -86,7 +86,7 @@ func (r *room) cmdCall(c *client, i game.Seat, m *inMsg) {
 // cmdRTC passes a session description to the call session m.To. One that
 // no longer finds its session (it hung up, or the seat changed hands) is
 // dropped: the browsers start again from the next state.
-func (r *room) cmdRTC(c *client, i game.Seat, m *inMsg) {
+func (r *room) cmdRTC(c *client, i cards.Seat, m *inMsg) {
 	from := r.seats[i].call
 	d := m.Desc
 	if d == nil || d.Type != "offer" && d.Type != "answer" || d.SDP == "" || len(d.SDP) > maxSDP {

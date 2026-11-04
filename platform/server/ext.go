@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
 // extPlay is the gameplay of a game on the exported API (api.go): it
@@ -65,13 +65,13 @@ func (x *extPlay) start() {
 
 func (x *extPlay) lobby() { x.fresh() }
 
-func (x *extPlay) turn() game.Seat { return x.p.Turn() }
+func (x *extPlay) turn() cards.Seat { return x.p.Turn() }
 
-func (x *extPlay) handLen(i game.Seat) int { return x.p.HandLen(i) }
+func (x *extPlay) handLen(i cards.Seat) int { return x.p.HandLen(i) }
 
-func (x *extPlay) state(i game.Seat) any { return x.p.State(i) }
+func (x *extPlay) state(i cards.Seat) any { return x.p.State(i) }
 
-func (x *extPlay) move(c *client, i game.Seat, m *inMsg) bool {
+func (x *extPlay) move(c *client, i cards.Seat, m *inMsg) bool {
 	err := x.p.Move(i, Msg{T: m.T, Raw: m.raw})
 	switch {
 	case errors.Is(err, ErrUnknownMsg):
@@ -86,12 +86,12 @@ func (x *extPlay) move(c *client, i game.Seat, m *inMsg) bool {
 	return true
 }
 
-func (x *extPlay) decision(i game.Seat, bb *brainBox) (func() any, any) {
+func (x *extPlay) decision(i cards.Seat, bb *brainBox) (func() any, any) {
 	think, safe := x.p.Decision(i, bb.ext)
 	return func() any { return bb.guard(think, safe) }, safe
 }
 
-func (x *extPlay) apply(i game.Seat, a any) error {
+func (x *extPlay) apply(i cards.Seat, a any) error {
 	err := x.p.Apply(i, a)
 	x.r.drive()
 	return err
@@ -148,7 +148,7 @@ func (bb *brainBox) guard(think func() any, safe any) (a any) {
 }
 
 // brainOf is the brain that plays seat i: its bot's, or the substitute's.
-func (r *room) brainOf(i game.Seat) *brainBox {
+func (r *room) brainOf(i cards.Seat) *brainBox {
 	st := &r.seats[i]
 	if st.brain == nil { // the substitute of a human
 		st.brain = r.newBrain("", "normaal")
@@ -279,11 +279,11 @@ func (t *Table) MatchID() string { return t.r.matchID }
 
 // DisplayName is how seat i appears in chat and texts: the name, a bot's
 // with "(AI)".
-func (t *Table) DisplayName(i game.Seat) string { return t.r.displayName(i) }
+func (t *Table) DisplayName(i cards.Seat) string { return t.r.displayName(i) }
 
 // BotPlays reports whether a bot makes seat i's decisions: a bot seat, or
 // a human who dropped out and whom the others let a substitute play for.
-func (t *Table) BotPlays(i game.Seat) bool { return t.r.botPlays(i) }
+func (t *Table) BotPlays(i cards.Seat) bool { return t.r.botPlays(i) }
 
 // HumanCount is the number of humans at the table.
 func (t *Table) HumanCount() int { return t.r.humanCount() }
@@ -318,14 +318,14 @@ func (t *Table) Pace() Pace {
 func (t *Table) Logger() *slog.Logger { return t.r.log }
 
 // Shared is the part of the state for seat i that every game shares.
-func (t *Table) Shared(i game.Seat) Shared {
+func (t *Table) Shared(i cards.Seat) Shared {
 	r := t.r
 	s := Shared{
 		Code: r.code, Phase: r.phase, Opts: r.x.wire(), You: int(i), Host: int(r.host),
 		Players: make([]*playerState, r.players()), Turn: -1, NextAt: unixMilli(r.nextAt),
 	}
 	for k := range s.Players {
-		s.Players[k] = r.playerState(game.Seat(k))
+		s.Players[k] = r.playerState(cards.Seat(k))
 	}
 	if r.phase == phaseLobby {
 		s.Roster = r.roster()
@@ -334,7 +334,7 @@ func (t *Table) Shared(i game.Seat) Shared {
 		if r.pending == stepNone {
 			s.Turn = int(r.x.p.Turn())
 		}
-		if q := r.asking; q != game.NoSeat {
+		if q := r.asking; q != cards.NoSeat {
 			s.Takeover = &takeoverState{Seat: q, Left: r.seats[q].kind == seatLeft}
 		}
 	}
@@ -426,7 +426,7 @@ func (t *Table) Background(f func() any, then func(any)) {
 // panic gives nil); then gets f's answer on the room goroutine after the
 // seat's think time, unless the match is over by then. then checks that
 // the answer is still wanted.
-func (t *Table) Think(i game.Seat, f func(brain any) any, then func(any)) {
+func (t *Table) Think(i cards.Seat, f func(brain any) any, then func(any)) {
 	r, x := t.r, t.r.x
 	bb, delay, gen := r.brainOf(i), r.thinkTime(i), x.gen
 	go func() {
@@ -479,13 +479,13 @@ func (t *Table) SysChat(format string, args ...any) { t.r.sysChat(format, args..
 
 // BotSay lets the bot at seat i react to ev after delay, within the limits
 // of bot chat (design §5); it reports whether the bot speaks.
-func (t *Table) BotSay(i game.Seat, ev ChatEvent, delay time.Duration) bool {
+func (t *Table) BotSay(i cards.Seat, ev ChatEvent, delay time.Duration) bool {
 	return t.r.botSay(i, ev, delay)
 }
 
 // BotsReact offers ev to the bots in random order until n of them spoke;
 // mk adapts the event per seat, false: not this one.
-func (t *Table) BotsReact(n int, delay time.Duration, mk func(i game.Seat) (ChatEvent, bool)) {
+func (t *Table) BotsReact(n int, delay time.Duration, mk func(i cards.Seat) (ChatEvent, bool)) {
 	t.r.botsReact(n, delay, mk)
 }
 

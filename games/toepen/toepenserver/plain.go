@@ -3,8 +3,8 @@ package toepenserver
 import (
 	"math/rand/v2"
 
-	"jannie/games/klaverjas/game"
 	"jannie/games/toepen/toepen"
+	"jannie/platform/cards"
 	"jannie/platform/persona"
 	"jannie/platform/server"
 )
@@ -29,10 +29,10 @@ func (plainAI) Chat(string, server.ChatEvent, *rand.Rand) string { return "" }
 
 type plainBrain struct{}
 
-func (plainBrain) Was(toepen.View) bool              { return false }
-func (plainBrain) Check(toepen.View) bool            { return false }
-func (plainBrain) Toep(toepen.View) bool             { return false }
-func (plainBrain) Discard(v toepen.View) []game.Card { return safe(v).cards }
-func (plainBrain) Overtoep(toepen.View) bool         { return false }
-func (plainBrain) Answer(toepen.View) bool           { return true }
-func (plainBrain) Play(v toepen.View) game.Card      { return safe(v).card }
+func (plainBrain) Was(toepen.View) bool               { return false }
+func (plainBrain) Check(toepen.View) bool             { return false }
+func (plainBrain) Toep(toepen.View) bool              { return false }
+func (plainBrain) Discard(v toepen.View) []cards.Card { return safe(v).cards }
+func (plainBrain) Overtoep(toepen.View) bool          { return false }
+func (plainBrain) Answer(toepen.View) bool            { return true }
+func (plainBrain) Play(v toepen.View) cards.Card      { return safe(v).card }

@@ -6,20 +6,20 @@ import (
 	"slices"
 	"testing"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
-var cards = game.MustParseCards
+var parseCards = cards.MustParseCards
 
 // deck lays out a deck for NewDeal: the hands in dealing order (from
 // voorhand), then the stock; the stock is filled up with the cards not
 // named, in deck order.
-func deck(hands ...string) []game.Card {
-	var out []game.Card
+func deck(hands ...string) []cards.Card {
+	var out []cards.Card
 	for _, h := range hands {
-		out = append(out, cards(h)...)
+		out = append(out, parseCards(h)...)
 	}
-	for _, c := range game.NewDeck() {
+	for _, c := range cards.NewDeck() {
 		if !slices.Contains(out, c) {
 			out = append(out, c)
 		}
@@ -37,7 +37,7 @@ func must(t *testing.T, err error) {
 }
 
 func TestOrder(t *testing.T) {
-	order := cards("JH QH KH AH 7H 8H 9H TH")
+	order := parseCards("JH QH KH AH 7H 8H 9H TH")
 	for i := range order {
 		for j := range order {
 			if got, want := Beats(order[i], order[j]), i > j; got != want {
@@ -45,7 +45,7 @@ func TestOrder(t *testing.T) {
 			}
 		}
 	}
-	if Beats(cards("TS")[0], cards("JH")[0]) {
+	if Beats(parseCards("TS")[0], parseCards("JH")[0]) {
 		t.Error("a card of another suit beats nothing")
 	}
 }
@@ -64,26 +64,26 @@ func TestWas(t *testing.T) {
 		{"TH QS KD AC", NoWas},
 		{"JH QS KD", NoWas},
 	} {
-		if got := Was(cards(tc.hand)); got != tc.want {
+		if got := Was(parseCards(tc.hand)); got != tc.want {
 			t.Errorf("Was(%s) = %v, want %v", tc.hand, got, tc.want)
 		}
 	}
 }
 
 func TestLegal(t *testing.T) {
-	hand := cards("7H TH JS 9C")
-	led := Trick{Cards: []game.Played{{Seat: 0, Card: cards("8H")[0]}}}
-	if got := Legal(hand, led); !slices.Equal(got, cards("7H TH")) {
+	hand := parseCards("7H TH JS 9C")
+	led := Trick{Cards: []cards.Played{{Seat: 0, Card: parseCards("8H")[0]}}}
+	if got := Legal(hand, led); !slices.Equal(got, parseCards("7H TH")) {
 		t.Errorf("following hearts: %v", got)
 	}
-	void := Trick{Cards: []game.Played{{Seat: 0, Card: cards("8D")[0]}}}
+	void := Trick{Cards: []cards.Played{{Seat: 0, Card: parseCards("8D")[0]}}}
 	if got := Legal(hand, void); !slices.Equal(got, hand) {
 		t.Errorf("no diamonds: any card, got %v", got)
 	}
 	if got := Legal(hand, Trick{}); !slices.Equal(got, hand) {
 		t.Errorf("leading: any card, got %v", got)
 	}
-	if why := ExplainIllegal(cards("JS")[0], hand, led); why != "Je moet bekennen (♥)." {
+	if why := ExplainIllegal(parseCards("JS")[0], hand, led); why != "Je moet bekennen (♥)." {
 		t.Errorf("illegal reason %q", why)
 	}
 	if c := Constraint(hand, led); c != "Bekennen: speel ♥" {
@@ -107,7 +107,7 @@ func TestPlainRound(t *testing.T) {
 	}
 	for k, trick := range plays {
 		for s, c := range trick {
-			must(t, d.Play(game.Seat(s), cards(c)[0]))
+			must(t, d.Play(cards.Seat(s), parseCards(c)[0]))
 		}
 		if w := d.Tricks()[k].Winner; w != 0 {
 			t.Fatalf("trick %d won by %d", k, w)
@@ -124,15 +124,15 @@ func TestPlainRound(t *testing.T) {
 
 func TestIllegalAndTurn(t *testing.T) {
 	d := NewDeal(2, noWas(), 1, [MaxPlayers]int{}, deck("7H 8S JD QD", "9H TH KS AS"))
-	if err := d.Play(1, cards("9H")[0]); !errors.Is(err, ErrNotYourTurn) {
+	if err := d.Play(1, parseCards("9H")[0]); !errors.Is(err, ErrNotYourTurn) {
 		t.Errorf("out of turn: %v", err)
 	}
-	must(t, d.Play(0, cards("7H")[0]))
-	err := d.Play(1, cards("KS")[0])
+	must(t, d.Play(0, parseCards("7H")[0]))
+	err := d.Play(1, parseCards("KS")[0])
 	if !errors.Is(err, ErrIllegal) || err.Error() != "Je moet bekennen (♥)." {
 		t.Errorf("not following: %v", err)
 	}
-	if err := d.Play(1, cards("7C")[0]); !errors.Is(err, ErrNotInHand) {
+	if err := d.Play(1, parseCards("7C")[0]); !errors.Is(err, ErrNotInHand) {
 		t.Errorf("not in hand: %v", err)
 	}
 }
@@ -146,7 +146,7 @@ func TestToep(t *testing.T) {
 	if d.Phase() != PhaseToep || d.Stake() != 2 || d.Turn() != 1 {
 		t.Fatalf("after toep: %v stake %d turn %d", d.Phase(), d.Stake(), d.Turn())
 	}
-	if !slices.Equal(d.Asking(), []game.Seat{1, 2}) {
+	if !slices.Equal(d.Asking(), []cards.Seat{1, 2}) {
 		t.Errorf("asking %v", d.Asking())
 	}
 	must(t, d.Answer(1, false)) // passes: 1 point
@@ -160,23 +160,23 @@ func TestToep(t *testing.T) {
 	if err := d.Toep(0); !errors.Is(err, ErrToepAgain) {
 		t.Errorf("toep again: %v", err)
 	}
-	must(t, d.Play(0, cards("7H")[0]))
+	must(t, d.Play(0, parseCards("7H")[0]))
 	// Seat 1 passed: seat 2 is next and may toep over it.
 	if d.Turn() != 2 || !d.CanToep(2) {
 		t.Fatalf("turn %d", d.Turn())
 	}
 	must(t, d.Toep(2))
-	if d.Stake() != 3 || !slices.Equal(d.Asking(), []game.Seat{0}) {
+	if d.Stake() != 3 || !slices.Equal(d.Asking(), []cards.Seat{0}) {
 		t.Fatalf("stake %d asking %v", d.Stake(), d.Asking())
 	}
 	must(t, d.Answer(0, true))
 	if d.Turn() != 2 {
 		t.Fatalf("the toeper plays on: turn %d", d.Turn())
 	}
-	must(t, d.Play(2, cards("7S")[0])) // 0 wins: 7H led
+	must(t, d.Play(2, parseCards("7S")[0])) // 0 wins: 7H led
 	for _, c := range []string{"8H", "8S", "9H", "9S", "TH", "TS"} {
 		seat := d.Turn()
-		must(t, d.Play(seat, cards(c)[0]))
+		must(t, d.Play(seat, parseCards(c)[0]))
 	}
 	r := d.Result()
 	if r == nil || r.Winner != 0 || r.Stake != 3 || !slices.Equal(r.Gains, []int{0, 1, 3}) {
@@ -187,7 +187,7 @@ func TestToep(t *testing.T) {
 func TestAllPass(t *testing.T) {
 	d := NewDeal(3, noWas(), 0, [MaxPlayers]int{4, 2, 0}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S"))
 	// Voorhand is 1 (dealt first); it leads, seat 2 toeps on its turn.
-	must(t, d.Play(1, cards("TH")[0]))
+	must(t, d.Play(1, parseCards("TH")[0]))
 	must(t, d.Toep(2))
 	must(t, d.Answer(0, false))
 	must(t, d.Answer(1, false))
@@ -200,12 +200,12 @@ func TestAllPass(t *testing.T) {
 // A passed leader's card stays in the trick but does not count.
 func TestPassedLeader(t *testing.T) {
 	d := NewDeal(3, noWas(), 2, [MaxPlayers]int{}, deck("TH 9H 8H 7H", "JS QS KS AS", "JH QH KH AH"))
-	must(t, d.Play(0, cards("TH")[0]))
+	must(t, d.Play(0, parseCards("TH")[0]))
 	must(t, d.Toep(1))
 	must(t, d.Answer(2, true))
 	must(t, d.Answer(0, false))
-	must(t, d.Play(1, cards("AS")[0])) // no hearts: free
-	must(t, d.Play(2, cards("JH")[0])) // follows hearts
+	must(t, d.Play(1, parseCards("AS")[0])) // no hearts: free
+	must(t, d.Play(2, parseCards("JH")[0])) // follows hearts
 	if w := d.Tricks()[0].Winner; w != 2 {
 		t.Errorf("trick won by %d, want 2: the only heart still in", w)
 	}
@@ -216,7 +216,7 @@ func TestPassedLeader(t *testing.T) {
 
 func TestWasLetThrough(t *testing.T) {
 	d := NewDeal(3, DefaultRules, 2, [MaxPlayers]int{}, deck("JH QS KD 8C", "TH 9H 8H 7H", "TS 9S 8S 7S", "7D 8D 9D TD"))
-	if d.Phase() != PhaseWas || d.Turn() != game.NoSeat {
+	if d.Phase() != PhaseWas || d.Turn() != cards.NoSeat {
 		t.Fatalf("phase %v", d.Phase())
 	}
 	must(t, d.Was(0, true)) // a bluff: 8C is no 7
@@ -236,13 +236,13 @@ func TestWasLetThrough(t *testing.T) {
 		t.Fatalf("first declines: %v %v turn %d", res, err, d.Turn())
 	}
 	res, err = d.Check(2, false)
-	if err != nil || res == nil || res.Checker != game.NoSeat || len(res.Cards) != 0 {
+	if err != nil || res == nil || res.Checker != cards.NoSeat || len(res.Cards) != 0 {
 		t.Fatalf("let through: %+v %v", res, err)
 	}
-	if !slices.Equal(d.Hand(0), cards("7D 8D 9D TD")) || !d.Washed(0) || d.Stock() != 16 {
+	if !slices.Equal(d.Hand(0), parseCards("7D 8D 9D TD")) || !d.Washed(0) || d.Stock() != 16 {
 		t.Errorf("new hand %v", d.Hand(0))
 	}
-	if !slices.Equal(d.Dealt(0), cards("JH QS KD 8C")) {
+	if !slices.Equal(d.Dealt(0), parseCards("JH QS KD 8C")) {
 		t.Errorf("dealt %v", d.Dealt(0))
 	}
 	// New cards: seat 0 alone says again whether it has a was.
@@ -262,16 +262,16 @@ func TestWasAgain(t *testing.T) {
 		deck("JH QS KD 7C", "TH 9H 8H 7H", "TS 9S 8S 7S", "KH QH AC 9C", "QC TC KS JS", "JD QD KC 7D", "AH AS AD JC", "8D 9D TD 8C"))
 	letGo := func() {
 		t.Helper()
-		for _, s := range []game.Seat{1, 2, 3, 4} {
+		for _, s := range []cards.Seat{1, 2, 3, 4} {
 			must2(t)(d.Check(s, false))
 		}
 	}
 	must(t, d.Was(0, true))
-	for s := range game.Seat(4) {
+	for s := range cards.Seat(4) {
 		must(t, d.Was(s+1, false))
 	}
 	letGo()
-	if d.Phase() != PhaseWas || d.WasRound() != 2 || !slices.Equal(d.Hand(0), cards("JD QD KC 7D")) || d.Stock() != 8 {
+	if d.Phase() != PhaseWas || d.WasRound() != 2 || !slices.Equal(d.Hand(0), parseCards("JD QD KC 7D")) || d.Stock() != 8 {
 		t.Fatalf("round %d hand %v", d.WasRound(), d.Hand(0))
 	}
 	must(t, d.Was(0, true)) // another vuile was
@@ -280,13 +280,13 @@ func TestWasAgain(t *testing.T) {
 	if err != nil || res == nil || !res.Genuine() || d.Points(2) != 1 {
 		t.Fatalf("checked again: %+v %v", res, err)
 	}
-	if d.WasRound() != 3 || !slices.Equal(d.Hand(0), cards("AH AS AD JC")) || d.Stock() != 4 {
+	if d.WasRound() != 3 || !slices.Equal(d.Hand(0), parseCards("AH AS AD JC")) || d.Stock() != 4 {
 		t.Fatalf("round %d hand %v stock %d", d.WasRound(), d.Hand(0), d.Stock())
 	}
 	must(t, d.Was(0, true)) // a witte was
 	letGo()
 	// The stock is empty: no fourth time.
-	if d.Phase() != PhasePlay || d.Stock() != 0 || !slices.Equal(d.Dealt(0), cards("JH QS KD 7C")) {
+	if d.Phase() != PhasePlay || d.Stock() != 0 || !slices.Equal(d.Dealt(0), parseCards("JH QS KD 7C")) {
 		t.Fatalf("phase %v stock %d dealt %v", d.Phase(), d.Stock(), d.Dealt(0))
 	}
 	if len(d.Checks()) != 3 {
@@ -319,7 +319,7 @@ func TestWasChecked(t *testing.T) {
 			must(t, d.Was(1, false))
 			must(t, d.Was(2, false))
 			res, err := d.Check(1, true)
-			if err != nil || res == nil || res.Checker != 1 || res.Genuine() != tc.genuine || !slices.Equal(res.Cards, cards(tc.hand)) {
+			if err != nil || res == nil || res.Checker != 1 || res.Genuine() != tc.genuine || !slices.Equal(res.Cards, parseCards(tc.hand)) {
 				t.Fatalf("check: %+v %v", res, err)
 			}
 			if tc.genuine {
@@ -334,10 +334,10 @@ func TestWasChecked(t *testing.T) {
 			}
 			// Rule Bluf (the default): the claimant pays, takes the cards
 			// back and plays on with them face up.
-			if d.Points(0) != 1 || d.Status(0) != StatusIn || !d.Open(0) || !slices.Equal(d.Hand(0), cards(tc.hand)) {
+			if d.Points(0) != 1 || d.Status(0) != StatusIn || !d.Open(0) || !slices.Equal(d.Hand(0), parseCards(tc.hand)) {
 				t.Errorf("bluff: claimant pays and plays open")
 			}
-			if v := d.View(1); !slices.Equal(v.Open[0], cards(tc.hand)) || len(v.Open[1]) != 0 {
+			if v := d.View(1); !slices.Equal(v.Open[0], parseCards(tc.hand)) || len(v.Open[1]) != 0 {
 				t.Errorf("the open hand in the view: %v", v.Open)
 			}
 			if d.Phase() != PhasePlay || d.Turn() != 0 {
@@ -376,11 +376,11 @@ func TestWasOnArmoede(t *testing.T) {
 	must(t, d.Was(1, false))
 	must(t, d.Was(2, false))
 	c := d.Checks()
-	if len(c) != 1 || !c[0].Shown || c[0].Checker != game.NoSeat || c[0].Kind != Vuile || !slices.Equal(c[0].Cards, cards("JH QS KD 7C")) || !c[0].Washed() {
+	if len(c) != 1 || !c[0].Shown || c[0].Checker != cards.NoSeat || c[0].Kind != Vuile || !slices.Equal(c[0].Cards, parseCards("JH QS KD 7C")) || !c[0].Washed() {
 		t.Fatalf("shown: %+v", c)
 	}
 	// New cards, a witte was again: asked again, shown again.
-	if d.Phase() != PhaseWas || !d.CanClaim(0) || !slices.Equal(d.Hand(0), cards("AH AS AD JC")) {
+	if d.Phase() != PhaseWas || !d.CanClaim(0) || !slices.Equal(d.Hand(0), parseCards("AH AS AD JC")) {
 		t.Fatalf("again: phase %v hand %v", d.Phase(), d.Hand(0))
 	}
 	must(t, d.Was(0, true))
@@ -395,7 +395,7 @@ func TestWasOnArmoede(t *testing.T) {
 
 func TestWasStock(t *testing.T) {
 	// Six players: 8 cards left, two claims at most.
-	d := NewDeal(6, DefaultRules, 5, [MaxPlayers]int{}, game.NewDeck())
+	d := NewDeal(6, DefaultRules, 5, [MaxPlayers]int{}, cards.NewDeck())
 	if d.Stock() != 8 {
 		t.Fatalf("stock %d", d.Stock())
 	}
@@ -412,7 +412,7 @@ func TestWasStock(t *testing.T) {
 		t.Fatalf("phase %v claimant %d", d.Phase(), d.Claimant())
 	}
 	// Seven players: four cards left; eight: none, no time for a was.
-	if d := NewDeal(8, DefaultRules, 7, [MaxPlayers]int{}, game.NewDeck()); d.Phase() != PhasePlay {
+	if d := NewDeal(8, DefaultRules, 7, [MaxPlayers]int{}, cards.NewDeck()); d.Phase() != PhasePlay {
 		t.Errorf("eight players: %v", d.Phase())
 	}
 }
@@ -420,10 +420,10 @@ func TestWasStock(t *testing.T) {
 func TestArmoede(t *testing.T) {
 	rules := Rules{Limit: 10, Armoede: true}
 	d := NewDeal(4, rules, 3, [MaxPlayers]int{0, 9, 3, 9}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S", "JS QS KS AS"))
-	if d.Phase() != PhaseToep || d.Stake() != 2 || !d.ArmoedeToep() || d.Toeper() != game.NoSeat {
+	if d.Phase() != PhaseToep || d.Stake() != 2 || !d.ArmoedeToep() || d.Toeper() != cards.NoSeat {
 		t.Fatalf("phase %v stake %d", d.Phase(), d.Stake())
 	}
-	if !slices.Equal(d.Asking(), []game.Seat{0, 2}) {
+	if !slices.Equal(d.Asking(), []cards.Seat{0, 2}) {
 		t.Fatalf("asking %v: those on armoede are not asked", d.Asking())
 	}
 	must(t, d.Answer(0, false))
@@ -435,7 +435,7 @@ func TestArmoede(t *testing.T) {
 	if d.CanToep(1) || !errors.Is(d.Toep(1), ErrToepArmoede) {
 		t.Error("a toep on armoede")
 	}
-	must(t, d.Play(1, cards("JH")[0]))
+	must(t, d.Play(1, parseCards("JH")[0]))
 	// The others still in are both on armoede: they go along with any toep,
 	// so a toep would only put more at stake for seat 2 itself.
 	if d.CanToep(2) || !errors.Is(d.Toep(2), ErrToepPointless) {
@@ -445,13 +445,13 @@ func TestArmoede(t *testing.T) {
 	d = NewDeal(4, rules, 3, [MaxPlayers]int{0, 9, 3, 9}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S", "JS QS KS AS"))
 	must(t, d.Answer(0, true))
 	must(t, d.Answer(2, true))
-	must(t, d.Play(0, cards("TH")[0]))
-	must(t, d.Play(1, cards("JH")[0]))
+	must(t, d.Play(0, parseCards("TH")[0]))
+	must(t, d.Play(1, parseCards("JH")[0]))
 	if !d.CanToep(2) {
 		t.Fatal("seat 2 may toep: seat 0 can pass")
 	}
 	must(t, d.Toep(2))
-	if !slices.Equal(d.AutoStays(), []game.Seat{3, 1}) || !slices.Equal(d.Asking(), []game.Seat{0}) || d.PassCost(0) != 2 {
+	if !slices.Equal(d.AutoStays(), []cards.Seat{3, 1}) || !slices.Equal(d.Asking(), []cards.Seat{0}) || d.PassCost(0) != 2 {
 		t.Errorf("auto %v asking %v pass cost %d", d.AutoStays(), d.Asking(), d.PassCost(0))
 	}
 }
@@ -469,7 +469,7 @@ func TestToepDead(t *testing.T) {
 	}
 	must(t, d.Overtoep(1)) // stake 3
 	// Seat 0 agreed to 2: passing would put it out, so it goes along unasked.
-	if !slices.Equal(d.AutoStays(), []game.Seat{0}) || !slices.Equal(d.Asking(), []game.Seat{2}) {
+	if !slices.Equal(d.AutoStays(), []cards.Seat{0}) || !slices.Equal(d.Asking(), []cards.Seat{2}) {
 		t.Fatalf("auto %v asking %v", d.AutoStays(), d.Asking())
 	}
 	must(t, d.Answer(2, true))
@@ -483,14 +483,14 @@ func TestToepDead(t *testing.T) {
 // before its card can complete the trick.
 func TestOvertoep(t *testing.T) {
 	d := NewDeal(3, noWas(), 2, [MaxPlayers]int{}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S"))
-	must(t, d.Play(0, cards("TH")[0]))
-	must(t, d.Play(1, cards("JH")[0]))
+	must(t, d.Play(0, parseCards("TH")[0]))
+	must(t, d.Play(1, parseCards("JH")[0]))
 	must(t, d.Toep(2))
-	if !slices.Equal(d.Asking(), []game.Seat{0, 1}) || !d.CanRaise(0) {
+	if !slices.Equal(d.Asking(), []cards.Seat{0, 1}) || !d.CanRaise(0) {
 		t.Fatalf("asking %v", d.Asking())
 	}
 	must(t, d.Overtoep(0))
-	if d.Stake() != 3 || d.Toeper() != 0 || !slices.Equal(d.Asking(), []game.Seat{1, 2}) || len(d.Toeps()) != 2 {
+	if d.Stake() != 3 || d.Toeper() != 0 || !slices.Equal(d.Asking(), []cards.Seat{1, 2}) || len(d.Toeps()) != 2 {
 		t.Fatalf("stake %d toeper %d asking %v", d.Stake(), d.Toeper(), d.Asking())
 	}
 	must(t, d.Answer(1, true))
@@ -514,7 +514,7 @@ func TestOvertoep(t *testing.T) {
 		t.Fatalf("result %+v", r)
 	}
 	// Not on armoede's question.
-	d = NewDeal(3, Rules{Limit: 10, Armoede: true}, 2, [MaxPlayers]int{0, 9, 0}, game.NewDeck())
+	d = NewDeal(3, Rules{Limit: 10, Armoede: true}, 2, [MaxPlayers]int{0, 9, 0}, cards.NewDeck())
 	if d.CanRaise(0) || !errors.Is(d.Overtoep(0), ErrNoRaise) {
 		t.Error("an overtoep on armoede")
 	}
@@ -577,7 +577,7 @@ func TestBoer(t *testing.T) {
 	for _, on := range []bool{true, false} {
 		d := NewDeal(2, Rules{Limit: 10, Boer: on}, 1, [MaxPlayers]int{3, 0}, deck("TS 9S 8S JH", "7S QS KS AC"))
 		for range 4 {
-			must(t, d.Play(0, d.Legal()[slices.IndexFunc(d.Legal(), func(c game.Card) bool { return c.Rank != game.Jack || len(d.Hand(0)) == 1 })]))
+			must(t, d.Play(0, d.Legal()[slices.IndexFunc(d.Legal(), func(c cards.Card) bool { return c.Rank != cards.Jack || len(d.Hand(0)) == 1 })]))
 			must(t, d.Play(1, d.Legal()[0]))
 		}
 		r := d.Result()
@@ -591,14 +591,14 @@ func TestBoer(t *testing.T) {
 	}
 	// No points to take off: none.
 	d := NewDeal(2, Rules{Limit: 10, Boer: true}, 1, [MaxPlayers]int{}, deck("JH TS 9S 8S", "AC 7S QS KS"))
-	must(t, d.Play(0, cards("TS")[0]))
-	must(t, d.Play(1, cards("7S")[0]))
-	must(t, d.Play(0, cards("9S")[0]))
-	must(t, d.Play(1, cards("QS")[0]))
-	must(t, d.Play(0, cards("8S")[0]))
-	must(t, d.Play(1, cards("KS")[0]))
-	must(t, d.Play(0, cards("JH")[0]))
-	must(t, d.Play(1, cards("AC")[0]))
+	must(t, d.Play(0, parseCards("TS")[0]))
+	must(t, d.Play(1, parseCards("7S")[0]))
+	must(t, d.Play(0, parseCards("9S")[0]))
+	must(t, d.Play(1, parseCards("QS")[0]))
+	must(t, d.Play(0, parseCards("8S")[0]))
+	must(t, d.Play(1, parseCards("KS")[0]))
+	must(t, d.Play(0, parseCards("JH")[0]))
+	must(t, d.Play(1, parseCards("AC")[0]))
 	if r := d.Result(); !r.Boer || r.Gains[0] != 0 || r.Points[0] != 0 {
 		t.Fatalf("result %+v", r)
 	}
@@ -609,7 +609,7 @@ func TestBoer(t *testing.T) {
 // from voorhand; no was, no armoede, no toep; it ends the match.
 func TestKoningsspel(t *testing.T) {
 	rules := DefaultRules
-	d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 10, 9}, game.NewDeck())
+	d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 10, 9}, cards.NewDeck())
 	if !d.Koning() || d.DealtSize() != 11 || d.Size() != 8 || d.HandLen(0) != 11 || d.HandLen(1) != 0 || d.Phase() != PhaseDiscard || d.Stake() != 1 {
 		t.Fatalf("koningsspel: %v dealt %d size %d phase %v", d.Koning(), d.DealtSize(), d.Size(), d.Phase())
 	}
@@ -620,7 +620,7 @@ func TestKoningsspel(t *testing.T) {
 	if err := d.Discard(0, h[:2]); err == nil || err.Error() != "Leg precies 3 kaarten weg." {
 		t.Errorf("two: %v", err)
 	}
-	if !errors.Is(d.Discard(0, []game.Card{h[0], h[0], h[1]}), ErrDiscardTwice) || !errors.Is(d.Discard(2, h[:3]), ErrNotYourTurn) {
+	if !errors.Is(d.Discard(0, []cards.Card{h[0], h[0], h[1]}), ErrDiscardTwice) || !errors.Is(d.Discard(2, h[:3]), ErrNotYourTurn) {
 		t.Error("a card twice, or out of turn")
 	}
 	if !errors.Is(d.Discard(0, append(h[:2:2], d.stock[0])), ErrNotInHand) {
@@ -650,7 +650,7 @@ func TestKoningsspel(t *testing.T) {
 		t.Fatalf("result %+v after %d tricks", r, len(d.Tricks()))
 	}
 	for s := range 3 {
-		if out := r.Out[s]; out == (game.Seat(s) == r.Winner) {
+		if out := r.Out[s]; out == (cards.Seat(s) == r.Winner) {
 			t.Errorf("seat %d out %v", s, out)
 		}
 	}
@@ -660,24 +660,24 @@ func TestKoningsspel(t *testing.T) {
 		for s := range tc.n {
 			pts[s] = 9
 		}
-		d := NewDeal(tc.n, rules, game.Seat(tc.n-1), pts, game.NewDeck())
+		d := NewDeal(tc.n, rules, cards.Seat(tc.n-1), pts, cards.NewDeck())
 		discard := d.Phase() == PhaseDiscard
 		if !d.Koning() || d.DealtSize() != tc.dealt || d.Size() != tc.size || discard != (tc.dealt > tc.size) {
 			t.Errorf("%d on armoede: dealt %d size %d phase %v", tc.n, d.DealtSize(), d.Size(), d.Phase())
 		}
 	}
-	if d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 9, 8}, game.NewDeck()); d.Koning() || d.Size() != 4 {
+	if d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 9, 8}, cards.NewDeck()); d.Koning() || d.Size() != 4 {
 		t.Error("one not on armoede: no koningsspel")
 	}
 	rules.Koning = false
-	if d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 9, 9}, game.NewDeck()); d.Koning() || d.Size() != 4 {
+	if d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 9, 9}, cards.NewDeck()); d.Koning() || d.Size() != 4 {
 		t.Error("koningsspel without the rule")
 	}
 }
 
 func TestArmoedeAllPass(t *testing.T) {
 	rules := Rules{Limit: 10, Armoede: true}
-	d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 0, 0}, game.NewDeck())
+	d := NewDeal(3, rules, 2, [MaxPlayers]int{9, 0, 0}, cards.NewDeck())
 	must(t, d.Answer(1, false))
 	must(t, d.Answer(2, false))
 	r := d.Result()
@@ -711,16 +711,16 @@ func TestDeadInRound(t *testing.T) {
 
 func TestMatch(t *testing.T) {
 	m := NewMatch(3, Rules{Limit: 10}, 1)
-	d := m.Deal(game.NewDeck())
+	d := m.Deal(cards.NewDeck())
 	if d.Dealer() != 1 || d.Voorhand() != 2 || m.Round != 1 {
 		t.Fatalf("dealer %d voorhand %d", d.Dealer(), d.Voorhand())
 	}
 	m.Points = [MaxPlayers]int{0, 3, 10}
-	d = m.Deal(game.NewDeck())
+	d = m.Deal(cards.NewDeck())
 	if d.Dealer() != 0 || d.Voorhand() != 1 || d.Status(2) != StatusOut || d.HandLen(2) != 0 {
 		t.Fatalf("dealer %d voorhand %d", d.Dealer(), d.Voorhand())
 	}
-	if m.Over() || m.Winner() != game.NoSeat {
+	if m.Over() || m.Winner() != cards.NoSeat {
 		t.Error("two still in")
 	}
 	m.Points[1] = 12
@@ -742,7 +742,7 @@ func TestRandomMatches(t *testing.T) {
 		players := 2 + k%7
 		rules := Rules{Limit: []int{10, 15}[k%2], Was: k%3 != 0, Armoede: k%5 != 0,
 			Koning: k%4 != 0, Boer: k%7 != 3, Lijntoep: k%3 == 1, Bluf: k%2 == 0}
-		m := NewMatch(players, rules, game.Seat(rng.IntN(players)))
+		m := NewMatch(players, rules, cards.Seat(rng.IntN(players)))
 		for rounds := 0; !m.Over(); rounds++ {
 			if rounds > 4*players*rules.Limit {
 				t.Fatalf("match %d does not end", k)
@@ -751,7 +751,7 @@ func TestRandomMatches(t *testing.T) {
 			before := m.Points
 			left := m.Left()
 			poor := 0
-			for s := range game.Seat(players) {
+			for s := range cards.Seat(players) {
 				if m.Alive(s) && m.Points[s] == rules.Limit-1 {
 					poor++
 				}
@@ -763,7 +763,7 @@ func TestRandomMatches(t *testing.T) {
 			r := d.Result()
 			checked := 0 // a winner pays only for checking a genuine was, or a bluff caught (rule Bluf)
 			for _, c := range d.Checks() {
-				if c.Checker == r.Winner && c.Genuine() || c.Claimant == r.Winner && c.Checker != game.NoSeat && !c.Genuine() {
+				if c.Checker == r.Winner && c.Genuine() || c.Claimant == r.Winner && c.Checker != cards.NoSeat && !c.Genuine() {
 					checked++
 				}
 			}
@@ -779,10 +779,10 @@ func TestRandomMatches(t *testing.T) {
 			}
 			gained := 0
 			for s := range players {
-				if game.Seat(s) != r.Winner && r.Points[s] < before[s] || r.Gains[s] != r.Points[s]-before[s] {
+				if cards.Seat(s) != r.Winner && r.Points[s] < before[s] || r.Gains[s] != r.Points[s]-before[s] {
 					t.Fatalf("match %d: points went down or gains wrong: %+v", k, r)
 				}
-				if game.Seat(s) != r.Winner {
+				if cards.Seat(s) != r.Winner {
 					gained += r.Gains[s]
 				}
 			}
@@ -794,7 +794,7 @@ func TestRandomMatches(t *testing.T) {
 			}
 			m.Settle(d)
 		}
-		if m.Winner() == game.NoSeat {
+		if m.Winner() == cards.NoSeat {
 			t.Fatalf("match %d: no winner", k)
 		}
 	}
@@ -811,7 +811,7 @@ func playRandom(t *testing.T, rng *rand.Rand, d *Deal) {
 		checkCards(t, d)
 		switch d.Phase() {
 		case PhaseWas:
-			for s := range game.Seat(d.Players()) {
+			for s := range cards.Seat(d.Players()) {
 				if d.Status(s) == StatusIn && !d.Answered(s) {
 					claim := rng.IntN(4) == 0 && d.CanClaim(s)
 					must(t, d.Was(s, claim))
@@ -870,7 +870,7 @@ func playRandom(t *testing.T, rng *rand.Rand, d *Deal) {
 // the round, in a hand).
 func checkCards(t *testing.T, d *Deal) {
 	t.Helper()
-	seen := map[game.Card]int{}
+	seen := map[cards.Card]int{}
 	for s := range d.Players() {
 		for _, c := range d.hands[s] {
 			seen[c]++
@@ -906,7 +906,7 @@ func checkCards(t *testing.T, d *Deal) {
 }
 
 func TestClone(t *testing.T) {
-	d := NewDeal(4, noWas(), 0, [MaxPlayers]int{}, game.NewDeck())
+	d := NewDeal(4, noWas(), 0, [MaxPlayers]int{}, cards.NewDeck())
 	c := d.Clone()
 	must(t, c.Play(c.Turn(), c.Legal()[0]))
 	if len(d.Current().Cards) != 0 || d.HandLen(1) != 4 {
@@ -918,7 +918,7 @@ func TestView(t *testing.T) {
 	d := NewDeal(3, DefaultRules, 2, [MaxPlayers]int{}, deck("JH QS KD 7C", "TH 9H 8H 7H", "TS 9S 8S 7S"))
 	must(t, d.Was(1, true))
 	v := d.View(0)
-	if v.Claimed[1] || v.Answered || !v.CanClaim || v.Turn != game.NoSeat {
+	if v.Claimed[1] || v.Answered || !v.CanClaim || v.Turn != cards.NoSeat {
 		t.Errorf("was view %+v", v)
 	}
 	if v := d.View(1); !v.Answered || v.CanClaim {
@@ -973,7 +973,7 @@ func TestRecord(t *testing.T) {
 	if want := (Record{Claims: 1, ClaimBluffs: 1}); m.Record[1] != want {
 		t.Errorf("seat 1: %+v", m.Record[1])
 	}
-	if d := m.Deal(game.NewDeck()); d.View(2).Record != m.Record {
+	if d := m.Deal(cards.NewDeck()); d.View(2).Record != m.Record {
 		t.Error("the next round's view knows the record")
 	}
 	// A toeper who wins by everyone passing shows nothing.
@@ -995,7 +995,7 @@ func TestPassCost(t *testing.T) {
 	must(t, d.Toep(0)) // 2: asking 1, 2, 3
 	must(t, d.Answer(1, true))
 	must(t, d.Overtoep(2)) // 3: asking 3, 0, 1
-	if !slices.Equal(d.Asking(), []game.Seat{3, 0, 1}) {
+	if !slices.Equal(d.Asking(), []cards.Seat{3, 0, 1}) {
 		t.Fatalf("asking %v", d.Asking())
 	}
 	if d.PassCost(3) != 1 || d.PassCost(0) != 2 || d.PassCost(1) != 2 || d.View(3).PassCost != 1 {

@@ -3,7 +3,7 @@ package server
 import (
 	"encoding/json"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
 // inMsg is any client message; the fields used depend on T (design §7).
@@ -136,8 +136,8 @@ type evGameOver struct {
 // evSeat is join, leave, away, back and takeover, and with three players
 // discard.
 type evSeat struct {
-	Type string    `json:"type"`
-	Seat game.Seat `json:"seat"`
+	Type string     `json:"type"`
+	Seat cards.Seat `json:"seat"`
 }
 
 type rosterEntry struct {
@@ -166,6 +166,6 @@ type playerState struct {
 // takeoverState is the question to the table: may an AI play the seat the
 // game waits for? Left: its player left (else they dropped out).
 type takeoverState struct {
-	Seat game.Seat `json:"seat"`
-	Left bool      `json:"left"`
+	Seat cards.Seat `json:"seat"`
+	Left bool       `json:"left"`
 }

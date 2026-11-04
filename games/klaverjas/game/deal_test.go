@@ -93,9 +93,9 @@ func TestDealUtrechtsFlow(t *testing.T) {
 			if d.Turn() != seat {
 				t.Fatalf("trick %d card %d: turn %v, want %v", i, k, d.Turn(), seat)
 			}
-			mustErr(t, d.Play(seat.Next(), Card{r, Hearts}), ErrNotYourTurn)
+			mustErr(t, d.Play(seat.Next(), Card{Rank: r, Suit: Hearts}), ErrNotYourTurn)
 			suit := [4]Suit{Clubs, Hearts, Diamonds, Spades}[seat]
-			if err := d.Play(seat, Card{r, suit}); err != nil {
+			if err := d.Play(seat, Card{Rank: r, Suit: suit}); err != nil {
 				t.Fatalf("trick %d: %v", i, err)
 			}
 		}

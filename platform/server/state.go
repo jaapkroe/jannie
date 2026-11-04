@@ -3,10 +3,10 @@ package server
 import (
 	"time"
 
-	"jannie/games/klaverjas/game"
+	"jannie/platform/cards"
 )
 
-func (r *room) playerState(i game.Seat) *playerState {
+func (r *room) playerState(i cards.Seat) *playerState {
 	st := &r.seats[i]
 	cards := 0
 	if r.inHand() {

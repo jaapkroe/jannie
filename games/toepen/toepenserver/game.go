@@ -12,21 +12,21 @@ import (
 	"math/rand/v2"
 	"time"
 
-	"jannie/games/klaverjas/game"
 	"jannie/games/toepen/toepen"
+	"jannie/platform/cards"
 	"jannie/platform/server"
 )
 
 // Brain makes the decisions of one bot seat. The table calls one brain
 // from one goroutine at a time.
 type Brain interface {
-	Was(v toepen.View) bool            // right after the deal: claim a was (only asked when v.CanClaim)?
-	Discard(v toepen.View) []game.Card // the koningsspel: the v.Lay cards to lay away
-	Check(v toepen.View) bool          // check the claimed was of v.Claimant?
-	Toep(v toepen.View) bool           // on its turn to play: toep first (only asked when v.CanToep)?
-	Overtoep(v toepen.View) bool       // asked about a toep: toep again (only asked when v.CanRaise)?
-	Answer(v toepen.View) bool         // go along with the toep (else pass; true when v.MustStay)?
-	Play(v toepen.View) game.Card      // one of v.Legal
+	Was(v toepen.View) bool             // right after the deal: claim a was (only asked when v.CanClaim)?
+	Discard(v toepen.View) []cards.Card // the koningsspel: the v.Lay cards to lay away
+	Check(v toepen.View) bool           // check the claimed was of v.Claimant?
+	Toep(v toepen.View) bool            // on its turn to play: toep first (only asked when v.CanToep)?
+	Overtoep(v toepen.View) bool        // asked about a toep: toep again (only asked when v.CanRaise)?
+	Answer(v toepen.View) bool          // go along with the toep (else pass; true when v.MustStay)?
+	Play(v toepen.View) cards.Card      // one of v.Legal
 }
 
 // Explainer is an AI that gives the reasoning for a player's decision
@@ -44,7 +44,7 @@ type Explanation struct {
 	Advice   string      `json:"advice"`
 	Why      string      `json:"why"`
 	Rule     string      `json:"rule"`
-	RuleCard *game.Card  `json:"ruleCard,omitempty"`
+	RuleCard *cards.Card `json:"ruleCard,omitempty"`
 	Chance   float64     `json:"chance"` // of the last trick, 0..1; -1 when not asked
 	Options  []WhyOption `json:"options"`
 	Worlds   int         `json:"worlds"` // deals sampled
@@ -54,11 +54,11 @@ type Explanation struct {
 // deals (of the last trick; for a check, of a bluff) or, with points,
 // expected penalty points.
 type WhyOption struct {
-	Label  string      `json:"label,omitempty"`
-	Cards  []game.Card `json:"cards,omitempty"`
-	Value  float64     `json:"value"`
-	Points bool        `json:"points,omitempty"`
-	Best   bool        `json:"best,omitempty"`
+	Label  string       `json:"label,omitempty"`
+	Cards  []cards.Card `json:"cards,omitempty"`
+	Value  float64      `json:"value"`
+	Points bool         `json:"points,omitempty"`
+	Best   bool         `json:"best,omitempty"`
 }
 
 // AI is what tables of toepen need from the bots.
