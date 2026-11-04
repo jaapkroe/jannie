@@ -1,7 +1,8 @@
 // Shared helpers for the app browser checks (app-screens.mjs, app-play.mjs,
-// app-checks.mjs): connect to scripts/chrome, give every page an address of
-// its own, open isolated pages per viewport, collect errors, tap like a
-// finger or click like a mouse, and save screenshots.
+// app-checks.mjs, toepen-screens.mjs; css-same.mjs uses its hooks): connect
+// to scripts/chrome, give every page an address of its own, open isolated
+// pages per viewport, collect errors, tap like a finger or click like a
+// mouse, and save screenshots.
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';

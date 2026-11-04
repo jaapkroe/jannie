@@ -1,6 +1,7 @@
 // Drives toepen's site through its screens at six viewport sizes and saves
 // screenshots to test/ui/out/toepen-<viewport>-<label>.png. Fails on console
-// errors, uncaught exceptions, failed requests or horizontal overflow.
+// errors, uncaught exceptions, failed requests, horizontal overflow or more
+// than 16 HTTP requests on load.
 //
 //   GAME=toepen scripts/dev-server 18400 -fast && scripts/chrome 9301
 //   cd test/ui && node toepen-screens.mjs --url http://127.0.0.1:18400 [--cdp http://127.0.0.1:9301] [--only phone,desktop] [--dpr 2]
@@ -128,18 +129,24 @@ async function act(P, label) {
   return false;
 }
 
-// Plays a legal card: on a touch screen the first tap lifts it, the second plays.
+// Plays a legal card: on a touch screen the first tap lifts it, the second
+// plays. A tap that did not take is tried again, until the card left the hand.
 async function playCard(P) {
-  const el = await P.page.$('.tp-hand.mine .card.legal');
-  if (!el) return false;
-  const code = await el.evaluate(e => e.dataset.card);
-  await pressEl(P, el);
-  if (P.touch) {
-    await sleep(300);
-    const again = await P.page.$(`.tp-hand .card.selected[data-card="${code}"]`);
-    if (again) await pressEl(P, again);
+  for (let tries = 0; tries < 3; tries++) {
+    const el = await P.page.$('.tp-hand.mine .card.legal');
+    if (!el) return tries > 0;
+    const code = await el.evaluate(e => e.dataset.card);
+    await pressEl(P, el);
+    if (P.touch) {
+      await sleep(300);
+      const again = await P.page.$(`.tp-hand .card.selected[data-card="${code}"]`);
+      if (again) await pressEl(P, again);
+    }
+    const gone = await P.page.waitForFunction(c => !document.querySelector(`.tp-hand.mine .card[data-card="${c}"]`),
+      { timeout: 3000, polling: 100 }, code).then(() => true, () => false);
+    if (gone) return true;
   }
-  return true;
+  throw new Error(`[${P.name}] the card would not play`);
 }
 
 // What the table asks now.
@@ -244,13 +251,13 @@ async function mainFlow(P) {
   await sleep(400);
   await snap(P, '07-my-turn');
 
-  if (await shown(P, '.topbar .tb-why')) {
-    await press(P, '.topbar .tb-why');
-    await waitFor(P, () => document.querySelector('.tp-why.open .tp-why-advice'), { label: 'the reasoning of the AI', timeout: 60000 });
-    await sleep(300);
-    await snap(P, '08-why');
-    await closeModal(P);
-  }
+  // Expert mode is on and the bots are alone with you: the tool shows.
+  await waitFor(P, () => document.querySelector('.topbar .tb-why:not([hidden])'), { label: 'the AI-reasoning tool' });
+  await press(P, '.topbar .tb-why');
+  await waitFor(P, () => document.querySelector('.tp-why.open .tp-why-advice'), { label: 'the reasoning of the AI', timeout: 60000 });
+  await sleep(300);
+  await snap(P, '08-why');
+  await closeModal(P);
 
   // Your card, and the next ones until the trick has two or more.
   await holdOn(P, PLAYED);

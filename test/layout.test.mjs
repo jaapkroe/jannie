@@ -2,7 +2,7 @@
 // no other game. Checks the imports of every tracked .go file:
 //   - nothing under platform/ imports a package of games/, except
 //     klaverjas, still built into platform/server: its klaverjas_*.go files,
-//     and the server's tests, which play klaverjas;
+//     and the server's tests, which play klaverjas, import games/klaverjas/;
 //   - no package of games/<a> imports one of games/<b>;
 //   - cmd/<g> imports only packages of platform/ and games/<g>/;
 //   - platform/cards, the seats and cards every game shares, imports no
@@ -18,21 +18,30 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MODULE = fs.readFileSync(path.join(ROOT, 'go.mod'), 'utf8').match(/^module\s+(\S+)/m)[1];
 
-// The tracked .go files, as paths from the root ("platform/server/room.go").
+// The .go files, as paths from the root ("platform/server/room.go"): the
+// tracked ones that exist and the untracked ones git does not ignore, or,
+// outside a git checkout, every one under cmd/, platform/ and games/.
 function goFiles() {
-  const out = execFileSync('git', ['ls-files', '-z', '--', '*.go'], { cwd: ROOT, encoding: 'utf8' });
-  return out.split('\0').filter(Boolean);
+  try {
+    const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.go'],
+      { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    return [...new Set(out.split('\0').filter(Boolean))].filter(f => fs.existsSync(path.join(ROOT, f)));
+  } catch {
+    return ['cmd', 'platform', 'games'].flatMap(d => fs.readdirSync(path.join(ROOT, d), { recursive: true })
+      .filter(f => f.endsWith('.go')).map(f => path.posix.join(d, f.split(path.sep).join('/'))));
+  }
 }
 
 // The imports of a Go file: the paths in its import declarations, which
 // come before any other declaration.
 function importsOf(file) {
   const src = fs.readFileSync(path.join(ROOT, file), 'utf8');
-  const head = src.split(/^(?:func|type|var|const)\b/m)[0].replace(/\/\*[\s\S]*?\*\//g, '');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  const head = code.split(/^(?:func|type|var|const)\b/m)[0];
   const paths = [];
   for (const m of head.matchAll(/^import\s*(\([\s\S]*?^\)|[^\n]*)/gm)) {
     for (const line of m[1].split('\n')) {
-      const spec = line.replace(/\/\/.*$/, '').match(/"([^"]+)"/);
+      const spec = line.match(/"([^"]+)"/);
       if (spec) paths.push(spec[1]);
     }
   }
@@ -61,9 +70,10 @@ test('the parser sees the code', () => {
 });
 
 test('the platform imports no game, but for klaverjas built into the server', () => {
-  const allowed = file => /^platform\/server\/(klaverjas_[^/]+|[^/]+_test)\.go$/.test(file);
+  const builtIn = (file, p) => /^platform\/server\/(klaverjas_[^/]+|[^/]+_test)\.go$/.test(file) &&
+    p.startsWith('games/klaverjas/');
   assert.deepEqual(violations((file, p) =>
-    !file.startsWith('platform/') || !p.startsWith('games/') || allowed(file)), []);
+    !file.startsWith('platform/') || !p.startsWith('games/') || builtIn(file, p)), []);
 });
 
 test('a game imports no other game', () => {

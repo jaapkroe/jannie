@@ -1,7 +1,7 @@
 // Package toepen is the rules engine of Toepen (docs/design.md §11): a pure
 // state machine for one round ("potje") and the bookkeeping of a match that
 // goes on until one player is left. It plays with the 32 cards of package
-// game, under the same codes on the wire ("TH" = harten 10), with an order
+// cards, under the same codes on the wire ("TH" = harten 10), with an order
 // of its own within a suit, no trump, and only the last trick counting.
 package toepen
 
