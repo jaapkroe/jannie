@@ -1,7 +1,8 @@
 // One site per game (design §9, docs/games.md): each game's site is the union
 // of platform/web (the shell) and games/<game>/web. Checks, for every site:
 //   - the two trees share no path (no file of the shell is replaced);
-//   - a page load stays within the 17 requests NPM's rate tier allows, and
+//   - a page load stays within 17 requests, which a rate limit in front of
+//     the site must let through at once, and
 //     every module main.js imports statically is preloaded;
 //   - the shell reaches the game only through main.js importing ./game.js;
 //   - nothing a player sees names another game.

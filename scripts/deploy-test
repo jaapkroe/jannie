@@ -130,7 +130,7 @@ for g in $games; do
   done
   expect "$g: SITE a host name" 1 "$(val "$g" SITE | grep -c '^[a-z0-9.-]*\.[a-z]*$' || true)"
   expect "$g: E2E_SIM a path" 1 "$(val "$g" E2E_SIM | grep -c '^[A-Za-z0-9_./-]*$' || true)"
-  # Only NPM, on the same machine, may reach a pod.
+  # Only the reverse proxy, on the same machine, may reach a pod.
   addr=$(val "$g" ADDR) p=${addr##*:}
   case $p in '' | *[!0-9]*) p=0 ;; esac
   expect "$g: ADDR on loopback" 1 "$(printf '%s\n' "$addr" | grep -c '^127\.0\.0\.1:[1-9][0-9]*$' || true)"
@@ -201,8 +201,9 @@ for l in 'Description=Klaverjas game server, https://klaverjas.kroes.dev/' \
 done
 
 # ---- the units, through podman's quadlet generator ----------------------------
-# All games' units in one directory, as on shrek: a unit naming another game's
-# pod would pass the generator alone, but not the checks of its game below.
+# All games' units in one directory, as `make install` puts them: a unit naming
+# another game's pod would pass the generator alone, but not the checks of its
+# game below.
 quadlet=
 for q in /usr/lib/podman/quadlet /usr/libexec/podman/quadlet; do
   [ -x "$q" ] && { quadlet=$q; break; }
@@ -227,7 +228,7 @@ else
     # With podman's default (stop), both containers dying at once stops the pod for good.
     expect "$g-pod: --exit-policy continue" 1 "$(has ' --exit-policy continue ' "$pod")"
     expect "$g-pod: published on loopback only" 1 "$(has " --publish $(val "$g" ADDR):8080 " "$pod")"
-    expect "$g-pod: NPM's connections arrive from 127.0.0.1" 1 \
+    expect "$g-pod: the proxy's connections arrive from 127.0.0.1" 1 \
       "$(has ' --network pasta:--host-lo-to-ns-lo ' "$pod")"
     for c in web server; do
       f=$tmp/$g-$c
@@ -292,7 +293,7 @@ expect "klaverjas's server image" 1 \
 expect "klaverjas's web image" 1 "$(has "podman build --target web --pull=newer --build-arg GIT_SHA=$head \
 --build-arg GAME=klaverjas --build-arg SITE=klaverjas.kroes.dev --build-arg TITLE=Klaverjas \
 --build-arg VERB=klaverjassen --build-arg SUPPORT_URL= -t localhost/klaverjas-web:" "$calls")"
-# A rebuild of the same commit (a Trivy finding) keeps the build before it.
+# A rebuild of the same commit (for a fixed base image) keeps the build before it.
 sleep 1
 mk image GAME=klaverjas || true
 expect "a rebuild of the same commit gets a tag of its own" 1 \

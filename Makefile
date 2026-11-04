@@ -132,9 +132,9 @@ install:   ## install GAME's pod and both its container units for your user
 	  $(RENDER) deploy/game$$s.in > $(QUADLET_DIR)/$(GAME)$$s || exit 1; done
 	systemctl --user daemon-reload
 	@loginctl show-user "$$USER" -p Linger | grep -q yes || echo "Note: run 'loginctl enable-linger $$USER' so the game starts at boot and survives logout."
-# What runs in public is a commit, the one on Forgejo; ALLOW_DIRTY=1 deploys the
-# working tree anyway, labelled -dirty. The image builds run in a sub-make, after
-# this check, with this make's revision and tag.
+# What runs in public is a commit, so the revision the site shows names its code;
+# ALLOW_DIRTY=1 deploys the working tree anyway, labelled -dirty. The image builds
+# run in a sub-make, after this check, with this make's revision and tag.
 deploy:    ## build both images of GAME from a committed tree, (re)start its pod, then check it as `make check` does
 	@case "$(GIT_SHA)" in *-dirty) [ "$(ALLOW_DIRTY)" = 1 ] || { \
 	  echo "make deploy: the working tree has changes that are not committed (git status)." \
@@ -146,7 +146,7 @@ deploy:    ## build both images of GAME from a committed tree, (re)start its pod
 	@addr=$(ADDR); tries=30; ($(WAIT_HEALTH)) && scripts/pod-check $(ADDR) $(SITE) '$(TITLE)' || \
 	  { echo "see: make status GAME=$(GAME); make logs GAME=$(GAME)" >&2; exit 1; }; \
 	  echo "$(GAME) $(GIT_SHA) is up on http://$(ADDR)/ (images :current and :$(BUILD_TAG))"
-check:     ## check GAME's running pod (every game's without GAME) on its ADDR without NPM: pages, websocket, security headers
+check:     ## check GAME's running pod (every game's without GAME) on its ADDR without the reverse proxy: pages, websocket, security headers
 	@scripts/pod-check $(ADDR) $(SITE) '$(TITLE)'
 # The first column fits the longest name to come, presidenten-server.
 status:    ## state, image revision and health of GAME's pod and both its containers (every game's without GAME)
