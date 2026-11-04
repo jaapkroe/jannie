@@ -32,8 +32,8 @@ const HARNESS = `<!doctype html>
 <html lang="nl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Handleiding</title>
+<link rel="stylesheet" href="/css/klaverjas.css">
 <link rel="stylesheet" href="/css/cards.css">
-<link rel="stylesheet" href="/css/manual.css">
 <style>
   html, body { margin: 0; }
   body { min-height: 100vh; background: radial-gradient(ellipse at 50% 40%, #237a4f 0%, #145236 55%, #0b2d1e 100%) fixed;

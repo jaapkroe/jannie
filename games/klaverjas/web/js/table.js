@@ -685,7 +685,7 @@ function renderPrompt(s) {
   const show = lesson || hint || tip;
   E.coach.hidden = !show;
   // Trump and bid hints are in the panel; only short landscape screens,
-  // where the coach sits in a free corner, keep the bubble (see app.css).
+  // where the coach sits in a free corner, keep the bubble (see klaverjas.css).
   E.coach.classList.toggle('on-stage', !!hint && s.phase !== 'play');
   // The last trick of a hand waits for its explanation to be read, with a
   // countdown; a lesson step waits for Verder without one.
@@ -1616,10 +1616,10 @@ function showWaitingBubbles() {
 const overlaps = (a, b) => !!a && !!b && a.left < b.right + 2 && b.left < a.right + 2 && a.top < b.bottom + 2 && b.top < a.bottom + 2;
 
 // A side seat talks upwards from its outer edge, or on a short landscape
-// table sideways towards the middle (app.css). Either way the bubble stops
-// short of the trick slot in its path (the partner's card above, or the
-// side seat's own card), so it does not cover the trick. '' leaves the CSS
-// maximum.
+// table sideways towards the middle (klaverjas.css). Either way the bubble
+// stops short of the trick slot in its path (the partner's card above, or
+// the side seat's own card), so it does not cover the trick. '' leaves the
+// CSS maximum.
 function sideBubbleWidth(S, pos) {
   const seat = S.root.getBoundingClientRect();
   const beside = shortLandscape();

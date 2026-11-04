@@ -1,0 +1,4699 @@
+/* Klaverjas's site (games/klaverjas/web): its table (js/table.js), the
+   overlays of the game, the lessons of Oefenen and the handleiding
+   (js/manual.js). It builds on the shell's app.css (layout, tokens, buttons,
+   seats, bubbles, modals, the lobby) and comes after it, but before
+   cards.css, so that a card's state there (.card.selected, .card.disabled)
+   wins over the same weight here (.hand > .card, .pile > .card). The
+   sections follow app.css's. */
+
+/* ---------- buttons and fields ---------- */
+
+.btn-pass {
+  background: linear-gradient(180deg, #f6f1e4, #ddd3bd);
+  color: #3b3427;
+  box-shadow: inset 0 1px 0 #fff, 0 4px 0 #a99f88, 0 10px 20px rgba(0, 0, 0, 0.25);
+}
+
+.suit {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--paper);
+  color: #15151a;
+  font-size: 18px;
+  line-height: 1;
+  vertical-align: middle;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.suit.red {
+  color: var(--suit-red);
+}
+
+.rule:not(.mine) .ss.red,
+.rv-text .ss.red {
+  color: #ff7a85;
+}
+
+.zij {
+  --team: var(--zij);
+  --team-hi: var(--zij-hi);
+  --team-lo: var(--zij-lo);
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px 6px;
+  margin-right: 6px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.tag-nat {
+  background: var(--red);
+  color: #fff;
+}
+
+.tag-pit {
+  background: var(--gold);
+  color: var(--gold-ink);
+}
+
+/* ---------- home ---------- */
+
+#btn-train .icon {
+  color: var(--zij-hi);
+  background: rgba(239, 111, 90, 0.18);
+}
+
+/* ---------- lobby ---------- */
+
+.ls-bottom { bottom: 0; left: 50%; translate: -50% 0; }
+.ls-top { top: 0; left: 50%; translate: -50% 0; }
+.ls-left { left: 0; top: 50%; translate: 0 -50%; }
+.ls-right { right: 0; top: 50%; translate: 0 -50%; }
+
+.pname-sep {
+  flex: none;
+  white-space: pre;
+}
+
+/* ---------- options ---------- */
+
+@media (max-height: 700px) {
+  .panel-sub {
+    display: none;
+  }
+}
+
+.train-intro {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.train-intro p {
+  margin: 0;
+  color: var(--ink-2);
+}
+
+.train-av {
+  width: 52px;
+  height: 52px;
+  font-size: 28px;
+  --persona: #6a5acd;
+}
+
+.m-train .opts {
+  margin: 10px 0 16px;
+}
+
+/* The lessons of Oefenen: one selected, a line of text under each name. */
+.train-lessons {
+  flex-direction: column;
+  margin: 12px 0 6px;
+}
+
+.train-lessons .seg-btn {
+  display: grid;
+  flex: none;
+  gap: 1px;
+  min-height: 54px;
+  padding: 6px 14px;
+  text-align: left;
+  white-space: normal;
+}
+
+.train-lessons b {
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.train-lessons small {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.train-lessons [aria-checked="true"] b {
+  color: inherit;
+}
+
+/* ---------- game screen ---------- */
+
+/* The pill gives way first when the bar is full: the names shorten. */
+.score-pill {
+  display: flex;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 3px 10px rgba(0, 0, 0, 0.3);
+  flex: 0 1 auto;
+}
+
+.sp {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 44px;
+  min-width: 50px;
+  padding: 3px 9px;
+  color: #fff;
+  text-align: center;
+}
+
+/* White text stays at 4.5:1 or more on every stop, the small label too. */
+.sp-wij {
+  background: linear-gradient(160deg, #168474, #0d5c51);
+}
+
+.sp-zij {
+  background: linear-gradient(160deg, #c2452f, #93311f);
+}
+
+.sp-lbl {
+  font-size: 10.5px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+.sp-num {
+  font-size: 19px;
+  font-weight: 900;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.sp-names {
+  display: none;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.trump-badge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 9px 0 5px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(160deg, #fffdf6, #ece2c9);
+  color: #17171c;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  flex: none;
+}
+
+.tb-sym {
+  width: 30px;
+  font-size: 30px;
+  line-height: 1;
+  text-align: center;
+}
+
+.trump-badge.red .tb-sym {
+  color: var(--suit-red);
+}
+
+.four-color .trump-badge[data-suit="C"] .tb-sym { color: #13813b; }
+.four-color .trump-badge[data-suit="D"] .tb-sym { color: #1557c0; }
+
+/* Training with lessons, the counting hand: the trumps the others still
+   hold, on the badge's corner. */
+.tb-cnt {
+  position: absolute;
+  top: -3px; /* in phone landscape the bar has only 3 px above the badge */
+  right: -6px;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #17171c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: 0 0 0 2px #fffdf6;
+}
+
+.tb-lbl {
+  font-size: 12px;
+  font-weight: 900;
+  color: #5b5446;
+}
+
+.trump-badge.known.wij {
+  box-shadow: 0 0 0 3px var(--wij), 0 3px 10px rgba(0, 0, 0, 0.35);
+}
+
+.trump-badge.known.wij .tb-lbl { color: var(--wij-lo); }
+
+.trump-badge.known.zij {
+  box-shadow: 0 0 0 3px var(--zij), 0 3px 10px rgba(0, 0, 0, 0.35);
+}
+
+.trump-badge.known.zij .tb-lbl { color: var(--zij-lo); }
+
+.trump-badge.unknown {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.trump-badge.unknown .tb-lbl {
+  color: var(--ink-2);
+}
+
+@media (max-width: 599px) {
+  .topbar .tb-last {
+    display: none;
+  }
+}
+
+/* On phones "laatste slag" sits next to the hand, within thumb reach. */
+.prompt .tb-last {
+  grid-column: 3;
+  justify-self: end;
+  width: 44px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+@media (min-width: 600px) {
+  .prompt .tb-last {
+    display: none;
+  }
+}
+
+@media (max-width: 380px) {
+  .sp {
+    min-width: 46px;
+    padding: 3px 7px;
+  }
+
+  .sp-num {
+    font-size: 17px;
+  }
+}
+
+/* ---------- table ---------- */
+
+.table {
+  --side-w: clamp(72px, 21vw, 170px);
+  --hand-w: clamp(54px, min(23vw, 12.4dvh), 112px);
+  --trick-w: clamp(46px, min(20.5vw, 10.4dvh), 98px);
+  --back-w: clamp(16px, 4.8vw, 28px);
+  --av: clamp(38px, 10.5vw, 58px);
+  --av-own: clamp(34px, 9vw, 46px);
+  --hand-h: calc(var(--hand-w) * 1.4);
+  --hand-row: calc(var(--hand-h) * 0.84 + 16px + var(--sab));
+  --rim: clamp(7px, 1.7vmin, 13px);
+  --felt-r: clamp(34px, 11vmin, 150px);
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: var(--side-w) minmax(0, 1fr) var(--side-w);
+  grid-template-rows: auto minmax(0, 1fr) auto var(--hand-row);
+  grid-template-areas:
+    "top top top"
+    "left center right"
+    "prompt prompt prompt"
+    "hand hand hand";
+  padding: 0 var(--sar) 0 var(--sal);
+}
+
+.felt {
+  position: absolute;
+  z-index: 0;
+  top: 10px;
+  left: max(8px, calc(var(--sal) + 6px));
+  right: max(8px, calc(var(--sar) + 6px));
+  bottom: calc(var(--hand-h) * 0.5 + var(--sab));
+  border-radius: var(--felt-r);
+  background:
+    repeating-linear-gradient(97deg, rgba(0, 0, 0, 0.09) 0 2px, rgba(0, 0, 0, 0) 2px 9px),
+    repeating-linear-gradient(83deg, rgba(255, 255, 255, 0.04) 0 1px, rgba(255, 255, 255, 0) 1px 13px),
+    linear-gradient(165deg, #a56a3b 0%, #75421f 30%, #8d5530 55%, #5a3217 80%, #6f3f1d 100%);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 220, 170, 0.35),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.35),
+    0 22px 50px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+
+.felt::before {
+  content: "";
+  position: absolute;
+  inset: var(--rim);
+  border-radius: calc(var(--felt-r) - var(--rim));
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 45%, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0) 70%),
+    repeating-radial-gradient(circle at 20% 30%, rgba(0, 0, 0, 0.035) 0 1px, rgba(0, 0, 0, 0) 1px 3px),
+    repeating-radial-gradient(circle at 70% 80%, rgba(255, 255, 255, 0.025) 0 1px, rgba(255, 255, 255, 0) 1px 4px),
+    radial-gradient(ellipse at 50% 50%, var(--felt-1) 0%, var(--felt-2) 58%, var(--felt-3) 100%);
+  box-shadow:
+    inset 0 0 0 1.5px rgba(242, 193, 78, 0.5),
+    inset 0 0 0 4px rgba(0, 0, 0, 0.18),
+    inset 0 10px 24px rgba(0, 0, 0, 0.4),
+    inset 0 0 70px rgba(0, 0, 0, 0.45);
+}
+
+/* seats */
+
+.seat {
+  position: relative;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.seat-top {
+  grid-area: top;
+  justify-self: center;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 0 2px;
+}
+
+.seat-left {
+  grid-area: left;
+  align-self: center;
+  justify-self: start;
+  width: var(--side-w);
+  padding-left: 4px;
+}
+
+.seat-right {
+  grid-area: right;
+  align-self: center;
+  justify-self: end;
+  width: var(--side-w);
+  padding-right: 4px;
+}
+
+.seat-id {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.seat-top .seat-id {
+  flex-direction: row;
+  gap: 7px;
+}
+
+.seat:not(.bot) .ring > .avatar {
+  --persona: linear-gradient(160deg, var(--team-hi), var(--team-lo));
+}
+
+/* The turn pulse: the solid ring on the ring itself, the glow of each end
+   of the pulse on a layer of its own (::before, ::after), crossfaded. Only
+   opacity animates, so the compositor runs it without repainting the table
+   every frame. Isolated, so the glow stays under the face and the marks. */
+.seat.turn .ring,
+.table.my-turn .seat-bottom .ring {
+  isolation: isolate;
+  box-shadow: 0 0 0 3px var(--gold), 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.seat.turn .ring::before,
+.seat.turn .ring::after,
+.table.my-turn .seat-bottom .ring::before,
+.table.my-turn .seat-bottom .ring::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.seat.turn .ring::before,
+.table.my-turn .seat-bottom .ring::before {
+  box-shadow: 0 0 10px 3px rgba(242, 193, 78, 0.45);
+  animation: kj-turn-a 1.3s ease-in-out infinite;
+}
+
+.seat.turn .ring::after,
+.table.my-turn .seat-bottom .ring::after {
+  box-shadow: 0 0 0 4px var(--gold-hi), 0 0 26px 9px rgba(242, 193, 78, 0.7);
+  opacity: 0;
+  animation: kj-turn-b 1.3s ease-in-out infinite;
+}
+
+.seat.empty .ring,
+.seat.left .ring {
+  opacity: 0.5;
+}
+
+.seat.offline .avatar,
+.seat.away .avatar {
+  filter: grayscale(0.85) brightness(0.75);
+}
+
+.plate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 9px 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
+.seat.turn .plate {
+  background: rgba(58, 36, 5, 0.85);
+  box-shadow: inset 0 0 0 1.5px var(--gold);
+}
+
+.seat-left .nm,
+.seat-right .nm {
+  max-width: calc(var(--side-w) - 20px);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.seat-left .plate,
+.seat-right .plate {
+  border-radius: 12px;
+  padding: 3px 8px 4px;
+}
+
+/* A status longer than a narrow side seat ("AI speelt even mee") wraps
+   inside its plate instead of running off the screen. */
+.seat-left .st,
+.seat-right .st {
+  max-width: calc(var(--side-w) - 20px);
+  white-space: normal;
+  text-align: center;
+  line-height: 1.1;
+}
+
+.trump-tag {
+  position: absolute;
+  right: -6px;
+  top: -5px;
+  display: grid;
+  place-items: center;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  background: var(--paper);
+  color: #15151a;
+  font-size: 15px;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--team), 0 2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.trump-tag.red {
+  color: var(--suit-red);
+}
+
+/* ---------- the call (call.js) ---------- */
+
+/* A side seat keeps the room at the screen's edge and under the ring, where
+   the name is. Ring and room fit the seat (ring + --out <= --side-w - 4px). */
+.seat-left .ring.cam,
+.seat-right .ring.cam {
+  --ring: min(calc(var(--av) * var(--cam-zoom, 1.6)), calc((var(--side-w) - 27px) * 1.17));
+  margin: 0 0 var(--out);
+}
+
+.seat-left .ring.cam {
+  margin-left: var(--out);
+}
+
+.seat-right .ring.cam {
+  margin-right: var(--out);
+}
+
+.ring.cam > .trump-tag { --dx: 1; --dy: -1; }
+
+/* The bubbles keep clear of the marks. */
+.seat:has(.ring.cam) > .bubble {
+  margin-block: 10px;
+}
+
+/* Short landscape: the side seats' cards lie beside the ring, so the room
+   is kept on both sides. */
+@media (orientation: landscape) and (max-height: 520px) {
+  :where(html:not(.kb)) :is(.seat-left, .seat-right) .ring.cam {
+    margin-inline: var(--out);
+  }
+}
+
+/* On a phone our own ring keeps its size beside the rule, and a long rule
+   wraps sooner to leave room for the marks on both sides of it (--out as
+   above; the insets pad both the table and the prompt). The two-player
+   top row keeps the opponent's open cards on the felt. */
+@media (max-width: 599px) {
+  .seat-bottom .ring.cam {
+    --cam-zoom: 1;
+  }
+
+  .prompt:has(.ring.cam) .rule {
+    --out: calc((var(--av-own) / 2 + 12px) * 0.7071 + 14px - var(--av-own) / 2);
+    max-width: min(66vw, calc(100vw - 2 * (var(--sal) + var(--sar)) - 2 * (var(--av-own) + 2 * var(--out) + 18px)));
+  }
+
+  .table[data-players="2"] .seat-top .ring.cam {
+    --cam-zoom: 1.3;
+  }
+
+  .table[data-players="2"] .seat-top:has(.ring.cam) .nm {
+    max-width: max(70px, calc(100vw - var(--opp-pile-w) * 4.5 - 118px));
+  }
+}
+
+.prompt .call-dock {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.prompt .call-dock .tb {
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.prompt .call-dock .tb-hangup {
+  background: var(--red);
+  color: #fff;
+}
+
+/* Beside the rule the buttons need their room: a long rule wraps sooner. */
+@media (min-width: 600px) {
+  .prompt[data-call="out"] {
+    --dock-w: 44px;
+  }
+
+  .prompt[data-call="in"] {
+    --dock-w: 148px;
+  }
+
+  .prompt[data-call] .rule {
+    max-width: min(66vw, 440px, calc(100vw - 2 * (var(--dock-w) + 26px)));
+  }
+}
+
+@media (max-width: 599px) {
+  /* A row above the last trick, clear of the right seat and the trick;
+     hanging up is in the menu. */
+  .prompt .call-dock {
+    position: absolute;
+    right: calc(var(--sar) + 10px);
+    bottom: calc(100% + 6px);
+  }
+
+  .prompt .call-dock .tb {
+    width: 44px;
+  }
+
+  .prompt .call-dock .tb-hangup {
+    display: none;
+  }
+}
+
+/* cards in the others' hands, speech bubbles */
+
+.backs {
+  --card-w: var(--back-w);
+  display: flex;
+  justify-content: center;
+  min-height: calc(var(--back-w) * 1.4);
+}
+
+.backs {
+  position: relative;
+}
+
+.backs > .card {
+  margin-left: calc(var(--back-w) * -0.7);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+}
+
+.backs:not(.open)[data-n]:not([data-n="0"])::after {
+  content: attr(data-n);
+  position: absolute;
+  right: -9px;
+  bottom: -5px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.75);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 900;
+  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.25);
+}
+
+.backs > .card:first-child {
+  margin-left: 0;
+}
+
+.backs.open {
+  --card-w: clamp(30px, 8.6vw, 42px);
+}
+
+.backs.open > .card {
+  margin-left: calc(var(--card-w) * -0.5);
+}
+
+.backs.open > .card:first-child {
+  margin-left: 0;
+}
+
+/* Stacked downwards, each card shows its top 0.68 card widths: room for
+   an index 1.2 times the regular one (cards.css), suit included. */
+.seat-left .backs.open,
+.seat-right .backs.open {
+  --card-index-max: 1.2;
+  flex-direction: column;
+  align-items: center;
+}
+
+.seat-left .backs.open > .card,
+.seat-right .backs.open > .card {
+  margin-left: 0;
+  margin-top: calc(var(--card-w) * -0.72);
+}
+
+.seat-left .backs.open > .card:first-child,
+.seat-right .backs.open > .card:first-child {
+  margin-top: 0;
+}
+
+.seat-top .bubble {
+  top: calc(100% + 6px);
+  left: 50%;
+  translate: -50% 0;
+}
+
+.seat-top .bubble::after {
+  top: -5px;
+  left: calc(50% - 6px);
+}
+
+/* Side seats talk upwards, so their bubbles stay clear of the trick. */
+.seat-left .bubble {
+  left: 2px;
+  bottom: calc(100% + 8px);
+  transform-origin: 0 100%;
+}
+
+.seat-left .bubble::after {
+  left: 18px;
+  bottom: -5px;
+}
+
+.seat-right .bubble {
+  right: 2px;
+  bottom: calc(100% + 8px);
+  transform-origin: 100% 100%;
+}
+
+.seat-right .bubble::after {
+  right: 18px;
+  bottom: -5px;
+}
+
+.seat-bottom .bubble {
+  bottom: calc(100% + 8px);
+  left: 0;
+  transform-origin: 0 100%;
+}
+
+.seat-bottom .bubble::after {
+  bottom: -5px;
+  left: 16px;
+}
+
+.bubble-go {
+  background: linear-gradient(180deg, #ffdb7a, #f2b632);
+  color: var(--gold-ink);
+  font-weight: 900;
+}
+
+.bubble-pass {
+  background: #e6e0d2;
+  color: #57524a;
+}
+
+/* centre: trick, stage, effects */
+
+/* Above the seats (z-index 6): a speech bubble never hides a card in the
+   trick, it goes behind it. */
+.center {
+  grid-area: center;
+  position: relative;
+  z-index: 7;
+  min-height: 0;
+}
+
+/* The trick's cards overlap at their corners, so they keep the regular
+   index (cards.css), and whatever the play order each keeps one corner
+   index in view: the top and left cards their top-left one, the bottom and
+   right cards their bottom-right one. The left card sits a little low and
+   the right card a little high, so a winner there, scaled up with its
+   ring, stays clear of the top and bottom cards' corners (app-checks.mjs
+   --only corners measures it). */
+.trick {
+  --card-w: var(--trick-w);
+  --card-index-max: 1;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+}
+
+.slot {
+  position: absolute;
+  width: var(--trick-w);
+  height: calc(var(--trick-w) * 1.4);
+  left: calc(var(--trick-w) * -0.5);
+  top: calc(var(--trick-w) * -0.7);
+}
+
+.slot-bottom { translate: 0 calc(var(--trick-w) * 0.62); }
+.slot-top { translate: 0 calc(var(--trick-w) * -0.62); }
+.slot-left { translate: calc(var(--trick-w) * -0.84) calc(var(--trick-w) * 0.2); }
+.slot-right { translate: calc(var(--trick-w) * 0.84) calc(var(--trick-w) * -0.2); }
+
+.slot > .card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: rotate(var(--r, 0deg));
+  box-shadow: 0 0 0 0.5px rgba(40, 30, 10, 0.35), 0 6px 14px rgba(0, 0, 0, 0.4);
+}
+
+.trick.done .slot > .card:not(.winner) {
+  filter: brightness(0.8) saturate(0.85);
+}
+
+.slot > .card.winner {
+  scale: 1.08;
+  transition: scale 0.25s var(--ease), filter 0.2s;
+}
+
+.stage {
+  grid-area: 2 / 1 / 3 / 4;
+  z-index: 12;
+  display: grid;
+  place-items: center;
+  padding: 6px 10px;
+  pointer-events: none;
+  min-height: 0;
+}
+
+.stage > * {
+  pointer-events: auto;
+}
+
+.stage.mine {
+  align-items: end;
+  padding-bottom: 10px;
+}
+
+/* The takeover question also takes the prompt row, whose line ("… is aan
+   de beurt") it says itself: as low as it goes, so the trick and the side
+   seats stay in view. */
+.stage.ask {
+  grid-area: 2 / 1 / 4 / 4;
+  padding-bottom: 4px;
+}
+
+.table.asking .rule {
+  visibility: hidden;
+}
+
+.panel {
+  max-width: min(100%, 470px);
+  padding: 14px 14px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 22px;
+  background: rgba(7, 20, 15, 0.84);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow);
+  text-align: center;
+  animation: kj-rise 0.3s var(--ease);
+}
+
+.panel-title {
+  margin-bottom: 10px;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.panel-sub {
+  margin-top: 10px;
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+
+.panel-wait {
+  padding: 10px 16px;
+  border-radius: 999px;
+}
+
+.wait-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.wait-text b {
+  color: var(--ink);
+}
+
+.suit-btns {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.suit-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 62px;
+  min-height: 78px;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 16px;
+  background: linear-gradient(170deg, #fffdf6, #ece2c9);
+  color: #15151a;
+  box-shadow: inset 0 1px 0 #fff, 0 4px 0 #a99c7b, 0 10px 20px rgba(0, 0, 0, 0.35);
+  transition: transform 0.12s var(--ease), box-shadow 0.12s;
+}
+
+.suit-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.suit-btn:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: inset 0 1px 0 #fff, 0 1px 0 #a99c7b;
+}
+
+.suit-btn .sym {
+  font-size: 40px;
+  line-height: 1;
+}
+
+.suit-btn .nm {
+  font-size: 12px;
+  font-weight: 800;
+  color: #6a614f;
+}
+
+.suit-btn.red .sym {
+  color: var(--suit-red);
+}
+
+.four-color .suit-btn[aria-label^="klaveren"] .sym { color: #13813b; }
+.four-color .suit-btn[aria-label^="ruiten"] .sym { color: #1557c0; }
+
+.suit-btn:disabled {
+  opacity: 0.3;
+  filter: grayscale(1);
+  box-shadow: none;
+}
+
+/* The advice pulses as the turn does (see .seat.turn .ring): the ring on
+   the button, the two glows crossfaded on ::before and ::after. The ring
+   is !important, as the animation it replaced beat the button's own
+   shadow, also pressed (:active) and while the choice is sent (:disabled). */
+.advised {
+  position: relative;
+  isolation: isolate;
+  box-shadow: 0 0 0 3px rgba(255, 210, 74, 0.6) !important;
+}
+
+/* Positioned too, so the buttons after the advised one still paint over
+   its glow. */
+.advised ~ * {
+  position: relative;
+}
+
+.advised::before,
+.advised::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.advised::before {
+  box-shadow: 0 0 8px 2px rgba(255, 196, 0, 0.35);
+  animation: kj-hint-a 1.1s ease-in-out infinite alternate;
+}
+
+.advised::after {
+  box-shadow: 0 0 0 4px #ffd24a, 0 0 22px 8px rgba(255, 196, 0, 0.75);
+  opacity: 0;
+  animation: kj-hint-b 1.1s ease-in-out infinite alternate;
+}
+
+.turned {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--trick-w) * 1.2);
+  height: calc(var(--trick-w) * 1.6);
+  margin: 0 auto 10px;
+  border-radius: 12px;
+  background: linear-gradient(170deg, #fffdf6, #ece2c9);
+  color: #15151a;
+  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.7), 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+
+.turned-lbl {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8a6d2a;
+}
+
+.turned-sym {
+  font-size: calc(var(--trick-w) * 0.82);
+  line-height: 1.05;
+}
+
+.turned-nm {
+  font-size: 12px;
+  font-weight: 800;
+  color: #6a614f;
+}
+
+.turned.red .turned-sym {
+  color: var(--suit-red);
+}
+
+.bid-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.bid-btns .btn {
+  flex: 1;
+  min-width: 118px;
+  min-height: 56px;
+  font-size: 19px;
+  font-weight: 900;
+  border-radius: 16px;
+}
+
+.panel-bid .wait-text {
+  margin-top: 2px;
+}
+
+/* Phones in portrait: the turned card beside the question, so the panel
+   stays clear of the side seats. */
+@media (max-width: 599px) {
+  .panel-bid {
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: center;
+    column-gap: 12px;
+    text-align: left;
+  }
+
+  .panel-bid .turned {
+    grid-row: span 2;
+    width: calc(var(--trick-w) * 0.95);
+    height: calc(var(--trick-w) * 1.3);
+    margin: 0;
+  }
+
+  .panel-bid .turned-sym {
+    font-size: calc(var(--trick-w) * 0.62);
+  }
+
+  .panel-bid .panel-title {
+    margin-bottom: 8px;
+    font-size: 16px;
+  }
+
+  .bid-btns .btn {
+    min-width: 90px;
+    min-height: 50px;
+    font-size: 17px;
+  }
+
+  .panel-bid .panel-hint {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The takeover question: may an AI play for someone who is gone? Who
+   agrees so far, then two big answers like the bid panel's. */
+.panel-vote {
+  width: min(100%, 480px);
+}
+
+.vote-q {
+  margin: -2px 0 10px;
+  font-size: 14px;
+  line-height: 1.35;
+  color: var(--ink-2);
+}
+
+.vote-btns {
+  display: flex;
+  gap: 10px;
+}
+
+.vote-btns .btn {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 54px;
+  padding: 0 12px;
+  font-size: 17px;
+  font-weight: 900;
+  border-radius: 16px;
+}
+
+.vote-btns .btn .icon {
+  display: none;
+  stroke-width: 3;
+}
+
+/* The answer given carries a tick and a dark ring inside, apart from the
+   gold focus ring outside; the other steps back (a duller face, its text
+   still clear) but stays a tap away, for a change of mind. */
+.vote-btns .btn.chosen .icon {
+  display: block;
+}
+
+.vote-btns .btn-go.chosen {
+  box-shadow: inset 0 0 0 3px var(--gold-ink), inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 4px 0 #a96d10, 0 10px 24px rgba(242, 182, 50, 0.25);
+}
+
+.vote-btns .btn-pass.chosen {
+  box-shadow: inset 0 0 0 3px #3b3427, 0 4px 0 #a99f88, 0 10px 20px rgba(0, 0, 0, 0.25);
+}
+
+.answered .vote-btns .btn-go:not(.chosen) {
+  background: linear-gradient(180deg, #e8d7a6, #c9ad69);
+  box-shadow: 0 2px 0 #8a6d33;
+}
+
+.answered .vote-btns .btn-pass:not(.chosen) {
+  background: linear-gradient(180deg, #d3ccbc, #b6ae9b);
+  box-shadow: 0 2px 0 #807865;
+}
+
+/* Answered: the question itself is read out with the buttons
+   (aria-describedby) but no longer takes room on the table. */
+.panel-vote.answered .vote-q {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* The chips run on from the rule. */
+.vote-who {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.vote-rule {
+  margin-right: 2px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.vote-list {
+  display: contents;
+}
+
+.vote-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink-2);
+  font-size: 12.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.vote-chip .icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
+}
+
+.vote-name {
+  max-width: 9.5em;
+}
+
+.vote-st {
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.vote-st.open .dots i {
+  width: 4px;
+  height: 4px;
+  margin-left: 2px;
+}
+
+.vote-chip.yes {
+  background: color-mix(in srgb, var(--team) 30%, transparent);
+  color: var(--ink);
+}
+
+.vote-chip.yes .vote-st {
+  color: var(--ink);
+}
+
+.vote-chip.no {
+  background: rgba(242, 193, 78, 0.16);
+  color: var(--ink);
+}
+
+.vote-chip.no .vote-st {
+  color: var(--gold-hi);
+}
+
+/* Phones upright: compact, so the side seats (often the one it is about)
+   and the trick stay in view. */
+@media (max-width: 599px) {
+  .panel-vote {
+    padding: 8px 12px;
+  }
+
+  .panel-vote .panel-title {
+    margin-bottom: 3px;
+    font-size: 16px;
+  }
+
+  .vote-q {
+    margin-bottom: 8px;
+    font-size: 13px;
+    line-height: 1.3;
+  }
+
+  .vote-btns {
+    gap: 8px;
+  }
+
+  .vote-btns .btn {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .vote-who {
+    gap: 4px;
+    margin-bottom: 8px;
+  }
+
+  .vote-chip {
+    padding: 3px 8px;
+  }
+
+  .vote-name {
+    max-width: 7em;
+  }
+}
+
+.fx {
+  grid-area: 2 / 1 / 3 / 4;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.fx > * {
+  grid-area: 1 / 1;
+}
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100% - 20px);
+  padding: 10px 20px 10px 10px;
+  border-radius: 22px;
+  background: rgba(6, 18, 13, 0.92);
+  box-shadow: 0 0 0 2.5px var(--team), 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+
+.banner-sym {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 78px;
+  flex: none;
+  border-radius: 12px;
+  background: linear-gradient(170deg, #fffdf6, #ece2c9);
+  color: #15151a;
+  font-size: 48px;
+  line-height: 1;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+.banner-sym.red {
+  color: var(--suit-red);
+}
+
+.banner-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.banner-text small {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.banner-text b {
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.roem-burst {
+  align-self: start;
+  margin-top: clamp(4px, 4%, 40px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 22px 10px;
+  border-radius: 22px;
+  background: radial-gradient(ellipse at 50% 30%, rgba(90, 58, 6, 0.96), rgba(40, 24, 2, 0.96));
+  box-shadow: 0 0 0 2.5px var(--gold), 0 0 40px rgba(242, 193, 78, 0.55), 0 16px 34px rgba(0, 0, 0, 0.55);
+  text-align: center;
+  line-height: 1;
+}
+
+.roem-burst b {
+  font-size: clamp(44px, 13vw, 78px);
+  font-weight: 900;
+  color: var(--gold-hi);
+  text-shadow: 0 3px 0 #7a4b00, 0 0 24px rgba(255, 210, 90, 0.7);
+}
+
+.roem-burst span {
+  margin-top: 2px;
+  color: #fff3d0;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+.splash {
+  text-align: center;
+  line-height: 1;
+}
+
+.splash b {
+  display: block;
+  font-size: clamp(72px, 22vw, 150px);
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  paint-order: stroke fill;
+}
+
+.splash span {
+  display: inline-block;
+  margin-top: 6px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.7);
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.splash-nat b {
+  color: #ff5f5f;
+  -webkit-text-stroke: 3px #5a0c0c;
+  text-shadow: 0 6px 0 #5a0c0c, 0 0 40px rgba(255, 70, 70, 0.6);
+}
+
+.splash-pit b {
+  color: var(--gold-hi);
+  -webkit-text-stroke: 3px #7a4b00;
+  text-shadow: 0 6px 0 #7a4b00, 0 0 40px rgba(242, 193, 78, 0.8);
+}
+
+.pts-chip {
+  position: absolute;
+  z-index: 26;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--team);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 900;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  translate: -50% 0;
+}
+
+/* prompt row: my seat, rule text and the coach bubble */
+
+.prompt {
+  grid-area: prompt;
+  position: relative;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 2px calc(var(--sar) + 10px) 6px calc(var(--sal) + 10px);
+  pointer-events: none;
+}
+
+.prompt > * {
+  pointer-events: auto;
+}
+
+.seat-bottom {
+  grid-column: 1;
+  justify-self: start;
+  flex-direction: row;
+  max-width: 100%;
+  --av: var(--av-own);
+}
+
+.seat-bottom .seat-id {
+  flex-direction: row;
+  gap: 6px;
+}
+
+.seat-bottom .backs {
+  display: none;
+}
+
+@media (max-width: 599px) {
+  .seat-bottom .plate {
+    display: none;
+  }
+}
+
+.rule {
+  grid-column: 2;
+  max-width: min(66vw, 440px);
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  font-size: 13.5px;
+  font-weight: 750;
+  line-height: 1.25;
+  text-align: center;
+  color: var(--ink-2);
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.rule.mine {
+  background: linear-gradient(180deg, #ffdb7a, #f0b032);
+  color: var(--gold-ink);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), 0 6px 18px rgba(242, 182, 50, 0.35);
+}
+
+.rule.empty {
+  visibility: hidden;
+}
+
+.coach {
+  position: absolute;
+  z-index: 16;
+  left: 50%;
+  bottom: calc(100% + 4px);
+  translate: -50% 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: min(calc(100% - 20px), 540px);
+  padding: 9px 8px 9px 12px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 251, 238, 0.97), rgba(250, 238, 206, 0.97));
+  color: #2b2210;
+  font-size: 13.5px;
+  line-height: 1.35;
+  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.8), 0 10px 26px rgba(0, 0, 0, 0.45);
+  animation: kj-rise 0.3s var(--ease);
+}
+
+.coach.is-tip {
+  box-shadow: 0 0 0 2px rgba(43, 179, 163, 0.85), 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+
+.coach-ico {
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.coach-body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.coach-lbl {
+  color: #8a5a00;
+}
+
+.coach.is-tip .coach-lbl {
+  color: #0f6b60;
+}
+
+/* "Lees verder" / "Minder" under a clamped text (short landscape, see
+   fitCoach in table.js). */
+.coach-more {
+  position: relative;
+  display: block;
+  margin: 2px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8a5a00;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.coach.is-tip .coach-more {
+  color: #0f6b60;
+}
+
+/* A 44 px target around the short link. */
+.coach-more::before {
+  content: "";
+  position: absolute;
+  inset: -15px;
+}
+
+/* A lesson step's link to a section of the manual. */
+.coach-man {
+  position: relative;
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  margin: 5px 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8a5a00;
+  font-size: 12.5px;
+  font-weight: 900;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.coach-man .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* A larger target around the short link, but not over the text above it
+   (a tap there reads the step). */
+.coach-man::before {
+  content: "";
+  position: absolute;
+  inset: -3px -8px -10px;
+}
+
+.coach-x {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  margin: -4px -2px -4px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.06);
+  color: #5a4a28;
+}
+
+/* A 44 px target around the small round button. */
+.coach-x::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+
+.coach-x .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Training, the last trick of a hand: the summary waits until the
+   explanation is read, or the ring has run out. */
+.coach-go {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 7px 0 1px;
+  padding: 3px 12px 3px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: #0f6b60;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+}
+
+/* A 44 px target around the small button. */
+.coach-go::before {
+  content: "";
+  position: absolute;
+  inset: -8px -4px;
+}
+
+.coach-go .ring-cd {
+  width: 20px;
+  height: 20px;
+}
+
+.coach-go .ring-bg {
+  stroke: rgba(255, 255, 255, 0.3);
+}
+
+.coach-go .ring-fg {
+  stroke: #fff;
+}
+
+/* A lesson step waits for Verder without a timer: no ring. */
+.coach-go.no-ring {
+  padding-left: 12px;
+}
+
+/* Trump and bid hints are shown inside the panel (.panel-hint), which
+   would cover the bubble here. */
+.coach.on-stage {
+  display: none;
+}
+
+/* Training with lessons: the part of the screen the step is about
+   (table.js spotlight). */
+.spot:not(.trick, .hand, .card),
+.trick.spot::before {
+  outline: 3px solid var(--gold);
+  outline-offset: 4px;
+  animation: kj-spot 1.1s ease-in-out infinite alternate;
+}
+
+.seat-id.spot,
+.tb-chat.spot {
+  border-radius: 999px;
+}
+
+/* The chat beside the table on a wide screen fills the edge of it. */
+.chat.spot {
+  outline-offset: -6px;
+  animation: none;
+}
+
+/* The hand runs off the bottom of a phone: its cards glow as for a hint,
+   as does the one card a step is about. */
+.hand.spot > .card::after,
+.hand > .card.spot::after {
+  opacity: 1;
+  box-shadow: 0 0 0 3px var(--kj-card-glow), 0 0 18px 6px rgb(255 196 0 / 0.75);
+  animation: kj-card-hint 1.1s ease-in-out infinite alternate;
+}
+
+/* The trick is a point in the middle of the table: the box goes round
+   its four slots. */
+.trick.spot::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--trick-w) * -1.42);
+  top: calc(var(--trick-w) * -1.4);
+  width: calc(var(--trick-w) * 2.84);
+  height: calc(var(--trick-w) * 2.8);
+  border-radius: 22px;
+  pointer-events: none;
+}
+
+@keyframes kj-spot {
+  from {
+    outline-color: rgba(242, 193, 78, 1);
+    outline-offset: 3px;
+  }
+
+  to {
+    outline-color: rgba(242, 193, 78, 0.35);
+    outline-offset: 8px;
+  }
+}
+
+.panel-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 440px;
+  margin: 12px auto 0;
+  padding: 8px 12px 9px 10px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 251, 238, 0.97), rgba(250, 238, 206, 0.97));
+  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.8);
+  color: #2b2210;
+  font-size: 13.5px;
+  line-height: 1.35;
+  text-align: left;
+}
+
+.panel-hint b {
+  color: #8a5a00;
+}
+
+.ph-ico {
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+/* hand */
+
+.hand {
+  --card-w: var(--hand-w);
+  grid-area: hand;
+  position: relative;
+  z-index: 9;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.hand > .card {
+  position: absolute;
+  left: 0;
+  bottom: calc(var(--hand-h) * -0.1);
+  transform-origin: 50% 100%;
+  transform: translate(var(--x, 0px), calc(var(--y, 0px) + var(--lift, 0px))) rotate(var(--rot, 0deg));
+  transition:
+    transform 0.32s var(--ease),
+    translate 0.18s var(--ease),
+    filter 0.2s ease,
+    opacity 0.25s ease;
+  box-shadow:
+    0 0 0 0.5px rgba(40, 30, 10, 0.4),
+    -3px 0 8px rgba(0, 0, 0, 0.22),
+    0 6px 14px rgba(0, 0, 0, 0.3);
+  cursor: default;
+}
+
+.hand.my-turn > .card.legal {
+  --lift: calc(var(--hand-h) * -0.1);
+  cursor: pointer;
+}
+
+.hand.my-turn > .card.hint {
+  --lift: calc(var(--hand-h) * -0.17);
+}
+
+.hand > .card.selected {
+  --card-lift: -16%;
+  z-index: 50 !important;
+}
+
+.hand > .card.dealing {
+  opacity: 0;
+  transition: none;
+}
+
+/* flying cards */
+
+.flyer {
+  position: fixed;
+  margin: 0;
+  will-change: transform;
+}
+
+.flip {
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.4);
+  transform-style: preserve-3d;
+}
+
+.flip > .card {
+  position: absolute;
+  left: 0;
+  top: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.flip > .card.back {
+  transform: rotateY(180deg);
+}
+
+/* ---------- modals ---------- */
+
+/* manual */
+
+/* Faded edges where more tabs are scrolled out of view. */
+.tabs.more-r {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent);
+}
+
+.tabs.more-l {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 48px);
+  mask-image: linear-gradient(90deg, transparent, #000 48px);
+}
+
+.tabs.more-l.more-r {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+}
+
+/* score sheet */
+
+.scoresheet {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.scoresheet th {
+  padding: 2px 8px 4px;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  vertical-align: bottom;
+}
+
+.scoresheet th.wij,
+.scoresheet th.zij {
+  text-align: right;
+  color: var(--team-hi);
+}
+
+.scoresheet th small {
+  display: block;
+  max-width: 120px;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
+
+.scoresheet td {
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.scoresheet td:first-child {
+  border-radius: 10px 0 0 10px;
+}
+
+.scoresheet td:last-child {
+  border-radius: 0 10px 10px 0;
+}
+
+.scoresheet td.n {
+  width: 32px;
+  color: var(--ink-3);
+  font-weight: 800;
+}
+
+.scoresheet .by {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  color: var(--team-hi, var(--ink-2));
+}
+
+.scoresheet td.num {
+  text-align: right;
+}
+
+.scoresheet td.num b {
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.scoresheet td.num small {
+  display: block;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+.scoresheet td.num small.stand {
+  margin-top: 1px;
+  font-weight: 700;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.team-names > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.scoresheet td.is-nat {
+  background: rgba(229, 72, 77, 0.24);
+}
+
+.scoresheet td.is-pit {
+  background: rgba(242, 193, 78, 0.22);
+}
+
+.scoresheet tr.live td {
+  background: rgba(242, 193, 78, 0.07);
+  font-style: italic;
+}
+
+.scoresheet tr.tap {
+  cursor: pointer;
+}
+
+.scoresheet tr.tap td {
+  box-shadow: inset 0 1px 0 rgba(242, 193, 78, 0.4), inset 0 -1px 0 rgba(242, 193, 78, 0.4);
+}
+
+.scoresheet tr.tap:hover td {
+  background: rgba(242, 193, 78, 0.12);
+}
+
+.scoresheet tfoot td {
+  background: rgba(0, 0, 0, 0.38);
+  font-weight: 900;
+}
+
+.scoresheet tfoot td.num b {
+  font-size: 21px;
+  color: var(--team-hi);
+}
+
+.scoresheet td.empty {
+  text-align: center;
+  color: var(--ink-3);
+  padding: 18px;
+}
+
+.legend {
+  margin: 12px 0 0;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+
+.back-btn {
+  margin-bottom: 10px;
+}
+
+.result-line {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.result-line b.wij,
+.ti-now b.wij {
+  color: var(--wij-hi);
+}
+
+.result-line b.zij,
+.ti-now b.zij {
+  color: var(--zij-hi);
+}
+
+.result-line .tag {
+  margin-left: 6px;
+}
+
+/* trick review */
+
+.review {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(146px, 1fr));
+  gap: 6px;
+}
+
+.mt {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px 8px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 3px 0 0 var(--team);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.mt:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.mt-n {
+  width: 14px;
+  flex: none;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.mt-cards {
+  --card-w: 27px;
+  display: flex;
+}
+
+.mt-cards > .card {
+  margin-left: -7px;
+}
+
+.mt-cards > .card:first-child {
+  margin-left: 0;
+}
+
+/* Each card underlined in the colour of the team that played it. */
+.mt-cards > .card[data-team] {
+  box-shadow: 0 0 0 0.5px rgb(40 30 10 / 0.35), 0 3px 0 0 var(--card-team);
+}
+
+.mt-cards > .card[data-team="wij"] { --card-team: var(--wij); }
+.mt-cards > .card[data-team="zij"] { --card-team: var(--zij); }
+
+.sum-review h3 small {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
+
+.mt-pts {
+  margin-left: auto;
+  text-align: right;
+  font-size: 13px;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.mt-pts b {
+  font-weight: 900;
+}
+
+.mt-pts i {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--gold);
+}
+
+/* last trick */
+
+.cross {
+  --card-w: 62px;
+  position: relative;
+  width: 100%;
+  max-width: 320px;
+  height: 312px;
+  margin: 0 auto;
+  border-radius: 40%;
+  background: radial-gradient(ellipse at center, rgba(45, 149, 96, 0.55), rgba(13, 63, 38, 0.2) 70%, transparent 72%);
+}
+
+.cross-slot {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.cs-bottom { bottom: 0; left: 50%; translate: -50% 0; }
+.cs-top { top: 0; left: 50%; translate: -50% 0; }
+.cs-left { left: 0; top: 50%; translate: 0 -50%; }
+.cs-right { right: 0; top: 50%; translate: 0 -50%; }
+
+.cs-name {
+  max-width: 120px;
+  padding: 2px 9px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.4);
+  box-shadow: inset 0 0 0 1.5px var(--team);
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+.cross-slot.win .cs-name {
+  background: rgba(58, 36, 5, 0.85);
+  box-shadow: inset 0 0 0 1.5px var(--gold);
+  color: var(--gold-hi);
+}
+
+.cs-lead {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: var(--ink-3);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.last-sum {
+  margin: 14px 0 0;
+  text-align: center;
+  color: var(--ink-2);
+}
+
+.last-sum b {
+  color: var(--team-hi);
+}
+
+/* Under a trick of a finished hand: that hand in the replay. */
+.last-replay {
+  margin-top: 14px;
+}
+
+.gold {
+  color: var(--gold);
+}
+
+/* trump info */
+
+.ti-trump {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.ti-trump > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ti-trump b {
+  font-size: 19px;
+}
+
+.ti-trump span:not(.ti-sym) {
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.ti-sym {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 70px;
+  flex: none;
+  border-radius: 10px;
+  background: linear-gradient(170deg, #fffdf6, #ece2c9);
+  color: #15151a;
+  font-size: 40px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.ti-trump.red .ti-sym {
+  color: var(--suit-red);
+}
+
+.ti-variant h3 {
+  margin: 12px 0 6px;
+  font-size: 15px;
+  color: var(--gold);
+}
+
+.ti-variant p {
+  font-size: 14px;
+}
+
+/* hand summary */
+
+.sum-head {
+  text-align: center;
+  padding-bottom: 6px;
+}
+
+/* A headline with a player's name in it ("Kees de Visser (AI) gaat
+   nat!") is set smaller, so it takes no more room than "Gehaald!". */
+.m-summary .sum-title.long {
+  font-size: clamp(26px, 7.4vw, 40px);
+}
+
+/* Seen from Wij: good news in our colour, bad news in red, the opponents
+   making their game plain; our pit shines gold (util.js handHeadline). */
+.sum-head.good .sum-title { color: var(--wij-hi); }
+.sum-head.neutral .sum-title { color: var(--ink); }
+.sum-head.bad .sum-title { color: #ff6b6b; }
+
+.sum-head.pit.good .sum-title {
+  color: var(--gold-hi);
+  text-shadow: 0 0 24px rgba(242, 193, 78, 0.6);
+}
+
+.sum-meta {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.sum-meta .suit {
+  width: 22px;
+  height: 22px;
+  font-size: 15px;
+}
+
+.sum-table {
+  width: 100%;
+  margin: 8px 0 4px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.sum-table th,
+.sum-table td {
+  padding: 5px 8px;
+}
+
+.sum-table thead th {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: right;
+  color: var(--team-hi);
+}
+
+.sum-table tbody th {
+  text-align: left;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.sum-table td {
+  text-align: right;
+  font-size: 17px;
+}
+
+.sum-table td b {
+  font-weight: 900;
+}
+
+.sum-table .sum-score td b {
+  font-size: 26px;
+  color: var(--team-hi);
+}
+
+.sum-table .sum-total th,
+.sum-table .sum-total td {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.sum-why {
+  margin: 4px 0 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+.sum-review {
+  margin-top: 10px;
+}
+
+.sum-review h3 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.sum-foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -18px;
+  padding: 14px 18px calc(16px);
+  background: linear-gradient(180deg, rgba(12, 31, 25, 0), #0c1f19 35%);
+}
+
+.sum-foot .btn {
+  width: min(100%, 360px);
+}
+
+.ready-list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.ready-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink-3);
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+.ready-chip.on {
+  background: color-mix(in srgb, var(--team) 30%, transparent);
+  color: var(--ink);
+}
+
+.ready-chip .icon {
+  width: 14px;
+  height: 14px;
+  stroke-width: 3;
+}
+
+/* Phones: the whole hand on one screen, all eight tricks included, as a
+   4 × 2 grid of small tiles (number and points over the four cards). */
+@media (max-width: 599px) {
+  .m-summary .sum-meta {
+    margin-top: 4px;
+    font-size: 12.5px;
+  }
+
+  .m-summary .sum-meta .suit {
+    width: 18px;
+    height: 18px;
+    font-size: 13px;
+  }
+
+  .m-summary .sum-table {
+    margin: 4px 0 0;
+  }
+
+  .m-summary .sum-table th,
+  .m-summary .sum-table td {
+    padding: 2px 8px;
+  }
+
+  .m-summary .sum-table td {
+    font-size: 16px;
+  }
+
+  .m-summary .sum-table .sum-score td b {
+    font-size: 22px;
+  }
+
+  .m-summary .sum-table .sum-total th,
+  .m-summary .sum-table .sum-total td {
+    padding-top: 5px;
+  }
+
+  .m-summary .sum-why {
+    font-size: 13px;
+  }
+
+  .m-summary .sum-review {
+    margin-top: 8px;
+  }
+
+  .m-summary .sum-review h3 {
+    margin-bottom: 5px;
+  }
+
+  .m-summary .review {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .m-summary .mt {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: baseline;
+    gap: 3px 2px;
+    padding: 4px 4px 7px 7px;
+    border-radius: 10px;
+  }
+
+  .m-summary .mt-n {
+    width: auto;
+    text-align: left;
+  }
+
+  .m-summary .mt-pts {
+    grid-area: 1 / 2;
+    display: flex;
+    justify-content: flex-end;
+    align-items: baseline;
+    gap: 3px;
+    font-size: 12px;
+  }
+
+  .m-summary .mt-pts i {
+    display: inline;
+    font-size: 10.5px;
+  }
+
+  .m-summary .mt-cards {
+    --card-w: clamp(20px, 6.2vw, 26px);
+    grid-area: 2 / 1 / 3 / -1;
+    justify-content: center;
+  }
+
+  .m-summary .mt-cards > .card {
+    margin-left: calc(var(--card-w) * -0.4);
+  }
+
+  .m-summary .mt-cards > .card:first-child {
+    margin-left: 0;
+  }
+
+  .m-summary .sum-foot {
+    gap: 6px;
+    margin: 0 -14px;
+    padding: 10px 14px 14px;
+  }
+
+  .m-summary .sum-foot .btn-big {
+    min-height: 52px;
+  }
+}
+
+/* game over */
+
+.over-emoji {
+  font-size: 64px;
+  line-height: 1;
+  animation: kj-bob 2.4s ease-in-out infinite;
+}
+
+.over-score {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin: 18px 0 14px;
+}
+
+.os {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+  flex: 1 1 0;
+  max-width: 170px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.os span {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--team-hi);
+}
+
+.os b {
+  font-size: 40px;
+  font-weight: 900;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.os small {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+.os small > span {
+  font-size: inherit;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: inherit;
+}
+
+.os.top {
+  box-shadow: inset 0 0 0 2px var(--gold), 0 0 24px rgba(242, 193, 78, 0.25);
+}
+
+.os-vs {
+  font-size: 24px;
+  color: var(--ink-3);
+}
+
+.over-last {
+  margin-bottom: 14px;
+}
+
+.over-last small {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.over-last .result-line {
+  margin: 0;
+}
+
+/* The line that opens the review (spelanalyse). */
+.review-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 14px;
+  padding: 8px 10px 8px 14px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+}
+
+.review-line b {
+  font-weight: 900;
+  color: var(--gold-hi);
+}
+
+.review-line:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.review-line:disabled {
+  color: var(--ink-3);
+}
+
+.review-line .icon {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--ink-3);
+}
+
+/* the review */
+
+.m-review > .dialog {
+  width: min(100%, 540px);
+}
+
+.rv-head {
+  text-align: center;
+}
+
+.rv-head .rv-who {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.rv-pct {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+}
+
+.rv-pct b {
+  font-size: 44px;
+  font-weight: 900;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-hi);
+}
+
+.rv-pct span {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+
+.rv-pct .info-btn {
+  align-self: center;
+}
+
+.rv-head small {
+  display: block;
+  font-size: 13px;
+  color: var(--ink-3);
+}
+
+.rv-table {
+  width: 100%;
+  margin: 12px 0 4px;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.rv-table th,
+.rv-table td {
+  padding: 5px 4px;
+  border-top: 1px solid var(--line);
+}
+
+.rv-table th {
+  text-align: left;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+
+.rv-table th .info-btn {
+  margin: -4px 0 -4px 2px;
+}
+
+.rv-table td {
+  text-align: right;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.rv-risky {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.rv-sec h3 {
+  margin: 16px 0 6px;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.rv-sec h3 small {
+  font-size: inherit;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.rv-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rv-moment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  width: 100%;
+  padding: 8px 8px 8px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.rv-moment:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.rv-where {
+  grid-column: 1;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+
+.rv-text {
+  grid-column: 1;
+  color: var(--ink-2);
+}
+
+.rv-text b {
+  color: var(--ink);
+}
+
+.rv-sum {
+  grid-column: 1;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.rv-moment .icon {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  width: 18px;
+  height: 18px;
+  color: var(--ink-3);
+}
+
+.rv-moment:disabled .icon {
+  visibility: hidden;
+}
+
+.rv-prev {
+  margin: 14px 0 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.rv-prev b {
+  font-variant-numeric: tabular-nums;
+}
+
+.rv-replay {
+  margin-top: 14px;
+}
+
+/* the replay of the review */
+
+.m-replay > .dialog {
+  width: min(100%, 540px);
+}
+
+.rp-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+}
+
+.rp-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+.rp-title b {
+  display: block;
+  font-size: 16px;
+}
+
+.rp-title small {
+  color: var(--ink-2);
+}
+
+/* What Juf Jannie found in the hand, on a line of its own under the title. */
+.rp-sum {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink-3);
+}
+
+/* A hand looked back at during the next one: your turn at the table. */
+.rp-turn {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 12px;
+  margin: 0 20px 6px;
+  padding: 4px 4px 4px 14px;
+  border-radius: 14px;
+  background: rgba(242, 193, 78, 0.14);
+  box-shadow: inset 0 0 0 1.5px rgba(242, 193, 78, 0.45);
+  color: var(--gold-hi);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.rp-moment {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 7px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+
+.rp-moment.now {
+  box-shadow: inset 3px 0 0 var(--gold);
+}
+
+.rp-moment .btn {
+  justify-self: start;
+  margin-top: 4px;
+}
+
+.rp-choices {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+
+.rp-choices > .rp-moment {
+  margin: 0;
+}
+
+.rp-cross {
+  --card-w: 38px;
+  max-width: 280px;
+  height: 190px;
+  margin-top: 6px;
+}
+
+.rp-what {
+  margin-top: 6px;
+  font-size: 14px;
+}
+
+.rp-slot {
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.4);
+  border-radius: calc(var(--card-w) * 0.075);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.14);
+}
+
+.cross-slot.turn .cs-name {
+  background: rgba(58, 36, 5, 0.85);
+  box-shadow: inset 0 0 0 1.5px var(--gold);
+  color: var(--gold-hi);
+}
+
+.rp-stand {
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-bar {
+  flex: none;
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.rp-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.rp-pos {
+  min-width: 150px;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rp-tricks {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin: 8px 0 0;
+}
+
+.rp-tn {
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: inset 0 -3px 0 var(--team);
+  color: var(--ink-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.rp-tn.on {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--ink);
+}
+
+/* The player's card in that trick: points left (a light dot), a strong
+   move (a gold dot). */
+.rp-tn.missed,
+.rp-tn.strong {
+  position: relative;
+}
+
+.rp-tn.missed::after,
+.rp-tn.strong::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+.rp-tn.strong::after {
+  background: var(--gold);
+}
+
+.rp-hands {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+}
+
+.rp-hand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 3px 0 0 var(--team);
+}
+
+.rp-hand.turn {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.rp-name {
+  width: 72px;
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.rp-cards {
+  --card-w: 34px;
+  display: flex;
+  min-height: calc(var(--card-w) * 1.4);
+}
+
+.rp-cards > .card + .card {
+  margin-left: -10px;
+}
+
+.rp-cards > .card.rp-played,
+.rp-key.rp-played {
+  box-shadow: 0 0 0 2px var(--zij-hi);
+}
+
+.rp-cards > .card.rp-better,
+.rp-key.rp-better {
+  box-shadow: 0 0 0 2px var(--gold-hi);
+}
+
+.rp-cards > .card.rp-alt,
+.rp-key.rp-alt {
+  box-shadow: 0 0 0 2px var(--ink-3);
+}
+
+.rp-cards > .card:is(.rp-played, .rp-better, .rp-alt) {
+  z-index: 1;
+  translate: 0 -4px;
+}
+
+/* The expert's sheet Redenering van de AI (expert.js): one of the
+   player's decisions, stepped through with ‹ ›, its reasoning and a
+   comment. */
+.m-why > .dialog {
+  width: min(100%, 720px);
+}
+
+.why-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.why-head p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  text-align: center;
+  font-size: 15px;
+}
+
+.why-out {
+  display: grid;
+  margin: 10px 0 0;
+}
+
+.why-out > .btn {
+  justify-self: start;
+}
+
+.xp-fb {
+  margin: 12px 0 0;
+}
+
+.xp-why {
+  display: grid;
+  gap: 4px;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.xp-why p {
+  margin: 0;
+}
+
+.xp-note {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink-2);
+}
+
+/* The table of options scrolls sideways on a phone; the page does not. */
+.xp-scroll {
+  max-width: 100%;
+  margin: 4px 0;
+  overflow-x: auto;
+}
+
+.xp-table {
+  border-collapse: collapse;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.xp-table :is(th, td) {
+  padding: 4px 7px;
+  text-align: right;
+}
+
+.xp-table thead th {
+  font-weight: 700;
+  color: var(--ink-2);
+  vertical-align: bottom;
+  white-space: normal;
+  min-width: 44px;
+}
+
+.xp-table tbody th {
+  text-align: left;
+  font-weight: 800;
+}
+
+.xp-table tbody tr + tr {
+  border-top: 1px solid var(--line);
+}
+
+.xp-table small {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.xp-table .xp-played {
+  background: rgba(242, 193, 78, 0.12);
+}
+
+.xp-table .xp-best td:nth-child(2) {
+  font-weight: 800;
+  color: var(--gold-hi);
+}
+
+/* A row tapped says under the table why the best brings more; the row is
+   the touch target. */
+.xp-pickable tbody tr {
+  height: 44px;
+  cursor: pointer;
+}
+
+/* The pick's frame on its cells: WebKit draws no outline on a row. */
+.xp-table tr.xp-sel > * {
+  box-shadow: inset 0 2px var(--gold-hi), inset 0 -2px var(--gold-hi);
+}
+
+.xp-table tr.xp-sel > :first-child {
+  box-shadow: inset 2px 0 var(--gold-hi), inset 0 2px var(--gold-hi), inset 0 -2px var(--gold-hi);
+}
+
+.xp-table tr.xp-sel > :last-child {
+  box-shadow: inset -2px 0 var(--gold-hi), inset 0 2px var(--gold-hi), inset 0 -2px var(--gold-hi);
+}
+
+.xp-pick {
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.xp-said {
+  min-height: 2.8em;
+}
+
+.xp-fb summary,
+.train-opts summary {
+  min-height: 44px;
+  padding: 10px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.rp-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: -2px 0 2px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+.rp-key {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  border-radius: 3px;
+  vertical-align: -1px;
+}
+
+@media (min-width: 600px) and (min-height: 700px) {
+  .rp-cross {
+    --card-w: 46px;
+    height: 222px;
+  }
+
+  .rp-name {
+    width: 92px;
+  }
+
+  .rp-cards {
+    --card-w: 40px;
+  }
+
+  .rp-cards > .card + .card {
+    margin-left: -6px;
+  }
+}
+
+/* The review line takes the room of the decoration on a short phone: the
+   last hand is on the score sheet too. */
+@media (orientation: portrait) and (max-height: 760px) {
+  .m-over.with-review .over-emoji {
+    display: none;
+  }
+}
+
+@media (orientation: portrait) and (max-height: 680px) {
+  .m-over.with-review .over-last {
+    display: none;
+  }
+}
+
+/* ---------- chat ---------- */
+
+.msg-name.zij {
+  color: var(--zij-hi);
+}
+
+/* ---------- responsive table ---------- */
+
+/* Phones in landscape: short screens, wide sides. Every rule starts with
+   :where(html:not(.kb)): not for an upright phone made short by its
+   on-screen keyboard (see the home screen's landscape rules in app.css). */
+@media (orientation: landscape) and (max-height: 520px) {
+  :where(html:not(.kb)) .trump-badge {
+    min-height: 40px;
+    height: 40px;
+  }
+
+  :where(html:not(.kb)) .score-pill {
+    min-height: 40px;
+  }
+
+  :where(html:not(.kb)) .sp {
+    min-height: 40px;
+    flex-direction: row;
+    gap: 5px;
+    padding: 0 10px;
+  }
+
+  :where(html:not(.kb)) .roem-burst {
+    align-self: center;
+    margin: 0;
+    padding: 4px 16px 7px;
+    translate: calc(var(--trick-w) * 1.4 + 50%) 0;
+  }
+
+  :where(html:not(.kb)) .roem-burst b {
+    font-size: clamp(34px, 11dvh, 56px);
+  }
+
+  /* The replay: the table beside the moment and the hands, the steps on
+     one line. */
+  :where(html:not(.kb)) .m-replay > .dialog {
+    width: min(100%, 860px);
+  }
+
+  :where(html:not(.kb)) .m-replay .dlg-body {
+    display: grid;
+    grid-template-columns: 270px minmax(0, 1fr);
+    grid-template-areas: "table head" "table moment" "table hands" "legend legend";
+    grid-template-rows: auto auto 1fr auto;
+    column-gap: 16px;
+    align-items: start;
+  }
+
+  :where(html:not(.kb)) .m-replay .rp-head { grid-area: head; }
+  :where(html:not(.kb)) .m-replay .rp-choices { grid-area: moment; }
+  :where(html:not(.kb)) .m-replay .rp-table { grid-area: table; }
+  :where(html:not(.kb)) .m-replay .rp-hands { grid-area: hands; }
+  :where(html:not(.kb)) .m-replay .dlg-body > .legend { grid-area: legend; }
+
+  :where(html:not(.kb)) .m-replay .rp-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    column-gap: 16px;
+    padding: 4px 12px 6px;
+  }
+
+  :where(html:not(.kb)) .m-replay .rp-tricks {
+    margin: 0;
+  }
+
+  /* A trick at the seats: the line and the replay button beside a smaller
+     cross, so the button is on screen without scrolling. */
+  :where(html:not(.kb)) .m-last > .dialog {
+    width: min(100%, 560px);
+  }
+
+  :where(html:not(.kb)) .m-last .dlg-body {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: 1fr auto auto 1fr;
+    column-gap: 16px;
+  }
+
+  :where(html:not(.kb)) .m-last .cross {
+    --card-w: 46px;
+    grid-column: 1;
+    grid-row: 1 / -1;
+    height: 236px;
+  }
+
+  :where(html:not(.kb)) .m-last .last-sum {
+    grid-column: 2;
+    grid-row: 2;
+    margin: 0;
+  }
+
+  :where(html:not(.kb)) .m-last .last-replay {
+    grid-column: 2;
+    grid-row: 3;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-head,
+  :where(html:not(.kb)) .m-summary .sum-table,
+  :where(html:not(.kb)) .m-summary .sum-why {
+    grid-column: 1;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-review {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    margin-top: 0;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-foot {
+    grid-column: 1;
+    position: static;
+    margin: 0;
+    padding: 6px 0 10px;
+    background: none;
+  }
+
+  /* The heading already says who went nat; keep the button on screen. */
+  :where(html:not(.kb)) .m-summary .sum-why {
+    display: none;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-table {
+    margin: 4px 0 0;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-table td {
+    font-size: 16px;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-table .sum-total th,
+  :where(html:not(.kb)) .m-summary .sum-table .sum-total td {
+    padding-top: 4px;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-foot .btn-big {
+    min-height: 46px;
+  }
+
+  :where(html:not(.kb)) .m-summary .sum-meta {
+    display: none;
+  }
+
+  :where(html:not(.kb)) .sum-table th,
+  :where(html:not(.kb)) .sum-table td {
+    padding: 1px 8px;
+  }
+
+  :where(html:not(.kb)) .sum-table .sum-score td b {
+    font-size: 21px;
+  }
+
+  :where(html:not(.kb)) .over-emoji,
+  :where(html:not(.kb)) .over-last {
+    display: none;
+  }
+
+  /* With the review line everything still fits above the fold. */
+  :where(html:not(.kb)) .m-over.with-review .over-sub {
+    display: none;
+  }
+
+  :where(html:not(.kb)) .m-over.with-review .over-title {
+    font-size: 32px;
+  }
+
+  :where(html:not(.kb)) .m-over.with-review .over-score {
+    margin: 6px 0 8px;
+  }
+
+  :where(html:not(.kb)) .m-over.with-review .os {
+    padding: 4px 12px;
+  }
+
+  :where(html:not(.kb)) .m-over.with-review .os b {
+    font-size: 26px;
+  }
+
+  :where(html:not(.kb)) .m-over.with-review .btn {
+    min-height: 44px;
+  }
+
+  :where(html:not(.kb)) .review-line {
+    min-height: 40px;
+    margin-bottom: 8px;
+  }
+
+  :where(html:not(.kb)) .over-score {
+    margin: 10px 0;
+  }
+
+  :where(html:not(.kb)) .os {
+    padding: 6px 12px;
+  }
+
+  :where(html:not(.kb)) .os b {
+    font-size: 30px;
+  }
+
+  /* Under the other two, across both columns. */
+  :where(html:not(.kb)) .m-over .btn-setup {
+    grid-column: 1 / -1;
+    order: 1;
+  }
+
+  :where(html:not(.kb)) .table {
+    --side-w: clamp(120px, 20vw, 190px);
+    --hand-w: clamp(50px, 16.5dvh, 86px);
+    --trick-w: clamp(40px, 12.4dvh, 70px);
+    --back-w: clamp(13px, 4.6dvh, 22px);
+    --av: clamp(32px, 10dvh, 44px);
+    --cam-zoom: 1.3;
+    --hand-row: calc(var(--hand-h) * 0.78 + 10px + var(--sab));
+  }
+
+  :where(html:not(.kb)) .seat-top {
+    padding-top: 12px;
+  }
+
+  :where(html:not(.kb)) .seat-left,
+  :where(html:not(.kb)) .seat-right {
+    flex-direction: row;
+    gap: 6px;
+  }
+
+  :where(html:not(.kb)) .seat-right {
+    flex-direction: row-reverse;
+  }
+
+  :where(html:not(.kb)) .seat-left .seat-id,
+  :where(html:not(.kb)) .seat-right .seat-id {
+    flex: none;
+    max-width: 96px;
+    gap: 3px;
+  }
+
+  :where(html:not(.kb)) .seat-left .backs.open,
+  :where(html:not(.kb)) .seat-right .backs.open {
+    --card-w: clamp(24px, 7.5dvh, 32px);
+    --card-index-max: initial;
+    flex-direction: row;
+  }
+
+  :where(html:not(.kb)) .seat-left .backs.open > .card,
+  :where(html:not(.kb)) .seat-right .backs.open > .card {
+    margin-top: 0;
+    margin-left: calc(var(--card-w) * -0.55);
+  }
+
+  :where(html:not(.kb)) .seat-left .backs.open > .card:first-child,
+  :where(html:not(.kb)) .seat-right .backs.open > .card:first-child {
+    margin-left: 0;
+  }
+
+  :where(html:not(.kb)) .prompt {
+    min-height: 36px;
+    padding-bottom: 2px;
+  }
+
+  :where(html:not(.kb)) .felt {
+    top: 6px;
+  }
+
+  :where(html:not(.kb)) .panel {
+    padding: 10px 12px;
+  }
+
+  :where(html:not(.kb)) .panel-title {
+    margin-bottom: 6px;
+    font-size: 16px;
+  }
+
+  :where(html:not(.kb)) .panel-sub {
+    display: none;
+  }
+
+  :where(html:not(.kb)) .suit-btn {
+    min-height: 62px;
+  }
+
+  :where(html:not(.kb)) .suit-btn .sym {
+    font-size: 32px;
+  }
+
+  :where(html:not(.kb)) .panel-bid {
+    display: grid;
+    grid-template-columns: auto auto;
+    align-items: center;
+    column-gap: 14px;
+  }
+
+  :where(html:not(.kb)) .panel-bid .turned {
+    grid-row: span 2;
+    margin: 0;
+  }
+
+  /* The question and who agrees so far beside the answers, which keep to
+     the foot of the panel: low, and once answered (the question out of
+     sight) lower still. */
+  :where(html:not(.kb)) .panel-vote {
+    display: grid;
+    grid-template-columns: minmax(0, auto) auto;
+    column-gap: 16px;
+    width: fit-content;
+    max-width: min(100%, 620px);
+    padding: 8px 10px 8px 14px;
+    text-align: left;
+  }
+
+  :where(html:not(.kb)) .panel-vote .panel-title {
+    grid-column: 1;
+    margin-bottom: 2px;
+    font-size: 16px;
+  }
+
+  :where(html:not(.kb)) .vote-q {
+    grid-column: 1;
+    margin: 0 0 4px;
+    font-size: 12.5px;
+    line-height: 1.3;
+  }
+
+  :where(html:not(.kb)) .vote-who {
+    grid-column: 1;
+    justify-content: flex-start;
+    gap: 4px;
+    margin: 0;
+  }
+
+  :where(html:not(.kb)) .vote-rule {
+    font-size: 12px;
+  }
+
+  :where(html:not(.kb)) .vote-chip {
+    padding: 3px 8px;
+    font-size: 12px;
+  }
+
+  :where(html:not(.kb)) .vote-name {
+    max-width: 6.5em;
+  }
+
+  /* Two equal answers, as wide as the longer one needs. */
+  :where(html:not(.kb)) .vote-btns {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: end;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  :where(html:not(.kb)) .vote-btns .btn {
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 14.5px;
+    white-space: nowrap;
+  }
+
+  /* The coach goes to the free top-left corner of the table instead of
+     above the hand, where it would cover the trick on a short screen. */
+  :where(html:not(.kb)) .prompt {
+    position: static;
+  }
+
+  :where(html:not(.kb)) .coach {
+    top: 8px;
+    bottom: auto;
+    left: max(14px, calc(var(--sal) + 10px));
+    translate: none;
+    width: min(29%, 280px);
+    padding: 6px 6px 6px 10px;
+    font-size: 12.5px;
+    line-height: 1.3;
+  }
+
+  /* Never down over the left seat, who plays after you: table.js sets
+     the lines that fit there (fitCoach). The label and the ring colour
+     tell a tip from an explanation; the icon would take a fifth of the
+     width. */
+  :where(html:not(.kb)) .coach-ico {
+    display: none;
+  }
+
+  :where(html:not(.kb)) .coach-body {
+    position: relative;
+  }
+
+  :where(html:not(.kb)) .coach-txt {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: var(--coach-lines);
+    line-clamp: var(--coach-lines);
+    overflow: hidden;
+  }
+
+  /* "Lees verder" over the end of the last line shown, not on a line of
+     its own; opened, "Minder" goes below the text. */
+  :where(html:not(.kb)) .coach.clamped .coach-more {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    padding-left: 18px;
+    background: linear-gradient(90deg, rgba(250, 238, 206, 0), rgb(250, 238, 206) 16px);
+    line-height: 1.3;
+  }
+
+  /* There is room for the coach beside a trump or bid panel here, and
+     none in the panel. */
+  :where(html:not(.kb)) .coach.on-stage {
+    display: flex;
+  }
+
+  :where(html:not(.kb)) .panel-hint {
+    display: none;
+  }
+
+  /* Short tables talk sideways, never into the trick: the top seat to
+     the left of its name (its cards are on the right), the side seats
+     towards the middle, where table.js stops them short of the trick. */
+  :where(html:not(.kb)) .seat-top .bubble {
+    top: 50%;
+    right: calc(100% + 10px);
+    left: auto;
+    translate: 0 -50%;
+    max-width: min(200px, 26vw);
+    transform-origin: 100% 50%;
+  }
+
+  :where(html:not(.kb)) .seat-top .bubble::after {
+    top: calc(50% - 6px);
+    right: -5px;
+    left: auto;
+  }
+
+  :where(html:not(.kb)) .seat-left .bubble {
+    top: 50%;
+    bottom: auto;
+    left: calc(100% + 8px);
+    translate: 0 -50%;
+    transform-origin: 0 50%;
+  }
+
+  :where(html:not(.kb)) .seat-left .bubble::after {
+    top: calc(50% - 6px);
+    bottom: auto;
+    left: -5px;
+  }
+
+  :where(html:not(.kb)) .seat-right .bubble {
+    top: 50%;
+    bottom: auto;
+    right: calc(100% + 8px);
+    translate: 0 -50%;
+    transform-origin: 100% 50%;
+  }
+
+  :where(html:not(.kb)) .seat-right .bubble::after {
+    top: calc(50% - 6px);
+    bottom: auto;
+    right: -5px;
+  }
+}
+
+/* Tablets and desktops: roomier table, names in the score pill. */
+@media (min-width: 760px) and (min-height: 640px) {
+  .table {
+    --side-w: clamp(150px, 18vw, 210px);
+    --av: clamp(48px, 6vw, 62px);
+    --back-w: clamp(22px, 2.6vw, 30px);
+  }
+
+  .seat-top {
+    padding-top: 22px;
+  }
+
+  .sp {
+    flex-direction: row;
+    align-items: baseline;
+    flex-wrap: wrap;
+    justify-content: center;
+    column-gap: 6px;
+    max-width: 180px;
+    padding: 4px 12px;
+  }
+
+  .sp-names {
+    display: flex;
+    justify-content: center;
+    flex-basis: 100%;
+  }
+
+  .rule {
+    font-size: 15px;
+  }
+}
+
+/* Room in the top bar for both names of a team, "(AI)" included. */
+@media (min-width: 1024px) and (min-height: 640px) {
+  .sp {
+    max-width: 250px;
+  }
+
+  .sp-names {
+    max-width: 226px;
+  }
+}
+
+@media (min-width: 1024px) and (min-height: 760px) {
+  .table {
+    --hand-w: clamp(80px, min(9vw, 12.5dvh), 118px);
+    --trick-w: clamp(70px, min(7.2vw, 10.6dvh), 102px);
+  }
+}
+
+/* ---------- tables of three and two players ---------- */
+
+/* Three players: the other two sit left and right, a little towards the
+   top, and the trick lies in a triangle between the three. */
+.table[data-players="3"] .seat-left,
+.table[data-players="3"] .seat-right {
+  align-self: start;
+  margin-top: clamp(6px, 4dvh, 40px);
+}
+
+/* Raised, the side seats talk downwards, past their cards. */
+.table[data-players="3"] .seat-left .bubble,
+.table[data-players="3"] .seat-right .bubble {
+  top: calc(100% + 8px);
+  bottom: auto;
+  transform-origin: 50% 0;
+}
+
+.table[data-players="3"] .seat-left .bubble::after,
+.table[data-players="3"] .seat-right .bubble::after {
+  top: -5px;
+  bottom: auto;
+}
+
+.table[data-players="3"] .slot-bottom { translate: 0 calc(var(--trick-w) * 0.5); }
+.table[data-players="3"] .slot-left { translate: calc(var(--trick-w) * -0.66) calc(var(--trick-w) * -0.3); }
+.table[data-players="3"] .slot-right { translate: calc(var(--trick-w) * 0.66) calc(var(--trick-w) * -0.3); }
+
+/* The talon: two closed cards in the middle while the auction runs. */
+.talon {
+  --card-w: calc(var(--trick-w) * 0.82);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: flex;
+  translate: -50% -50%;
+}
+
+.talon > .card {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.talon > .card:first-child {
+  rotate: -7deg;
+}
+
+.talon > .card + .card {
+  margin-left: calc(var(--card-w) * -0.55);
+  rotate: 6deg;
+}
+
+/* The auction: the highest bid, a bid to offer, bid or pass. */
+.panel-auction .auction-high {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.panel-auction .auction-high b {
+  color: var(--gold-hi);
+  font-size: 17px;
+}
+
+.bid-stepper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.bid-step {
+  min-width: 48px;
+  min-height: 48px;
+  padding: 0;
+  font-size: 26px;
+  font-weight: 900;
+  border-radius: 50%;
+}
+
+.panel-auction .bid-btns .btn {
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.bid-num {
+  min-width: 3.2ch;
+  font-size: 34px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-hi);
+}
+
+.banner-sym.banner-bid {
+  width: auto;
+  min-width: 64px;
+  padding: 0 8px;
+  font-size: 34px;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Laying away: the two cards from the talon glow; the chosen ones lift,
+   but stay in their place in the fan, so the card beside a chosen one can
+   be chosen too. */
+.hand > .card.picked {
+  translate: 0 calc(var(--hand-h) * -0.2);
+}
+
+.hand > .card.from-talon {
+  box-shadow:
+    0 0 0 2.5px var(--gold),
+    0 0 16px rgba(242, 193, 78, 0.75),
+    0 6px 14px rgba(0, 0, 0, 0.3);
+}
+
+.stage.low {
+  align-items: end;
+  padding-bottom: 4px;
+}
+
+.panel-discard .bid-btns {
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.roem-burst small {
+  margin-top: 6px;
+  color: #fff3d0;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+
+/* Two players: eight piles of two cards in front of each, the top cards
+   open. Ours take the place of the hand, the front row (piles 0..3)
+   nearest us; the opponent's mirror them at the top. A pile shows the
+   closed card under the top one, peeking out. */
+.table[data-players="2"] {
+  --pile-w: clamp(42px, min(19.5vw, 10.4dvh), 96px);
+  --opp-pile-w: clamp(28px, min(11.5vw, 6.2dvh), 68px);
+  --hand-row: calc(var(--pile-w) * 2.32 + 12px + var(--sab));
+}
+
+.hand.tableau {
+  --card-w: var(--pile-w);
+  display: grid;
+  grid-template-columns: repeat(4, var(--pile-w));
+  grid-template-rows: calc(var(--pile-w) * 0.92) calc(var(--pile-w) * 1.4);
+  justify-content: center;
+  align-content: end;
+  column-gap: calc(var(--pile-w) * 0.2);
+  padding-bottom: calc(6px + var(--sab));
+}
+
+.pile {
+  position: relative;
+  width: var(--card-w);
+  height: calc(var(--card-w) * 1.4);
+}
+
+.pile.gone {
+  border-radius: calc(var(--card-w) * 0.1);
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.12);
+}
+
+.pile > .card,
+.pile-under {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+.pile-under {
+  translate: calc(var(--card-w) * 0.06) calc(var(--card-w) * 0.07);
+}
+
+.pile-under > .card {
+  filter: brightness(0.85);
+}
+
+.pile > .card {
+  box-shadow: 0 0 0 0.5px rgba(40, 30, 10, 0.4), 0 4px 10px rgba(0, 0, 0, 0.35);
+  transition: translate 0.18s var(--ease), filter 0.2s ease;
+}
+
+.hand.tableau .pile.front { grid-row: 2; z-index: 2; }
+.hand.tableau .pile.back { grid-row: 1; z-index: 1; }
+.hand.tableau .pile-0, .hand.tableau .pile-4 { grid-column: 1; }
+.hand.tableau .pile-1, .hand.tableau .pile-5 { grid-column: 2; }
+.hand.tableau .pile-2, .hand.tableau .pile-6 { grid-column: 3; }
+.hand.tableau .pile-3, .hand.tableau .pile-7 { grid-column: 4; }
+
+.hand.tableau.my-turn .card.legal {
+  translate: 0 calc(var(--card-w) * -0.1);
+  cursor: pointer;
+}
+
+.hand.tableau.my-turn .card.disabled {
+  filter: brightness(0.72) saturate(0.8);
+}
+
+.hand.tableau .card.selected {
+  translate: 0 calc(var(--card-w) * -0.22);
+  z-index: 5;
+}
+
+.hand.tableau .card.hint {
+  translate: 0 calc(var(--card-w) * -0.17);
+}
+
+.piles {
+  --card-w: var(--opp-pile-w);
+  display: grid;
+  grid-template-columns: repeat(4, var(--opp-pile-w));
+  grid-template-rows: calc(var(--opp-pile-w) * 0.92) calc(var(--opp-pile-w) * 1.4);
+  column-gap: calc(var(--opp-pile-w) * 0.16);
+}
+
+.piles[hidden] {
+  display: none;
+}
+
+.piles .pile.front { grid-row: 1; z-index: 1; }
+.piles .pile.back { grid-row: 2; z-index: 2; }
+.piles .pile-0, .piles .pile-4 { grid-column: 4; }
+.piles .pile-1, .piles .pile-5 { grid-column: 3; }
+.piles .pile-2, .piles .pile-6 { grid-column: 2; }
+.piles .pile-3, .piles .pile-7 { grid-column: 1; }
+
+.table[data-players="2"] .seat-top {
+  gap: 10px;
+  padding-top: 10px;
+  max-width: 100%;
+}
+
+.table[data-players="2"] .seat-top .seat-id {
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.table[data-players="2"] .seat-top .nm {
+  max-width: max(70px, calc(100vw - var(--opp-pile-w) * 4.5 - 90px));
+}
+
+@media (min-width: 760px) and (min-height: 640px) {
+  .table[data-players="2"] {
+    --pile-w: clamp(60px, min(8.6vw, 11.4dvh), 112px);
+    --opp-pile-w: clamp(44px, min(6.2vw, 8dvh), 86px);
+  }
+}
+
+/* Lobby: three seats around the table, or two opposite. */
+.mini-table[data-players="3"] .ls-left,
+.mini-table[data-players="3"] .ls-right {
+  top: 30%;
+}
+
+/* Score pill with three players: tighter, so the bar keeps its buttons. */
+.score-pill.three .sp {
+  min-width: 42px;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+/* Score sheet and summary with a column per player. */
+.scoresheet.cols-3 th,
+.scoresheet.cols-3 td {
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+.scoresheet .tr .bid {
+  display: block;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--gold);
+}
+
+.sum-table th .role {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ink-3);
+}
+
+.sum-table td.shared b {
+  opacity: 0.8;
+}
+
+.sum-three thead .face {
+  display: block;
+  font-size: 19px;
+  line-height: 1.2;
+  text-transform: none;
+}
+
+.over-score.many {
+  flex-wrap: wrap;
+}
+
+.sum-why .card {
+  --card-w: 22px;
+  display: inline-flex;
+  vertical-align: middle;
+  margin: 0 2px;
+}
+
+@media (max-width: 599px) {
+  .m-summary .sum-review-3 .review {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .m-summary .sum-review-2 .review {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .m-summary .sum-review-2 .mt {
+    padding: 3px 2px 6px 4px;
+  }
+}
+
+/* ---------- motion ---------- */
+
+/* The two ends of the turn pulse (see .seat.turn .ring): the glow at rest
+   fades out as the bright one fades in, and back. */
+@keyframes kj-turn-a {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes kj-turn-b {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes kj-hint-a {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes kj-hint-b {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Less motion (a setting): nothing pulses, and the turn shows as a steady
+   glow, which body.reduced .ring in app.css fades in and out. */
+body.reduced .over-emoji,
+body.reduced .spot,
+body.reduced .trick.spot::before,
+body.reduced .hand.spot > .card::after,
+body.reduced .hand > .card.spot::after,
+body.reduced .card.hint::after,
+body.reduced .advised::before,
+body.reduced .advised::after {
+  animation: none;
+}
+
+body.reduced .seat.turn .ring,
+body.reduced .table.my-turn .seat-bottom .ring {
+  box-shadow: 0 0 0 4px var(--gold), 0 0 18px 6px rgba(242, 193, 78, 0.6);
+}
+
+body.reduced .seat.turn .ring::before,
+body.reduced .seat.turn .ring::after,
+body.reduced .table.my-turn .seat-bottom .ring::before,
+body.reduced .table.my-turn .seat-bottom .ring::after {
+  content: none;
+}
+
+body.reduced .hand > .card {
+  transition-duration: 0.12s;
+}
+
+/* On a phone the manual is an opaque sheet over all but a strip of the top
+   bar: what pulses under it holds still until it closes, and goes on from
+   there. Not a lesson spot in the top bar, which shows in that strip. The
+   sheet is at most 900 px high, so a window over 932 px tall shows the top
+   seat's glow above it. */
+@media (max-width: 600px) and (max-height: 932px) {
+  body:has(.m-manual.open) .seat .ring::before,
+  body:has(.m-manual.open) .seat .ring::after,
+  body:has(.m-manual.open) .advised::before,
+  body:has(.m-manual.open) .advised::after,
+  body:has(.m-manual.open) .trick.spot::before,
+  body:has(.m-manual.open) .hand .card::after {
+    animation-play-state: paused;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seat.turn .ring,
+  .table.my-turn .seat-bottom .ring {
+    box-shadow: 0 0 0 4px var(--gold), 0 0 18px 6px rgba(242, 193, 78, 0.6);
+  }
+
+  .seat.turn .ring::before,
+  .seat.turn .ring::after,
+  .table.my-turn .seat-bottom .ring::before,
+  .table.my-turn .seat-bottom .ring::after {
+    content: none;
+  }
+}
+
+/* ---------- the manual's content (manual.js) ---------- */
+
+/* The handleiding in the dark translucent modal panel. Tokens follow the app
+   palette (app.css) with stand-alone fallbacks. */
+.man {
+  --man-text: var(--ink, #f5f1e6);
+  --man-muted: var(--ink-2, rgba(245, 241, 230, 0.76));
+  --man-line: rgba(255, 255, 255, 0.13);
+  --man-soft: rgba(255, 255, 255, 0.055);
+  --man-deep: rgba(0, 0, 0, 0.24);
+  --man-gold: var(--gold, #f2c14e);
+  --man-red: #ff8a80;
+  --man-black: #f4f6f8;
+  --man-green: #7ddc8f;
+  --man-blue: #7cc4ff;
+  --man-wij: var(--wij-hi, #62dccb);
+  --man-zij: var(--zij-hi, #ff9c88);
+  --man-ok: #6fdc8c;
+  --man-bad: #ff7b72;
+  --card-w: 42px;
+  container: man / inline-size;
+  max-width: 46rem;
+  margin: 0;
+  color: var(--man-text);
+  font-size: 1rem;
+  line-height: 1.55;
+  overflow-wrap: break-word;
+  text-align: left;
+}
+
+.man > :first-child { margin-top: 0; }
+.man > :last-child { margin-bottom: 0; }
+
+.man p { margin: 0.6em 0; }
+
+.man-lead {
+  font-size: 1.06rem;
+  color: var(--man-text);
+  margin: 0 0 1em;
+}
+
+.man-h3 {
+  margin: 1.8em 0 0.55em;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid var(--man-line);
+  color: var(--man-gold);
+  font-size: 1.16rem;
+  line-height: 1.3;
+  scroll-margin-top: 0.75rem;
+}
+
+.man-h3:focus { outline: none; }
+.man-h3:focus-visible { outline: 2px solid var(--man-gold); outline-offset: 4px; border-radius: 4px; }
+
+.man-h4 {
+  margin: 1.4em 0 0.35em;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.man-h4::before {
+  content: "";
+  display: inline-block;
+  width: 0.45em;
+  height: 0.45em;
+  margin-right: 0.5em;
+  border-radius: 2px;
+  background: var(--man-gold);
+  transform: translateY(-0.12em) rotate(45deg);
+}
+
+.man strong { color: #fff; font-weight: 700; }
+
+/* Lists */
+.man-list { margin: 0.5em 0; padding-left: 1.25em; }
+.man-list li { margin: 0.35em 0; padding-left: 0.15em; }
+.man-list li::marker { color: var(--man-gold); }
+
+/* Inline cards, suits and UI labels */
+.man-c, .man-suit { font-weight: 700; white-space: nowrap; }
+.man-suit { font-size: 1.08em; line-height: 1; }
+.man-s-C, .man-s-S { color: var(--man-black); }
+.man-s-H, .man-s-D { color: var(--man-red); }
+.four-color .man-s-C { color: var(--man-green); }
+.four-color .man-s-D { color: var(--man-blue); }
+
+.man-ui {
+  display: inline-block;
+  padding: 0.02em 0.6em 0.08em;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.11);
+  color: #fff;
+  font-size: 0.92em;
+  font-weight: 600;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+/* The button's own pictogram in front of its name (Bediening). */
+.man-ui .icon {
+  width: 1.15em;
+  height: 1.15em;
+  margin: 0 0.35em 0 -0.15em;
+  vertical-align: -0.2em;
+}
+
+/* In-section quick links */
+.man-toc {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0 0 1.2rem;
+  padding-bottom: 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 2rem), transparent);
+}
+
+.man-toc::-webkit-scrollbar { display: none; }
+.man-toc::after { content: ""; flex: 0 0 1.25rem; }
+
+@container man (min-width: 34rem) {
+  .man-toc { flex-wrap: wrap; overflow: visible; -webkit-mask-image: none; mask-image: none; }
+  .man-toc::after { display: none; }
+}
+
+.man-toc-btn {
+  min-height: 44px;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--man-line);
+  border-radius: 999px;
+  background: var(--man-soft);
+  color: var(--man-text);
+  font: inherit;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.man-toc-btn:hover { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); }
+.man-toc-btn:focus-visible { outline: 2px solid var(--man-gold); outline-offset: 2px; }
+
+/* Tip, note and warning boxes */
+.man-box {
+  margin: 1em 0;
+  padding: 0.7em 0.9em;
+  border-left: 4px solid var(--man-gold);
+  border-radius: 10px;
+  background: rgba(243, 201, 105, 0.1);
+}
+
+.man-box p { margin: 0.25em 0 0; }
+.man-box-label {
+  display: block;
+  color: var(--man-gold);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.man-note { border-left-color: var(--man-wij); background: rgba(79, 209, 197, 0.1); }
+.man-note .man-box-label { color: var(--man-wij); }
+.man-warn { border-left-color: var(--man-zij); background: rgba(255, 143, 112, 0.11); }
+.man-warn .man-box-label { color: var(--man-zij); }
+
+/* Definition lists (buttons, settings, glossary) */
+.man-dl { margin: 0.6em 0; }
+
+.man-dl-item {
+  padding: 0.55em 0;
+  border-bottom: 1px solid var(--man-line);
+}
+
+.man-dl-item:last-child { border-bottom: 0; }
+.man-dl dt { margin-bottom: 0.15em; color: var(--man-gold); font-weight: 700; }
+.man-dl dd { margin: 0; }
+.man-dl-chips dt { color: inherit; }
+
+@container man (min-width: 34rem) {
+  .man-dl-item {
+    display: grid;
+    grid-template-columns: 9.5rem 1fr;
+    gap: 1rem;
+    align-items: baseline;
+  }
+  .man-dl dt { margin: 0; }
+}
+
+/* Tables: never wider than the panel; scroll inside their own box if needed */
+.man-tablewrap {
+  max-width: 100%;
+  margin: 0.9em 0;
+  overflow-x: auto;
+  border: 1px solid var(--man-line);
+  border-radius: 12px;
+  background: var(--man-soft);
+  -webkit-overflow-scrolling: touch;
+}
+
+.man-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+.man-table th,
+.man-table td {
+  padding: 0.5em 0.65em;
+  border-bottom: 1px solid var(--man-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.man-table tbody tr:last-child > * { border-bottom: 0; }
+
+.man-table thead th {
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--man-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.man-table thead .man-suit { font-size: 1.15em; }
+.man-table tbody th { font-weight: 700; }
+.man-table tfoot > tr > * { border-top: 1px solid rgba(255, 255, 255, 0.28); border-bottom: 0; background: rgba(255, 255, 255, 0.05); }
+.man-table .man-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.man-pts { color: var(--man-gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Card value table */
+.man-values { --card-w: 30px; }
+.man-values .man-table th,
+.man-values .man-table td { padding: 0.32em 0.55em; }
+/* The cards and points set the column widths; the headers wrap under them
+   ("Geen troef / (hier ♠)") instead of pushing the table past a phone's width. */
+.man-values .man-table thead th { white-space: normal; }
+.man-rank { width: 1.8em; color: var(--man-muted); text-align: center !important; font-variant-numeric: tabular-nums; }
+.man-values tbody .man-rank { font-weight: 400; }
+
+.man-vcell {
+  display: flex;
+  align-items: center;
+  gap: 0.55em;
+  min-width: 0;
+}
+
+.man-vcell > .card { flex: none; }
+.man-vname { flex: 1 1 auto; min-width: 0; }
+.man-vcell .man-pts { margin-left: auto; min-width: 1.6em; text-align: right; }
+.man-pts.man-zero { color: var(--man-muted); font-weight: 400; }
+
+/* Card rows and figures */
+.man-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.55rem 0.6rem;
+}
+
+.man-fig {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0;
+  min-width: var(--card-w);
+}
+
+.man-fig > .card { flex: none; }
+
+.man-fig figcaption {
+  max-width: 6.5em;
+  color: var(--man-muted);
+  font-size: 0.76rem;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.man-fig-badge {
+  display: block;
+  color: var(--man-gold);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.man-cards { margin: 0.9em 0; }
+.man-cards-many { --card-w: 36px; }
+.man-cards-many > .man-row { gap: 0.35rem; }
+.man-cards-cap { margin: 0.5em 0 0; color: var(--man-muted); font-size: 0.92rem; }
+
+.man-win > .card {
+  box-shadow: 0 0 0 2px var(--man-gold), 0 0 16px rgba(243, 201, 105, 0.55);
+}
+
+.man-ok > .card { box-shadow: 0 0 0 2px var(--man-ok), 0 2px 10px rgba(111, 220, 140, 0.35); }
+.man-ok figcaption { color: var(--man-ok); font-weight: 700; }
+.man-no > .card { opacity: 0.6; filter: saturate(0.3) brightness(0.62); }
+.man-no figcaption { color: rgba(238, 243, 239, 0.5); }
+
+/* Worked examples */
+.man-ex {
+  margin: 1em 0;
+  padding: 0.8rem 0.85rem 0.85rem;
+  border: 1px solid var(--man-line);
+  border-radius: 14px;
+  background: var(--man-deep);
+}
+
+.man-ex-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem 0.8rem;
+  margin-bottom: 0.4rem;
+}
+
+.man-ex-head:empty { display: none; }
+.man-ex-title { color: #fff; font-weight: 700; }
+
+.man-trump {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  padding: 0.1em 0.65em;
+  border: 1px solid rgba(243, 201, 105, 0.45);
+  border-radius: 999px;
+  background: rgba(243, 201, 105, 0.12);
+  color: var(--man-gold);
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.man-trump .man-suit { font-size: 1.2em; }
+
+.man-ex-part {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.75rem;
+}
+
+.man-ex-vars {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--man-line);
+}
+
+.man-ex-vars > .man-ex-part { margin-top: 0; align-content: start; }
+
+.man-ex-vars > .man-ex-part + .man-ex-part {
+  padding-top: 0.75rem;
+  border-top: 1px dashed var(--man-line);
+}
+
+@container man (min-width: 34rem) {
+  .man-ex-vars.man-two { grid-template-columns: 1fr 1fr; gap: 1.1rem; }
+  .man-ex-vars.man-two > .man-ex-part + .man-ex-part {
+    padding-top: 0;
+    padding-left: 1.1rem;
+    border-top: 0;
+    border-left: 1px dashed var(--man-line);
+  }
+}
+
+.man-ex-label {
+  color: var(--man-muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.man-tag {
+  justify-self: start;
+  padding: 0.05em 0.7em;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.man-tag-amsterdams { background: rgba(79, 209, 197, 0.2); color: var(--man-wij); }
+.man-tag-rotterdams { background: rgba(255, 143, 112, 0.2); color: var(--man-zij); }
+
+.man-ex .man-ex-text { margin: 0.2em 0 0; font-size: 0.95rem; }
+.man-ex-note { margin: 0.6em 0 0; color: var(--man-muted); font-size: 0.92rem; font-style: italic; }
+.man-ex-after { margin: 0.8em 0 0; padding-top: 0.7em; border-top: 1px dashed var(--man-line); font-size: 0.95rem; }
+.man-ex > .man-row { margin-top: 0.3rem; }
+.man-ex > .man-ex-text { margin-top: 0.6em; }
+
+.man-result { font-weight: 700; white-space: nowrap; }
+.man-wij { color: var(--man-wij); }
+.man-zij { color: var(--man-zij); }
+
+.man-ex .man-tablewrap { margin: 0.4em 0 0.2em; background: transparent; }
+.man-sum > * { font-weight: 700; }
+.man-final > * { color: #fff; }
+.man-nat > :first-child,
+.man-nat > :nth-child(2),
+.man-nat > :nth-child(2) strong { color: var(--man-bad); }
+.man-table thead .man-wij { color: var(--man-wij); }
+.man-table thead .man-zij { color: var(--man-zij); }
+
+/* Two-column comparison (Amsterdams vs Rotterdams) */
+.man-compare {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  margin: 1em 0;
+}
+
+@container man (min-width: 34rem) {
+  .man-compare { grid-template-columns: 1fr 1fr; }
+}
+
+.man-cmp {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--man-line);
+  border-top: 3px solid var(--man-wij);
+  border-radius: 12px;
+  background: var(--man-soft);
+}
+
+.man-cmp + .man-cmp { border-top-color: var(--man-zij); }
+.man-cmp-title { margin: 0 0 0.3em; color: var(--man-wij); font-size: 1rem; }
+.man-cmp + .man-cmp .man-cmp-title { color: var(--man-zij); }
+.man-cmp .man-list { margin: 0; padding-left: 1.1em; font-size: 0.95rem; }
+
+/* Roem examples */
+.man-roemex {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+  padding: 0.75rem 0;
+}
+
+.man-roemex + .man-roemex { border-top: 1px dashed var(--man-line); }
+.man-roemex > .man-row { flex: none; flex-wrap: nowrap; gap: 0.35rem; }
+.man-roemex-info { flex: 1 1 12rem; min-width: 0; }
+
+.man-roemex-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.7rem;
+}
+
+.man-roemex-total { color: var(--man-gold); font-size: 1.12rem; font-weight: 800; }
+.man-roemex-kinds { margin-top: 0.15em; color: var(--man-text); font-size: 0.88rem; font-weight: 600; }
+.man-roemex .man-ex-text { margin: 0.2em 0 0; color: var(--man-muted); font-size: 0.92rem; }
+
+/* Glossary search */
+.man-search { display: block; margin: 0 0 0.6rem; }
+
+.man-search input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.28);
+  color: var(--man-text);
+  font: inherit;
+}
+
+.man-search input::placeholder { color: rgba(238, 243, 239, 0.5); }
+.man-search input:focus-visible { outline: 2px solid var(--man-gold); outline-offset: 1px; }
+.man-terms dt { color: var(--man-gold); }
+.man-empty { color: var(--man-muted); font-style: italic; }
+
+/* Visually hidden, still read by screen readers */
+.man-vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.man [hidden] { display: none !important; }
+
+@container man (min-width: 40rem) {
+  .man-ex, .man-cards, .man-roemex { --card-w: 48px; }
+  .man-cards-many > .man-row { gap: 0.55rem; }
+  .man-values { --card-w: 32px; }
+}
+
+/* Phones up to about 375 px: the card value table still fits without a
+   sideways scroll, down to a 320 px screen. */
+@container man (max-width: 21rem) {
+  .man-values { --card-w: 26px; }
+  .man-values .man-table th,
+  .man-values .man-table td { padding: 0.32em 0.4em; }
+  .man-values .man-vcell { gap: 0.4em; }
+  .man-values .man-vcell .man-pts { min-width: 1.2em; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .man * { scroll-behavior: auto !important; }
+}

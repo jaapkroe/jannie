@@ -690,7 +690,7 @@ function toolBtn(name, ic, label, title, fn, { pressed = null, disabled = false,
 function paintDock(el) {
   const show = supported() && possible();
   el.hidden = !show;
-  // Its row makes room for the buttons (app.css).
+  // Its row makes room for the buttons (the game's stylesheet).
   if (show) el.parentElement.dataset.call = me ? 'in' : 'out';
   else delete el.parentElement.dataset.call;
   if (!show) {

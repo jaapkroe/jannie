@@ -202,10 +202,10 @@ export function anim(el, frames, ms, opts = {}) {
 // keyboard shrinks the layout viewport. A phone held upright then looks
 // short and wide, and the rules for landscape phones would kick in: the
 // banner beside the name field, the table in its landscape layout behind
-// the chat drawer. While the keyboard is open, html.kb is set: app.css
-// gates its landscape rules on :where(html:not(.kb)) and hides the banner,
-// and the focused field is scrolled into view. A phone really turned
-// sideways keeps its landscape layout.
+// the chat drawer. While the keyboard is open, html.kb is set: the
+// stylesheets gate their landscape rules on :where(html:not(.kb)) and hide
+// the banner, and the focused field is scrolled into view. A phone really
+// turned sideways keeps its landscape layout.
 const touchMQ = matchMedia('(pointer: coarse)');
 const shortLandscapeMQ = matchMedia('(orientation: landscape) and (max-height: 520px)');
 const KB_MIN = 120;      // px: a keyboard takes at least this much height
@@ -294,8 +294,8 @@ export function watchKeyboard() {
 
 export const onKeyboard = fn => kb.subs.push(fn);
 
-// The short landscape layout of app.css applies: a phone on its side, and
-// not an upright one made short by its keyboard.
+// The short landscape layout of the stylesheets applies: a phone on its
+// side, and not an upright one made short by its keyboard.
 export const shortLandscape = () => shortLandscapeMQ.matches && !kb.on;
 
 export function vibrate(ms) {
