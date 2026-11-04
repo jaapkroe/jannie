@@ -11,7 +11,7 @@ the layout; `docs/` and `games/<game>/README.md` are the design.
 - The docs are the contract. A change to behaviour, an exported Go
   identifier, the protocol or a rule updates the doc that describes it in
   the same commit.
-- Code cites the docs by path and heading anchor:
+- Code cites a doc by its path and a section by its heading anchor:
   `docs/<file>.md#<anchor>` or `games/<game>/README.md#<anchor>`
   (`docs/server.md#pacing`, `games/klaverjas/README.md#seinen-signals`).
   `test/docs.test.mjs` checks every relative link and anchor in the
