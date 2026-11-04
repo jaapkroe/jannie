@@ -2232,7 +2232,7 @@
 }
 
 /* Seen from Wij: good news in our colour, bad news in red, the opponents
-   making their game plain; our pit shines gold (util.js handHeadline). */
+   making their game plain; our pit shines gold (rules.js handHeadline). */
 .sum-head.good .sum-title { color: var(--wij-hi); }
 .sum-head.neutral .sum-title { color: var(--ink); }
 .sum-head.bad .sum-title { color: #ff6b6b; }

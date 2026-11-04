@@ -5,13 +5,15 @@
 import { createCard, createBack, cardShort } from './cards.js';
 import { sound } from './sound.js';
 import {
-  app, h, clear, prefs, savePrefs, toast, wait, dur, anim, sleep, EASE, POS, posOf, seatCount, isWij, teamCls, teamName,
-  scorerOrder, scorerName, myScorer, nameOf, suitSym, suitName, suitText, isRed, roemTotal, ROEM_NAMES, fillAvatar, countUp, icon,
-  suitify, cap, playerName, shortLandscape, onKeyboard,
-  mySide, roemText, variantText, handHeadline, pointsText,
-  reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
+  app, h, clear, prefs, savePrefs, toast, wait, dur, anim, sleep, EASE, seatCount, nameOf, suitSym, suitName, suitText, isRed,
+  fillAvatar, countUp, icon, suitify, cap, playerName, shortLandscape, onKeyboard,
 } from './util.js';
-import { MANUAL_SECTIONS } from './rules.js';
+import {
+  POS, posOf, isWij, teamCls, teamName, mySide, scorerOrder, scorerName, myScorer, roemTotal, ROEM_NAMES, roemText,
+  variantText, handHeadline, pointsText,
+  reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
+  MANUAL_SECTIONS,
+} from './rules.js';
 import * as panels from './panels.js';
 import { openModal, byId, info, infoBtn, countdownRing, confetti, feedbackForm, focusMain } from './panels.js';
 
@@ -1821,7 +1823,7 @@ export function openScoreSheet() {
   m.refresh();
 }
 
-// The side a scorer played on in a finished hand r (see util.sideOf):
+// The side a scorer played on in a finished hand r (see sideOf in rules.js):
 // its team with four players, itself with two, with three 0 for the
 // soloist (r.trumpBy) and 1 for the other two.
 function rowSide(s, r, k) {

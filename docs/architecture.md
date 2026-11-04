@@ -115,7 +115,7 @@ games/klaverjas/
                              icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
                              css/klaverjas.css (linked between app.css and cards.css; the manual's styles last)
                              js/game.js (the game module)  js/table.js (the table and its overlays)
-                             js/rules.js (klaverjas's helpers without the DOM)
+                             js/rules.js (klaverjas's helpers without the DOM: sides, scores, roem, review lines)
                              js/manual.js (the handleiding) and js/expert.js (the sheet Redenering van de AI),
                              each loaded only when first opened
 games/toepen/
@@ -205,13 +205,13 @@ Containerfile: Go is vetted and tested once, every binary built; a
   `cards.js` knows the ranks 7–A only. A 52-card game brings its own `Card`
   and `Rank` and shares `Seat` and `Suit`; `cards.js` needs 2–6 and the
   jokers.
-- **The shell's klaverjas leftovers.** `util.js` still holds 27 helpers
-  of klaverjas's (seats and sides, scorers, suit names, roem, the hand's
-  headline, the review's lines); they load on toepen's site unused, and
-  move to klaverjas's own `rules.js` in a change of their own. Klaverjas's
-  table styles are its own stylesheet, `klaverjas.css`
-  ([frontend.md, "Stylesheets"](frontend.md#stylesheets)), but for two
-  kinds of leftovers in `app.css`, kept on purpose:
+- **The shell's klaverjas leftovers.** Klaverjas's helpers are its own
+  `rules.js` and its table styles its own stylesheet, `klaverjas.css`
+  ([frontend.md, "Stylesheets"](frontend.md#stylesheets)). The shell still
+  has a little of klaverjas alone: in `panels.js` `setLastEnabled` (its
+  *Laatste slag* tool) and the coach's chat lines; in `util.js` its first
+  manual tab as the default of `prefs.tab`; and in `app.css` two kinds of
+  leftovers, kept on purpose:
   - Klaverjas-only alternatives inside the `:is()` lists of four shell
     rules: `.rule:not(.mine)` and `.rv-text` in the two four-colour suit
     colours of text, `.seat-id.spot` and `.rule.spot` where the manual
@@ -219,11 +219,11 @@ Containerfile: Go is vetted and tested once, every binary built; a
     video ring. In all but the last a klaverjas alternative is the most
     specific of its list, so taking it out would lower the specificity of
     the shell's alternatives.
-  - The team colours are split: `.wij` and `.msg-name.wij` are in
-    `app.css` (toepen's lobby marks your own seat `wij`), `.zij` and
-    `.msg-name.zij` in `klaverjas.css`. They go with `util.js`'s `teamCls`
-    and the game module's `chatCls` hook, which gives a chat sender a
-    side's colour.
+  - The team colours are split: `--wij`, `--zij`, `.wij` and
+    `.msg-name.wij` are in `app.css` (toepen's lobby marks your own seat
+    `wij`), `.zij` and `.msg-name.zij` in `klaverjas.css`. They go with
+    `rules.js`'s `teamCls` and the game module's `chatCls` hook, which
+    gives a chat sender a side's colour.
 - **The extras.** Hints, lessons, the review after a match and the expert
   mode are klaverjas's; toepen has a reasoning sheet of its own for the
   expert alone with bots

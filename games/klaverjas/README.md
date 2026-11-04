@@ -1246,7 +1246,17 @@ after the shell's `app.css` and before `cards.css`, so a card's state there
 ### rules.js
 
 ```js
-// games/klaverjas/web/js/rules.js — klaverjas's helpers without the DOM
+// games/klaverjas/web/js/rules.js — klaverjas's helpers without the DOM (it imports util.js and cards.js); s is the state
+POS, posOf(s, seat)                     // the places 'bottom' (you), 'left', 'top', 'right' at a table of 2, 3 or 4
+sideOf(s, seat), mySide(s)              // the side in this hand: the team (4), the seat (2), the soloist 0 and the others 1 (3);
+                                        //   -1 in the auction
+isWij(s, seat), teamCls(s, seat), teamName(s, side)  // ours or not; 'wij' or 'zij'; "Wij", "Zij", "Jij" or a name
+scorerOf(s, seat), myScorer(s), scorerName(s, k), scorerOrder(s)  // the scores of a match: per team with four, else per player
+ROEM_NAMES, roemTotal(roem), roemText(roem)  // roem by name, in points, in words ("driekaart (20), stuk (20)")
+variantText(opts)                       // "Utrechts/Amsterdams", "Met z'n drieën, Rotterdams"
+handHeadline(r, w, s)                   // the hand summary's headline from the viewer's side: {t, sub, cls}
+reviewVerdict, luckText, pointsText, momentWhere, strongLine, missedLine, fineLine, handSum, outcomeLine,
+  timeText, reviewHistory               // the lines of the Spelanalyse (below)
 MANUAL_SECTIONS                         // manual.js's SECTIONS, for before manual.js is loaded
 ```
 
@@ -1421,7 +1431,7 @@ points and roem; the hand summary (and the score sheet for the previous hand,
 which stays open while updates arrive) shows all 8 tricks of the finished
 hand in play order, each card underlined in its team's colour; tapping a
 trick shows it at the seats like *Laatste slag*. The summary's headline
-speaks from the viewer's team (`handHeadline` in util.js): we played and
+speaks from the viewer's team (`handHeadline` in rules.js): we played and
 made it *Gehaald!*, went nat *Nat!*; they made it *Zij halen het*, went nat
 *Zij gaan nat!*; our pit *Pit!* (gold, also when they went nat), theirs
 *Zij halen pit*; good news for us in our colour, bad news in red. With two

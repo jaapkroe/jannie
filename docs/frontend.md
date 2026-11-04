@@ -94,12 +94,16 @@ Every game has a site of its own (`klaverjas.kroes.dev`, `toepen.kroes.dev`;
 built from the same shell:
 
 - `platform/web/js`: `main.js` (routing, the websocket, the update queue),
-  `util.js`, `panels.js` (modals, back button, settings, bot picker, menu,
-  feedback, chat), `home.js` (home, invite, lobby), `sound.js`, `cards.js`,
-  `call.js` (lazy); `platform/web/css`: `app.css`, `cards.css`.
+  `util.js` (the app context, DOM building, icons, storage, preferences,
+  toasts, motion, the on-screen keyboard, names, suits and avatars),
+  `panels.js` (modals, back button, settings, bot picker, menu, feedback,
+  chat), `home.js` (home, invite, lobby), `sound.js`, `cards.js`, `call.js`
+  (lazy); `platform/web/css`: `app.css`, `cards.css`.
 - `games/<game>/web`: `index.html`, `manifest.webmanifest`, `favicon.svg`,
   `icon-full.svg`, the PNG icons, `og.png`, and `js/game.js`, the game
-  module, with the game's other modules and its stylesheet.
+  module, with the game's other modules and its stylesheet. A game's own
+  helpers are in its own modules (klaverjas's and toepen's `rules.js`),
+  not in the shell's `util.js`, which every site loads.
 - The shell reaches the game only through `main.js` importing `./game.js`;
   `home.js` and `panels.js` get it at boot (`home.init(game)`,
   `panels.useGame(game)`). `game.js` has no side effects on import.

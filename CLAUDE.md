@@ -143,9 +143,12 @@ node app-checks.mjs $U [--only lessons,call]   # 34 checks, about 15 minutes for
 
 `app-screens.mjs`, `app-play.mjs`, `app-checks.mjs`, `app-perf.mjs` and the
 mock are klaverjas's. `app-lib.mjs`, their shared helpers, is also used by
-`toepen-screens.mjs`, `css-same.mjs` and `og-image.mjs`;
-`app-icons.test.mjs` checks every site's icons and link preview, and
-`app-util.test.mjs` tests the shell's `util.js`.
+`toepen-screens.mjs`, `css-same.mjs` and `og-image.mjs`. The unit tests
+in `test/ui` need no browser: `app-icons.test.mjs` checks every site's
+icons and link preview, `app-util.test.mjs` tests the shell's `util.js`,
+`cards-unit.test.mjs` its `cards.js`, `klaverjas.test.mjs` klaverjas's
+`rules.js`, `toepen.test.mjs` toepen's and `score.test.mjs` toepen's
+`scorecalc.js`.
 
 Toepen has no mock: `toepen-screens.mjs` drives its site through every
 screen at six sizes against the server from source, into `test/ui/out/`:
