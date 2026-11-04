@@ -3,7 +3,8 @@
 // (docs/frontend.md#the-game-module). No side effects when imported: node
 // tests read it.
 import { sound } from './sound.js';
-import { app, h, icon, store, posOf, isWij, teamCls, variantText, countWord, cap, POS } from './util.js';
+import { app, h, icon, store, countWord, cap } from './util.js';
+import { POS, posOf, isWij, teamCls, variantText } from './rules.js';
 import * as panels from './panels.js';
 import * as table from './table.js';
 import { optionsForm, numberField, soloName } from './home.js';

@@ -26,8 +26,9 @@ the websocket), the shell's 6 modules (main.js with the websocket, util,
 panels, home, sound, cards) and 2 stylesheets (app.css, cards.css), and at
 most 3 page-load modules and 1 stylesheet of the game. Every other module
 is imported when first needed: the shell's `call.js` once another person
-sits at the table, and a game's own extras (klaverjas's `expert.js`,
-toepen's score sheet), so a page load never fetches them.
+sits at the table, and a game's own extras (klaverjas's handleiding
+`manual.js` and `expert.js`, toepen's score sheet), so a page load never
+fetches them.
 `test/sites.test.mjs` counts it from index.html and the static imports.
 Each game lists its own
 ([games/klaverjas/README.md, "Page load"](../games/klaverjas/README.md#page-load);
@@ -93,12 +94,16 @@ Every game has a site of its own (`klaverjas.kroes.dev`, `toepen.kroes.dev`;
 built from the same shell:
 
 - `platform/web/js`: `main.js` (routing, the websocket, the update queue),
-  `util.js`, `panels.js` (modals, back button, settings, bot picker, menu,
-  feedback, chat), `home.js` (home, invite, lobby), `sound.js`, `cards.js`,
-  `call.js` (lazy); `platform/web/css`: `app.css`, `cards.css`.
+  `util.js` (the app context, DOM building, icons, storage, preferences,
+  toasts, motion, the on-screen keyboard, names, suits and avatars),
+  `panels.js` (modals, back button, settings, bot picker, menu, feedback,
+  chat), `home.js` (home, invite, lobby), `sound.js`, `cards.js`, `call.js`
+  (lazy); `platform/web/css`: `app.css`, `cards.css`.
 - `games/<game>/web`: `index.html`, `manifest.webmanifest`, `favicon.svg`,
   `icon-full.svg`, the PNG icons, `og.png`, and `js/game.js`, the game
-  module, with the game's other modules and its stylesheet.
+  module, with the game's other modules and its stylesheet. A game's own
+  helpers are in its own modules (klaverjas's and toepen's `rules.js`),
+  not in the shell's `util.js`, which every site loads.
 - The shell reaches the game only through `main.js` importing `./game.js`;
   `home.js` and `panels.js` get it at boot (`home.init(game)`,
   `panels.useGame(game)`). `game.js` has no side effects on import.
@@ -107,8 +112,9 @@ built from the same shell:
   stylesheet ("Stylesheets" above).
 
 `test/sites.test.mjs` checks every site: the two trees share no path, the
-budget holds and every module main.js imports is preloaded, the shell
-imports no game module, and nothing a player sees names another game.
+budget holds and every module main.js imports is preloaded, a module those
+import when first needed is on the site, the shell imports no game module,
+and nothing a player sees names another game.
 
 ### The game module
 

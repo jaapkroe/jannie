@@ -5,15 +5,17 @@
 import { createCard, createBack, cardShort } from './cards.js';
 import { sound } from './sound.js';
 import {
-  app, h, clear, prefs, savePrefs, toast, wait, dur, anim, sleep, EASE, POS, posOf, seatCount, isWij, teamCls, teamName,
-  scorerOrder, scorerName, myScorer, nameOf, suitSym, suitName, suitText, isRed, roemTotal, ROEM_NAMES, fillAvatar, countUp, icon,
-  suitify, cap, playerName, shortLandscape, onKeyboard,
-  mySide, roemText, variantText, handHeadline, pointsText,
-  reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
+  app, h, clear, prefs, savePrefs, toast, wait, dur, anim, sleep, EASE, seatCount, nameOf, suitSym, suitName, suitText, isRed,
+  fillAvatar, countUp, icon, suitify, cap, playerName, shortLandscape, onKeyboard,
 } from './util.js';
+import {
+  POS, posOf, isWij, teamCls, teamName, mySide, scorerOrder, scorerName, myScorer, roemTotal, ROEM_NAMES, roemText,
+  variantText, handHeadline, pointsText,
+  reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
+  MANUAL_SECTIONS,
+} from './rules.js';
 import * as panels from './panels.js';
 import { openModal, byId, info, infoBtn, countdownRing, confetti, feedbackForm, focusMain } from './panels.js';
-import { SECTIONS, renderManual } from './manual.js';
 
 const E = {};             // fixed elements
 const seats = {};         // pos → seat parts
@@ -708,7 +710,7 @@ function renderPrompt(s) {
     }
   }
   // A lesson step may point to a section of the manual.
-  const man = lesson ? SECTIONS.find(x => x.id === s.lesson.manual) : null;
+  const man = lesson ? MANUAL_SECTIONS.find(x => x.id === s.lesson.manual) : null;
   E.coachMan.hidden = !man;
   if (man) {
     E.coachMan.dataset.id = man.id;
@@ -1821,7 +1823,7 @@ export function openScoreSheet() {
   m.refresh();
 }
 
-// The side a scorer played on in a finished hand r (see util.sideOf):
+// The side a scorer played on in a finished hand r (see sideOf in rules.js):
 // its team with four players, itself with two, with three 0 for the
 // soloist (r.trumpBy) and 1 for the other two.
 function rowSide(s, r, k) {
@@ -2026,8 +2028,15 @@ export function openTrumpInfo() {
 
 // ---------- manual ----------
 
+// The manual (manual.js, loaded when first opened) at section tab, else at
+// the one last read.
 export function openManual(tab) {
   sound.play('click');
+  import('./manual.js').then(m => showManual(m, tab),
+    () => toast('Laden lukte niet', { sub: 'Controleer je internet en probeer het nog eens.', kind: 'error' }));
+}
+
+function showManual({ SECTIONS, renderManual }, tab) {
   const content = h('div', { class: 'man-scroll' });
   const tabs = h('div', { class: 'tabs', role: 'tablist' });
   const btns = SECTIONS.map(sec => h('button', {

@@ -4,7 +4,8 @@
 //   - the two trees share no path (no file of the shell is replaced);
 //   - a page load stays within 17 requests, which a rate limit in front of
 //     the site must let through at once, and
-//     every module main.js imports statically is preloaded;
+//     every module main.js imports statically is preloaded, and every one
+//     they import when first needed is on the site, with what it imports;
 //   - the shell reaches the game only through main.js importing ./game.js;
 //   - nothing a player sees names another game.
 //   node --test test/sites.test.mjs
@@ -27,6 +28,11 @@ test('there are sites, and klaverjas is one of them', () => {
 function staticImports(file) {
   const src = read(file);
   return [...src.matchAll(/^\s*(?:import|export)\s[^'"]*?from\s+'(\.\/[\w.-]+\.js)'/gm)].map(m => m[1].slice(2));
+}
+
+// The modules a module imports when first needed (import('./x.js')).
+function dynamicImports(file) {
+  return [...read(file).matchAll(/\bimport\(\s*'(\.\/[\w.-]+\.js)'\s*\)/g)].map(m => m[1].slice(2));
 }
 
 // User-visible text of a file: string literals of JS, the text of HTML and
@@ -66,6 +72,17 @@ for (const game of GAMES) {
       const file = siteFile(game, '/' + p);
       assert.ok(file, `${p} exists on the site`);
       for (const dep of staticImports(file)) walk('js/' + dep);
+      for (const dep of dynamicImports(file)) reach('js/' + dep, p);
+    };
+    // A module imported when first needed, and all it imports in turn, is
+    // on the site; it is not part of the page load.
+    const later = new Set();
+    const reach = (p, from) => {
+      if (seen.has(p) || later.has(p)) return;
+      later.add(p);
+      const file = siteFile(game, '/' + p);
+      assert.ok(file, `${from} imports ${p}, which is not on the site`);
+      for (const dep of [...staticImports(file), ...dynamicImports(file)]) reach('js/' + dep, p);
     };
     walk('js/main.js');
     seen.delete('js/main.js');

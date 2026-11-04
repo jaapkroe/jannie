@@ -2095,7 +2095,8 @@ CHECKS.bubbles = async browser => {
       });
       const r = await P.page.evaluate(async () => {
         const table = await import('/js/table.js');
-        const { app, posOf } = await import('/js/util.js');
+        const { app } = await import('/js/util.js');
+        const { posOf } = await import('/js/rules.js');
         const s = app.s;
         const seatAt = pos => [1, 2, 3].map(k => (s.you + k) % 4).find(seat => posOf(s, seat) === pos);
         const pause = ms => new Promise(ok => setTimeout(ok, ms));
@@ -2191,7 +2192,8 @@ CHECKS.corners = async browser => {
       await sleep(1500);
       const r = await P.page.evaluate(async () => {
         const table = await import('/js/table.js');
-        const { app, posOf } = await import('/js/util.js');
+        const { app } = await import('/js/util.js');
+        const { posOf } = await import('/js/rules.js');
         const s0 = app.s;
         const POS = ['bottom', 'left', 'top', 'right'];
         const seatAt = pos => [0, 1, 2, 3].find(seat => posOf(s0, seat) === pos);

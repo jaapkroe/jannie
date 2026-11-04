@@ -255,8 +255,8 @@ func TestGradeBreakdown(t *testing.T) {
 // TestGradeLevels plays games with a bot of each level at seat 0 (normaal
 // bots elsewhere), grades its decisions as the review does and reports the
 // numbers the review shows. The percentage must order the levels, and the
-// verdicts of the review (reviewVerdict in web/js/util.js, from 95% sterk
-// gespeeld, from 82% goed gespeeld) must fit their averages.
+// verdicts of the review (reviewVerdict in games/klaverjas/web/js/rules.js,
+// from 95% sterk gespeeld, from 82% goed gespeeld) must fit their averages.
 func TestGradeLevels(t *testing.T) {
 	if testing.Short() {
 		t.Skip("slow")
