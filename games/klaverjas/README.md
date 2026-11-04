@@ -693,7 +693,8 @@ type Brain interface {
 }
 type Advice struct{ Card *game.Card; Suit *game.Suit; Play *bool; Text string }
 type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool }                   // as bot.Choice
-type Grade struct{ Stake, Lost, Gain float64; Better Choice; Text string; Nat float64 } // as bot.Grade
+type Grade struct{ Stake, Lost, Gain float64; Better, Obvious Choice; Text string; Nat float64; Played, Other Outcome } // as bot.Grade
+type Outcome struct{ Us, Them, NatUs, NatThem float64 }            // as bot.Outcome
 type Explanation struct{ Normaal Choice; Rule string; Sterk Choice; SterkWhy string; Hint Choice; HintText, HintWhy string; Worlds int; Options []Option } // as bot.Explanation
 type Option struct{ Choice; Value, SE float64; Outcome; Parts []float64; Why string }
 type ChatEvent struct{ Kind string; Mine bool; Text string; Points int; InHand, Playing bool } // as bot.ChatEvent
@@ -1247,7 +1248,8 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
 ### Home
 
 On the home screen of [docs/frontend.md, "Home"](../../docs/frontend.md#home),
-klaverjas has the tiles *Oefenen* (training) and *Handleiding*. In the
+klaverjas has the tile *Oefenen* (training) and the help *Handleiding en
+spelregels*, which opens the manual ([manual.js](#manualjs)). In the
 *Nieuw spel* sheet *Troef* hides with three players, *Regels* with two, and
 *Seinen* (four toggles, two per line: *Met de aas seinen*, *Op- en
 afseinen*, *Kleintje boer*, *Boer over boer*) with three or two. Five quick

@@ -119,7 +119,7 @@ export const maxPlayers;    // the largest table: the lobby's hints, the refused
 export const PLAYING;       // Set of phases in which a turn may be the player's (sound and title cues)
 export const ACKED;         // Set of moves the server answers at once (silence: a dead socket)
 export const table;         // the table module: init, render(s), animate(ev, prev, next), settle, welcomeBack,
-                            //   bubble(s, seat, text), onError, staleVote(m), resync, resetRoom, relayout, renderCall
+                            //   bubble(s, seat, text), staleVote(m), resync, resetRoom, relayout, renderCall
 export const TOOLS;         // the game's top-bar tools for panels.toolButtons, as the shell's:
                             //   name: [icon, label, title, fn, {hidden}?]
 export const menuTitle, menu;  // the menu button's tooltip; menu(item) → the game's menu items, before the shell's
@@ -128,7 +128,7 @@ export const sync, onError, onReconnect;    // after every update; on a refusal;
 export const messages, queued;  // the game's own server messages: handled at once, or after the animations before them
 export const home;          // options (rows: key, label, choices, info, players?, input?, multi + value?), defaults,
                             //   quickOpts(), quickSub(), summary(o), remember(o), tiles()?, help {label, open},
-                            //   egg?, footer, support, shareText(code)
+                            //   egg?, footer, support, shareText(code), route(params)? (a link of its own)
 export const lobby;         // seats(miniTable) → its seat slots; slot(s, seat) → {el, cls, role, free}
 ```
 
@@ -196,8 +196,8 @@ at its hyphen), *Nieuw spel*
 (options sheet with defaults → *Maak spel*; rows that do not apply to the
 number of players hide), *Meedoen* (4-letter code field;
 joins as soon as 4 letters are typed), the game's own tiles (klaverjas:
-*Oefenen*; toepen: *Score bijhouden*) and its help (*Handleiding*,
-*Spelregels en bediening*). Snel spelen and a game's tiles for play with
+*Oefenen*; toepen: *Score bijhouden*) and its help (*Handleiding en
+spelregels*, *Spelregels en bediening*). Snel spelen and a game's tiles for play with
 bots only never ask for a name: without one the
 player is "Speler", which is not stored as their name. Under the footer,
 small: "Versie a05a087", the commit the web image was built from (the
@@ -214,8 +214,9 @@ the deployment's `SUPPORT_URL`
 ([deployment.md, "SUPPORT_URL"](deployment.md#support_url)), which the
 Containerfile fills into index.html's `<meta name="support">`; `supportURL`
 (util.js) takes it only as an `https://` URL. Without one there is no
-button: a server from source has none, nor a fork that sets none, nor the
-store apps, which may not point to a payment outside the store.
+button: a server from source has none, nor a fork that sets none, nor an
+app sold through an app store, which may not point to a payment outside
+the store.
 
 *Nieuw spel* and
 *Meedoen*, where others see the name, ask for it first, gently: the name

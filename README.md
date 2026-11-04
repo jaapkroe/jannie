@@ -25,9 +25,10 @@ The Dutch trick-taking game, with the rules as played in cafés.
   three strengths. The strongest counts cards and plays each choice out in
   sampled deals.
 - **Signals** (*seinen*), agreed per table: *met de aas seinen*, *op- en
-  afseinen*, *kleintje boer* and *boer over boer*. Bots at *normaal* and
-  *sterk* give and read the signals the table has agreed; *makkelijk* bots
-  play without signals.
+  afseinen*, *kleintje boer* and *boer over boer*. Where the table agreed on
+  them, bots at *normaal* and *sterk* give and read *met de aas seinen*,
+  *opseinen* and *kleintje boer*, and read *boer over boer*; no bot gives
+  or reads *afseinen*, and *makkelijk* bots play without signals.
 - **Oefenen**: lessons with Juf Jannie as your partner (*Basisspel*, *Roem en
   tellen*, *Seinen*), taught step by step, with a hint on every turn and a
   tip after every trick.

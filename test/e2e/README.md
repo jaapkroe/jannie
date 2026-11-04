@@ -149,7 +149,7 @@ questions, the votes (and those too late) and the takeovers.
 
 ## toepen.mjs
 
-With only a URL it plays five matches: tables of 2 to 6 with one to four
+With only the URL as its argument (no `--url`) it plays five matches: tables of 2 to 6 with one to four
 humans, every AI level, a limit of 10 or 15, and the extra rules on and
 off (vuile was, armoede, koningsspel, boer, anti-lijntoep, open after a
 bluff). Simulated players lay away random cards in the koningsspel, claim

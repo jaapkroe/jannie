@@ -406,7 +406,7 @@ drops a line and says so in the server log; so does a directory that
 cannot be written). Used for statistics and to improve the game, and kept
 for at most 12 months: the writer removes the month files older than the
 current month and the eleven before it, at its start and every hour
-(`gameLogMonths`). The P2P apps have no server and keep none.
+(`gameLogMonths`).
 
 Records, each with `t`, the `match` id and `at` (UTC):
 

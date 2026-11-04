@@ -69,8 +69,9 @@ the layout; `docs/` and `games/<game>/README.md` are the design.
   `Makefile`, which git ignores, or from make's command line
   ([docs/deployment.md, "SUPPORT_URL"](docs/deployment.md#support_url)).
   Never commit one: `scripts/deploy-test` (in `make test`) fails on a
-  payment link in any file but `local.mk`, untracked files included. A
-  server from source has no support button.
+  payment link of the hosts it knows (ING payment requests, bunq.me,
+  tikkie.me, paypal.me) in any file but `local.mk`, untracked files
+  included. A server from source has no support button.
 
 ## Toolchain
 
