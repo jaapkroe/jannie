@@ -114,8 +114,10 @@ games/klaverjas/
   web/                       index.html  favicon.svg  manifest.webmanifest  og.png (link preview)
                              icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
                              css/klaverjas.css (linked between app.css and cards.css; the manual's styles last)
-                             js/game.js (the game module)  js/table.js (the table and its overlays)  js/manual.js
-                             js/expert.js (the sheet Redenering van de AI, loaded only when first opened)
+                             js/game.js (the game module)  js/table.js (the table and its overlays)
+                             js/rules.js (klaverjas's helpers without the DOM)
+                             js/manual.js (the handleiding) and js/expert.js (the sheet Redenering van de AI),
+                             each loaded only when first opened
 games/toepen/
   toepen/ toepbot/ toepenserver/   toepen's rules, bots and server side
   scoresheet/                Score bijhouden: the score of a game at a real table, a service at /api/score

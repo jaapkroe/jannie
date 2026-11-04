@@ -1222,8 +1222,19 @@ option, and the bots and the hints do nothing with it.
 
 17 requests: html, 3 css (app.css, klaverjas.css, cards.css, in that
 order), favicon, manifest, one PNG icon, the shell's 6 modules, the game's
-3 (game, table, manual), the websocket; `expert.js` is imported only when
-its sheet is first opened (expert mode, training).
+3 (game, table, rules), the websocket. The modules in `js/`:
+
+- `game.js`, the game module
+  ([docs/frontend.md, "The game module"](../../docs/frontend.md#the-game-module));
+- `table.js`, the table and its overlays;
+- `rules.js`, klaverjas's helpers without the DOM ([rules.js](#rulesjs));
+- `manual.js`, the handleiding ([manual.js](#manualjs)), imported when
+  the manual is first opened;
+- `expert.js`, the sheet *Redenering van de AI*, imported when it is
+  first opened (expert mode, training).
+
+When `manual.js` or `expert.js` cannot be loaded, a toast says "Laden
+lukte niet" and nothing opens.
 
 `css/klaverjas.css` holds the table, the overlays of the game, the lessons
 and, as its last section, the manual's styles (classes `man-…`). It comes
@@ -1231,6 +1242,16 @@ after the shell's `app.css` and before `cards.css`, so a card's state there
 (`.card.selected`, `.card.disabled`) keeps winning its ties with
 `.hand > .card` and `.pile > .card`
 ([docs/frontend.md, "Stylesheets"](../../docs/frontend.md#stylesheets)).
+
+### rules.js
+
+```js
+// games/klaverjas/web/js/rules.js — klaverjas's helpers without the DOM
+MANUAL_SECTIONS                         // manual.js's SECTIONS, for before manual.js is loaded
+```
+
+Node tests: `test/ui/klaverjas.test.mjs`, which loads the shell's modules
+as the site does (`siteImports` in `test/ui/site.mjs`).
 
 ### manual.js
 
@@ -1244,6 +1265,11 @@ export function renderManual(sectionId, opts = {}) // → HTMLElement with that 
                                                   // opts.icon(name) (util.icon) puts the buttons' pictograms in the Bediening chips
 // Styles for the manual content are the last section of css/klaverjas.css (classes prefixed man-).
 ```
+
+`table.js` imports it when the manual is first opened (`openManual`). A
+lesson step's link takes its section's title from `MANUAL_SECTIONS` in
+rules.js, as manual.js may not be loaded yet; `test/ui/klaverjas.test.mjs`
+keeps the two lists the same.
 
 ### Home
 

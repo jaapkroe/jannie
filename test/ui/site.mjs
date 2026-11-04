@@ -4,8 +4,9 @@
 // sound-render.mjs, ...). The two trees must not share a path;
 // test/sites.test.mjs checks that.
 import fs from 'node:fs';
+import module from 'node:module';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -31,6 +32,28 @@ export function siteFile(game, p) {
     if (f.startsWith(root + path.sep) && fs.statSync(f, { throwIfNoEntry: false })?.isFile()) return f;
   }
   return null;
+}
+
+// Makes node resolve a relative import in a module of games/<game>/web as
+// the browser does on that game's site: in the union, so the node tests of
+// a game's module (games/klaverjas/web/js/rules.js) load the shell's
+// ./util.js. Node 22.15 or later (module.registerHooks).
+export function siteImports() {
+  module.registerHooks({
+    resolve(specifier, context, next) {
+      if (/^\.\.?\//.test(specifier) && context.parentURL?.startsWith('file:')) {
+        const from = fileURLToPath(context.parentURL);
+        for (const game of GAMES) {
+          const dir = siteDir(game);
+          if (!from.startsWith(dir + path.sep)) continue;
+          const rel = path.relative(dir, path.resolve(path.dirname(from), specifier)).split(path.sep).join('/');
+          const file = siteFile(game, '/' + rel);
+          if (file) return { url: pathToFileURL(file).href, shortCircuit: true };
+        }
+      }
+      return next(specifier, context);
+    },
+  });
 }
 
 // Every file of a tree, as site paths ("js/main.js").
