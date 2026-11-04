@@ -45,7 +45,7 @@ type Flags struct {
 	Addr        string   // listen address
 	Static      string   // the repository, whose platform/web and games/<game>/web are served too (development); "": none
 	Fast        bool     // scale every game delay by 0.05 (tests)
-	Games       string   // the directory of the game log (design §6); "": none
+	Games       string   // the directory of the game log (docs/server.md#game-log); "": none
 	Origins     []string // websocket Origin patterns besides the request host
 	Healthcheck bool     // check /api/health on Addr and exit
 }
@@ -63,7 +63,7 @@ func Parse(name string, args []string) (Flags, error) {
 	fs.StringVar(&f.Static, "static", "", "also serve the frontend from this repository: platform/web and games/<game>/web (development)")
 	fs.BoolVar(&f.Fast, "fast", false, "scale all game delays by 0.05 (tests)")
 	fs.BoolVar(&f.Healthcheck, "healthcheck", false, "check /api/health on -addr and exit 0 (healthy) or 1")
-	fs.StringVar(&f.Games, "games", "", "keep the game log (design §6) in this directory; empty keeps none")
+	fs.StringVar(&f.Games, "games", "", "keep the game log (docs/server.md#game-log) in this directory; empty keeps none")
 	fs.Var((*origins)(&f.Origins), "origin", "allowed websocket Origin host pattern besides the request host (repeatable)")
 	err := fs.Parse(args)
 	return f, err

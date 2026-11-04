@@ -1,7 +1,8 @@
 // Toepen without a browser: where the seats sit, what the table says on
-// every turn, the summary of a round and the rules (docs/toepen.md). Pure
-// functions of the state `s`; table.js draws them, game.js places the
-// lobby's seats with them. Tested by test/ui/toepen.test.mjs.
+// every turn, the summary of a round and the rules
+// (games/toepen/README.md). Pure functions of the state `s`; table.js
+// draws them, game.js places the lobby's seats with them. Tested by
+// test/ui/toepen.test.mjs.
 
 // The order within a suit, low to high: boer, vrouw, heer, aas, 7, 8, 9, 10.
 export const STRENGTH = { J: 0, Q: 1, K: 2, A: 3, 7: 4, 8: 5, 9: 6, T: 7 };

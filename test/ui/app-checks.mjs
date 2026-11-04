@@ -751,9 +751,9 @@ const REPLAY_VIEW = () => ({
 });
 
 // The replay of finished hand rh (a handReview) at the step just before
-// the player's (you) card in trick t: the analysis boxes as design §9
-// Terugkijken has them, the player's card ringed when graded there, a dot
-// for every trick with points left or a strong move.
+// the player's (you) card in trick t: the analysis boxes as
+// games/klaverjas/README.md#terugkijken has them, the player's card ringed
+// when graded there, a dot for every trick with points left or a strong move.
 function replayAt(rh, you, t, v) {
   const before = d => {
     const tr = d.trick ? rh.tricks[d.trick - 1] : null;
@@ -2510,15 +2510,16 @@ CHECKS.keyboard = async browser => {
   });
 };
 
-// The takeover question (design §6): nobody plays a person's seat unasked.
-// When the game waits on someone who lost the connection or left, everyone
-// else is asked whether an AI may play for them, and only if all agree does
-// one. A returning player closes the question; their next drop-out asks
-// again. Also how the question fits, with two people asked and with three
-// and long names, on phones (upright and on their side) and on a desktop:
-// on the turn of who is gone with two cards in the trick, what stays in
-// view, and that the answers stay put as you answer. A chip without an
-// answer yet reads "…" here (it shows thinking dots).
+// The takeover question (docs/server.md#takeover-consent): nobody plays a
+// person's seat unasked. When the game waits on someone who lost the
+// connection or left, everyone else is asked whether an AI may play for
+// them, and only if all agree does one. A returning player closes the
+// question; their next drop-out asks again. Also how the question fits, with
+// two people asked and with three and long names, on phones (upright and on
+// their side) and on a desktop: on the turn of who is gone with two cards in
+// the trick, what stays in view, and that the answers stay put as you
+// answer. A chip without an answer yet reads "…" here (it shows thinking
+// dots).
 const VOTE = () => {
   const p = document.querySelector('.stage .panel-vote');
   if (!p) return null;

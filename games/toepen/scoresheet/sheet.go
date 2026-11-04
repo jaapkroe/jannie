@@ -1,9 +1,9 @@
 // Package scoresheet keeps the score of toepen played at a real table,
-// without the app's table (docs/toepen.md §9): the host, who made the
-// sheet, enters every round (who won, who went away, the points) and
-// chooses the names; everyone with the code watches it live. A sheet
-// lives in memory and, given a directory, on disk, so a restart keeps it;
-// one untouched for a week is gone.
+// without the app's table (games/toepen/README.md#score-bijhouden): the
+// host, who made the sheet, enters every round (who won, who went away,
+// the points) and chooses the names; everyone with the code watches it
+// live. A sheet lives in memory and, given a directory, on disk, so a
+// restart keeps it; one untouched for a week is gone.
 package scoresheet
 
 import (

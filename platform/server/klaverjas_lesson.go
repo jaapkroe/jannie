@@ -12,10 +12,10 @@ import (
 	"jannie/games/klaverjas/game"
 )
 
-// Lessons (design §6): in training Juf Jannie gives the lesson of option
-// lesson, a step at a time. Each is a match of lessonLength hands, and a
-// rematch repeats it from the start. Without one (vrij spelen) she only
-// gives the hints and explains the tricks.
+// Lessons (games/klaverjas/README.md#lessons): in training Juf Jannie gives
+// the lesson of option lesson, a step at a time. Each is a match of
+// lessonLength hands, and a rematch repeats it from the start. Without one
+// (vrij spelen) she only gives the hints and explains the tricks.
 //
 // The basic game (planBasis): after the deal she says who sits where and what
 // the screen shows; after the first trump how the cards rank, with the manual
@@ -80,7 +80,8 @@ const (
 
 // lessonStep is one thing Juf Jannie explains. N numbers the steps of a room,
 // so a late tap cannot skip the step after the one it was meant for; Spot
-// names the part of the screen it is about (design §9).
+// names the part of the screen it is about
+// (games/klaverjas/README.md#lessons-on-screen).
 type lessonStep struct {
 	N      int        `json:"n"`
 	Text   string     `json:"text"`

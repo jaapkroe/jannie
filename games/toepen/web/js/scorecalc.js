@@ -1,7 +1,8 @@
-// The sums of a score sheet (score.js; docs/toepen.md §9): the points after
-// every round, who is out, who won the match, who keeps going away (the
-// lijntoepers) and what a new round is worth by default. Pure: node tests
-// read it (test/ui/score.test.mjs).
+// The sums of a score sheet (score.js;
+// games/toepen/README.md#score-bijhouden): the points after every round,
+// who is out, who won the match, who keeps going away (the lijntoepers)
+// and what a new round is worth by default. Pure: node tests read it
+// (test/ui/score.test.mjs).
 
 export const MIN_PLAYERS = 2;
 export const MAX_PLAYERS = 8; // 32 cards, four each (games/toepen/scoresheet)

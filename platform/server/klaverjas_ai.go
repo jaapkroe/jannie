@@ -85,11 +85,11 @@ type Option struct {
 	Why   string
 }
 
-// Signal is a card that told the partner something at this table (design
-// §8), as everyone there reads it (see bot.TrickSignal): Kind is the
-// agreement ("aas", "kleintjeBoer", "boerOverBoer", "hoogLaag"), Means the
-// card it says Seat holds (the 10, the trump boer, or the highest card of
-// the suit for a low discard).
+// Signal is a card that told the partner something at this table
+// (games/klaverjas/README.md#seinen-signals), as everyone there reads it
+// (see bot.TrickSignal): Kind is the agreement ("aas", "kleintjeBoer",
+// "boerOverBoer", "hoogLaag"), Means the card it says Seat holds (the 10,
+// the trump boer, or the highest card of the suit for a low discard).
 type Signal struct {
 	Seat  game.Seat
 	Card  game.Card

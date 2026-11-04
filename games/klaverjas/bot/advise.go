@@ -94,7 +94,9 @@ func numberNL(n int) string {
 
 // trumpHonours lists the trump honours of h in suit s ("de boer", "de nel",
 // "de aas"). Heer and vrouw in one hand are no honour: stuk counts only
-// when they fall in the same trick (design §2), which one player cannot do.
+// when they fall in the same trick
+// (games/klaverjas/README.md#roem-bonus-points-roem-op-tafel), which one
+// player cannot do.
 func trumpHonours(h cardSet, s game.Suit) []string {
 	var out []string
 	if h.has(jackOf(s)) {
@@ -223,7 +225,8 @@ func bidText(v *game.View, play bool, st optionStats) string {
 // passReason says why passing pays although playing would usually succeed.
 func passReason(v *game.View, h cardSet) string {
 	if v.Seat == v.Voorhand {
-		// design §2: when all four pass, voorhand chooses another suit.
+		// When all four pass, voorhand chooses another suit
+		// (games/klaverjas/README.md#choosing-trump-trumpmode).
 		return "passen de anderen ook, dan kies jij een andere kleur als troef"
 	}
 	nat := "gaat het mis, dan krijgen de tegenstanders 162 punten en alle roem"
@@ -378,8 +381,8 @@ func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
 	return b.String()
 }
 
-// Signal is a card that told the partner something at this table (design
-// §8), as everyone there reads it.
+// Signal is a card that told the partner something at this table
+// (games/klaverjas/README.md#seinen-signals), as everyone there reads it.
 type Signal struct {
 	Seat game.Seat
 	Card game.Card

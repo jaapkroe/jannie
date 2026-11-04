@@ -3,7 +3,7 @@
 # games/<game>/<game>.mk: the public host name (SITE), where the pod listens (ADDR),
 # the ports of the server from source and the rest. Change them there, then
 # `make install GAME=<game> && make deploy GAME=<game>`. The games are the names of
-# those files; a new file is a new game (deploy/README-deploy.md, "Adding a game").
+# those files; a new file is a new game (docs/adding-a-game.md#checklist).
 #
 # GAME, from make's command line only (one left in the shell's environment is
 # ignored, so that it never picks what is deployed), is one game or `all`:

@@ -9,13 +9,13 @@ import (
 	"jannie/platform/cards"
 )
 
-// The API a game other than klaverjas plays on (design §4.3). The server
-// is the table: codes and links, seats and the lobby, bots and their
-// chat, calls, reconnects, the question whether an AI may play for someone
-// who is gone, pacing, the hand summary, game over, the game log and the
-// limits. The game brings its rules (Play), its options (GameOptions), its
-// bots (NewBrain, Chat) and its personas. One server plays one game:
-// Config.Game.
+// The API a game other than klaverjas plays on
+// (docs/server.md#the-game-api). The server is the table: codes and links,
+// seats and the lobby, bots and their chat, calls, reconnects, the
+// question whether an AI may play for someone who is gone, pacing, the
+// hand summary, game over, the game log and the limits. The game brings
+// its rules (Play), its options (GameOptions), its bots (NewBrain, Chat)
+// and its personas. One server plays one game: Config.Game.
 
 // Game is a card game the server can play.
 type Game interface {
@@ -58,7 +58,7 @@ type GameOptions interface {
 	Wire(TableOpts) any
 }
 
-// TableOpts are the options every game has (design §3).
+// TableOpts are the options every game has (docs/server.md#table-options).
 type TableOpts struct {
 	Players int    // the seats at the table
 	AI      string // the bots' level: makkelijk, normaal or sterk
@@ -118,8 +118,9 @@ type Msg struct {
 // from 1.
 type Step uint8
 
-// Pace is the unscaled delays of a tempo (design §6 Pacing): a bot's think
-// time, the deal, an announcement, a completed trick and the hand summary.
+// Pace is the unscaled delays of a tempo (docs/server.md#pacing): a bot's
+// think time, the deal, an announcement, a completed trick and the hand
+// summary.
 type Pace struct {
 	Think, Deal, Announce, Trick, Summary time.Duration
 }
@@ -147,12 +148,13 @@ func (e notYourTurn) Error() string        { return e.err.Error() }
 func (e notYourTurn) Unwrap() error        { return e.err }
 func (e notYourTurn) Is(target error) bool { return target == ErrNotYourTurn }
 
-// Shared is the part of the state `s` every game shares (design §7): the
-// room's code, phase and options, the seat it is for, the host, the bots
-// to choose from (lobby), the players, whose turn it is (-1: nobody's, or
-// a pause), the question about an absent player, and when the hand
-// summary moves on (unix ms; 0: it waits for ready). A game embeds it in
-// its state; it may set NextAt for a countdown of its own.
+// Shared is the part of the state `s` every game shares
+// (docs/protocol.md#the-shared-state): the room's code, phase and options,
+// the seat it is for, the host, the bots to choose from (lobby), the
+// players, whose turn it is (-1: nobody's, or a pause), the question about
+// an absent player, and when the hand summary moves on (unix ms; 0: it
+// waits for ready). A game embeds it in its state; it may set NextAt for a
+// countdown of its own.
 type Shared struct {
 	Code     string         `json:"code"`
 	Phase    string         `json:"phase"`

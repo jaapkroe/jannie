@@ -6,7 +6,9 @@ import (
 	"jannie/platform/cards"
 )
 
-// inMsg is any client message; the fields used depend on T (design §7).
+// inMsg is any client message; the fields used depend on T
+// (docs/protocol.md#client--server,
+// games/klaverjas/README.md#client--server).
 type inMsg struct {
 	T        string          `json:"t"`
 	Name     string          `json:"name"`

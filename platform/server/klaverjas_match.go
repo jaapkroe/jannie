@@ -146,9 +146,10 @@ func (r *room) startKlaverjas() {
 }
 
 // signalChat puts the table's agreements on signals in the chat at the
-// start of a match with four players (design §8), each with what it says.
-// A lesson has none to tell: Juf Jannie gives them herself in the lesson on
-// signals, and the other lessons play without.
+// start of a match with four players
+// (games/klaverjas/README.md#chat-at-the-start-of-a-match), each with what
+// it says. A lesson has none to tell: Juf Jannie gives them herself in the
+// lesson on signals, and the other lessons play without.
 func (r *room) signalChat() {
 	if r.players() != 4 || r.lessonsOn() {
 		return

@@ -478,7 +478,7 @@ func (t *Table) GameOver(total []int, winner int) {
 func (t *Table) SysChat(format string, args ...any) { t.r.sysChat(format, args...) }
 
 // BotSay lets the bot at seat i react to ev after delay, within the limits
-// of bot chat (design §5); it reports whether the bot speaks.
+// of bot chat (docs/server.md#bot-chat); it reports whether the bot speaks.
 func (t *Table) BotSay(i cards.Seat, ev ChatEvent, delay time.Duration) bool {
 	return t.r.botSay(i, ev, delay)
 }
@@ -490,5 +490,5 @@ func (t *Table) BotsReact(n int, delay time.Duration, mk func(i cards.Seat) (Cha
 }
 
 // Log writes rec, a struct of the game's own, as one line of the game log
-// (design §6).
+// (docs/server.md#game-log).
 func (t *Table) Log(rec any) { t.r.srv.games.write(rec) }

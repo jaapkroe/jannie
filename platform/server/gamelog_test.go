@@ -20,9 +20,10 @@ import (
 // TestGameLog plays a match of two people with the game log on, then gives
 // feedback, and reads the log back: the match with its seed and who
 // played, every hand with its cards and moves, the end, both reviews and
-// the feedback (design §6 Game log). Outside the expert mode a player
-// asks no reasoning and gives no feedback about one decision; mark is an
-// unknown message.
+// the feedback (docs/server.md#game-log,
+// games/klaverjas/README.md#game-log-records). Outside the expert mode a
+// player asks no reasoning and gives no feedback about one decision; mark
+// is an unknown message.
 func TestGameLog(t *testing.T) {
 	dir := t.TempDir()
 	srv, ts := newTestServerWith(t, newGradeAI(false), func(s *Server) {

@@ -7,8 +7,9 @@ import (
 	"testing"
 )
 
-// Independent reference of the rules in design.md §2, written as literally
-// as possible, to cross-check the optimised engine.
+// Independent reference of the rules in
+// games/klaverjas/README.md#rules-as-implemented, written as literally as
+// possible, to cross-check the optimised engine.
 
 const (
 	refTrumpRanking = "78QKTA9J" // low → high

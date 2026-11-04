@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Keys of `s` (design §7) present in every phase.
+// Keys of `s` (games/klaverjas/README.md#state-s) present in every phase.
 var baseKeys = []string{
 	"code", "phase", "opts", "training", "expert", "you", "host", "players", "handNo", "hands",
 	"dealer", "voorhand", "turned", "bids", "forced", "bid", "bidder", "soloist", "talon",

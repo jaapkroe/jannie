@@ -46,7 +46,8 @@ let drag = null;
 let stageKey = '';
 
 const PLAYING = new Set(['auction', 'discard', 'trump', 'bid', 'play']);
-// The bids of the three-player auction (design §2).
+// The bids of the three-player auction
+// (games/klaverjas/README.md#three-players-wikipedia-klaverjassen-met-drie-personen).
 const MIN_BID = 80;
 const BID_STEP = 10;
 const MAX_BID = 300;
@@ -559,11 +560,12 @@ function sendAction(m) {
 
 // The game waits on someone who left or lost the connection: every other
 // person at the table says whether an AI may play that seat, and only if
-// all agree does one (design §6). The answer can be changed while the
-// question is open; above the buttons, who agrees so far. Once answered,
-// the panel keeps to its title, who agrees and the answers, so it covers
-// less of the table while the others think. The buttons are last: at the
-// foot of the stage they stay put when the text above them changes.
+// all agree does one (docs/server.md#takeover-consent). The answer can be
+// changed while the question is open; above the buttons, who agrees so
+// far. Once answered, the panel keeps to its title, who agrees and the
+// answers, so it covers less of the table while the others think. The
+// buttons are last: at the foot of the stage they stay put when the text
+// above them changes.
 function votePanel(s) {
   const q = s.takeover;
   const name = nameOf(s, q.seat);
@@ -593,7 +595,7 @@ function myVote(s) {
 
 // Everyone asked: the people at the table but for the one it is about,
 // you first, and anyone who said no and lost the connection a moment ago
-// (that no still holds, design §6).
+// (that no still holds, docs/server.md#takeover-consent).
 function voters(s) {
   const n = seatCount(s);
   return Array.from({ length: n }, (_, k) => (s.you + k) % n).filter(seat => {
@@ -716,8 +718,8 @@ function renderPrompt(s) {
   spotlight(s);
 }
 
-// Training with lessons: the part of the screen the step on screen is
-// about (lesson spot, design §9) lights up.
+// Training with lessons: the part of the screen the step on screen is about
+// (lesson spot, games/klaverjas/README.md#lessons-on-screen) lights up.
 function spotlight(s) {
   const el = s.lesson?.spot ? spotTarget(s, s.lesson.spot) : null;
   if (el !== spotEl) spotEl?.classList.remove('spot');
@@ -1656,9 +1658,9 @@ export function settle(next, ev = null) {
 }
 
 // After a rejoin: tells the player when an AI played for them meanwhile,
-// with the others' consent (design §6). A decision for our seat that we
-// did not send can only be the AI's; what we sent just before the
-// connection went may have been ours.
+// with the others' consent (docs/server.md#takeover-consent). A decision
+// for our seat that we did not send can only be the AI's; what we sent
+// just before the connection went may have been ours.
 export function welcomeBack(prev, next) {
   const sent = rejoinSent;
   rejoinSent = null;
@@ -2206,7 +2208,7 @@ function discardLine(s, r) {
   ]), ' Weggelegd: ', suitify(r.discards.map(c => cardShort(c)).join(' ')), ` (${pts} ${pts === 1 ? 'punt' : 'punten'}).`);
 }
 
-// Card points (design §2), for the discards.
+// Card points (games/klaverjas/README.md#cards), for the discards.
 function cardPoints(code, trump) {
   const rank = code[0];
   if (code[1] === trump) return { J: 20, 9: 14, A: 11, T: 10, K: 4, Q: 3 }[rank] ?? 0;
@@ -2321,9 +2323,9 @@ function reviewLine(btn, r) {
   btn.replaceChildren(h('span', {}, 'Jouw spel volgens Juf Jannie: ', h('b', { text: `${r.pct}%` }), ` (${reviewVerdict(r.pct)})`), icon('forward'));
 }
 
-// The review (design §9 Spelanalyse): numbers and facts about the
-// player's own play, for them alone, as Juf Jannie (the engine of the hints)
-// sees it.
+// The review (games/klaverjas/README.md#spelanalyse): numbers and facts
+// about the player's own play, for them alone, as Juf Jannie (the engine
+// of the hints) sees it.
 function openReview() {
   const s = app.s;
   const r = s?.review;
@@ -2397,15 +2399,15 @@ function openReview() {
 
 // ---------- replay ----------
 
-// The replay (design §9 Terugkijken): a finished hand card by card with
-// every hand open, and at each graded decision of the player what Juf
-// Jannie thinks of it (the hand's choices). hands are the hands to step
-// through: one hand from handReview (owner 'hand'; pending: its grades
-// still out), or every hand of the review at game over (owner 'review').
-// It starts at the first hand's deal, at {hand, step}, or just before the
-// player's card of a moment {hand, trick} (at the deal for a trump choice
-// or bid). A step is the number of cards played: at 4 × n trick n lies
-// complete.
+// The replay (games/klaverjas/README.md#terugkijken): a finished hand card
+// by card with every hand open, and at each graded decision of the player
+// what Juf Jannie thinks of it (the hand's choices). hands are the hands
+// to step through: one hand from handReview (owner 'hand'; pending: its
+// grades still out), or every hand of the review at game over (owner
+// 'review'). It starts at the first hand's deal, at {hand, step}, or just
+// before the player's card of a moment {hand, trick} (at the deal for a
+// trump choice or bid). A step is the number of cards played: at 4 × n
+// trick n lies complete.
 export function openReplay(s, { hands, moment = null, owner = 'review' }) {
   if (!hands?.length) return null;
   sound.play('click');

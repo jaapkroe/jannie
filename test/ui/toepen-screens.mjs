@@ -221,8 +221,8 @@ async function scenario(browser, name, fn) {
 // summary of a round.
 async function mainFlow(P) {
   const { page } = P;
-  // Request budget (design §9): at most 17 requests per page load with the
-  // websocket, so 16 over HTTP.
+  // Request budget (docs/frontend.md#request-budget): at most 17 requests
+  // per page load with the websocket, so 16 over HTTP.
   const requests = [];
   const count = r => { if (!r.url().includes('/ws')) requests.push(r.url()); };
   page.on('request', count);

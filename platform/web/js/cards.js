@@ -1,5 +1,5 @@
 // Playing cards: faces and backs as inline SVG built through the DOM.
-// Contract: docs/design.md section 9; styles live in web/css/cards.css.
+// Contract: docs/frontend.md#shared-modules; styles live in web/css/cards.css.
 //
 // Beyond the contract:
 //   parseCard(code)       → {rank, suit}, or null for anything that is not a card code

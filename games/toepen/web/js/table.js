@@ -1,9 +1,10 @@
-// The table of toepen (docs/toepen.md) at toepen.kroes.dev: the seats
-// around the felt (two to six), the trick, the stake, your cards (four,
-// eight in the koningsspel) and the questions of the round (was, check,
-// toep), the takeover question, and the overlays of the game: the round
-// summary, game over, the standings and the manual. The shell (main.js, home.js, panels.js) does the
-// rest; game.js ties the two together. Pure parts: rules.js.
+// The table of toepen (games/toepen/README.md#the-site) at
+// toepen.kroes.dev: the seats around the felt (two to six), the trick, the
+// stake, your cards (four, eight in the koningsspel) and the questions of
+// the round (was, check, toep), the takeover question, and the overlays of
+// the game: the round summary, game over, the standings and the manual.
+// The shell (main.js, home.js, panels.js) does the rest; game.js ties the
+// two together. Pure parts: rules.js.
 import { app, h, clear, icon, toast, avatar, fillAvatar, playerName, wait, anim, dur, vibrate, store } from './util.js';
 import { createCard, createBack, cardName } from './cards.js';
 import { sound } from './sound.js';
@@ -387,7 +388,8 @@ function onKey(e) {
 // ---------- the takeover question ----------
 
 // Shown to everyone connected while the game waits for a seat whose player
-// is gone: may an AI play it? (design §6). The same messages as klaverjas.
+// is gone: may an AI play it? (docs/server.md#takeover-consent). The same
+// messages as klaverjas.
 function votePanel(s) {
   const q = s.takeover;
   if (!q || q.seat === s.you) { pendingVote = null; return null; }

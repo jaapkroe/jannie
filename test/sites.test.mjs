@@ -1,5 +1,6 @@
-// One site per game (design §9, docs/games.md): each game's site is the union
-// of platform/web (the shell) and games/<game>/web. Checks, for every site:
+// One site per game (docs/frontend.md#one-site-per-game,
+// docs/architecture.md#one-site-per-game): each game's site is the union of
+// platform/web (the shell) and games/<game>/web. Checks, for every site:
 //   - the two trees share no path (no file of the shell is replaced);
 //   - a page load stays within 17 requests, which a rate limit in front of
 //     the site must let through at once, and

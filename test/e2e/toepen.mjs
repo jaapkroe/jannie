@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Plays full matches of toepen over the websocket protocol (docs/toepen.md)
-// against a toepen server and checks invariants on every update, then keeps
-// a score sheet with watchers (§9). No dependencies: Node's global
+// Plays full matches of toepen over the websocket protocol
+// (games/toepen/README.md#protocol) against a toepen server and checks
+// invariants on every update, then keeps a score sheet with watchers
+// (games/toepen/README.md#score-bijhouden). No dependencies: Node's global
 // WebSocket. The toepen site's `make e2e`.
 //
 //   node test/e2e/toepen.mjs http://127.0.0.1:18096          # the standard suite
@@ -13,8 +14,8 @@ import { parseArgs } from 'node:util';
 const STALL_MS = 30000;
 const IN_HAND = new Set(['discard', 'was', 'check', 'toep', 'play']);
 const PHASES = new Set(['lobby', ...IN_HAND, 'handEnd', 'gameOver']);
-// The keys of toepen's state (docs/toepen.md); legal and rule on your turn
-// to play, roster in the lobby.
+// The keys of toepen's state (games/toepen/README.md#protocol); legal and
+// rule on your turn to play, roster in the lobby.
 const KEYS = ['code', 'phase', 'opts', 'you', 'host', 'players', 'turn', 'takeover', 'nextAt', 'winner', 'handNo',
   'dealer', 'voorhand', 'stake', 'toeper', 'armoedeToep', 'koning', 'size', 'wasRound', 'canRaise', 'mustStay', 'passCost', 'open', 'lay', 'laid', 'points',
   'status', 'armoede', 'washed', 'answered', 'claims', 'canClaim', 'claimant', 'asking', 'checks', 'stock', 'hand',
@@ -202,9 +203,9 @@ async function play(cfg, n) {
   return true;
 }
 
-// Score bijhouden (docs/toepen.md §9): a host keeps a sheet at /api/score
-// until one player is left, two watchers see every version of it, and
-// their own changes are refused.
+// Score bijhouden (games/toepen/README.md#score-bijhouden): a host keeps a
+// sheet at /api/score until one player is left, two watchers see every
+// version of it, and their own changes are refused.
 async function scoreSheet() {
   const errors = [];
   const sheetUrl = url.replace(/\/ws$/, '/api/score');

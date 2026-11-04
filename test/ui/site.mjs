@@ -1,7 +1,8 @@
 // One game's site as the browser sees it: the union of platform/web and
-// games/<game>/web (design §9, "One site per game"), for the static servers of the
-// tests (mock/server.mjs, manual-app.mjs, sound-render.mjs, ...). The two
-// trees must not share a path; test/sites.test.mjs checks that.
+// games/<game>/web (docs/frontend.md#one-site-per-game), for the static
+// servers of the tests (mock/server.mjs, manual-app.mjs,
+// sound-render.mjs, ...). The two trees must not share a path;
+// test/sites.test.mjs checks that.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

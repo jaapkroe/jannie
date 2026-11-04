@@ -243,8 +243,8 @@ function openMenu() {
 }
 
 // Mid-game the seat stays empty until someone joins in it, or until the
-// others agree that an AI takes it (design §6); alone with bots there is
-// nobody to ask.
+// others agree that an AI takes it (docs/server.md#takeover-consent);
+// alone with bots there is nobody to ask.
 export function confirmLeave() {
   const s = app.s;
   const running = s && s.phase !== 'lobby' && s.phase !== 'gameOver';
@@ -394,14 +394,14 @@ export function countdownRing() {
 }
 
 
-// A free-text form that sends feedback (design §7) with what extra()
-// returns (the reasoning sheet: hand and trick of the player's own decision;
-// else nothing, the game as a whole). Saved, the text stays, marked Bewaard., and
-// Versturen waits for a change. onSaved(about, text), when given, hears of
-// every "saved" with what extra() gave and the text sent, and returns
-// false when the form shows something else by now (the expert's sheet,
-// stepped to another decision). The form's value() and load({text, saved})
-// let the sheet keep a text per decision.
+// A free-text form that sends feedback (docs/protocol.md#client--server)
+// with what extra() returns (the reasoning sheet: hand and trick of the
+// player's own decision; else nothing, the game as a whole). Saved, the text
+// stays, marked Bewaard., and Versturen waits for a change. onSaved(about,
+// text), when given, hears of every "saved" with what extra() gave and the
+// text sent, and returns false when the form shows something else by now
+// (the expert's sheet, stepped to another decision). The form's value() and
+// load({text, saved}) let the sheet keep a text per decision.
 let feedbackWait = null; // the form waiting for its "saved"
 export function feedbackForm(extra, label, placeholder = 'Wat viel je op? Wat klopt er volgens jou niet?', onSaved = null) {
   const text = h('textarea', { class: 'field fb-text', maxLength: 2000, rows: 3, placeholder, 'aria-label': label });

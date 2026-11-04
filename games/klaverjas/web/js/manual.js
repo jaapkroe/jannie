@@ -15,13 +15,15 @@ export const SECTIONS = [
 
 const RANK_NAMES = { 7: '7', 8: '8', 9: '9', T: '10', J: 'boer', Q: 'vrouw', K: 'heer', A: 'aas' };
 
-// Card order from high to low with points (§2); rank codes as on the wire.
+// Card order from high to low with points (games/klaverjas/README.md#cards);
+// rank codes as on the wire.
 export const CARD_VALUES = {
   trump: [['J', 20], ['9', 14], ['A', 11], ['T', 10], ['K', 4], ['Q', 3], ['8', 0], ['7', 0]],
   plain: [['A', 11], ['T', 10], ['K', 4], ['Q', 3], ['J', 2], ['9', 0], ['8', 0], ['7', 0]],
 };
 
-// Roem kinds as reported by the server (§2).
+// Roem kinds as reported by the server
+// (games/klaverjas/README.md#roem-bonus-points-roem-op-tafel).
 export const ROEM_VALUES = [
   { kind: 'drie', name: 'Driekaart', what: 'Drie opeenvolgende kaarten van dezelfde kleur', points: 20 },
   { kind: 'vier', name: 'Vierkaart', what: 'Vier opeenvolgende kaarten van dezelfde kleur', points: 50 },

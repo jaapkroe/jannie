@@ -9,7 +9,8 @@ import (
 // Calls: the people at a table may call each other with sound and video.
 // The media go directly between their browsers (WebRTC); the server only
 // keeps who is in the call, with microphone and camera on or off, and
-// passes the session descriptions between them (design §6, §7).
+// passes the session descriptions between them (docs/server.md#calls,
+// docs/protocol.md#client--server).
 
 const (
 	callIDMin = 8

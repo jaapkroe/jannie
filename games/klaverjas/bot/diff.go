@@ -6,19 +6,19 @@ import (
 	"jannie/games/klaverjas/game"
 )
 
-// What two cards do differently (design §4.2). The value of a card says
-// how much it brings, the parts in which tricks; neither says what happens.
-// The search plays every card in the same deals, so per deal it keeps what
-// a player can check at the table (playEvent): which of their own cards
-// their team wins, who wins the last trick, and the roem in the card's own
-// trick. diffWhy compares two cards on these and names the difference that
-// brings the most points, when it is clear and large enough to be a reason:
-// at least diffMin points on average and a quarter of what the one card
-// brings more in points and roem (before nat and pit, which can turn a
-// few points into a whole hand), and with sampled deals at least two
-// standard errors of the paired difference. A sentence says how often
-// something happens, so a difference counts only when its shares, as
-// written, go the same way.
+// What two cards do differently (games/klaverjas/README.md#package-bot).
+// The value of a card says how much it brings, the parts in which tricks;
+// neither says what happens. The search plays every card in the same
+// deals, so per deal it keeps what a player can check at the table
+// (playEvent): which of their own cards their team wins, who wins the last
+// trick, and the roem in the card's own trick. diffWhy compares two cards
+// on these and names the difference that brings the most points, when it
+// is clear and large enough to be a reason: at least diffMin points on
+// average and a quarter of what the one card brings more in points and
+// roem (before nat and pit, which can turn a few points into a whole
+// hand), and with sampled deals at least two standard errors of the paired
+// difference. A sentence says how often something happens, so a difference
+// counts only when its shares, as written, go the same way.
 
 // diffMin is the least a difference in the playouts must bring on average
 // for diffWhy to name it.

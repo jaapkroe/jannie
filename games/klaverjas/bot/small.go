@@ -4,11 +4,13 @@ import (
 	"jannie/games/klaverjas/game"
 )
 
-// Bots at a table of two or three players (design §2, §4.2). The levels
-// mean what they mean with four: makkelijk plays loosely and makes
-// mistakes, normaal plays by rules of thumb (pubTable.choose), sterk plays
-// sampled deals out with those rules (smallsearch.go). The signals of §8
-// are a matter between partners at a table of four and play no part.
+// Bots at a table of two or three players
+// (games/klaverjas/README.md#tables-of-three-and-two). The levels mean
+// what they mean with four: makkelijk plays loosely and makes mistakes,
+// normaal plays by rules of thumb (pubTable.choose), sterk plays sampled
+// deals out with those rules (smallsearch.go). The signals of
+// games/klaverjas/README.md#seinen-signals are a matter between partners
+// at a table of four and play no part.
 
 // pubTable is what everyone at a small table can know while tricks are
 // played: the cards played, who plays alone, and from the play which
@@ -122,9 +124,9 @@ func (t *pubTable) apply(seat game.Seat, c game.Card) {
 }
 
 // infer records what the rules tell about seat's cards when it plays c
-// into the current trick (design §2, as table.infer for four players).
-// With two players a player's face-down cards are unknown to itself, so
-// nothing follows.
+// into the current trick (games/klaverjas/README.md#following-suit-rules,
+// as table.infer for four players). With two players a player's face-down
+// cards are unknown to itself, so nothing follows.
 func (t *pubTable) infer(seat game.Seat, c game.Card) {
 	if t.n != 3 {
 		return

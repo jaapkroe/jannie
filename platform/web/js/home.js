@@ -265,7 +265,7 @@ function openSupport(url) {
 // ---------- easter egg ----------
 
 // A game may hide something under the version (game.home.egg; klaverjas:
-// the expert mode, design §9 Expert): five quick taps on it open it.
+// the expert mode; docs/frontend.md#home): five quick taps on it open it.
 const EGG_TAPS = 5;
 const EGG_GAP_MS = 1500;
 let taps = 0;

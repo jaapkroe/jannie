@@ -87,12 +87,13 @@ func (t *table) trumpsAbove(h int8) cardSet {
 }
 
 // signalsBoer reports whether seat, leading c to a new trick, says "ik heb
-// de troefboer" (design §8): a player of the playing team (the maker or its
-// partner) on its first lead, while the boer is still out, with a 7, 8 or 9
-// of a side suit (kleintje boer) or with a side boer (boer over boer), as
-// far as the table agreed on them. In gedraaid the maker's first lead need
-// not be the first trick. Bots avoid leading such a card without the boer
-// (see mover.fakeSignal), so they can read it as a promise.
+// de troefboer" (games/klaverjas/README.md#seinen-signals): a player of the
+// playing team (the maker or its partner) on its first lead, while the boer
+// is still out, with a 7, 8 or 9 of a side suit (kleintje boer) or with a
+// side boer (boer over boer), as far as the table agreed on them. In
+// gedraaid the maker's first lead need not be the first trick. Bots avoid
+// leading such a card without the boer (see mover.fakeSignal), so they can
+// read it as a promise.
 func (t *table) signalsBoer(seat game.Seat, c game.Card) bool {
 	if t.n != 0 || t.hasLed[seat] || seat.Team() != t.playing || c.Suit == t.trump || t.played.has(jackOf(t.trump)) {
 		return false
@@ -107,10 +108,11 @@ func (t *table) signalsBoer(seat game.Seat, c game.Card) bool {
 const signalTricks = 6 // a discard signals in the first six tricks
 
 // aceSignal reports whether discarding c says "ik heb de 10 ook" (met de
-// aas seinen, design §8), when the table agreed on it: c is the ace of a
-// side suit that nobody has led yet, given to the partner's trick while
-// its 10 is still out, in time for the partner to come back to the suit.
-// It returns that 10, the highest card of the suit once the ace is gone.
+// aas seinen, games/klaverjas/README.md#seinen-signals), when the table
+// agreed on it: c is the ace of a side suit that nobody has led yet, given
+// to the partner's trick while its 10 is still out, in time for the partner
+// to come back to the suit. It returns that 10, the highest card of the
+// suit once the ace is gone.
 func (t *table) aceSignal(c game.Card) (game.Card, bool) {
 	ten := tenOf(c.Suit)
 	return ten, t.sig.Aas && t.partnersTrick() && c.Rank == game.Ace && c.Suit != t.trump && !t.suitLed[c.Suit] &&
@@ -125,10 +127,11 @@ func (t *table) partnersTrick() bool {
 }
 
 // lowSignal reports whether playing c into the current trick says "speel
-// deze kleur, daar heb ik de hoogste van" (opseinen, design §8), when the
-// table agreed on op- en afseinen: c is a 7, 8 or 9 of a side suit that was
-// not led, so a discard, on the partner's trick, and a card of that suit is
-// still out besides c. It returns the highest such card.
+// deze kleur, daar heb ik de hoogste van" (opseinen,
+// games/klaverjas/README.md#seinen-signals), when the table agreed on op-
+// en afseinen: c is a 7, 8 or 9 of a side suit that was not led, so a
+// discard, on the partner's trick, and a card of that suit is still out
+// besides c. It returns the highest such card.
 func (t *table) lowSignal(c game.Card) (game.Card, bool) {
 	if !t.sig.HoogLaag || !t.partnersTrick() || c.Suit == t.trump || c.Suit == t.led() || c.Rank > game.Nine || t.trickNo >= signalTricks {
 		return game.Card{}, false
@@ -185,7 +188,8 @@ func (t *table) apply(seat game.Seat, c game.Card) {
 }
 
 // infer records what the rules tell about seat's hand when it plays c
-// into the current trick (n > 0). See design.md §2 "Following suit".
+// into the current trick (n > 0). See
+// games/klaverjas/README.md#following-suit-rules.
 func (t *table) infer(seat game.Seat, c game.Card) {
 	trump, led := t.trump, t.led()
 	ex := &t.excl[seat]
