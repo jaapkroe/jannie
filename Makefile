@@ -17,8 +17,9 @@
 # payment link behind "Support deze app" on every game's home page. It goes in
 # local.mk next to this Makefile, which git ignores, as
 #   SUPPORT_URL = https://…
-# (or on make's command line; one in the shell's environment is ignored). Without
-# it the web images have no support button.
+# (or on make's command line; one in the shell's environment is ignored). Make
+# reads local.mk, so a # in the link is written \# and a $ as $$. Without it
+# the web images have no support button.
 # ---------------------------------------------------------------------------------------
 GAMES := $(sort $(basename $(notdir $(wildcard games/*/*.mk))))
 SETTINGS := TITLE VERB SITE ADDR DEV_PORT E2E_PORT E2E_SIM
@@ -37,7 +38,7 @@ endif
 # Not one from the environment; spaces around it dropped. One https URL, quoted
 # as it is in the web image's build (the Containerfile checks it again).
 override SUPPORT_URL := $(if $(filter environment%,$(origin SUPPORT_URL)),,$(strip $(SUPPORT_URL)))
-ifneq ($(strip $(filter-out https://%,$(SUPPORT_URL))$(word 2,$(SUPPORT_URL))$(foreach c,' " < >,$(findstring $(c),$(SUPPORT_URL)))),)
+ifneq ($(strip $(filter-out https://%,$(SUPPORT_URL))$(filter https://,$(SUPPORT_URL))$(word 2,$(SUPPORT_URL))$(foreach c,' " < >,$(findstring $(c),$(SUPPORT_URL)))),)
 $(error SUPPORT_URL=$(SUPPORT_URL): not an https URL without quotes, spaces, < or > (local.mk; see the top of the Makefile))
 endif
 # The one game the targets act on, or empty for all of them (GAME=all, or no GAME).
@@ -120,6 +121,7 @@ dev-stop:  ## stop GAME's development server (every game's without GAME), if `ma
 image-server:   ## build GAME's server image (fresh base image), tagged BUILD_TAG; go vet and the short tests run inside the build
 	podman build --target server-$(GAME) $(BUILD_ARGS) -t localhost/$(GAME)-server:$(BUILD_TAG) .
 image-web:      ## build GAME's web image, tagged BUILD_TAG: nginx, its configuration for SITE, platform/web and games/GAME/web
+	$(if $(SUPPORT_URL),,@echo "No SUPPORT_URL (local.mk): $(GAME)'s web image has no support button.")
 	podman build --target web $(BUILD_ARGS) $(WEB_ARGS) -t localhost/$(GAME)-web:$(BUILD_TAG) .
 image: image-server image-web   ## build both images of GAME; the running pod keeps its :current ones
 quadlet:   ## show the three units of GAME (every game's without GAME) with its settings filled in

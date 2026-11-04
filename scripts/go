@@ -11,8 +11,7 @@ case "$PWD/" in
   "$root"/*) rel=${PWD#"$root"} ;;
   *) rel= ;;
 esac
-# The Containerfile's build image, so that a bump there (Renovate's) applies
-# here too.
+# The Containerfile's build image, so that a bump there applies here too.
 img=$(sed -n 's/^FROM \([^ ]*golang[^ ]*\) AS build$/\1/p' "$root/Containerfile")
 [ -n "$img" ] || { echo "scripts/go: no 'FROM ...golang... AS build' line in $root/Containerfile" >&2; exit 1; }
 mode=-i tty=

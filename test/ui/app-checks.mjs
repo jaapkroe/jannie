@@ -3267,8 +3267,9 @@ CHECKS.call = async browser => {
     if (refused.mic !== true || refused.cam !== false) throw new Error(`a refused camera not remembered as off: ${JSON.stringify(refused)}`);
     // Never answered (no auto stored, as before Automatisch meebellen
     // existed), a reload proposes the call: the switches as last chosen, and
-    // the question whether to call by itself, off. In short landscape it and the answers stay in reach. Niet nu keeps
-    // nothing, and the guest stays out of the call.
+    // the question whether to call by itself, off. In short landscape it and
+    // the answers stay in reach. Niet nu keeps nothing, and the guest stays
+    // out of the call.
     await G.page.evaluate(() => {
       const c = JSON.parse(localStorage.getItem('kj.call'));
       delete c.auto;

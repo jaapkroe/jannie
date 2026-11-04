@@ -2,6 +2,6 @@
 build
 **/node_modules
 test/ui/out
-web/**/*.test.js
-web/**/*.test.mjs
+**/web/**/*.test.js
+**/web/**/*.test.mjs
 local.mk

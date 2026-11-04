@@ -446,7 +446,7 @@ expect "SUPPORT_URL in local.mk with a space after it" 1 "$(has "--build-arg SUP
 run image-web GAME=klaverjas SUPPORT_URL=
 expect "SUPPORT_URL= on the command line, over local.mk" 1 "$(has '--build-arg SUPPORT_URL= -t ' "$calls")"
 # A value that is not one https URL stops make before it builds anything.
-for bad in 'http://pay.example/r' 'pay.example/r' 'https://pay.example/a b' "https://pay.example/a'b" \
+for bad in 'http://pay.example/r' 'pay.example/r' 'https://' 'https://pay.example/a b' "https://pay.example/a'b" \
            'https://pay.example/a"b' 'https://pay.example/<b>'; do
   printf 'SUPPORT_URL = %s\n' "$bad" > "$repo/local.mk"
   run image-web GAME=klaverjas
