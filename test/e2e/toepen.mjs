@@ -21,6 +21,9 @@ const KEYS = ['code', 'phase', 'opts', 'you', 'host', 'players', 'turn', 'takeov
   'status', 'armoede', 'washed', 'answered', 'claims', 'canClaim', 'claimant', 'asking', 'checks', 'stock', 'hand',
   'canToep', 'trick', 'lastTrick', 'tricks', 'rounds'];
 const OPTS = ['players', 'ai', 'tempo', 'seed', 'limit', 'was', 'armoede', 'koning', 'boer', 'lijntoep', 'bluf'];
+// The table's line at game over with the seed of the match, which no
+// message names before (docs/server.md#the-seed).
+const SEED_LINE = /^De seed van dit spel was (\d+)\.$/;
 
 const { values: o, positionals } = parseArgs({
   allowPositionals: true,
@@ -66,9 +69,12 @@ const pick = a => a[Math.floor(rng() * a.length)];
 class Player {
   constructor(name, game, errors) {
     Object.assign(this, { name, game, errors, s: null, seat: -1, code: '', acted: '', wasIn: '', prev: null });
+    this.raws = []; // every message as it came, for the seed
+    this.overAt = -1; // the index in raws of the first update at game over
+    this.seed = 0; // the seed named at game over
     this.ws = new WebSocket(url);
     this.open = new Promise((ok, fail) => { this.ws.onopen = ok; this.ws.onerror = fail; });
-    this.ws.onmessage = e => this.onMessage(JSON.parse(e.data));
+    this.ws.onmessage = e => { this.raws.push(e.data); this.onMessage(JSON.parse(e.data)); };
     this.waiters = [];
   }
   send(m) { this.ws.send(JSON.stringify(m)); }
@@ -87,8 +93,10 @@ class Player {
       if (m.code !== 'niet-jouw-beurt' && !/Die vraag staat niet/.test(m.msg) && !crossed) this.fail(`error ${m.code}: ${m.msg}`);
       return;
     }
+    if (m.t === 'chat' && m.msg.sys && SEED_LINE.test(m.msg.text)) this.seedNamed(m.msg.text);
     if (m.t !== 'update') return;
     const s = m.s;
+    if (s.phase === 'gameOver' && this.overAt < 0) this.overAt = this.raws.length - 1;
     this.check(s);
     this.prev = this.s;
     this.s = s;
@@ -123,6 +131,17 @@ class Player {
       const left = s.points.filter(n => n < s.opts.limit).length;
       if (left !== 1 || s.points[s.winner] >= s.opts.limit) this.fail(`game over with ${left} left, winner ${s.winner}`);
     }
+  }
+  // seedNamed: the line with the seed (text) follows gameOver, and no
+  // message before game over named that number; a seed under 10000 might
+  // be a count, so it is not looked for.
+  seedNamed(text) {
+    const seed = Number(SEED_LINE.exec(text)[1]);
+    if (this.s?.phase !== 'gameOver') this.fail(`the seed named in phase ${this.s?.phase}`);
+    const num = new RegExp(`(^|[^0-9])${seed}([^0-9]|$)`);
+    const at = this.raws.findIndex(r => num.test(r));
+    if (seed >= 10000 && at < this.overAt) this.fail(`seed ${seed} in a message before game over: ${this.raws[at].slice(0, 200)}`);
+    this.seed = seed;
   }
   // A random decision when the state awaits one of this player.
   act(s) {
@@ -191,6 +210,9 @@ async function play(cfg, n) {
       else if (Date.now() - last > STALL_MS) { clearInterval(tick); fail(new Error(`stalled in ${key}`)); }
     }, 100);
   }).catch(e => errors.push(`${game}: ${e.message}`));
+  // Right after gameOver everyone gets the line with the seed.
+  for (const t1 = Date.now(); people.some(p => !p.seed) && Date.now() - t1 < 5000;) await new Promise(ok => setTimeout(ok, 20));
+  for (const p of people) if (!p.seed) p.fail('no line with the seed after game over');
   const s = host.s;
   for (const p of people) p.close();
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
@@ -199,7 +221,7 @@ async function play(cfg, n) {
     return false;
   }
   const koning = host.konings ? `, koningsspel` : '';
-  console.log(`ok   ${game}: ${s.handNo} potjes${koning}, winner seat ${s.winner}, points ${s.points.join('/')}, ${secs} s`);
+  console.log(`ok   ${game}: ${s.handNo} potjes${koning}, winner seat ${s.winner}, points ${s.points.join('/')}, seed ${host.seed}, ${secs} s`);
   return true;
 }
 

@@ -426,7 +426,7 @@ function startGame(room) {
   room.winner = -1;
   room.prevHand = null;
   room.lastTrick = null;
-  sys(room, `Spel (${room.seed}) begint: ${room.opts.hands} potjes. Veel plezier!`);
+  sys(room, `Het spel begint: ${room.opts.hands} potjes. Veel plezier!`); // the seed comes at game over
   const greeter = room.players.findIndex(p => p?.bot);
   if (greeter >= 0) botSay(room, greeter, 'greet', true);
   startHand(room);
@@ -764,6 +764,7 @@ function nextHand(room) {
     room.reviewId = `${room.code}-${Date.now()}`;
     room.winner = room.total[0] === room.total[1] ? -1 : room.total[0] > room.total[1] ? 0 : 1;
     broadcast(room, { type: 'gameOver', total: room.total, winner: room.winner });
+    sys(room, `De seed van dit spel was ${room.seed}.`);
     return;
   }
   startHand(room);

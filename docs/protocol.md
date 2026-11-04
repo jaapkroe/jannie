@@ -85,7 +85,7 @@ The table's events (`ev.type`); each game adds its own.
 | type | fields | client animation |
 |---|---|---|
 | `lobby` | | none (seat/option changes) |
-| `gameOver` | `total` [per scorer], `winner` (scorer, or -1 when the top is shared) | celebration |
+| `gameOver` | `total` [per scorer], `winner` (scorer, or -1 when the top is shared); a system line in the chat with the match's seed follows ([server.md, "The seed"](server.md#the-seed)) | celebration |
 | `join` / `leave` / `away` / `back` / `takeover` | `seat` | small toast |
 
 `away`: the connection is lost; `back`: the player is at their seat again;
@@ -120,6 +120,9 @@ the game's own keys follow:
 
 Every key above is always present, except `roster` (lobby only). Further:
 
+- `opts.seed` is the option: the seed chosen for the table, 0 when the
+  server draws one per match. A drawn seed is in no message before game
+  over ([server.md, "The seed"](server.md#the-seed)).
 - `players[i].cards` is the number of cards the seat holds (0 outside a
   hand); `ready` only counts in `handEnd`.
 - `takeover` is set while the game waits for seat `seat` (it is its turn:

@@ -107,7 +107,7 @@ func (p *toyPlay) rounds() int { return p.t.Options().(*toyOpts).Rounds }
 
 func (p *toyPlay) Start() {
 	p.points = make([]int, p.t.Players())
-	p.t.SysChat("Hoogste kaart (%d) begint: %d rondes.", p.t.Seed(), p.rounds())
+	p.t.SysChat("Hoogste kaart begint: %d rondes.", p.rounds())
 	p.t.Later(p.t.Pace().Deal, func() { p.t.SysChat("Succes!") })
 	p.deal()
 }

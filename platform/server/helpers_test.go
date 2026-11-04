@@ -384,6 +384,8 @@ type tclient struct {
 	tips   int
 	chats  []chatMsg
 	events []string
+	keep   bool   // keep every message read in kept
+	kept   []*msg // in the order read
 }
 
 var ipCounter atomic.Int64
@@ -476,6 +478,9 @@ func (c *tclient) next(timeout time.Duration) *msg {
 }
 
 func (c *tclient) track(m *msg) {
+	if c.keep {
+		c.kept = append(c.kept, m)
+	}
 	switch m.T {
 	case "joined":
 		c.code, c.seat, c.token = m.Code, m.Seat, m.Token
@@ -554,6 +559,16 @@ func (c *tclient) waitError(code string) *msg {
 func (c *tclient) waitEvent(ev string) *msg {
 	c.t.Helper()
 	return c.until(5*time.Second, "event "+ev, func(m *msg) bool { return m.T == "update" && m.evType() == ev })
+}
+
+// waitChat waits for the system line text, unless it came already.
+func (c *tclient) waitChat(text string) {
+	c.t.Helper()
+	line := func(m chatMsg) bool { return m.Sys && m.Text == text }
+	if slices.ContainsFunc(c.chats, line) {
+		return
+	}
+	c.until(5*time.Second, "chat line "+text, func(m *msg) bool { return m.T == "chat" && line(c.chats[len(c.chats)-1]) })
 }
 
 func (c *tclient) waitState(what string, pred func(*state) bool) *state {

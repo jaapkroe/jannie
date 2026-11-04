@@ -140,7 +140,7 @@ with one player left.
 | `bluf` | bool | true | A caught bluff plays on face up, else sits the round out ([Rules as implemented](#rules-as-implemented)) |
 | `ai` | `makkelijk`, `normaal`, `sterk` | `normaal` | Strength of every bot ([Bots](#bots)) |
 | `tempo` | `rustig`, `normaal`, `snel` | `normaal` | Pacing ([Server](#server)) |
-| `seed` | 1..999999999, or 0 / null | 0 | As at every table ([docs/server.md, "Table options"](../../docs/server.md#table-options)): the same seed deals the same cards |
+| `seed` | 1..999999999, or 0 / null | 0 | As at every table ([docs/server.md, "Table options"](../../docs/server.md#table-options)): the same seed deals the same cards; the chat names it at game over, and no message before ([docs/server.md, "The seed"](../../docs/server.md#the-seed)) |
 
 `s.opts` has exactly these eleven keys (default `{"players":4, "ai":
 "normaal", "tempo": "normaal", "seed": 0, "limit": 10, "was": true,
@@ -198,6 +198,12 @@ toepen's bios; it does not import klaverjas's packages. Room phases:
   lose one, greet the koningsspel, go out, and win or lose the match
   (`toepbot.Chat`, per persona; the limits of
   [docs/server.md, "Bot chat"](../../docs/server.md#bot-chat)).
+- System lines of the match: at the start, without the seed, "Het spel
+  begint: toepen tot 10 strafpunten, met vuile was, armoede, …. Wie de
+  laatste slag haalt, krijgt geen strafpunten. Veel plezier!" (the limit
+  and the rules that are on); at the end "Kees wint het spel na 12
+  potjes!", then the table's line with the seed
+  ([docs/server.md, "The seed"](../../docs/server.md#the-seed)).
 - Game log ([docs/server.md, "Game log"](../../docs/server.md#game-log), its own volume `toepen-games`): `match` (`game`:
   "toepen", and `opts` the eleven of [Options](#options); no `training` or `expert`), then
   per round `{"t":"round", "hand", "dealer", "cards" (per seat as dealt,

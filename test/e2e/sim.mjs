@@ -32,6 +32,9 @@ const LATE_VOTE = 'Die vraag staat niet (meer) open.';
 // The server's answer to a hand asked to look back at, at a table of three
 // or two (games/klaverjas/README.md#client--server).
 const ALONE_FOUR = "Terugkijken kan alleen met z'n vieren.";
+// The table's line at game over with the seed of the match, which no
+// message names before (docs/server.md#the-seed).
+const SEED_LINE = /^De seed van dit spel was (\d+)\.$/;
 
 let args;
 try {
@@ -184,6 +187,10 @@ class Player {
     this.handReviews = new Map(); // hand → its last handReview: {pending, choices}
     this.refusalDue = false; // a handReview asked at a table of three or two
     this.over = false;
+    this.overState = null; // the state at game over, until the seed is named
+    this.raws = []; // every message as it came, for the seed
+    this.overAt = -1; // the index in raws of the update at game over
+    this.seed = 0; // the seed named at game over
     this.done = new Promise((res, rej) => { this.resolve = res; this.reject = rej; });
     this.joined = new Promise(res => { this.onJoined = res; });
   }
@@ -213,6 +220,7 @@ class Player {
       ws.onmessage = e => {
         if (ws !== this.ws) return;
         this.game.touch();
+        this.raws.push(e.data);
         let m;
         try {
           m = JSON.parse(e.data);
@@ -255,6 +263,8 @@ class Player {
         break;
       case 'chatlog':
         this.check(Array.isArray(m.msgs) && m.msgs.length <= 50, 'bad chatlog');
+        // Back after game over: the line with the seed is in the log.
+        for (const c of m.msgs) if (c.sys && SEED_LINE.test(c.text)) this.seedNamed(c.text);
         break;
       case 'chat':
         // At most 200 characters, as people may type; Juf Jannie's explanations
@@ -263,6 +273,10 @@ class Player {
         this.check(m.msg && typeof m.msg.text === 'string' && m.msg.text.length > 0 && ([...m.msg.text].length <= 200 || m.msg.coach || m.msg.sys), 'bad chat message');
         if (m.msg.coach) this.check(this.game.cfg.training && m.msg.bot && m.msg.seat === 2, `coach line outside training or not of Juf Jannie: ${JSON.stringify(m.msg)}`);
         if (m.msg.bot) this.check(/ \(AI\)$/.test(m.msg.name), `bot chat without (AI): ${m.msg.name}`);
+        if (m.msg.sys && SEED_LINE.test(m.msg.text)) {
+          this.check(this.over, `the seed named before game over: ${m.msg.text}`);
+          this.seedNamed(m.msg.text);
+        }
         break;
       case 'tip':
         this.check(typeof m.text === 'string' && m.text.length > 0, 'empty tip');
@@ -496,7 +510,7 @@ class Player {
       });
       const sp = r.speed;
       this.check(sp === null || sp.n >= 1 && sp.median <= sp.slowest.ms && sp.slowest.ms <= sp.total, `review speed ${JSON.stringify(sp)}`);
-      this.check(Number.isInteger(r.seed) && r.seed >= 1 && r.seed <= 999999999 && r.marks === undefined, `review seed ${r.seed}, marks ${JSON.stringify(r.marks)}`);
+      this.check(Number.isInteger(r.seed) && r.seed >= 1 && r.seed <= 999999999 && (!this.seed || r.seed === this.seed) && r.marks === undefined, `review seed ${r.seed} (named ${this.seed}), marks ${JSON.stringify(r.marks)}`);
     }
 
     this.check(s.scores.length === (s.phase === 'handEnd' || s.phase === 'gameOver' ? s.handNo : s.handNo - 1),
@@ -604,7 +618,25 @@ class Player {
       this.check(!missing.length && !this.refusalDue, `no handReview for hands ${missing}${this.refusalDue ? ', no refusal' : ''}`);
     }
     this.over = true;
-    this.resolve(s);
+    // Done once the seed is named too, in the line that follows gameOver
+    // (or, back after game over, in the chat log before it).
+    this.overAt = this.raws.length - 1;
+    this.overState = s;
+    if (this.seed) this.resolve(s);
+  }
+
+  // seedNamed: the line with the seed came (text). No message before game
+  // over named that number (the update at game over may: the review has
+  // it), nor before the chat log that brings the line back after it; a
+  // seed under 10000 might be a score, so it is not looked for.
+  seedNamed(text) {
+    const seed = Number(SEED_LINE.exec(text)[1]);
+    const num = new RegExp(`(^|[^0-9])${seed}([^0-9]|$)`);
+    const at = this.raws.findIndex(r => num.test(r));
+    const from = this.over ? this.overAt : this.raws.length - 1;
+    this.check(seed < 10000 || at >= from, `seed ${seed} in a message before game over: ${this.raws[at]?.slice(0, 200)}`);
+    this.seed = seed;
+    if (this.overState) this.resolve(this.overState);
   }
 
   // react makes this player's decision, if any, after a short random delay.
@@ -723,7 +755,7 @@ class Game {
       const final = s[0];
       const re = this.players.reduce((n, p) => n + p.reconnects, 0);
       const score = cfg.players === 4 ? `Wij ${final.total[final.you % 2]} - Zij ${final.total[1 - (final.you % 2)]}` : final.total.join(' - ');
-      return `ok   game ${this.id} (${label(cfg)}) room ${final.code}: ${score}, ` +
+      return `ok   game ${this.id} (${label(cfg)}) room ${final.code}: ${score}, seed ${this.players[0].seed}, ` +
         `${((Date.now() - t0) / 1000).toFixed(1)} s` + (cfg.reconnect ? `, ${re} reconnects, ${this.questions.size} questions, ` +
         `${this.votes} votes (${this.lateVotes} too late), ${this.takeovers.size} takeovers` : '');
     } finally {

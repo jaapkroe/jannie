@@ -23,9 +23,16 @@ func newSeed() uint64 {
 // dealRNG is the stream every deal of a match is drawn from: the first
 // dealer, the cards and the turned suit, nothing else. So the same seed and
 // options give the same cards, whatever the players do
-// (docs/server.md#table-options).
+// (docs/server.md#the-seed).
 func dealRNG(seed uint64) *rand.Rand {
 	return rand.New(rand.NewPCG(seed, seed^0x6b6c61766572))
+}
+
+// nameSeed puts the seed of the match in the chat at game over. Not
+// before: who knows it can deal the same cards in a game of their own and
+// see every hand of this one (docs/server.md#the-seed).
+func (r *room) nameSeed() {
+	r.sysChat("De seed van dit spel was %d.", r.seed)
 }
 
 // logPlayerAt is who sits at seat i now.

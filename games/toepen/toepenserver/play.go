@@ -86,7 +86,8 @@ func (p *play) Start() {
 	p.winner = -1
 	p.m = toepen.NewMatch(n, p.opts().rules(), cards.Seat(t.Deals().IntN(n)))
 	p.rounds = nil
-	t.SysChat("Spel (%d) begint: %s. Wie de laatste slag haalt, krijgt geen strafpunten. Veel plezier!", t.Seed(), p.Variant())
+	// Without the seed: the table names it at game over (docs/server.md#the-seed).
+	t.SysChat("Het spel begint: %s. Wie de laatste slag haalt, krijgt geen strafpunten. Veel plezier!", p.Variant())
 	p.deal()
 }
 
@@ -582,8 +583,8 @@ func (p *play) Next() {
 	t := p.t
 	w := p.m.Winner()
 	p.winner = int(w)
+	t.SysChat("%s wint het spel na %d potjes!", t.DisplayName(w), p.handNo) // before the table's line with the seed
 	t.GameOver(slices.Clone(p.total), p.winner)
-	t.SysChat("%s wint het spel na %d potjes!", t.DisplayName(w), p.handNo)
 	t.BotsReact(2, 1800*time.Millisecond, func(i cards.Seat) (server.ChatEvent, bool) {
 		if i == w {
 			return server.ChatEvent{Kind: "gameWon", Mine: true}, true

@@ -12,8 +12,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -113,6 +115,8 @@ type Client struct {
 	Token string          // the seat token
 	State json.RawMessage // the latest state
 	Seq   int             // of the latest update
+	Keep  bool            // keep every message read from now on in Kept
+	Kept  []*Msg          // in the order read
 }
 
 var ipCounter atomic.Int64
@@ -196,7 +200,27 @@ func (c *Client) Next(timeout time.Duration) *Msg {
 	return nil
 }
 
+// Poll returns the next message if one is in, else nil, for a test that
+// drives several clients in one loop; it fails the test when the
+// connection is closed.
+func (c *Client) Poll() *Msg {
+	c.t.Helper()
+	select {
+	case m, ok := <-c.in:
+		if !ok {
+			c.t.Fatalf("connection closed (seat %d): %v", c.Seat, <-c.errc)
+		}
+		c.track(m)
+		return m
+	default:
+		return nil
+	}
+}
+
 func (c *Client) track(m *Msg) {
+	if c.Keep {
+		c.Kept = append(c.Kept, m)
+	}
 	switch m.T {
 	case "joined":
 		c.Code, c.Seat, c.Token = m.Code, m.Seat, m.Token
@@ -321,6 +345,38 @@ func Field(t testing.TB, raw json.RawMessage, key string) json.RawMessage {
 		t.Fatalf("not an object: %s", raw)
 	}
 	return m[key]
+}
+
+// SeedLine is the table's system line at game over that names the seed of
+// the match (docs/server.md#the-seed).
+func SeedLine(seed uint64) string { return fmt.Sprintf("De seed van dit spel was %d.", seed) }
+
+// SeedAtEnd checks the messages c kept: none before its n-th update with
+// event gameOver (1: the first) names seed as a number, and SeedLine comes
+// after that update. A seed of four digits or fewer (one in 100000) may be
+// a score or a count: it is not looked for then.
+func SeedAtEnd(t testing.TB, c *Client, n int, seed uint64) {
+	t.Helper()
+	num := regexp.MustCompile(`(^|[^0-9])` + strconv.FormatUint(seed, 10) + `([^0-9]|$)`)
+	over := 0
+	for k, m := range c.Kept {
+		if m.T == "update" && m.EvType() == "gameOver" {
+			if over++; over == n {
+				for _, after := range c.Kept[k+1:] {
+					if _, _, text, _, sys := after.Chat(); after.T == "chat" && sys && text == SeedLine(seed) {
+						return
+					}
+				}
+				t.Errorf("seat %d: no line %q after game over %d", c.Seat, SeedLine(seed), n)
+				return
+			}
+		}
+		if seed >= 10000 && num.Match(m.Raw) {
+			t.Errorf("seat %d: seed %d before game over %d: %s", c.Seat, seed, n, m.Raw)
+			return
+		}
+	}
+	t.Errorf("seat %d: no game over %d in %d messages", c.Seat, n, len(c.Kept))
 }
 
 // SharedKeys are the keys of the state every game shares (server.Shared),
