@@ -1,9 +1,9 @@
-// web/toepen/js/rules.js without a browser: node --test test/ui/toepen.test.mjs
+// games/toepen/web/js/rules.js without a browser: node --test test/ui/toepen.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   strength, wasKind, seatAngle, onEllipse, seatStatus, prompt, roundHeadline, standings, variantText, manual, isOut, washes, yours, alone, cardLabel, whyRows,
-} from '../../web/toepen/js/rules.js';
+} from '../../games/toepen/web/js/rules.js';
 
 const player = name => ({ name, bot: false, connected: true });
 const bot = name => ({ name: `${name} (AI)`, bot: true, connected: true });

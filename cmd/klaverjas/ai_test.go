@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"klaverjas/internal/game"
-	"klaverjas/internal/server"
+	"jannie/games/klaverjas/game"
+	"jannie/platform/server"
 )
 
 // TestBotAI plays deals with the real bots through the adapter.

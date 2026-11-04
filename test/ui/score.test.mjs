@@ -1,9 +1,9 @@
-// web/toepen/js/scorecalc.js without a browser: node --test test/ui/score.test.mjs
+// games/toepen/web/js/scorecalc.js without a browser: node --test test/ui/score.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   course, points, matchWinner, streaks, runs, passes, startStake, defaultGain, validRound, standings, namesError, cleanName, cleanCode, LIJN,
-} from '../../web/toepen/js/scorecalc.js';
+} from '../../games/toepen/web/js/scorecalc.js';
 
 // A round of n players: w won, gains as given, who went away.
 const round = (winner, gains, passed = gains.map(() => false)) => ({ winner, gains, passed });

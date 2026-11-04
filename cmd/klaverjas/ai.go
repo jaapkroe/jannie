@@ -3,9 +3,9 @@ package main
 import (
 	"math/rand/v2"
 
-	"klaverjas/internal/bot"
-	"klaverjas/internal/game"
-	"klaverjas/internal/server"
+	"jannie/games/klaverjas/bot"
+	"jannie/games/klaverjas/game"
+	"jannie/platform/server"
 )
 
 // botAI adapts package bot to server.AI.

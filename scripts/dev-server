@@ -1,13 +1,13 @@
 #!/bin/sh
 # Starts a game's server from source in the background, serving its files,
-# web/shared and web/<game>, itself.
+# platform/web and games/<game>/web, itself.
 #   GAME=klaverjas scripts/dev-server 18200 [extra server flags, e.g. -fast]
 #   podman logs -f kj-dev-18200 ; podman stop kj-dev-18200
-# GAME is one of the games of deploy/games/*.mk; `make dev` and `make e2e` set it.
+# GAME is one of the games of games/*/*.mk; `make dev` and `make e2e` set it.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
 games=
-for f in "$root"/deploy/games/*.mk; do
+for f in "$root"/games/*/*.mk; do
   [ -e "$f" ] && games="$games${games:+ }$(basename "$f" .mk)"
 done
 usage="usage: GAME=<game> dev-server PORT [flags]; the games are $games"
@@ -21,5 +21,5 @@ esac || { echo "dev-server: ${game:+GAME=$game is not a game; }$usage" >&2; exit
 podman rm -f "kj-dev-$port" >/dev/null 2>&1 || true
 cd "$root"
 KJ_GO_NAME="kj-dev-$port" KJ_GO_DETACH=1 scripts/go \
-  run "./cmd/$game" -addr "127.0.0.1:$port" -static /src/web "$@" >/dev/null
+  run "./cmd/$game" -addr "127.0.0.1:$port" -static /src "$@" >/dev/null
 echo "kj-dev-$port starting $game on http://127.0.0.1:$port/ (compiling; poll /api/health)"

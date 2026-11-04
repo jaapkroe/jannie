@@ -15,7 +15,7 @@ Sources: <https://nl.wikipedia.org/wiki/Toepen> and the common house rules;
 where groups differ, the choice is written down here and the commonest
 variants are options.
 
-## 1. Rules as implemented (`internal/toepen`)
+## 1. Rules as implemented (`games/toepen/toepen`)
 
 - The 32 cards of klaverjas, under the same codes. Within a suit, low to
   high: boer, vrouw, heer, aas, 7, 8, 9, 10 (`Strength`). No trump. Two to
@@ -150,7 +150,7 @@ too); a `create` skips a bad value and keeps the default. There is no
 training and no expert mode: a `create` that asks for either plays an
 ordinary game.
 
-## 3. Server (`internal/toepenserver`, `cmd/toepen`)
+## 3. Server (`games/toepen/toepenserver`, `cmd/toepen`)
 
 Toepen implements the table's `server.Game` (design §4.3) on its exported
 `*Table`: `toepenserver.New(ai)` with seats (2, 6, 4), `Options{Limit, Was,
@@ -158,7 +158,7 @@ Armoede, Koning, Boer, Lijntoep, Bluf}` and toepen's own pacing; its `AI`
 gives the personas, a `Brain` per bot seat (`Discard`, `Was`, `Check`,
 `Toep`, `Overtoep`, `Answer`, `Play`) and the chat, and
 nil plays plain bots. `cmd/toepen` runs it with toepen's bots
-(`internal/toepbot`) and the shared personas (`internal/persona`) with
+(`games/toepen/toepbot`) and the shared personas (`platform/persona`) with
 toepen's bios; it does not import klaverjas's packages. Room phases:
 `lobby`, `discard` (the koningsspel), `was`, `check`, `toep`, `play`,
 `handEnd`, `gameOver`.
@@ -243,7 +243,7 @@ cost; auto: went along unasked);
 last}`; `collect` `{winner}`; `handEnd` `{result}` (a score row);
 `gameOver` `{total, winner}`; and the seat events of design §7.
 
-## 5. Bots (`internal/toepbot`)
+## 5. Bots (`games/toepen/toepbot`)
 
 All levels play their cards by the same rules of thumb: keep the best card
 for the last trick, lead low from another suit, take the trick before the
@@ -301,7 +301,7 @@ record, so a bluff there buys nothing: it costs sterk about 0.03 a round,
 the price of being unreadable to people). A
 sterk decision takes about 4 ms.
 
-## 6. The site (`web/toepen`)
+## 6. The site (`games/toepen/web`)
 
 The shell of design §9 with toepen's `game.js`:
 
@@ -357,7 +357,7 @@ The shell of design §9 with toepen's `game.js`:
 
 ## 7. Deployment
 
-`deploy/games/toepen.mk`: SITE `toepen.kroes.dev`, ADDR `127.0.0.1:8095`,
+`games/toepen/toepen.mk`: SITE `toepen.kroes.dev`, ADDR `127.0.0.1:8095`,
 dev port 18095, e2e port 18096 (`test/e2e/toepen.mjs`), volume
 `toepen-games`; `make install GAME=toepen`, `make deploy GAME=toepen`
 (deploy/README-deploy.md). Outside the repo: the NPM proxy host
@@ -398,7 +398,7 @@ options, worlds}`, `options` each `{label | cards, value, points, best}`:
 
 The rules of thumb are also the manual's tab *Tips*.
 
-## 9. Score bijhouden (`internal/scoresheet`, `js/score.js`)
+## 9. Score bijhouden (`games/toepen/scoresheet`, `js/score.js`)
 
 For toepen played at a real table, with real cards: the app only keeps the
 score. The **host** makes a sheet (2–8 names, eruit bij 10 or 15), chooses
@@ -406,7 +406,7 @@ and changes the names and enters every round; everyone with its code
 **watches** it live on their own phone and changes nothing. No seats, no
 bots, no chat, no call, no room: its own service in the toepen server.
 
-**Service** (`internal/scoresheet`, mounted by `cmd/toepen` through
+**Service** (`games/toepen/scoresheet`, mounted by `cmd/toepen` through
 `serve.Site.Extras`): a websocket at `/api/score`, the same origin check
 as `/ws`. Client → server, JSON with `t`:
 

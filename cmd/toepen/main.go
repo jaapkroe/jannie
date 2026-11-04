@@ -10,9 +10,9 @@ import (
 	"log/slog"
 	"path/filepath"
 
-	"klaverjas/internal/scoresheet"
-	"klaverjas/internal/serve"
-	"klaverjas/internal/toepenserver"
+	"jannie/games/toepen/scoresheet"
+	"jannie/games/toepen/toepenserver"
+	"jannie/platform/serve"
 )
 
 // version is set at build time: -ldflags "-X main.version=<git sha>".

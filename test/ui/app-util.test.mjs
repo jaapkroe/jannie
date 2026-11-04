@@ -1,4 +1,4 @@
-// web/shared/js/util.js without a browser: node --test test/ui/app-util.test.mjs
+// platform/web/js/util.js without a browser: node --test test/ui/app-util.test.mjs
 // (a minimal stand-in DOM for the element builders).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -27,7 +27,7 @@ const {
   posOf, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText, countWord,
   reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
   versionText,
-} = await import('../../web/shared/js/util.js');
+} = await import('../../platform/web/js/util.js');
 
 test('store keeps values in memory when localStorage is blocked', () => {
   mode = 'blocked';

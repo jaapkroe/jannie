@@ -96,12 +96,12 @@ network cannot join this one, because it listens on loopback.
 make test       # go vet, the Go tests (-short), the JS unit tests and the deployment files
 make test-all   # also the bot arena: sterk must beat normaal must beat makkelijk
 make e2e        # full games over the websocket against each game's server from source (GAME=… for one)
-scripts/go test -run '^$' -bench . ./internal/bot ./internal/game   # CPU per bot decision and per hand
+scripts/go test -run '^$' -bench . ./games/klaverjas/bot ./games/klaverjas/game   # CPU per bot decision and per hand
 ```
 
 The server's own cost per match, and what a connection receives, are
-measured by `scripts/go test -run '^$' -bench . ./internal/server` and
-`scripts/go test -run PerfWire -v ./internal/server -args -perf.wire`
+measured by `scripts/go test -run '^$' -bench . ./platform/server` and
+`scripts/go test -run PerfWire -v ./platform/server -args -perf.wire`
 (`docs/design.md` §4.3).
 
 Browser checks with Puppeteer live in `test/ui` and run against a server
@@ -114,7 +114,7 @@ node app-play.mjs ... --gedraaid | --multi | --training                         
 node app-play.mjs ... --players 3 | --players 2                                  # the auction and laying away; the piles
 node app-screens.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303  # every screen at six sizes, into test/ui/out/
 node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303   # 34 behaviour checks (coach, lessons, the Oefenen sheet, taps, back button, lost socket, chat during animations, full table, takeover vote, summary on a phone, card corners, expert mode, a call…); needs -fast, ~15 min
-node og-image.mjs --site klaverjas --cdp http://127.0.0.1:9303                  # renders web/klaverjas/og.png, the link preview image
+node og-image.mjs --site klaverjas --cdp http://127.0.0.1:9303                  # renders games/klaverjas/web/og.png, the link preview image
 node app-perf.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303     # main-thread work per second and chat keystroke times on two emulated phones
 ```
 
@@ -130,19 +130,19 @@ place of podman and systemd.
 
 ## How it is built
 
-- `internal/game`: the rules engine, pure and exhaustively tested: legal moves
+- `games/klaverjas/game`: the rules engine, pure and exhaustively tested: legal moves
   for both rule sets, tricks, roem, scoring and the state machine of one hand.
-- `internal/bot`: the personalities, the three playing strengths (the strongest
+- `games/klaverjas/bot`: the personalities, the three playing strengths (the strongest
   uses determinised Monte Carlo playouts), the training hints and chat.
-- `internal/server`: the table every game is played at: rooms with codes, the
+- `platform/server`: the table every game is played at: rooms with codes, the
   websocket protocol, pacing, chat and limits, with klaverjas built in and an
   API for other games. Each room is one goroutine; all state is in memory.
 - `cmd/klaverjas`: the binary, which ties the bots to the server.
-- `web/shared` and `web/klaverjas`: the frontend, plain ES modules and CSS with
+- `platform/web` and `games/klaverjas/web`: the frontend, plain ES modules and CSS with
   no build step and nothing loaded from other sites, so a strict Content
-  Security Policy applies. `web/shared` is the shell every game's site uses.
-- Toepen: `internal/toepen` (rules), `internal/toepbot` (bots),
-  `internal/toepenserver`, `cmd/toepen` and `web/toepen`.
+  Security Policy applies. `platform/web` is the shell every game's site uses.
+- Toepen: `games/toepen/toepen` (rules), `games/toepen/toepbot` (bots),
+  `games/toepen/toepenserver`, `cmd/toepen` and `games/toepen/web`.
 
 [`docs/design.md`](docs/design.md) is the contract between these parts: the
 rules as implemented, the Go APIs, the wire protocol, the interface and the

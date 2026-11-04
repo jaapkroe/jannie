@@ -5,8 +5,8 @@
 package main
 
 import (
-	"klaverjas/internal/serve"
-	"klaverjas/internal/server"
+	"jannie/platform/serve"
+	"jannie/platform/server"
 )
 
 // version is set at build time: -ldflags "-X main.version=<git sha>".

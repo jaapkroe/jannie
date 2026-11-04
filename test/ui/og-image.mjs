@@ -22,7 +22,7 @@ const a = args();
 const argv = process.argv.slice(2);
 const opt = name => (argv.includes('--' + name) ? argv[argv.indexOf('--' + name) + 1] : '');
 const site = opt('site') || 'klaverjas';
-const out = opt('out') || path.join(path.dirname(fileURLToPath(import.meta.url)), `../../web/${site}/og.png`);
+const out = opt('out') || path.join(path.dirname(fileURLToPath(import.meta.url)), `../../games/${site}/web/og.png`);
 
 // Each site's scene: the felt's colour stops, the background, the emblem,
 // the name, the two lines and the fan.

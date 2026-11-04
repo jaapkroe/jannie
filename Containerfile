@@ -1,11 +1,11 @@
-# The images of every game's pod (deploy/games/<game>.mk), two per game, from one
+# The images of every game's pod (games/<game>/<game>.mk), two per game, from one
 # build:
 #   server-<game>  the game server: the game's static Go binary in an empty image
-#   web            nginx serving web/shared and web/<game>, and proxying /ws and
+#   web            nginx serving platform/web and games/<game>/web, and proxying /ws and
 #                  /api/ to the server; the build argument GAME says which game
 # The server binaries are built only after go vet and the short tests pass; a
 # web image only with an nginx configuration that passes `nginx -t`, and only
-# when web/shared and web/<game> have no path in common.
+# when platform/web and games/<game>/web have no path in common.
 #   podman build --target server-klaverjas --build-arg GIT_SHA=$(git rev-parse HEAD) \
 #                -t localhost/klaverjas-server:test .
 #   podman build --target web --build-arg GIT_SHA=$(git rev-parse HEAD) --build-arg GAME=klaverjas \
@@ -22,10 +22,11 @@ ENV CGO_ENABLED=0 GOFLAGS=-buildvcs=false GOTOOLCHAIN=local
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
-# The Go code only, so a change to web/ or the docs reruns neither the tests nor
-# the build.
+# The Go code only, so a change to a site, the docs or a game's settings reruns
+# neither the tests nor the build.
 COPY cmd/ cmd/
-COPY internal/ internal/
+COPY --exclude=**/web --exclude=**/*.md --exclude=**/*.mk platform/ platform/
+COPY --exclude=**/web --exclude=**/*.md --exclude=**/*.mk games/ games/
 RUN go vet ./... && go test -short ./...
 ARG GIT_SHA=dev
 # Every game's server, /out/<game> from cmd/<game>.
@@ -52,7 +53,7 @@ EXPOSE 8081
 ENTRYPOINT ["/toepen"]
 CMD ["-addr", "127.0.0.1:8081"]
 
-# The game's files, web/shared and web/GAME, checked to have no path in common
+# The game's files, platform/web and games/GAME/web, checked to have no path in common
 # (a file in both would leave the image with whichever was copied last); the
 # nginx configuration with the public host name, the game's name and its verb
 # filled in, checked here so a broken one never reaches the web image; and
@@ -64,16 +65,16 @@ ARG SITE
 ARG TITLE
 ARG VERB
 ARG GIT_SHA=dev
-# Before the COPY below: with an empty GAME, web/${GAME}/ would be all of web/.
+# Before the COPY below: with an empty GAME, games/${GAME}/web/ names no game.
 RUN test -n "$GAME" && test -n "$SITE" && test -n "$TITLE" && test -n "$VERB" || { \
       echo "the web target needs --build-arg GAME, SITE, TITLE and VERB (make image-web GAME=<game>)" >&2; exit 1; } && \
     case "$GAME" in *[!a-z0-9-]*) echo "GAME=$GAME: not a game's name" >&2; exit 1;; esac
-COPY web/shared/ /tmp/shared/
-COPY web/${GAME}/ /tmp/game/
+COPY platform/web/ /tmp/shared/
+COPY games/${GAME}/web/ /tmp/game/
 COPY deploy/nginx.conf /tmp/nginx.conf.in
 RUN both=$( { (cd /tmp/shared && find . ! -type d; cd /tmp/game && find .) | sort | uniq -d; \
               (cd /tmp/game && find . ! -type d; cd /tmp/shared && find .) | sort | uniq -d; } | sort -u) && \
-    { [ -z "$both" ] || { echo "in both web/shared and web/$GAME:" $both >&2; exit 1; }; } && \
+    { [ -z "$both" ] || { echo "in both platform/web and games/$GAME/web:" $both >&2; exit 1; }; } && \
     sed -e "s|@SITE@|${SITE}|g" -e "s|@TITLE@|${TITLE}|g" -e "s|@VERB@|${VERB}|g" /tmp/nginx.conf.in > /tmp/nginx.conf && \
     ! grep -q '@[A-Z_]*@' /tmp/nginx.conf && nginx -t -q -c /tmp/nginx.conf && \
     sed -e "s|@SITE@|${SITE}|g" -e "s|@VERSION@|${GIT_SHA}|g" /tmp/game/index.html > /tmp/index.html && \

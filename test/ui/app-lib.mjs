@@ -1,7 +1,8 @@
 // Shared helpers for the app browser checks (app-screens.mjs, app-play.mjs,
-// app-checks.mjs): connect to scripts/chrome, give every page an address of
-// its own, open isolated pages per viewport, collect errors, tap like a
-// finger or click like a mouse, and save screenshots.
+// app-checks.mjs, toepen-screens.mjs; css-same.mjs uses its hooks): connect
+// to scripts/chrome, give every page an address of its own, open isolated
+// pages per viewport, collect errors, tap like a finger or click like a
+// mouse, and save screenshots.
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -10,6 +11,12 @@ import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 
 export const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'out');
+
+// Where a tool that rides along with a check (css-same.mjs) hooks in, each a
+// list of async functions: page(P) for every new page before it loads
+// anything, shot(P, label) before every screenshot, wait(P, label) after
+// every condition waitFor saw come true.
+export const hooks = { page: [], shot: [], wait: [] };
 
 export const VIEWPORTS = {
   phone: { width: 360, height: 640, isMobile: true, hasTouch: true, deviceScaleFactor: 1 },
@@ -109,7 +116,9 @@ export async function openPage(browser, vp, name, dpr = 0) {
   page.on('response', r => {
     if (r.status() >= 400) errors.push(`[${name}] HTTP ${r.status()} ${r.url()}`);
   });
-  return { page, ctx, errors, vp, name, touch: !!vp.hasTouch };
+  const P = { page, ctx, errors, vp, name, touch: !!vp.hasTouch };
+  for (const f of hooks.page) await f(P);
+  return P;
 }
 
 export const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -166,6 +175,7 @@ export async function type(P, selector, text) {
 }
 
 export async function shot(P, label) {
+  for (const f of hooks.shot) await f(P, label);
   fs.mkdirSync(OUT, { recursive: true });
   const file = path.join(OUT, `${P.name}-${label}.png`);
   for (let i = 0; ; i++) {
@@ -207,11 +217,14 @@ export async function checkOverflow(P, label) {
 }
 
 export async function waitFor(P, fn, { timeout = 30000, label = 'condition' } = {}, ...a) {
+  let r;
   try {
-    return await P.page.waitForFunction(fn, { timeout, polling: 100 }, ...a);
+    r = await P.page.waitForFunction(fn, { timeout, polling: 100 }, ...a);
   } catch (e) {
     throw new Error(`[${P.name}] timeout waiting for ${label}: ${e.message}\n  page: ${await diag(P)}`);
   }
+  for (const f of hooks.wait) await f(P, label);
+  return r;
 }
 
 // A one-line summary of what the page shows, for failure messages.
