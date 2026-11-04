@@ -10,7 +10,10 @@ the layout; docs/ and games/<game>/README.md are the design.
   comment density: short, plain comments in full sentences.
 - The docs are the contract. A change to behaviour, an exported Go
   identifier, the protocol or a rule updates the doc that describes it in
-  the same commit.
+  the same commit. Code cites a doc by path and heading anchor
+  (`docs/server.md#pacing`, `games/klaverjas/README.md#seinen-signals`);
+  `test/docs.test.mjs` checks every such reference and every link in the
+  docs.
 - Player-facing feedback (Spelanalyse, hints, tips, chat lines from the
   game) is plain and factual: facts, card names and numbers, with no praise,
   consolation, exclamation marks or emoji. The one exception: Juf Jannie's

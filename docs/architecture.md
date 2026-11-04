@@ -125,6 +125,7 @@ test/sites.test.mjs          every site: its own files, its request budget, its 
 test/layout.test.mjs         the Go imports: the platform imports no game (but for klaverjas's files and
                              the tests in platform/server), no game imports another, cmd/<g> only
                              platform/ and games/<g>/, and platform/cards nothing of the module
+test/docs.test.mjs           the docs' links and anchors, and every reference to a doc in the code
 test/manual.test.mjs         klaverjas's manual: its sections, and its examples against an independent
                              rules checker
 test/sound.test.mjs          the shell's sound palette
