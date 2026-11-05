@@ -388,6 +388,8 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
       ['Score bijhouden', [
         'Speel je met echte kaarten aan een echte tafel? Met Score bijhouden op het beginscherm houdt één iemand de strafpunten bij: namen invullen, en na elk potje de inzet, 🏆 bij wie de laatste slag haalde, Weg bij wie passte, en met − en + wat er nog anders ging (de boer, een vuile was).',
         'De anderen kijken mee met de code of de link, en zien de stand, het verloop in een grafiek en elk potje. Wie twee keer of vaker achter elkaar weggaat, valt op als lijntoeper.']],
+      ['Privacy', [
+        'De server bewaart van elk spel de kaarten en de zetten, en de naam, het IP-adres en het apparaat van de spelers. Die gegevens gebruiken we voor statistieken en om het spel te verbeteren. Ze worden na hooguit 12 maanden verwijderd.']],
     ] },
   ];
 }
