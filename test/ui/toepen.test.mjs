@@ -162,6 +162,12 @@ test('variant and manual follow the options', () => {
   const terms = tabs.find(t => t.id === 'begrippen').parts.map(([t]) => t);
   assert.deepEqual(terms, [...terms].sort((a, b) => a.localeCompare(b, 'nl')));
   assert.match(manual({}, { touch: true }).at(-1).parts[0][1][0], /^Tik een kaart/);
+  // Bediening ends with what the server keeps, at a table and away from one.
+  for (const t of [tabs, manual({}, { table: false })]) {
+    const [title, [text]] = t.find(tab => tab.id === 'bediening').parts.at(-1);
+    assert.equal(title, 'Privacy');
+    assert.match(text, /statistieken en om het spel te verbeteren.*12 maanden/);
+  }
   // Away from a table: every extra rule explained, with its default.
   const home = Object.fromEntries(manual({}, { table: false }).find(t => t.id === 'extra').parts);
   assert.match(home['Anti-lijntoep'][0], /^Lijntoepen/);

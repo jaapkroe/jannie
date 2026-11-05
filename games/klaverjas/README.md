@@ -1291,7 +1291,7 @@ spelregels*, which opens the manual ([manual.js](#manualjs)). In the
 *Nieuw spel* sheet *Troef* hides with three players, *Regels* with two, and
 *Seinen* (four toggles, two per line: *Met de aas seinen*, *Op- en
 afseinen*, *Kleintje boer*, *Boer over boer*) with three or two. Five quick
-taps on the version open the expert mode's sheet, *Expert*
+taps on the word *Versie* open the expert mode's sheet, *Expert*
 ([Expert mode](#expert-mode)).
 
 The expert sheet has, in this order, a line

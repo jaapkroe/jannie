@@ -714,9 +714,29 @@ body[data-screen="game"] #game {
 }
 
 .home-ver {
-  position: relative;
   font-size: inherit;
+}
+
+/* The word keeps the easter egg's taps, the commit beside it is the link
+   to the source; each has its own tap area, apart from the other's. The
+   link is as bright as the footer's sentence, the word fainter. */
+.home-egg,
+.home-src {
+  position: relative;
+}
+
+.home-egg {
   opacity: 0.75;
+}
+
+.home-src {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.home-src:hover {
+  color: var(--gold);
 }
 
 .home-support {
@@ -732,11 +752,22 @@ body[data-screen="game"] #game {
   font-weight: 700;
 }
 
-.home-ver::before,
+.home-egg::before,
+.home-src::before,
 .home-support::before {
   content: "";
   position: absolute;
   inset: -15px -4px;
+}
+
+.home-egg::before {
+  right: 0;
+}
+
+/* Not up into the footer's sentence, where a stray tap would open it. */
+.home-src::before {
+  top: -4px;
+  left: 0;
 }
 
 .home-support:hover {

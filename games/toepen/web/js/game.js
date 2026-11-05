@@ -156,7 +156,7 @@ export const home = {
     history.replaceState(history.state, '', '/');
     openScore(code);
   },
-  // Five taps on the version: the expert mode on or off (on this device).
+  // Five taps on the word Versie: the expert mode on or off (on this device).
   egg: () => {
     const on = store.get('expert', '') !== '1';
     if (on) store.set('expert', '1');

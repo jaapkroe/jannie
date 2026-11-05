@@ -209,9 +209,13 @@ player is "Speler", which is not stored as their name. Under the footer,
 small: "Versie a05a087", the commit the web image was built from (the
 Containerfile fills in index.html's `<meta name="version">`; `versionText`
 shortens it, "dev" when run from source; `pod-check` compares it with
-`/api/health`). Five quick taps on the version (each within 1.5 s of the
-last) open the game's hidden extra (`game.home.egg`; klaverjas's and
-toepen's expert mode): the only way in, and not named anywhere (in short
+`/api/health`). The commit is a link to the source, `SOURCE_URL` in
+`home.js` (the public repository), in a new tab: a site that runs a
+modified version must offer its players that version's source (section 13
+of the AGPL), so a fork points it at its own. Five quick taps on the word
+"Versie" (each within 1.5 s of the last) open the game's hidden extra
+(`game.home.egg`; klaverjas's and toepen's expert mode): the only way in,
+and not named anywhere (in short
 landscape the footer, and so the line, is hidden). Beside it, *Support
 deze app* with a hand: a short sheet on why (free and without ads, a
 contribution pays for the server and the development) and the button

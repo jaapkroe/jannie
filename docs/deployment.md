@@ -102,6 +102,15 @@ no support button, and `make image-web` (so also `make deploy`) says so:
 "No SUPPORT_URL (local.mk): toepen's web image has no support button." A
 server run from source has none either.
 
+### The source link
+
+Not a setting but a line of code: the commit under every home page links
+to `SOURCE_URL` in `platform/web/js/home.js`, the public repository
+([frontend.md, "Home"](frontend.md#home)). The code is under the AGPL
+(version 3 only), and a site that runs a modified version must offer its
+players the source of that version (section 13), so such a site points
+`SOURCE_URL` at where it publishes its own source.
+
 ### GAME
 
 Every command that acts on a pod takes `GAME=`, a game or `all`, on make's

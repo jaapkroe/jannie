@@ -919,9 +919,9 @@ CHECKS.review = async browser => {
   });
 };
 
-// The expert mode: five taps on the version open its sheet; seed 4242,
+// The expert mode: five taps on the word Versie open its sheet; seed 4242,
 // potje 3 and Plaats 3 deal that hand alone with the player at seat 2,
-// the chat names the seed at the start. On the player's turn the search
+// and the start line names no seed. On the player's turn the search
 // button opens the sheet Redenering van de AI on the decision awaited,
 // with the reasoning; ‹ goes to their card before, asked about and
 // commented on (hand and trick, no seat). Over the hand summary the
@@ -931,7 +931,7 @@ CHECKS.expert = async browser => {
   const P = await page(browser, VP.iphone, 'expert', { hooks: true });
   await run(P, async () => {
     await home(P);
-    for (let i = 0; i < 5; i++) await press(P, '.home-ver');
+    for (let i = 0; i < 5; i++) await press(P, '.home-egg');
     await waitFor(P, () => document.querySelector('.m-train.open #btn-expert-go'), { label: 'expert sheet' });
     for (const [key, v] of [['seed', '4242'], ['from', '3']]) {
       await P.page.$eval(`.modal.open .opt-row[data-key="${key}"] input`, (e, v) => { e.value = v; e.dispatchEvent(new Event('change')); }, v);
@@ -1329,14 +1329,29 @@ CHECKS.hometiles = async browser => {
 // payment link (SUPPORT_URL, which the build puts in the meta support): a
 // server from source has none, and no line. With one, as the build fills it
 // in before the page reads it, its tap opens a short sheet with the link in
-// a new tab, and is no tap on the version (the expert mode).
+// a new tab, and is no tap on the version (the expert mode). The commit in
+// the version line links to the source, in a new tab.
 const SUPPORT_LINK = 'https://pay.example/r/AbC123?a=1&b=2';
 CHECKS.support = async browser => {
   const P0 = await page(browser, VP.phone, 'support-none');
   await run(P0, async () => {
     await home(P0);
-    const st = await P0.page.evaluate(() => ({ meta: document.querySelector('meta[name="support"]')?.content, btn: !!document.querySelector('#btn-support'), ver: document.querySelector('.home-ver')?.textContent }));
+    const st = await P0.page.evaluate(() => {
+      const src = document.querySelector('.home-ver a.home-src');
+      return { meta: document.querySelector('meta[name="support"]')?.content, btn: !!document.querySelector('#btn-support'), ver: document.querySelector('.home-ver')?.textContent, src: src?.href, tab: src?.target };
+    });
     if (st.btn || !st.ver?.startsWith('Versie ')) throw new Error(`without a payment link: ${JSON.stringify(st)}`);
+    if (st.src !== 'https://github.com/jaapkroe/jannie' || st.tab !== '_blank') throw new Error(`the source link: ${JSON.stringify(st)}`);
+    // The word and the link each take the taps up to their facing edges.
+    const areas = await P0.page.evaluate(() => {
+      document.querySelector('.home-ver').scrollIntoView({ block: 'center' });
+      const egg = document.querySelector('.home-egg').getBoundingClientRect();
+      const src = document.querySelector('.home-src').getBoundingClientRect();
+      const y = egg.top + egg.height / 2;
+      const at = x => document.elementFromPoint(x, y)?.className;
+      return { egg: at(egg.right - 1), src: at(src.left + 1), eggLeft: at(egg.left - 2), srcRight: at(src.right + 2) };
+    });
+    if (areas.egg !== 'home-egg' || areas.src !== 'home-src' || areas.eggLeft !== 'home-egg' || areas.srcRight !== 'home-src') throw new Error(`the tap areas of the version line: ${JSON.stringify(areas)}`);
     await shot(P0, 'home');
   });
   for (const vp of ['phone', 'oldSE']) {
