@@ -481,9 +481,10 @@ shows it at most about 160 device pixels wide): the offerer sets it on
 its transceiver, the answerer once the answer is made, and it holds as
 the camera's track changes. One description each way,
 with the addresses found within 2.5 s (no trickling, for the message
-limit); STUN from Google and Cloudflare, no TURN. A connection not up
-within 20 s, or lost for 8 s, failed: the offerer tries again three
-times, then the seat is marked. The others' sound and pictures play in
+limit); STUN from Nextcloud (Germany) and Linphone (France), no TURN.
+A connection not up within 20 s, or lost for 8 s, failed: the offerer
+tries again three times, then the seat is marked. The others' sound
+and pictures play in
 one `<audio>` and one `<video>` for each other seat, made when call.js
 loads and started empty at the first taps (pointerup, touchend, click,
 keydown; a touch's pointerdown is no gesture to Safari): Safari then

@@ -86,9 +86,9 @@ days after their last change.
 Calls go directly between the players' devices, end-to-end encrypted, and
 never pass through the game's server or anyone else's. Only the people who
 join a call connect to each other, so only they see each other's IP
-address. To set up the connection, each browser asks a public STUN server
-(Google's or Cloudflare's) for its own address on the internet; no audio or
-video goes there.
+address. To set up the connection, each browser asks two public STUN
+servers in the EU (Nextcloud's in Germany and Linphone's in France) for its
+own address on the internet; no audio or video goes there.
 
 ## Development
 

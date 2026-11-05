@@ -10,9 +10,12 @@ import { app, h, icon, store, toast } from './util.js';
 import * as panels from './panels.js';
 
 // Public STUN servers tell each browser its address as the internet sees
-// it; nothing of the call passes the game's own server. No TURN: where two
-// networks allow no direct connection, those two do not hear each other.
-const ICE = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+// it; nothing of the call passes the game's own server. The browser asks
+// both: Nextcloud's in Germany (port 443, for networks that block the STUN
+// port 3478) and Belledonne's, Linphone's maker, in France. No TURN: where
+// two networks allow no direct connection, those two do not hear each
+// other.
+const ICE = [{ urls: ['stun:stun.nextcloud.com:443', 'stun:stun.linphone.org:3478'] }];
 const GATHER_MS = 2500;   // waited for the addresses before a description goes out
 const CONNECT_MS = 20000; // a connection not up by then has failed
 const LOST_MS = 8000;     // a connection that drops may come back within this
