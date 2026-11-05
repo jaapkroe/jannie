@@ -83,9 +83,12 @@ addresses and browser (User-Agent), for at most 12 months. It is used for
 statistics and to improve the games. Toepen's score sheets are deleted seven
 days after their last change.
 
-Calls go from browser to browser, not through the server, so the others in
-a call see your IP address. Each browser learns its own address from two
-public STUN servers, Google's and Cloudflare's, which see it too.
+Calls go directly between the players' devices, end-to-end encrypted, and
+never pass through the game's server or anyone else's. Only the people who
+join a call connect to each other, so only they see each other's IP
+address. To set up the connection, each browser asks a public STUN server
+(Google's or Cloudflare's) for its own address on the internet; no audio or
+video goes there.
 
 ## Development
 
