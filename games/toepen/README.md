@@ -386,7 +386,7 @@ timeouts of `/ws`; the volume also holds the score sheets (`scores/`).
 
 ## Redenering van de AI
 
-Toepen's expert mode. Five taps on the version under the home screen switch the expert mode on
+Toepen's expert mode. Five taps on the word *Versie* under the home screen switch the expert mode on
 or off for this device (`kj.expert`). In it, alone with bots (nobody else
 at the table is a person, so it is help nobody else lacks), a robot in the
 top bar asks the reasoning for your own decision now: `why` (no fields).

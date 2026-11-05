@@ -16,6 +16,9 @@ const CODE_RE = /^[A-HJ-NP-Z]{4}$/;
 // The lobby's start button ignores taps this long after it first shows: a
 // double tap on "Maak spel" lands on it and would start without friends.
 const START_GUARD_MS = 800;
+// The public source (AGPL-3.0-only): the commit under the footer links to
+// it. A site running a modified version links to its own source instead.
+const SOURCE_URL = 'https://github.com/jaapkroe/jannie';
 
 // The game's option rows (game.home.options); a row that does not apply to
 // the number of players (o.players) hides: in klaverjas troef with three
@@ -131,11 +134,14 @@ export function init(g) {
   E.card = h('div', { class: 'home-card' },
     h('label', { class: 'name-lbl', for: 'name', text: 'Je naam' }), E.name, E.invite, E.main);
   const support = supportURL(document.querySelector('meta[name="support"]')?.content);
+  const version = versionText(document.querySelector('meta[name="version"]')?.content);
   root.querySelector('.home-inner').append(E.card,
     h('footer', { class: 'home-foot' },
       h('span', { text: game.home.footer }),
       h('div', { class: 'home-meta' },
-        h('small', { class: 'home-ver', text: `Versie ${versionText(document.querySelector('meta[name="version"]')?.content)}`, onclick: versionTap }),
+        h('small', { class: 'home-ver' },
+          h('span', { class: 'home-egg', text: 'Versie', 'aria-hidden': true, onclick: versionTap }), ' ',
+          h('a', { class: 'home-src', href: SOURCE_URL, target: '_blank', rel: 'noopener noreferrer', title: 'Broncode', 'aria-label': `Versie ${version}, broncode`, text: version })),
         support ? h('button', { class: 'home-support', type: 'button', id: 'btn-support', onclick: () => openSupport(support) }, icon('hand'), 'Support deze app') : null)),
   );
   E.lobby = document.getElementById('lobby');
@@ -265,7 +271,8 @@ function openSupport(url) {
 // ---------- easter egg ----------
 
 // A game may hide something under the version (game.home.egg; klaverjas:
-// the expert mode; docs/frontend.md#home): five quick taps on it open it.
+// the expert mode; docs/frontend.md#home): five quick taps on the word
+// "Versie" open it (the commit beside it is a link).
 const EGG_TAPS = 5;
 const EGG_GAP_MS = 1500;
 let taps = 0;
