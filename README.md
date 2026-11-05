@@ -145,4 +145,20 @@ The first start compiles for about a minute, and Ctrl-C stops it.
 
 Code, comments and docs are in English; every string a player sees is in
 Dutch. The docs describe how the code works, so a change updates them in the
-same commit. `make test` must pass.
+same commit. `make test` must pass. [CONTRIBUTING.md](CONTRIBUTING.md) has
+the rest, including the [contributor agreement](CLA.md) to sign before a
+first pull request is merged.
+
+## License
+
+Copyright © 2026 Jaap Kroes and the contributors.
+
+Jannie is free software: you can redistribute it and/or modify it under the
+terms of the GNU Affero General Public License, version 3 only
+(AGPL-3.0-only), as published by the Free Software Foundation; see
+[LICENSE](LICENSE). It comes without any warranty.
+
+Whoever runs a modified version as a site must offer its players the source
+of that version (section 13 of the license). The version number on each
+game's home page links to this repository (`SOURCE_URL` in
+`platform/web/js/home.js`); a modified copy points it at its own source.
