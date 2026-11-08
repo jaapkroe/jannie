@@ -3,6 +3,15 @@
 Bug reports, ideas and pull requests are welcome. The games' interface is
 in Dutch; issues and pull requests may be in English or Dutch.
 
+## Reporting an issue
+
+[Open an issue](https://github.com/jaapkroe/jannie/issues/new) with:
+
+- Which game: klaverjas or toepen.
+- The seed or game code, if the problem is in a specific deal or game.
+- A screenshot of what you see, where possible.
+- For a rule: a reference to how it is played.
+
 ## Before your first pull request
 
 - **License.** Jannie is published under the GNU Affero General Public
