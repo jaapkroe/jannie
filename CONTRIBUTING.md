@@ -7,10 +7,10 @@ in Dutch; issues and pull requests may be in English or Dutch.
 
 [Open an issue](https://github.com/jaapkroe/jannie/issues/new) with:
 
-- Which game: klaverjas or toepen.
+- Which game (e.g. klaverjas, toepen).
 - The seed or game code, if the problem is in a specific deal or game.
 - A screenshot of what you see, where possible.
-- For a rule: a reference to how it is played.
+- For a rule: a reference to how it is played or how you learned about it.
 
 ## Before your first pull request
 
