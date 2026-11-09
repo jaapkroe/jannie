@@ -3,7 +3,7 @@
 Every game has a simulation that plays complete games against a running
 server, the way the browser does: over `/ws` with the table's protocol
 ([docs/protocol.md](../../docs/protocol.md)) and the game's own messages
-(`games/<game>/README.md`). Simulated players create a room, join it with
+(the README in the game's folder). Simulated players create a room, join it with
 the code, make random legal choices, press *ready* after a hand or round
 and play on until `gameOver`. Bots fill the other seats. Every message is
 checked; the first broken invariant stops that game with a message saying
@@ -15,8 +15,11 @@ and nothing else.
 ## Running it
 
 Every game has a simulation of its own, named by `E2E_SIM` in its
-`games/<game>/<game>.mk`, which takes the server's URL as its one argument:
-`sim.mjs` for klaverjas, `toepen.mjs` for toepen.
+`<game>.mk`, which takes the server's URL as its one argument. Klaverjas's
+and toepen's are here, `sim.mjs` and `toepen.mjs`, and described below; a
+later game keeps its simulation in its folder (say
+`games/<game>/test/e2e.mjs`) and describes it in its README
+([docs/adding-a-game.md, "The folder"](../../docs/adding-a-game.md#the-folder)).
 
 The quickest way is `make e2e`: for every game in turn it starts the game's
 server from source with `-fast` on the game's `E2E_PORT`, waits for

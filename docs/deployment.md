@@ -18,9 +18,11 @@ internet ──443──> reverse proxy ──http──> 127.0.0.1:8093 ┌ pod
 
 ## The games
 
-A game is a file `games/<game>/<game>.mk` with its settings; the `Makefile`
-reads the games from those files. Each game's settings, and in the last two
-rows the names that follow from the game's own name:
+A game is a folder, `games/<game>/` or `extra/<game>/` of the overlay
+([adding-a-game.md, "The folder"](adding-a-game.md#the-folder)), with its
+settings in `<game>.mk`; the `Makefile` reads the games from those files.
+The settings of the live sites, and in the last two rows the names that
+follow from the game's own name:
 
 | | klaverjas | toepen | Used for |
 |---|---|---|---|
@@ -31,7 +33,7 @@ rows the names that follow from the game's own name:
 | `DEV_PORT`, `E2E_PORT` | `18093`, `18094` | `18095`, `18096` | `make dev` and `make e2e`, clear of the installed pods |
 | `E2E_SIM` | `test/e2e/sim.mjs` | `test/e2e/toepen.mjs` | What `make e2e` plays |
 | Game log volume | `klaverjas-games` | `toepen-games` | "The game log" below |
-| Binary | `cmd/klaverjas` | `cmd/toepen` | The game server, `/<game>` in its image |
+| Binary | `cmd/klaverjas` | `cmd/toepen` | The game server, `/<game>` in its image; a later game's main package is `<folder>/cmd/<game>` |
 
 These are the live sites. A deployment of your own changes `SITE` (and
 `ADDR` if the port is taken) in those files, and commits that on a branch
@@ -50,8 +52,8 @@ Everything else is named after the game, `G` below:
 | What | Name |
 |---|---|
 | Pod and its units | pod `G`; `G.pod`, `G-web.container`, `G-server.container` in `~/.config/containers/systemd/`; services `G-pod`, `G-web`, `G-server` |
-| `G-web` | `localhost/G-web:current`, nginx-unprivileged: serves the game's files (`platform/web` and `games/G/web`), proxies `/ws` and `/api/`, sets the security headers |
-| `G-server` | `localhost/G-server:current`, `FROM scratch`: the game server `/G` (its health check `["/G", "-healthcheck"]`), on `127.0.0.1:8081` inside the pod only |
+| `G-web` | `localhost/G-web:current`, nginx-unprivileged: serves the game's files (`platform/web` and its folder's `web/`), proxies `/ws` and `/api/`, sets the security headers |
+| `G-server` | `localhost/G-server:current`, `FROM scratch`: the game server `/G` (its health check `["/G", "-healthcheck"]`), started through the link `/server`, on `127.0.0.1:8081` inside the pod only |
 | Game log | the volume `G-games`, never shared with another game |
 
 For klaverjas these are the names from before there were more games, and
@@ -65,7 +67,7 @@ it** (and only there). The one volume of each pod holds its game log
 
 ## Settings
 
-A game's settings in `games/<game>/<game>.mk` are `TITLE` to `E2E_SIM` in
+A game's settings in its folder's `<game>.mk` are `TITLE` to `E2E_SIM` in
 the table of "The games" above, which says what each is for.
 
 The port rule: `ADDR`'s port is an odd `P`, `DEV_PORT` is `10000+P` and
@@ -125,7 +127,7 @@ games):
 | `help`, `test`, `test-all` | do not take it |
 
 `GAME=all` goes through the games one after another, in the order of their
-names, all under one build tag, and stops at the first game that fails:
+names, with one build time in their tags, and stops at the first game that fails:
 `make deploy GAME=all` deploys klaverjas, checks it, and only then builds
 toepen (`make -n deploy GAME=all` shows the plan). A setting on the command
 line without one `GAME` is refused.
@@ -135,25 +137,39 @@ line without one `GAME` is refused.
 The `Containerfile`'s stages:
 
 - `build` (the official golang Alpine image): copies `cmd/` and the Go code
-  of `platform/` and `games/` (no `web/`, `*.md` or `*.mk`, so a change to a
-  site, the docs or a game's settings reruns neither the tests nor the
-  build, and a Go test reads no file outside the Go code); runs `go vet` and
-  `go test -short ./...`, then builds every `cmd/<game>` statically to
-  `/out/<game>` with `-trimpath -ldflags "-s -w -X main.version=$GIT_SHA"`.
-- `server-<game>`, one per game (`FROM scratch`, its binary only, `USER
-  65532:65532`): an exec-form `ENTRYPOINT` cannot expand a build argument,
-  and the empty image has no shell that could, so each game has a target of
-  its own.
+  of `platform/`, `games/` and the overlay `extra/` (no `web/`, `*.md`,
+  `*.mk` or `*.mjs`, and no `.git` of the overlay, so a change to a site,
+  the docs, a game's settings or its JS tests reruns neither the tests nor
+  the build, and a Go test reads no file outside the Go code); runs `go vet`
+  and `go test -short ./...`, then builds every game's main package,
+  `cmd/<game>` or `<folder>/cmd/<game>` (a folder's other commands are not
+  built), statically to `/out/<game>/<game>`
+  with `-trimpath -ldflags "-s -w -X main.version=$GIT_SHA"`, with a link
+  `/out/<game>/server` to it; two main packages of one name stop the
+  build. Last, with `ARG GAME`, it refuses a `GAME` that names no server,
+  an empty one included, which would copy them all.
+- `server` (`FROM scratch`, `USER 65532:65532`), with `ARG GAME`: copies
+  `/out/<game>/` to `/`, so the image holds the game's binary, `/<game>` as
+  the unit's `HealthCmd` runs it, and the link `/server`, which the
+  `ENTRYPOINT` runs: an exec-form `ENTRYPOINT` cannot expand a build
+  argument, and the empty image has no shell that could. `make image-server
+  GAME=<game>` builds it with `--build-arg GAME=<game>`.
 - `web-conf` and `web` (`nginxinc/nginx-unprivileged`, Alpine), with `ARG
-  GAME`, `SITE`, `TITLE`, `VERB` and `SUPPORT_URL` (empty by default):
-  `web-conf` refuses an empty or odd `GAME`, a `SUPPORT_URL` that is not an
-  `https://` URL (with more than `https://`) without quotes, spaces, `<` or
-  `>`, and any path in both
-  `platform/web` and `games/G/web`; renders `@SITE@`, `@TITLE@` and
+  GAME`, `GAME_DIR` (the game's folder, `games/<game>` or `extra/<game>`),
+  `SITE`, `TITLE`, `VERB` and `SUPPORT_URL` (empty by default): `web-conf`
+  refuses an empty or odd `GAME`, a `GAME_DIR` that is not its folder, a
+  `SUPPORT_URL` that is not an `https://` URL (with more than `https://`)
+  without quotes, spaces, `<` or `>`, and any path in both `platform/web`
+  and the folder's `web/`; renders `@SITE@`, `@TITLE@` and
   `@VERB@` into `nginx.conf` (checked with `nginx -t`) and `@SITE@`,
   `@VERSION@` and `@SUPPORT_URL@` into the game's `index.html` (`og:image`,
   the version, and `<meta name="support">`, empty without a link); `web`
   copies the union of the two trees and that `index.html`.
+
+The build copies `extra/`, and podman refuses to copy a directory that is
+not there: `make image-server` and `make image-web` make an empty `extra/`
+first, and a plain `podman build` without the overlay needs `mkdir -p
+extra` ([adding-a-game.md, "The overlay"](adding-a-game.md#the-overlay)).
 
 The base tags (minor versions) live only in the `Containerfile`;
 `scripts/go` and `scripts/dev-server` read the build image from its `FROM …
@@ -213,11 +229,17 @@ user, the pods start at boot.
 `help test test-all e2e dev dev-stop image image-server image-web install
 deploy check status logs uninstall quadlet` (`make help` lists them; `GAME`
 as above). The revision (`GIT_SHA`, the image label and `/api/health`'s
-version) is `HEAD`, with `-dirty` when `git status` lists anything; each
+version) is `HEAD`, with `-dirty` when `git status` lists anything. For a
+game of the overlay it is `HEAD`, a dot and the overlay's commit
+(`git -C extra rev-parse --short=12 HEAD`), with `-dirty` when either
+`git status` lists anything or `extra/` is not a git checkout
+([adding-a-game.md, "The overlay"](adding-a-game.md#the-overlay)); the
+overlay changes nothing in the revision of a game of `games/`. Each
 build tags both images `<GIT_SHA>-YYYYmmdd-HHMMSS`, and only `make deploy`
 then moves `:current` (what the units run) to it, so `make image` alone
-never changes what a restart starts. `make deploy` refuses a dirty tree
-unless `ALLOW_DIRTY=1`, and ends with `make check`.
+never changes what a restart starts. `make deploy` refuses a revision with
+`-dirty` unless `ALLOW_DIRTY=1` (`GAME=all` before its first game), and
+ends with `make check`.
 
 ## Reverse proxy
 
@@ -410,7 +432,8 @@ server's per-address limits (150 connections).
 
 `make deploy` builds a committed tree only, and says so when `git status`
 lists anything, untracked files included, because the build copies the
-working tree. `make deploy GAME=<game> ALLOW_DIRTY=1` deploys it anyway,
+working tree; for a game of the overlay also when `git -C extra status`
+does. `make deploy GAME=<game> ALLOW_DIRTY=1` deploys it anyway,
 with `-dirty` after the commit in the revision that `make status` and
 `/api/health` show.
 
@@ -571,7 +594,7 @@ game.
 | The proxy shows `502 Bad Gateway` | The game's pod is not running: `make status GAME=<game>`, `systemctl --user status <game>-pod` |
 | The page loads, but it never connects | The proxy does not pass websockets on (the websocket check through the proxy answers `426`), or the server container is down (`/api/health` through nginx answers `502`) |
 | `/ws` answers `403` | The `Origin` does not match the host: something rewrote `Host` between the browser and the server |
-| One game's site shows another game | The proxy host forwards to the other game's port: compare it with `ADDR` in `games/<game>/<game>.mk` |
+| One game's site shows another game | The proxy host forwards to the other game's port: compare it with `ADDR` in the game's `<game>.mk` |
 | Everyone shares one address and hits the room limit | The proxy's connections no longer arrive from `127.0.0.1` in the pod: the proxy is on another host, `ADDR` is not loopback, or `Network=pasta:--host-lo-to-ns-lo` is missing from the pod unit |
 | Old scripts or styles after a deploy | The proxy caches assets |
 | The page stays on its loading dots, or loads without styles | The proxy refused part of the load with `429`, its rate limit: many players behind one address loaded at the same moment. A reload a few seconds later works. If it happens to one player alone, the limit for the name is too tight for the page budget ("Reverse proxy" above) |

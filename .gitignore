@@ -5,10 +5,13 @@ node_modules
 !**/web/**/*.png
 !docs/**/*.png
 /test/ui/out/
-# Each checkout's own: worktrees, editor and assistant settings, and the
-# deployment's settings (local.mk, see the top of the Makefile).
+# Each checkout's own: worktrees, editor and assistant settings, the
+# deployment's settings (local.mk, see the top of the Makefile), and the
+# overlay, a checkout of a repository of private games
+# (docs/adding-a-game.md#the-overlay).
 .worktrees/
 .claude/
 .vscode/
 CLAUDE.local.md
 /local.mk
+/extra

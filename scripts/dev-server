@@ -1,25 +1,41 @@
 #!/bin/sh
 # Starts a game's server from source in the background, serving its files,
-# platform/web and games/<game>/web, itself.
+# platform/web and the game's web/, itself.
 #   GAME=klaverjas scripts/dev-server 18200 [extra server flags, e.g. -fast]
 #   podman logs -f kj-dev-18200 ; podman stop kj-dev-18200
-# GAME is one of the games of games/*/*.mk; `make dev` and `make e2e` set it.
+# GAME is one of the games, the folders games/<game>/ and extra/<game>/ (the
+# overlay) with their <game>.mk; `make dev` and `make e2e` set it. The server's
+# main package is cmd/<game> (klaverjas and toepen) or <folder>/cmd/<game>.
 set -eu
 root=$(cd "$(dirname "$0")/.." && pwd)
-games=
-for f in "$root"/games/*/*.mk; do
-  [ -e "$f" ] && games="$games${games:+ }$(basename "$f" .mk)"
-done
+games=$(for f in "$root"/games/*/*.mk "$root"/extra/*/*.mk; do
+  g=$(basename "$f" .mk)
+  [ ! -f "$f" ] || [ "$(basename "$(dirname "$f")")" != "$g" ] || echo "$g"
+done | sort -u | tr '\n' ' ' | sed 's/ $//')
 usage="usage: GAME=<game> dev-server PORT [flags]; the games are $games"
 port=${1:?$usage}; shift
 game=${GAME:-}
-case " $games " in
-  *" $game "*) [ -n "$game" ] ;;
-  *) false ;;
-esac || { echo "dev-server: ${game:+GAME=$game is not a game; }$usage" >&2; exit 2; }
-[ -d "$root/cmd/$game" ] || { echo "dev-server: there is no cmd/$game to run" >&2; exit 1; }
+folder=
+case $game in
+  '' | *[!a-z0-9-]*) ;;
+  *) for d in games extra; do
+       [ ! -f "$root/$d/$game/$game.mk" ] || folder="$folder${folder:+ }$d/$game"
+     done ;;
+esac
+case $folder in
+  '') echo "dev-server: ${game:+GAME=$game is not a game; }$usage" >&2; exit 2 ;;
+  *' '*) echo "dev-server: $game is a game twice, in $folder: a game has one folder" >&2; exit 1 ;;
+esac
+main=
+for m in "cmd/$game" "$folder/cmd/$game"; do
+  [ ! -d "$root/$m" ] || main="$main${main:+ }$m"
+done
+case $main in
+  '') echo "dev-server: there is no cmd/$game or $folder/cmd/$game to run" >&2; exit 1 ;;
+  *' '*) echo "dev-server: two servers for $game, $main: keep one" >&2; exit 1 ;;
+esac
 podman rm -f "kj-dev-$port" >/dev/null 2>&1 || true
 cd "$root"
 KJ_GO_NAME="kj-dev-$port" KJ_GO_DETACH=1 scripts/go \
-  run "./cmd/$game" -addr "127.0.0.1:$port" -static /src "$@" >/dev/null
+  run "./$main" -addr "127.0.0.1:$port" -static /src "$@" >/dev/null
 echo "kj-dev-$port starting $game on http://127.0.0.1:$port/ (compiling; poll /api/health)"

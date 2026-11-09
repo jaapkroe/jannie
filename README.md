@@ -102,9 +102,12 @@ platform/        the shared table and web shell
   persona/       the bots' names and characters
   cards/         the seats and the 32-card deck the games share
   web/           the shell every game's site is built on (js/, css/)
-games/<game>/    everything of one game: its Go packages, its site (web/), its settings
-                 (<game>.mk) and a README with its design
-cmd/<game>/      each game's server binary
+games/<game>/    everything of one game, in one folder: its Go packages, its site (web/), its
+                 settings (<game>.mk), its JS tests and facts for the shared tests (test/) and
+                 a README with its design
+extra/<game>/    the same for games kept in a repository of their own, checked out here as
+                 extra/, which git ignores (docs/adding-a-game.md)
+cmd/<game>/      the server binaries of klaverjas and toepen; a later game's is in its folder
 deploy/          the container unit templates and the nginx configuration
 docs/            the platform's design
 test/            JS unit tests, full games over the websocket (e2e/), browser checks (ui/)

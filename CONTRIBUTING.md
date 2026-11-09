@@ -32,7 +32,8 @@ in Dutch; issues and pull requests may be in English or Dutch.
   the pull request helps.
 - For a new game, open an issue first to agree on the rules and the
   variant; [docs/adding-a-game.md](docs/adding-a-game.md) says what a game
-  needs.
+  needs. A pull request that adds a game touches only its folder,
+  `games/<game>/` ([docs/adding-a-game.md, "The folder"](docs/adding-a-game.md#the-folder)).
 
 ## Security
 
