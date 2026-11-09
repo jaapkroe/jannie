@@ -31,7 +31,7 @@ follow from the game's own name:
 | `SITE` | `klaverjas.kroes.dev` | `toepen.kroes.dev` | The CSP's one `wss://` source and the link preview's `og:image` (both built into the web image), and the unit descriptions |
 | `ADDR` | `127.0.0.1:8093` | `127.0.0.1:8095` | Where the pod publishes nginx; the reverse proxy forwards here |
 | `DEV_PORT`, `E2E_PORT` | `18093`, `18094` | `18095`, `18096` | `make dev` and `make e2e`, clear of the installed pods |
-| `E2E_SIM` | `test/e2e/sim.mjs` | `test/e2e/toepen.mjs` | What `make e2e` plays |
+| `E2E_SIM` | `test/e2e/sim.mjs` | `test/e2e/toepen.mjs` | What `make e2e` plays, a path from the repository's root |
 | Game log volume | `klaverjas-games` | `toepen-games` | "The game log" below |
 | Binary | `cmd/klaverjas` | `cmd/toepen` | The game server, `/<game>` in its image; a later game's main package is `<folder>/cmd/<game>` |
 

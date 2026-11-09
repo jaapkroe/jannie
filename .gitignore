@@ -1,5 +1,8 @@
 node_modules
 /build/
+# Go's test binaries and profiles (go test -c, -cpuprofile).
+*.test
+*.prof
 *.png
 # The sites' images and the docs' screenshots are kept.
 !**/web/**/*.png

@@ -175,8 +175,9 @@ game's folder.
    changed: `TITLE`, `VERB`, `SITE`, `ADDR` on the next free odd port `P`,
    `DEV_PORT` `10000+P`, `E2E_PORT` `10001+P`, and `E2E_SIM`, its
    simulation ([deployment.md, "Settings"](deployment.md#settings)).
-7. **End-to-end:** the simulation `E2E_SIM` names, say `test/e2e.mjs` in
-   the folder, which plays full games over the websocket
+7. **End-to-end:** the simulation `E2E_SIM` names, a path from the
+   repository's root such as `games/G/test/e2e.mjs`, which plays full
+   games over the websocket
    ([test/e2e/README.md](../test/e2e/README.md)).
 8. **Tests:** `make test` (`scripts/deploy-test` checks the settings, the
    units, the main package and `web/`), `make e2e GAME=G`, the UI checks
