@@ -343,11 +343,11 @@ function mediaError({ mic: m, cam: c }) {
   let text = `Geen toegang tot ${what}`;
   let sub = 'Sta het toe in de instellingen van je browser.' + (m ? ' Je hoort de anderen wel.' : '');
   if (name === 'NotFoundError') {
-    text = { mic: 'Geen microfoon gevonden', cam: 'Geen camera gevonden', both: 'Geen microfoon en camera gevonden' }[kind];
+    text = { mic: 'Geen microfoon gevonden', cam: 'Geen camera gevonden', both: 'Geen microfoon of camera gevonden' }[kind];
     sub = '';
   } else if (name === 'NotReadableError' || name === 'AbortError') {
     text = { mic: 'De microfoon is in gebruik', cam: 'De camera is in gebruik', both: 'Microfoon en camera zijn in gebruik' }[kind];
-    sub = 'Misschien gebruikt een ander programma ze.';
+    sub = `Misschien gebruikt een ander programma ${kind === 'both' ? 'ze' : 'hem'}.`;
   } else if (name !== 'NotAllowedError') {
     sub = `Fout: ${name}.`; // something else: the name tells what
   }
@@ -771,7 +771,7 @@ export function openSheet({ proposal = false } = {}) {
     pic.replaceWith(next);
     pic = next;
   };
-  const text = inside ? 'Je zit in het gesprek: je hoort en ziet wie de microfoon of camera aan heeft. Met die van jou aan horen en zien de anderen jou ook.'
+  const text = inside ? 'Je zit in het gesprek: je hoort en ziet wie de microfoon of camera aanheeft. Met die van jou aan horen en zien de anderen jou ook.'
     : (calling.length ? `${listNames(calling)} ${calling.length === 1 ? 'belt' : 'bellen'} al.`
       : `${listNames(names)} ${names.length === 1 ? 'zit' : 'zitten'} ook aan tafel.`)
       + (own ? ' Bel mee met geluid, en met beeld als je wilt.' : ' Deze browser deelt geen microfoon of camera: je kunt wel meeluisteren en meekijken.');

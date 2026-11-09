@@ -513,9 +513,9 @@ function renderEntry() {
   const redraw = () => { fill(d); renderEntry(); };
 
   const stepper = (label, value, fn, key, min, max, txt = String(value)) => h('div', { class: 'sc-step' },
-    h('button', { class: 'sc-pm', type: 'button', 'aria-label': `${label}: een minder`, disabled: value <= min, dataset: { key: key + '-' }, onclick: () => { sound.play('click'); fn(-1); } }, '−'),
+    h('button', { class: 'sc-pm', type: 'button', 'aria-label': `${label}: één minder`, disabled: value <= min, dataset: { key: key + '-' }, onclick: () => { sound.play('click'); fn(-1); } }, '−'),
     h('b', { class: 'sc-val', 'aria-live': 'polite', text: txt }),
-    h('button', { class: 'sc-pm', type: 'button', 'aria-label': `${label}: een meer`, disabled: value >= max, dataset: { key: key + '+' }, onclick: () => { sound.play('click'); fn(1); } }, '+'));
+    h('button', { class: 'sc-pm', type: 'button', 'aria-label': `${label}: één meer`, disabled: value >= max, dataset: { key: key + '+' }, onclick: () => { sound.play('click'); fn(1); } }, '+'));
 
   const rows = s.names.map((name, k) => {
     if (out[k]) return null;
@@ -539,7 +539,7 @@ function renderEntry() {
       }, '🏆'),
       h('button', {
         class: 'sc-weg', type: 'button', 'aria-pressed': String(d.passed[k]), dataset: { key: `p${k}` },
-        'aria-label': `${name} ging weg (passte op een toep)`, title: 'Ging weg: passte op een toep',
+        'aria-label': `${name} ging weg (paste op een toep)`, title: 'Ging weg: paste op een toep',
         onclick: () => {
           sound.play('click');
           d.passed[k] = !d.passed[k];
@@ -561,7 +561,7 @@ function renderEntry() {
     change(editing ? { t: 'edit', i: d.index, ...m } : { t: 'round', ...m });
   };
   const hint = d.winner < 0 ? 'Wie haalde de laatste slag? Tik op 🏆.'
-    : 'Wie passte op een toep: tik Weg. Kloppen de punten niet (de boer, een vuile was)? Pas ze aan met − en +.';
+    : 'Wie paste op een toep: tik op Weg. Kloppen de punten niet (de boer, een vuile was)? Pas ze aan met − en +.';
 
   put(el, 
     h('div', { class: 'sc-entry-head' },
@@ -659,7 +659,7 @@ function renderRounds() {
     S.host ? h('p', { class: 'sc-hint', text: 'Tik op een potje om het aan te passen of weg te halen.' }) : null,
     h('div', { class: 'tp-st-scroll sc-st-scroll' }, h('table', { class: 'tp-st-table sc-table', dataset: { n } },
       h('thead', {}, head), h('tbody', {}, rows, total))),
-    anyWeg ? h('p', { class: 'sc-key-row' }, h('span', { class: 'sc-k weg', text: '+1' }), ' weg gegaan',
+    anyWeg ? h('p', { class: 'sc-key-row' }, h('span', { class: 'sc-k weg', text: '+1' }), ' weggegaan',
       anyLijn ? [h('span', { class: 'sc-k weg lijn', text: '+1' }), ` ${C.LIJN}× of vaker achter elkaar weg: lijntoepen`] : null) : null);
 }
 

@@ -68,8 +68,8 @@ func TestKlaverjasFullTable(t *testing.T) {
 }
 
 // Klaverjas's texts write only 2..4 as words, as before there were other
-// games: the roem lesson says "jij hebt er drie, dus de anderen hebben er
-// 5". The texts about a full table of any game spell out up to eight.
+// games: the lesson on signals says "Aan deze tafel spreken we er drie af".
+// The texts about a full table of any game spell out up to eight.
 func TestNumberWords(t *testing.T) {
 	for n, want := range map[int]string{0: "0", 1: "1", 2: "twee", 4: "vier", 5: "5", 8: "8"} {
 		if got := numberNL(n); got != want {

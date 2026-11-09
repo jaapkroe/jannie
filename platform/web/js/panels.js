@@ -321,7 +321,7 @@ export function openSettings() {
       h('div', { class: 'set-row col' }, h('span', { class: 'set-txt' }, h('b', { text: 'Kaart spelen op een touchscreen' }),
         h('small', { text: 'Met een muis speel je altijd met één klik.' })),
       segmented([['one', 'Eén tik'], ['two', 'Twee tikken']], prefs.tap, v => { prefs.tap = v; savePrefs(); }, 'Kaart spelen')),
-      h('p', { class: 'set-note', text: 'Twee tikken: eerste tik tilt de kaart op, tweede tik (of omhoog vegen) speelt hem.' })),
+      h('p', { class: 'set-note', text: 'Twee tikken: de eerste tik tilt de kaart op, de tweede tik (of omhoog vegen) speelt hem.' })),
     h('section', { class: 'set-group' },
       h('h3', { text: 'Bellen' }),
       toggleRow('Bellen voorstellen', 'Bij een spel met andere spelers vragen of je meebelt, als je niet automatisch meebelt', store.json('call', {}).ask !== false,

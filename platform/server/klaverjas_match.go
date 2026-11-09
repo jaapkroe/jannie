@@ -458,7 +458,7 @@ func (r *room) trickTips(t game.Trick) (tips [4]string) {
 		for k := range names {
 			names[k] = r.displayName(game.Seat(k))
 		}
-		names[i] = "Jij"
+		names[i] = "jij"
 		parts := []string{r.explainTrick(t, trump, names)}
 		for _, m := range choices {
 			if m.seat == game.Seat(i) {

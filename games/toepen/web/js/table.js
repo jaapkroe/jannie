@@ -501,7 +501,7 @@ function showOver(s) {
   const m = panels.openModal({
     id: 'tp-over', cls: 'm-over passive tp-over' + (won ? ' won' : ' lost'), closable: false, label: title, body: [
       h('h2', { class: 'over-title', text: title }),
-      h('p', { class: 'over-sub', text: `Na ${s.handNo} ${s.handNo === 1 ? 'potje' : 'potjes'} is ${won ? 'alleen jij' : 'nog één speler'} over.` }),
+      h('p', { class: 'over-sub', text: `Na ${s.handNo} ${s.handNo === 1 ? 'potje' : 'potjes'} ${won ? 'ben jij als enige over' : 'is er nog één speler over'}.` }),
       standTable(s), roundsTable(s), h('div', { class: 'btn-col' }, btns)],
   });
   m.round = s.handNo;
@@ -619,7 +619,7 @@ export function openWhy() {
     return;
   }
   if (s.why) { m.show(s.why); return; }
-  m.body.replaceChildren(h('p', { class: 'tp-why-wait', text: 'De AI speelt je kansen na…' }));
+  m.body.replaceChildren(h('p', { class: 'tp-why-wait', text: 'De AI rekent je kansen uit…' }));
   app.send({ t: 'why' });
 }
 

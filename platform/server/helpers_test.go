@@ -15,6 +15,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/coder/websocket"
 
@@ -138,7 +140,11 @@ func (a *fakeAI) Explain(v game.View) Explanation {
 
 func (a *fakeAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
 	a.explained.Add(1)
-	return names[t.Winner] + " wint de slag."
+	name := names[t.Winner]
+	if r, n := utf8.DecodeRuneInString(name); n > 0 {
+		name = string(unicode.ToUpper(r)) + name[n:] // the name starts the sentence
+	}
+	return name + " wint de slag."
 }
 
 // TrickSignals reads the lead of every trick as kleintje boer, at a table

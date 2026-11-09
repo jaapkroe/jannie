@@ -1320,7 +1320,7 @@ tip bij elke beurt"). Then the fold *Spelopties* (`details.train-opts`,
 styled as *Commentaar bij deze zet* in the reasoning sheet), shut unless *Tips* is off,
 *Open kaarten* on or a seed set, so those are never hidden when
 remembered. In it the switches *Tips* ("Een tip bij elke beurt en uitleg
-na elke slag") and *Open kaarten* ("Zie de kaarten van alle spelers"), and
+na elke slag") and *Open kaarten* ("Je ziet de kaarten van alle spelers"), and
 the rows *Potjes*, *Troef*, *Regels*, *AI-sterkte* (its ⓘ adds here "In
 de les over seinen spelen ze minstens op Normaal."), *Tempo*, *Seinen* (its
 ⓘ adds here "In Vrij spelen op AI-sterkte Makkelijk speelt niemand met
@@ -1549,7 +1549,7 @@ only hand is not hand 1). The header line under the percentage ends
 with the seed: *16 potjes · 118 keuzes · seed 482913*. Then
 *Vorige partijen 79% · 83%* (the percentages of up to five earlier matches
 on this device, `kj.reviews`, the last 20 kept) and the line *Disclaimer:
-Dit is slechts de mening van Juf Jannie.*, and last *Opmerkingen*: a text
+dit is slechts de mening van Juf Jannie.*, and last *Opmerkingen*: a text
 field (*Wat viel je op? Wat klopt er volgens jou niet?*) with *Versturen*
 (`feedback`; on `saved` the text stays, its edge and a check with
 *Bewaard.* in the team colour, and *Versturen* waits for a change; text
@@ -1664,9 +1664,9 @@ alike, or valued above the best honest card that took a false signal's
 place; a difference is written rounded down and a tolerance rounded up,
 so a text never contradicts its threshold), *Tip:*
 the hint, with `hintWhy` when it keeps the normaal card while sterk plays
-another (*Sterk is volgens de berekening 3,0 punten beter dan de kaart
-van Normaal, minder dan 5 punten: dan blijft de tip bij die kaart.*), a
-table of
+another (*De kaart van Sterk is volgens de berekening 3,0 punten beter
+dan de kaart van Normaal, minder dan 5 punten: dan blijft de tip bij die
+kaart.*), a table of
 every option (*Waarde*, *±*, for a card *Punten slag*, *Punten later*,
 *Roem slag*, *Roem later*, *Nat*, *Pit*, and *Nat wij*, *Nat zij*; the
 option played marked *gespeeld* or *gekozen*, the best value in gold; on

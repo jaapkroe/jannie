@@ -133,7 +133,7 @@ test('the summary of a round, from your seat', () => {
   assert.equal(lost.cls, 'bad');
   assert.deepEqual(standings(s).map(x => x.seat), [1, 3, 0, 2]);
   assert.equal(roundHeadline(s, { winner: 0, stake: 1, tricks: true, boer: true, gains: [-1, 1, 1, 1] }).sub,
-    'Met de boer als laatste slag, bij inzet 1: een strafpunt eraf.');
+    'Met de boer in de laatste slag, bij inzet 1: een strafpunt eraf.');
   assert.equal(roundHeadline(s, { winner: 2, stake: 1, tricks: true, koning: true, gains: [1, 1, 0, 1] }).sub,
     'Het koningsspel: Sjaak (AI) haalde de laatste slag. Jij krijgt 1 strafpunt.');
 });
@@ -198,6 +198,6 @@ test('the reasoning of the AI: your decision, alone, and the sheet', () => {
   const a = whyRows({ decision: 'antwoord', options: [{ label: 'Meegaan', value: 1.5, points: true }, { label: 'Passen', value: 1, points: true, best: true }] });
   assert.deepEqual(a.options.map(o => o.value), ['1,5 strafpunten verwacht', '1 strafpunt verwacht']);
   const c = whyRows({ decision: 'controle', options: [{ label: 'Controleren', value: 0.7, best: true }, { label: 'Laten gaan', value: 0.3 }] });
-  assert.deepEqual(c.options.map(o => o.value), ['70% kans op bluf', '30% kans op echt']);
+  assert.deepEqual(c.options.map(o => o.value), ['70% kans op bluf', '30% kans dat die echt is']);
   assert.equal(whyRows({ decision: 'wegleggen', options: [{ cards: ['7C', '8C', 'JD'], value: 0.5, best: true }] }).options[0].label, '♣7 ♣8 ♦B');
 });

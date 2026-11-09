@@ -454,7 +454,7 @@ function onRefused(name) {
     if (s.players.some(p => p?.bot)) sub = 'Haal een AI-speler weg om een plaats vrij te maken.';
     else if (more) sub = `Wil je er nog iemand bij? Zet Spelers op ${n + 1}.`;
   } else if (s.phase === 'gameOver') {
-    sub = `Tik op Spelers of regels wijzigen${more ? ' en ' + more : ''} om een plaats vrij te maken.`;
+    sub = `Tik op “Spelers of regels wijzigen”${more ? ' en ' + more : ''} om een plaats vrij te maken.`;
   }
   sound.play('join');
   toast(`${name || 'Iemand'} wil meedoen, maar de tafel is vol`, { sub, ms: 7000 });

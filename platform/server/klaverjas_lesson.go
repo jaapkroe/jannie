@@ -356,14 +356,17 @@ var pointsSteps = []lessonStep{
 func (r *room) countSteps() []lessonStep {
 	trump, _ := r.deal.Trump()
 	mine := trumpsIn(r.deal.Hand(r.learner()), trump)
-	have := "jij hebt er " + numberNL(mine)
-	if mine == 0 {
+	have, others := "jij hebt er "+strconv.Itoa(mine), strconv.Itoa(game.NumRanks-mine)
+	switch mine {
+	case 0:
 		have = "jij hebt er geen"
+	case game.NumRanks:
+		others = "geen"
 	}
 	return []lessonStep{
 		{Spot: "trump", Text: "Nu de troeven. Tel in dit potje de troeven. Er zijn 8 troeven; " + have + ", dus de anderen hebben er " +
-			numberNL(game.NumRanks-mine) + ". Elke troef die een ander speelt, tel je af."},
-		{Spot: "trump", Text: "Het getal bij de troef bovenaan is hoeveel troeven de anderen nog hebben. Dat telt alleen in dit potje mee; " +
+			others + ". Elke troef die een ander speelt, tel je af."},
+		{Spot: "trump", Text: "Het getal bij de troef bovenaan is hoeveel troeven de anderen nog hebben. Dat getal telt alleen in dit potje met je mee; " +
 			"daarna tel je zelf. Hebben de anderen geen troef meer, dan kan niemand meer troeven als jij een andere kleur speelt."},
 	}
 }
@@ -401,11 +404,11 @@ func signalRules(sig game.Signals) []string {
 			"Met een 10, boer, vrouw of heer zeg je: de hoogste van deze kleur heb ik niet (afseinen).")
 	}
 	if sig.KleintjeBoer {
-		each = append(each, "Kleintje boer: kom je van het koppel dat troef koos voor het eerst uit met een 7, 8 of 9 van een andere kleur, "+
+		each = append(each, "Kleintje boer: hoor je bij het koppel dat troef koos en kom je voor het eerst uit met een 7, 8 of 9 van een andere kleur, "+
 			"dan zeg je: ik heb de troefboer. Je maat speelt dan troef terug.")
 	}
 	if sig.BoerOverBoer {
-		each = append(each, "Boer over boer: kom je van het koppel dat troef koos voor het eerst uit met de boer van een andere kleur, "+
+		each = append(each, "Boer over boer: hoor je bij het koppel dat troef koos en kom je voor het eerst uit met de boer van een andere kleur, "+
 			"dan zeg je ook: ik heb de troefboer.")
 	}
 	return each
@@ -783,7 +786,7 @@ func (r *room) signalStep(sig Signal) lessonStep {
 		}
 		means = "de troefboer"
 		said = who + " kwam voor het eerst uit, met " + card + ": " + what +
-			". Van het koppel dat troef koos, betekent dat aan deze tafel: “ik heb de troefboer” (" + name + ")."
+			". Van iemand van het koppel dat troef koos, betekent dat aan deze tafel: “ik heb de troefboer” (" + name + ")."
 		then = "Kom jij aan slag, speel dan troef: dan haal ik met de boer de troeven op."
 	}
 	if sig.Seat != r.learner().Partner() {
