@@ -9,7 +9,6 @@ Each game has a site of its own:
 |---|---|---|
 | Klaverjas | <https://klaverjas.kroes.dev> | 2–4 |
 | Toepen | <https://toepen.kroes.dev> | 2–6 |
-| Bridge | planned | 4 |
 
 ## Klaverjas
 

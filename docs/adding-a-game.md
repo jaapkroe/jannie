@@ -2,34 +2,33 @@
 
 A game is a site of its own, built from the shared table, shell and
 deployment templates ([architecture.md](architecture.md)). Klaverjas and
-toepen are the two so far; bridge is next, and presidenten, pesten and
-rikken could follow. This file says what each of them needs, what the
-platform does not offer yet, and the steps from rules to a public site.
+toepen are the two so far; presidenten, pesten and rikken could follow.
+This file says what each of them needs, what the platform does not offer
+yet, and the steps from rules to a public site.
 
 ## What each game needs
 
-| | Klaverjas | Toepen | Presidenten | Pesten | Rikken | Bridge |
-|---|---|---|---|---|---|---|
-| Players | 2–4 | 2–6 (rules: 8) | 3–8 | 2–8 | 4 | 4 |
-| Cards | 32 | 32 | 52 (+ jokers) | 52 + 2 jokers, two decks for many | 52 | 52 |
-| Hand | 8 (10, 16) | 4 | all dealt: 6–18 | 7, grows | 13 | 13 |
-| Kind | tricks, trump | tricks, only the last counts | climbing: sets on a pile | shedding | tricks, trump | tricks, trump or NT |
-| Sides | 2 teams | each alone | each alone, ranks between rounds | each alone | per contract, **hidden** partner | 2 fixed pairs |
-| Before play | trump or bids | was (all at once), armoede | card exchange between ranks | — | auction of contracts | auction, conventions |
-| Special | roem, signals | stakes, passing mid-trick | pass rounds, multi-card plays | draw pile, direction, specials | misère, open misère | the dummy |
-| Match | fixed hands | until one is left | rounds, ranks | first out | points per contract | rubber or duplicate |
+| | Klaverjas | Toepen | Presidenten | Pesten | Rikken |
+|---|---|---|---|---|---|
+| Players | 2–4 | 2–6 (rules: 8) | 3–8 | 2–8 | 4 |
+| Cards | 32 | 32 | 52 (+ jokers) | 52 + 2 jokers, two decks for many | 52 |
+| Hand | 8 (10, 16) | 4 | all dealt: 6–18 | 7, grows | 13 |
+| Kind | tricks, trump | tricks, only the last counts | climbing: sets on a pile | shedding | tricks, trump |
+| Sides | 2 teams | each alone | each alone, ranks between rounds | each alone | per contract, **hidden** partner |
+| Before play | trump or bids | was (all at once), armoede | card exchange between ranks | — | auction of contracts |
+| Special | roem, signals | stakes, passing mid-trick | pass rounds, multi-card plays | draw pile, direction, specials | misère, open misère |
+| Match | fixed hands | until one is left | rounds, ranks | first out | points per contract |
 
 Which shared capabilities each uses:
 
-| Capability | Klaverjas | Toepen | Presidenten | Pesten | Rikken | Bridge |
-|---|---|---|---|---|---|---|
-| Seats on an ellipse, 2–8 | (4 fixed) | yes | yes | yes | (4) | (4) |
-| Everyone answers at once (`Table.Think`) | — | the was | card exchange | last-card call | — | — |
-| Hidden sides in the view | — | — | — | — | yes | — |
-| One person plays two seats | — | — | — | — | — | the dummy |
-| 52 cards and jokers | — | — | yes | yes | yes | yes |
-| Big hands, multi-select | — | — | yes | yes | — | — |
-| Piles | — | — | yes | yes | — | — |
+| Capability | Klaverjas | Toepen | Presidenten | Pesten | Rikken |
+|---|---|---|---|---|---|
+| Seats on an ellipse, 2–8 | (4 fixed) | yes | yes | yes | (4) |
+| Everyone answers at once (`Table.Think`) | — | the was | card exchange | last-card call | — |
+| Hidden sides in the view | — | — | — | — | yes |
+| 52 cards and jokers | — | — | yes | yes | yes |
+| Big hands, multi-select | — | — | yes | yes | — |
+| Piles | — | — | yes | yes | — |
 
 What of this the platform does not have yet (jokers, more than six seats
 in the lobby, the extras such as hints and lessons) is listed in
@@ -196,14 +195,9 @@ game's folder.
 
 ## Order
 
-1. **Bridge**, next: the auction with a bidding system the bots and hints
-   share, the dummy (`controller`), the 52-card deck, rubber or Chicago
-   scoring; card play by sampling as klaverjas's sterk. It
-   is the second trick game with trump after klaverjas, so a shared trick
-   kit is worth extracting then.
-2. **Presidenten**: a new kind of rules (sets on a pile, passing, ranks)
+1. **Presidenten**: a new kind of rules (sets on a pile, passing, ranks)
    and the card exchange on `Table.Think`.
-3. **Pesten**: shedding with specials as options (as toepen's was and
+2. **Pesten**: shedding with specials as options (as toepen's was and
    armoede), the draw pile and direction; easy bots; jokers and big hands.
-4. **Rikken**: a trick engine like klaverjas's, contracts and their
+3. **Rikken**: a trick engine like klaverjas's, contracts and their
    scores, the hidden partner, open misère.

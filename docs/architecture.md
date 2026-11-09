@@ -3,8 +3,8 @@
 jannie is a platform for Dutch card games played in the browser, with
 friends or against bots: one site per game, each with its own address, pod
 and interface, built from shared code. Klaverjas
-(`klaverjas.kroes.dev`) and toepen (`toepen.kroes.dev`) are live; bridge
-is next ([adding-a-game.md, "Order"](adding-a-game.md#order)).
+(`klaverjas.kroes.dev`) and toepen (`toepen.kroes.dev`) are live; others
+could follow ([adding-a-game.md, "Order"](adding-a-game.md#order)).
 
 The docs are the contract between the parts of the system. Code that
 deviates from them must update them in the same change. The Go API sections
@@ -261,6 +261,5 @@ finds the games by their folders, so a game is added in its folder alone
   shared renderer with per-game sections and a common *Bediening* would
   suit more games.
 - **Seats.** A table has at most 6 seats in the lobby layout so far.
-- **Two seats, one person; hidden sides.** Bridge's dummy and rikken's
-  called ace need `controller(seat)` in the table and views that hide a
+- **Hidden sides.** Rikken's called ace needs views that hide a
   partnership.

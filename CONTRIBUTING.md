@@ -13,7 +13,7 @@ in Dutch; issues and pull requests may be in English or Dutch.
   including issues and comments. You keep the copyright of your work. The
   agreement lets the maintainer, or a successor such as the maintainer's
   company, also distribute it under other terms, which the store apps and
-  paid parts such as bridge lessons need. Every version published in the
+  paid parts need. Every version published in the
   public repository stays under the AGPL, your contributions included.
 - **AI tools** are fine to use. You are responsible for what you submit:
   read and test it as if you had written it by hand, and say in the pull
