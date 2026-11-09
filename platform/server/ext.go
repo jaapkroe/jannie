@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"jannie/platform/cards"
@@ -22,7 +23,7 @@ type extPlay struct {
 	g       Game
 	opts    GameOptions
 	p       Play
-	gen     int           // bumped with every new Play: callbacks of an old one are dropped
+	gen     atomic.Int64  // bumped with every new Play: callbacks of an old one are dropped (current)
 	summary time.Duration // the hand summary on the table moves on after this; 0: on ready
 }
 
@@ -44,9 +45,24 @@ func (r *room) newExt() {
 
 // fresh starts a new Play: for the lobby, or for a match.
 func (x *extPlay) fresh() {
-	x.gen++
+	x.gen.Add(1)
 	x.summary = 0
 	x.p = x.g.New(x.t)
+}
+
+// current returns a func that reports whether the Play of now is still
+// the room's: false once fresh has replaced it (a new match or the lobby)
+// or the room has stopped. The func is safe on any goroutine.
+func (x *extPlay) current() func() bool {
+	gen, done := x.gen.Load(), x.r.done
+	return func() bool {
+		select {
+		case <-done:
+			return false
+		default:
+			return x.gen.Load() == gen
+		}
+	}
 }
 
 // wire is the options object of the state and the game log.
@@ -183,6 +199,8 @@ func (x *extPlay) tableOpts(fields map[string]json.RawMessage, lenient bool) (op
 		switch {
 		case json.Unmarshal(v, &n) == nil && n >= least && n <= most:
 			p.Players = &n
+		case !lenient && least == most:
+			return optsPatch{}, fmt.Errorf("Dit spel speel je met %d spelers.", least)
 		case !lenient:
 			return optsPatch{}, fmt.Errorf("Kies %d tot en met %d spelers.", least, most)
 		}
@@ -204,6 +222,17 @@ func (x *extPlay) tableOpts(fields map[string]json.RawMessage, lenient bool) (op
 		delete(fields, k)
 	}
 	return p, nil
+}
+
+// create sets up a new room from the create message m: its options, and
+// how the game opens it (Opener).
+func (x *extPlay) create(m *inMsg) Opening {
+	x.createOpts(m.Opts)
+	op, ok := x.g.(Opener)
+	if !ok {
+		return Opening{}
+	}
+	return op.Open(Msg{T: m.T, Raw: m.raw}, x.opts)
 }
 
 // createOpts sets the options of a new room, skipping bad values.
@@ -231,6 +260,9 @@ func (x *extPlay) setOpts(raw json.RawMessage) error {
 		return err
 	}
 	seats := p.Players != nil && *p.Players != r.opts.Players
+	if seats && r.locked != "" {
+		return errors.New(msgLocked)
+	}
 	if h := r.humanCount(); seats && h > *p.Players {
 		return fmt.Errorf("Er zitten al %d mensen aan tafel.", h)
 	}
@@ -248,8 +280,9 @@ func (x *extPlay) setOpts(raw json.RawMessage) error {
 
 // Table is the table a Play plays at: what it may read and do there. Its
 // methods run on the room goroutine only, as Play's do; a game's own
-// goroutines go through Think and Later. Delays are game delays, scaled by
-// the server (Config.Fast).
+// goroutines go through Think, Later and Background, and only the func
+// that Current returns may be called anywhere. Delays are game delays,
+// scaled by the server (Config.Fast).
 type Table struct{ r *room }
 
 // Code is the room's code.
@@ -378,13 +411,13 @@ func (t *Table) OpenTurn() { t.r.openTurn() }
 // Emit sends an update with event ev (nil: none) to every connected human.
 func (t *Table) Emit(ev any) { t.r.emit(ev) }
 
-// Later runs f on the room goroutine after d, unless the match is over by
-// then.
+// Later runs f on the room goroutine after d, unless a new match or the
+// lobby has replaced the match by then (Current). Game over does not stop
+// it: f checks the game's own phase if it must.
 func (t *Table) Later(d time.Duration, f func()) {
-	r, x := t.r, t.r.x
-	gen := x.gen
+	r, live := t.r, t.r.x.current()
 	r.later(r.scaled(d), func() {
-		if x.gen != gen {
+		if !live() {
 			return
 		}
 		f()
@@ -394,11 +427,11 @@ func (t *Table) Later(d time.Duration, f func()) {
 
 // Background runs f off the room goroutine, for work that takes a while
 // (an analysis for a player), and then gets f's answer on the room
-// goroutine at once, unless the match is over by then. A panic in f gives
-// nil.
+// goroutine at once, unless a new match or the lobby has replaced the
+// match by then (Current). Game over does not stop it: then checks the
+// game's own phase if it must. A panic in f gives nil.
 func (t *Table) Background(f func() any, then func(any)) {
-	r, x := t.r, t.r.x
-	gen := x.gen
+	r, live := t.r, t.r.x.current()
 	go func() {
 		var a any
 		func() {
@@ -410,7 +443,7 @@ func (t *Table) Background(f func() any, then func(any)) {
 			a = f()
 		}()
 		r.post(func() {
-			if x.gen != gen {
+			if !live() {
 				return
 			}
 			then(a)
@@ -423,15 +456,16 @@ func (t *Table) Background(f func() any, then func(any)) {
 // decide too: the time in which everyone answers at once. f runs off the
 // room goroutine with the seat's brain, one call into it at a time (a
 // panic gives nil); then gets f's answer on the room goroutine after the
-// seat's think time, unless the match is over by then. then checks that
-// the answer is still wanted.
+// seat's think time, unless a new match or the lobby has replaced the
+// match by then (Current). then checks that the answer is still wanted:
+// game over does not stop it.
 func (t *Table) Think(i cards.Seat, f func(brain any) any, then func(any)) {
-	r, x := t.r, t.r.x
-	bb, delay, gen := r.brainOf(i), r.thinkTime(i), x.gen
+	r, live := t.r, t.r.x.current()
+	bb, delay := r.brainOf(i), r.thinkTime(i)
 	go func() {
 		a := bb.guard(func() any { return f(bb.ext) }, nil)
 		r.later(delay, func() {
-			if x.gen != gen {
+			if !live() {
 				return
 			}
 			then(a)
@@ -439,6 +473,13 @@ func (t *Table) Think(i cards.Seat, f func(brain any) any, then func(any)) {
 		})
 	}()
 }
+
+// Current returns a func that reports whether the match of now (or the
+// lobby) is still the room's: false once a new match or the lobby has
+// replaced it, or the room has closed; game over changes nothing. The
+// func is safe on any goroutine, so a game's own workers can skip a job
+// of a match that is gone.
+func (t *Table) Current() func() bool { return t.r.x.current() }
 
 // Trick counts a completed trick: a bot says at most one line per trick.
 func (t *Table) Trick() { t.r.trickNo++ }
@@ -478,6 +519,54 @@ func (t *Table) GameOver(total []int, winner int) {
 
 // SysChat puts a line of the table in the chat.
 func (t *Table) SysChat(format string, args ...any) { t.r.sysChat(format, args...) }
+
+// CoachChat puts text in the chat as a line of the bot at seat i, outside
+// the limits of bot chat, marked coach: the client shows it as the
+// coach's (a lesson step), not as a speech bubble
+// (docs/protocol.md#server--client). A seat without a bot says nothing:
+// no line goes in a human's name.
+func (t *Table) CoachChat(i cards.Seat, text string) {
+	r := t.r
+	if !i.ValidFor(r.players()) || r.seats[i].kind != seatBot {
+		r.log.Error("coach line for a seat without a bot", "seat", int(i))
+		return
+	}
+	r.addChat(chatMsg{Seat: int(i), Name: r.displayName(i), Text: text, TS: time.Now().UnixMilli(), Bot: true, Coach: true})
+}
+
+// tableTypes are the types t of the table's own messages to a client
+// (docs/protocol.md#server--client): Send refuses them.
+var tableTypes = []string{"joined", "update", "chat", "chatlog", "refused", "rtc", "error", "pong"}
+
+// Send sends msg, a message of the game's own, to the human at seat i if
+// connected (an answer to that player alone, such as the review of one
+// hand); it reports whether it went. The message is a JSON object whose t
+// is none of the table's: such a message is refused and logged.
+func (t *Table) Send(i cards.Seat, msg any) bool {
+	r := t.r
+	b, err := json.Marshal(msg)
+	if err != nil {
+		r.log.Error("game message does not marshal", "err", err)
+		return false
+	}
+	// The key is t exactly: encoding/json would also match a field T
+	// without a tag, which the client does not read.
+	var head map[string]json.RawMessage
+	var typ string
+	if json.Unmarshal(b, &head) != nil || json.Unmarshal(head["t"], &typ) != nil || typ == "" || slices.Contains(tableTypes, typ) {
+		r.log.Error("game message without a type of its own", "t", typ)
+		return false
+	}
+	if !i.ValidFor(r.players()) {
+		return false
+	}
+	st := &r.seats[i]
+	if st.kind != seatHuman || st.client == nil {
+		return false
+	}
+	st.client.send(b)
+	return true
+}
 
 // BotSay lets the bot at seat i react to ev after delay, within the limits
 // of bot chat (docs/server.md#bot-chat); it reports whether the bot speaks.

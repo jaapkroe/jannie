@@ -1,8 +1,9 @@
 // One game's site as the browser sees it: the union of platform/web and
-// games/<game>/web (docs/frontend.md#one-site-per-game), for the static
-// servers of the tests (mock/server.mjs, manual-app.mjs,
+// the web/ of the game's folder (docs/frontend.md#one-site-per-game), for
+// the static servers of the tests (mock/server.mjs, manual-app.mjs,
 // sound-render.mjs, ...). The two trees must not share a path;
-// test/sites.test.mjs checks that.
+// test/sites.test.mjs checks that. Also the games themselves, the folders
+// the shared tests go through, and what those tests need to know of each.
 import fs from 'node:fs';
 import module from 'node:module';
 import path from 'node:path';
@@ -13,13 +14,32 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 // The shell every site shares.
 export const SHELL = path.join(ROOT, 'platform', 'web');
 
-// The directory of game's own files.
-export const siteDir = game => path.join(ROOT, 'games', game, 'web');
+// Every game's folder by name, in the order of the names: games/<game> and,
+// in a checkout with the overlay, extra/<game>, each with its settings in
+// <game>.mk (docs/adding-a-game.md#the-folder). A game in both is an error.
+export const FOLDERS = new Map(['games', 'extra']
+  .flatMap(dir => fs.existsSync(path.join(ROOT, dir)) ? fs.readdirSync(path.join(ROOT, dir)).map(g => [dir, g]) : [])
+  .filter(([dir, g]) => fs.existsSync(path.join(ROOT, dir, g, `${g}.mk`)))
+  .sort(([, a], [, b]) => (a < b ? -1 : a > b ? 1 : 0))
+  .map(([dir, g], i, all) => {
+    if (all[i + 1]?.[1] === g) throw new Error(`${g} is a game twice, in ${dir}/${g} and ${all[i + 1][0]}/${g}`);
+    return [g, path.join(ROOT, dir, g)];
+  }));
 
-// The games with a site: every directory of games/ with a web/index.html.
-export const GAMES = fs.readdirSync(path.join(ROOT, 'games'))
-  .filter(d => fs.existsSync(path.join(siteDir(d), 'index.html')))
-  .sort();
+// The folder of game, and the directory of its own site files.
+export const gameDir = game => FOLDERS.get(game) ?? path.join(ROOT, 'games', game);
+export const siteDir = game => path.join(gameDir(game), 'web');
+
+// The games with a site: every game whose folder has a web/index.html.
+export const GAMES = [...FOLDERS.keys()].filter(g => fs.existsSync(path.join(siteDir(g), 'index.html')));
+
+// What the shared tests need to know of game: the exports of its folder's
+// test/facts.mjs (docs/adding-a-game.md#facts-for-the-shared-tests), or
+// none without one.
+export async function facts(game) {
+  const file = path.join(gameDir(game), 'test', 'facts.mjs');
+  return fs.existsSync(file) ? { ...await import(pathToFileURL(file).href) } : {};
+}
 
 // The file behind URL path p on the site of game, or null.
 export function siteFile(game, p) {
@@ -34,7 +54,7 @@ export function siteFile(game, p) {
   return null;
 }
 
-// Makes node resolve a relative import in a module of games/<game>/web as
+// Makes node resolve a relative import in a module of a game's web/ as
 // the browser does on that game's site: in the union, so the node tests of
 // a game's module (games/klaverjas/web/js/rules.js) load the shell's
 // ./util.js. Node 22.15 or later (module.registerHooks).

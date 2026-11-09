@@ -1,4 +1,5 @@
-// Home-screen icons and the link preview of every site (games/<game>/web):
+// Home-screen icons and the link preview of every site (the web/ of each
+// game's folder):
 //   node --test test/ui/app-icons.test.mjs
 //
 // iOS takes only a raster apple-touch-icon and fills transparent pixels
@@ -13,11 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 
-import { GAMES, siteDir } from './site.mjs';
-
-// The felt's dominant colour channel per site: the corners of the maskable
-// icon show it.
-const FELT = { klaverjas: 'g', toepen: 'b' };
+import { GAMES, facts, siteDir } from './site.mjs';
 
 // Decodes an 8-bit, non-interlaced RGB or RGBA PNG.
 function readPNG(file) {
@@ -77,6 +74,9 @@ function opaque(img) {
 }
 
 for (const game of GAMES) {
+// The felt's dominant colour channel, which the corners of the maskable icon
+// show: felt in the game's test/facts.mjs.
+const { felt } = await facts(game);
 const web = p => path.join(siteDir(game), p.replace(/^\//, ''));
 const manifest = JSON.parse(fs.readFileSync(web('manifest.webmanifest'), 'utf8'));
 const html = fs.readFileSync(web('index.html'), 'utf8');
@@ -108,7 +108,8 @@ test(`${game}: the maskable icon is full bleed with its artwork inside the safe 
   const img = readPNG(web(manifest.icons.find(i => i.purpose === 'maskable').src));
   assert.ok(opaque(img), 'no transparent pixels');
   // The felt is green or blue; the artwork (klaverjas: the gold clover and
-  // the red heart; toepen: the white card and its red 10) is not.
+  // the red heart; toepen: the white card and its red 10) is not: more red
+  // than green.
   const c = img.w / 2;
   const safe = 0.4 * img.w;
   let art = 0;
@@ -125,10 +126,10 @@ test(`${game}: the maskable icon is full bleed with its artwork inside the safe 
   assert.ok(art > img.w * img.h * 0.1, 'the artwork is there');
   assert.deepEqual(outside, [], `artwork outside the ${safe} px safe circle`);
   // Felt reaches every corner: no frame, no rounded corners.
+  assert.ok(['r', 'g', 'b'].includes(felt), `${game}'s test/facts.mjs: felt 'r', 'g' or 'b', not ${felt}`);
   for (const [x, y] of [[0, 0], [img.w - 1, 0], [0, img.h - 1], [img.w - 1, img.h - 1]]) {
     const p = img.at(x, y);
-    const k = FELT[game];
-    assert.ok(k && Object.keys(p).every(o => o === 'a' || o === k[0] || p[k] > p[o]), `corner ${x},${y} is felt (${k}): ${JSON.stringify(p)}`);
+    assert.ok(Object.keys(p).every(o => o === 'a' || o === felt || p[felt] > p[o]), `corner ${x},${y} is felt (${felt}): ${JSON.stringify(p)}`);
   }
 });
 

@@ -1,14 +1,20 @@
 node_modules
 /build/
+# Go's test binaries and profiles (go test -c, -cpuprofile).
+*.test
+*.prof
 *.png
 # The sites' images and the docs' screenshots are kept.
 !**/web/**/*.png
 !docs/**/*.png
 /test/ui/out/
-# Each checkout's own: worktrees, editor and assistant settings, and the
-# deployment's settings (local.mk, see the top of the Makefile).
+# Each checkout's own: worktrees, editor and assistant settings, the
+# deployment's settings (local.mk, see the top of the Makefile), and the
+# overlay, a checkout of a repository of private games
+# (docs/adding-a-game.md#the-overlay).
 .worktrees/
 .claude/
 .vscode/
 CLAUDE.local.md
 /local.mk
+/extra

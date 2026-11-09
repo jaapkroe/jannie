@@ -1,30 +1,46 @@
 #!/bin/sh
 # Tests the deployment files without building, installing or starting anything:
-# - every game's settings (games/<game>/<game>.mk) are complete and in the form
-#   the Makefile and the Containerfile take; host names, addresses and ports are
-#   each game's own, every address is on loopback and follows the port rule;
-#   klaverjas's are pinned, since its site must not change;
+# - the games are the folders games/<game>/ and extra/<game>/ (the overlay) with
+#   their <game>.mk; a game of the overlay (a fixture, extra/proef/) is found,
+#   rendered and built as one of games/; a game in both, or a settings file not
+#   named after its folder, is refused; without the overlay the image builds make
+#   an empty extra/, which the Containerfile copies;
+# - every game's settings are complete and in the form the Makefile and the
+#   Containerfile take; host names, addresses and ports are each game's own,
+#   every address is on loopback and follows the port rule; klaverjas's are
+#   pinned, since its site must not change;
 # - the units of every game, as `make install GAME=all` renders them side by
 #   side, pass podman's quadlet generator and come out with the settings the
 #   pods depend on, each with its own game's names and none of another's;
 #   klaverjas's with the values its running pod has;
 # - GAME: the targets that need it refuse without it and do nothing; one game's
 #   deploy, install and uninstall touch no other game; GAME=all goes game by
-#   game under one build tag and stops at the first one that fails; dev, e2e,
-#   check, status, logs and quadlet take each game's own settings;
+#   game with one build time in the tags and stops at the first one that fails;
+#   dev, e2e, check, status, logs and quadlet take each game's own settings;
 # - `make deploy` refuses a working tree with uncommitted changes, and every
 #   image build gets a tag of its own, with the commit (-dirty when the tree is
-#   not one) as its revision;
+#   not one) as its revision; a game of the overlay's names the overlay's
+#   commit too, and its deploy refuses a change there or an extra/ that is no
+#   git checkout;
 # - the deployment's SUPPORT_URL (local.mk, which git ignores) reaches every
 #   web image build, and only from there or make's command line; a value that
 #   is not an https URL is refused; the repository itself holds no payment link;
-# - the Containerfile has a server target per game with the game's binary, and
-#   a web target that refuses an empty GAME, and a Go stage that copies no
-#   site; cmd/<game>, games/<game>/web and the game's E2E_SIM are checked where
-#   they are there (each comes with its game).
+# - the Containerfile builds every game's server, from cmd/<game> or
+#   <folder>/cmd/<game>, and has one server target that takes the one GAME names
+#   and refuses a GAME that names none, a web target that takes the game's folder
+#   and refuses an empty GAME, and a Go stage that copies no site; each game's
+#   server, its web/ and its E2E_SIM are checked where they are there (each comes
+#   with its game);
+# - make test runs each game's JS tests, <folder>/test/*.test.mjs;
+# - scripts/dev-server runs a game's main package, cmd/<game> or
+#   <folder>/cmd/<game>, and refuses a GAME that is no game, a game in two
+#   folders and a game with no main package or two.
 # The Makefile runs in a throwaway git repository with podman, systemctl,
 # loginctl, journalctl, curl, node, sleep, scripts/dev-server and
-# scripts/pod-check replaced by stubs that only record their calls.
+# scripts/pod-check replaced by stubs that only record their calls; the real
+# scripts/dev-server runs in a throwaway tree of its own, with scripts/go a stub.
+# The fixtures' games are named proef, presidenten and pesten, with ports from
+# 8997 up, which no game of the checkout may take.
 #   scripts/deploy-test       `make test` runs it
 # Prints the failures and a summary; exits 1 if anything failed.
 set -eu
@@ -52,14 +68,33 @@ holds() { if "$@"; then echo 1; else echo 0; fi; }
 note() { echo "deploy-test: $*" >&2; }
 
 # ---- the throwaway repository and the stubs ---------------------------------
+# The throwaway repository holds every game's settings next to the fixtures.
+for g in proef presidenten pesten; do
+  for d in games extra; do
+    if [ -e "$root/$d/$g" ]; then
+      echo "deploy-test: $d/$g is there, and $g is a fixture's name here: rename the fixture" >&2
+      exit 1
+    fi
+  done
+done
 repo=$tmp/repo calls=$tmp/calls
 mkdir -p "$repo/deploy" "$repo/scripts" "$tmp/bin" "$tmp/set"
 cp "$root/Makefile" "$root/Containerfile" "$root/.gitignore" "$repo/"
 cp "$root"/deploy/*.in "$repo/deploy/"
-for f in "$root"/games/*/*.mk; do
-  g=$(basename "$f" .mk)
-  mkdir -p "$repo/games/$g" && cp "$f" "$repo/games/$g/"
+for f in "$root"/games/*/*.mk "$root"/extra/*/*.mk; do
+  [ -f "$f" ] || continue
+  d=${f%/*}
+  mkdir -p "$repo/${d#"$root"/}" && cp "$f" "$repo/${d#"$root"/}/"
 done
+# A game of the overlay, which git ignores: extra/proef/, with a simulation and a
+# JS test in its folder.
+mkdir -p "$repo/extra/proef/test"
+sed -e 's/^TITLE = .*/TITLE = Proef/' -e 's/^VERB = .*/VERB = proeven/' \
+  -e 's/^SITE = .*/SITE = proef.example/' -e 's/^ADDR = .*/ADDR = 127.0.0.1:8997/' \
+  -e 's/^DEV_PORT = .*/DEV_PORT = 18997/' -e 's/^E2E_PORT = .*/E2E_PORT = 18998/' \
+  -e 's|^E2E_SIM = .*|E2E_SIM = extra/proef/test/e2e.mjs|' \
+  "$root/games/klaverjas/klaverjas.mk" > "$repo/extra/proef/proef.mk"
+touch "$repo/extra/proef/test/proef.test.mjs"
 for stub in podman systemctl journalctl node scripts/pod-check; do
   case $stub in scripts/*) f=$repo/$stub ;; *) f=$tmp/bin/$stub ;; esac
   printf '#!/bin/sh\necho "%s $*" >> "%s"\n' "${stub#scripts/}" "$calls" > "$f"
@@ -73,7 +108,11 @@ printf '#!/bin/sh\necho "curl $*" >> "%s"\ncase "${FAIL_CURL:-}" in ?*) case "$*
 printf '#!/bin/sh\necho Linger=yes\n' > "$tmp/bin/loginctl"
 # The waits for /api/health do not wait.
 printf '#!/bin/sh\n' > "$tmp/bin/sleep"
-chmod +x "$repo/scripts/dev-server" "$tmp/bin/curl" "$tmp/bin/loginctl" "$tmp/bin/sleep"
+# Each date a second later, so that a make which takes the build time of its own
+# instead of the one handed down shows in the tags.
+printf '#!/bin/sh\nn=$(($(cat "%s" 2>/dev/null || echo 0) + 1))\necho "$n" > "%s"\nprintf "20261109-%%06d\\n" "$n"\n' \
+  "$tmp/date.n" "$tmp/date.n" > "$tmp/bin/date"
+chmod +x "$repo/scripts/dev-server" "$tmp/bin/curl" "$tmp/bin/loginctl" "$tmp/bin/sleep" "$tmp/bin/date"
 git() { command git -C "$repo" -c init.defaultBranch=main -c user.name=deploy-test \
   -c user.email=deploy-test@localhost -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
 # Runs make in the repository with the stubs first on PATH; $calls holds what it
@@ -92,6 +131,8 @@ for g in $games; do
   for v in $settings; do setting "$g" "$v" > "$tmp/set/$g.$v" || true; done
 done
 val() { cat "$tmp/set/$1.$2"; }
+# The folder of game $1 in the throwaway repository, games/<game> or extra/<game>.
+folder() { for d in games extra; do [ ! -f "$repo/$d/$1/$1.mk" ] || echo "$d/$1"; done; }
 # The tag given to image $1 (<game>-server or <game>-web) by the last build.
 tag() { sed -n "s|^podman build .* -t localhost/$1:\([^ ]*\) \.\$|\1|p" "$calls"; }
 # The line of $calls where text $1 first appears, 0 if nowhere.
@@ -104,22 +145,34 @@ for g in $games; do
   mkdir -p "$repo/$(dirname "$(val "$g" E2E_SIM)")"
   touch "$repo/$(val "$g" E2E_SIM)"
 done
+# The overlay is a git checkout of its own.
+git -C extra init -q
+git -C extra add -A
+git -C extra commit -q --no-verify -m test
+xhead=$(git -C extra rev-parse --short=12 HEAD)
 git init -q
 git add -A
 git commit -q --no-verify -m test
 head=$(git rev-parse HEAD)
+# The revision of game $1's images, as a pattern for grep: the commit, and the
+# overlay's too for a game of the overlay.
+rev() { case $(folder "$1") in extra/*) echo "$head\.$xhead" ;; *) echo "$head" ;; esac; }
 first=$(echo $games | cut -d' ' -f1)
 others() { for h in $games; do [ "$h" = "$1" ] || echo "$h"; done; }
 
 # ---- the settings of every game ---------------------------------------------
-expect "games, the names of games/*/*.mk" 1 "$(holds [ -n "$games" ])"
+expect "games, the names of games/*/*.mk and extra/*/*.mk" 1 "$(holds [ -n "$games" ])"
+expect "games: the overlay's game too" 1 "$(case " $games " in *" proef "*) echo 1 ;; *) echo 0 ;; esac)"
+expect "the overlay ignored by git" 1 "$(holds git check-ignore -q extra/proef/proef.mk)"
 for g in $games; do
+  expect "$g: one folder, games/$g or extra/$g" 1 "$(folder "$g" | wc -l | tr -d ' ')"
   expect "$g: a name that fits units, images and URLs" 1 "$(printf '%s\n' "$g" | grep -c '^[a-z][a-z0-9-]*$' || true)"
   expect "$g: not all, which means every game" 1 "$(holds [ "$g" != all ])"
+  expect "$g: not server, the link the server image runs" 1 "$(holds [ "$g" != server ])"
   # Only `NAME = value` lines, with plain `=` (the environment cannot change them)
   # and nothing after the value, whose spaces would end up in units and URLs.
-  expect "games/$g/$g.mk: settings only, as NAME = value" "" \
-    "$(grep -v -E '^(#.*)?$' "$root/games/$g/$g.mk" \
+  expect "$(folder "$g")/$g.mk: settings only, as NAME = value" "" \
+    "$(grep -v -E '^(#.*)?$' "$repo/$(folder "$g")/$g.mk" \
       | grep -v -E "^($(echo $settings | tr ' ' '|')) = ([^ ].*)?[^ ]\$" || true)"
   for v in $settings; do
     expect "$g: $v is set" 1 "$(holds [ -n "$(val "$g" "$v")" ])"
@@ -286,12 +339,12 @@ for c in server web; do
     "$(if [ "$t" -gt 0 ] && [ "$t" -lt "$(line 'systemctl --user restart')" ]; then echo 1; else echo 0; fi)"
 done
 expect "make deploy runs pod-check" 1 "$(hasline 'pod-check 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas' "$calls")"
-# klaverjas's images, as they were before the other games; the web image with
-# the deployment's support link, none here (no local.mk).
+# klaverjas's images, with its settings as they were before the other games; the
+# web image with the deployment's support link, none here (no local.mk).
 expect "klaverjas's server image" 1 \
-  "$(has "podman build --target server-klaverjas --pull=newer --build-arg GIT_SHA=$head -t localhost/klaverjas-server:" "$calls")"
+  "$(has "podman build --target server --pull=newer --build-arg GIT_SHA=$head --build-arg GAME=klaverjas -t localhost/klaverjas-server:" "$calls")"
 expect "klaverjas's web image" 1 "$(has "podman build --target web --pull=newer --build-arg GIT_SHA=$head \
---build-arg GAME=klaverjas --build-arg SITE=klaverjas.kroes.dev --build-arg TITLE=Klaverjas \
+--build-arg GAME=klaverjas --build-arg GAME_DIR=games/klaverjas --build-arg SITE=klaverjas.kroes.dev --build-arg TITLE=Klaverjas \
 --build-arg VERB=klaverjassen --build-arg SUPPORT_URL= -t localhost/klaverjas-web:" "$calls")"
 # A rebuild of the same commit (for a fixed base image) keeps the build before it.
 sleep 1
@@ -305,10 +358,12 @@ expect "make image leaves :current alone" 0 "$(has ':current' "$calls")"
 for g in $games; do
   run deploy GAME="$g"
   expect "make deploy GAME=$g, exit status" 0 "$status"
-  expect "make deploy GAME=$g builds its server" 1 "$(grep -c "^podman build --target server-$g " "$calls" || true)"
-  expect "make deploy GAME=$g builds its web image" 1 "$(has "podman build --target web --pull=newer \
---build-arg GIT_SHA=$head --build-arg GAME=$g --build-arg SITE=$(val "$g" SITE) --build-arg TITLE=$(val "$g" TITLE) \
---build-arg VERB=$(val "$g" VERB) --build-arg SUPPORT_URL= -t localhost/$g-web:" "$calls")"
+  expect "make deploy GAME=$g builds its server" 1 "$(grep -c "^podman build --target server --pull=newer \
+--build-arg GIT_SHA=$(rev "$g") --build-arg GAME=$g -t localhost/$g-server:$(rev "$g")-$stamp \.\$" "$calls" || true)"
+  expect "make deploy GAME=$g builds its web image, from its folder" 1 "$(grep -c "^podman build --target web --pull=newer \
+--build-arg GIT_SHA=$(rev "$g") --build-arg GAME=$g --build-arg GAME_DIR=$(folder "$g") --build-arg SITE=$(val "$g" SITE) \
+--build-arg TITLE=$(val "$g" TITLE) --build-arg VERB=$(val "$g" VERB) --build-arg SUPPORT_URL= -t localhost/$g-web:$(rev "$g")-$stamp \.\$" \
+    "$calls" || true)"
   expect "make deploy GAME=$g tags only its images" "localhost/$g-server localhost/$g-web " \
     "$(sed -n 's|^podman tag localhost/\([^:]*\):[^ ]* localhost/\1:current$|localhost/\1|p' "$calls" | sort | tr '\n' ' ')"
   expect "make deploy GAME=$g restarts only its pod" "$g-pod.service" \
@@ -320,20 +375,24 @@ for g in $games; do
   done
 done
 
-# GAME=all: game after game, in the order of their names, under one build tag.
+# GAME=all: game after game, in the order of their names, with one build time.
 run deploy GAME=all
 expect "make deploy GAME=all, exit status" 0 "$status"
 expect "make deploy GAME=all: two builds per game" $((2 * $(echo $games | wc -w))) \
   "$(grep -c '^podman build ' "$calls" || true)"
-expect "make deploy GAME=all: one build tag" 1 \
-  "$(sed -n 's|^podman build .* -t localhost/[^:]*:\([^ ]*\) \.$|\1|p' "$calls" | sort -u | grep -c "^$head-$stamp\$" || true)"
+expect "make deploy GAME=all: one build time" 1 \
+  "$(sed -n 's|^podman build .* -t localhost/[^:]*:[^ ]*-\([0-9-]*\) \.$|\1|p' "$calls" | sort -u | wc -l | tr -d ' ')"
+for g in $games; do
+  expect "make deploy GAME=all: $g's tags, its revision and the time" 2 \
+    "$(grep -c "^podman build .* -t localhost/$g-[a-z]*:$(rev "$g")-$stamp \.\$" "$calls" || true)"
+done
 expect "make deploy GAME=all: the pods in turn" "$(echo $games)" \
   "$(sed -n 's/^systemctl --user restart \(.*\)-pod\.service$/\1/p' "$calls" | tr '\n' ' ' | sed 's/ $//')"
 prev=
 for g in $games; do
   if [ -n "$prev" ]; then
     expect "make deploy GAME=all: $g's builds after $prev's check" 1 \
-      "$(holds [ "$(line "pod-check $(val "$prev" ADDR) ")" -lt "$(line "podman build --target server-$g ")" ])"
+      "$(holds [ "$(line "pod-check $(val "$prev" ADDR) ")" -lt "$(line "--build-arg GAME=$g -t localhost/$g-server:")" ])"
   fi
   prev=$g
 done
@@ -437,7 +496,7 @@ for g in $games; do
     "$(has "--build-arg VERB=$(val "$g" VERB) --build-arg SUPPORT_URL=$pay -t localhost/$g-web:" "$calls")"
 done
 expect "make deploy GAME=all with local.mk: no server image gets SUPPORT_URL" 0 \
-  "$(grep '^podman build --target server-' "$calls" | grep -c 'SUPPORT_URL' || true)"
+  "$(grep '^podman build --target server ' "$calls" | grep -c 'SUPPORT_URL' || true)"
 # A space after the value, easily left in local.mk, is not part of it.
 printf 'SUPPORT_URL = %s  \n' "$pay" > "$repo/local.mk"
 run image-web GAME=klaverjas
@@ -487,16 +546,69 @@ expect "revision with ALLOW_DIRTY=1" 2 "$(grep -c -- "--build-arg GIT_SHA=$head-
 expect "tag with ALLOW_DIRTY=1" 1 "$(tag klaverjas-server | grep -c "^$head-dirty-$stamp\$")"
 rm "$repo/untracked"
 
+# ---- the overlay's commit -----------------------------------------------------------
+# A game of the overlay is built from both trees: its revision names both commits,
+# and a change in either is a tree that is not a commit.
+run image GAME=proef
+expect "revision of a game of the overlay: both commits" 2 "$(grep -c -- "--build-arg GIT_SHA=$head\.$xhead " "$calls")"
+expect "tag of a game of the overlay" 1 "$(tag proef-server | grep -c "^$head\.$xhead-$stamp\$")"
+echo '// changed' > "$repo/extra/proef/test/proef.test.mjs"
+run deploy GAME=proef
+expect "make deploy GAME=proef with a change in extra/, exit status" 2 "$status"
+expect "make deploy GAME=proef with a change in extra/ says where" 1 "$(has 'git -C extra status' "$tmp/out")"
+expect "make deploy GAME=proef with a change in extra/ builds nothing" 0 "$(has 'podman ' "$calls")"
+run deploy GAME=all
+expect "make deploy GAME=all with a change in extra/, exit status" 2 "$status"
+expect "make deploy GAME=all with a change in extra/ builds nothing" 0 "$(has 'podman ' "$calls")"
+run deploy GAME=klaverjas
+expect "make deploy GAME=klaverjas with a change in extra/, exit status" 0 "$status"
+expect "make deploy GAME=klaverjas with a change in extra/: this repository's commit" 2 \
+  "$(grep -c -- "--build-arg GIT_SHA=$head " "$calls")"
+run deploy GAME=proef ALLOW_DIRTY=1
+expect "make deploy GAME=proef ALLOW_DIRTY=1, exit status" 0 "$status"
+expect "revision of a game of the overlay with a change in extra/" 2 \
+  "$(grep -c -- "--build-arg GIT_SHA=$head\.$xhead-dirty " "$calls")"
+expect "tag of a game of the overlay with a change in extra/" 1 "$(tag proef-server | grep -c "^$head\.$xhead-dirty-$stamp\$")"
+: > "$repo/extra/proef/test/proef.test.mjs"
+touch "$repo/extra/proef/untracked"
+run image GAME=proef
+expect "revision of a game of the overlay with an untracked file in extra/" 2 \
+  "$(grep -c -- "--build-arg GIT_SHA=$head\.$xhead-dirty " "$calls")"
+rm "$repo/extra/proef/untracked"
+touch "$repo/untracked"
+run image GAME=proef
+expect "revision of a game of the overlay with an untracked file here" 2 \
+  "$(grep -c -- "--build-arg GIT_SHA=$head\.$xhead-dirty " "$calls")"
+rm "$repo/untracked"
+# An extra/ that is no git checkout is never a commit, for its games.
+mv "$repo/extra/.git" "$tmp/extra.git"
+run deploy GAME=proef
+expect "make deploy GAME=proef, extra/ no git checkout, exit status" 2 "$status"
+expect "make deploy GAME=proef, extra/ no git checkout, builds nothing" 0 "$(has 'podman ' "$calls")"
+run image GAME=proef
+expect "revision of a game of the overlay, extra/ no git checkout" 2 "$(grep -c -- "--build-arg GIT_SHA=$head-dirty " "$calls")"
+run deploy GAME=klaverjas
+expect "make deploy GAME=klaverjas, extra/ no git checkout, exit status" 0 "$status"
+mv "$tmp/extra.git" "$repo/extra/.git"
+# A commit in extra/ is a new revision of the overlay's games alone.
+echo '// committed' > "$repo/extra/proef/test/proef.test.mjs"
+git -C extra commit -q --no-verify -a -m change
+xhead=$(git -C extra rev-parse --short=12 HEAD)
+run image GAME=proef
+expect "revision of a game of the overlay after a commit in extra/" 2 "$(grep -c -- "--build-arg GIT_SHA=$head\.$xhead " "$calls")"
+run image GAME=klaverjas
+expect "revision of klaverjas after a commit in extra/" 2 "$(grep -c -- "--build-arg GIT_SHA=$head " "$calls")"
+
 # A changed file that is tracked.
 echo '# changed' >> "$repo/deploy/game.pod.in"
 mk image GAME=klaverjas || true
 expect "revision of a tree with a changed file" 2 "$(grep -c -- "--build-arg GIT_SHA=$head-dirty " "$calls")"
 
-# ---- a new game is a new games/<game>/<game>.mk ---------------------------------
+# ---- a new game is a new folder with its <game>.mk --------------------------------
 # presidenten-server, the longest name to come, still fits make status's column.
 sed -e 's/^TITLE = .*/TITLE = Presidenten/' -e 's/^VERB = .*/VERB = presidenten/' \
-  -e 's/^SITE = .*/SITE = presidenten.example/' -e 's/^ADDR = .*/ADDR = 127.0.0.1:8199/' \
-  -e 's/^DEV_PORT = .*/DEV_PORT = 18199/' -e 's/^E2E_PORT = .*/E2E_PORT = 18200/' \
+  -e 's/^SITE = .*/SITE = presidenten.example/' -e 's/^ADDR = .*/ADDR = 127.0.0.1:8999/' \
+  -e 's/^DEV_PORT = .*/DEV_PORT = 18999/' -e 's/^E2E_PORT = .*/E2E_PORT = 19000/' \
   "$repo/games/klaverjas/klaverjas.mk" > "$tmp/presidenten.mk"
 mkdir "$repo/games/presidenten" && mv "$tmp/presidenten.mk" "$repo/games/presidenten/"
 run quadlet GAME=presidenten
@@ -505,58 +617,168 @@ run status
 expect "make status: the new game too" 1 "$(grep -c '^presidenten-server  *revision ' "$tmp/out" || true)"
 expect "make status: one column for every name" "" \
   "$(grep -v '^http://' "$tmp/out" | awk 'substr($0, 19, 1) != " " || substr($0, 20, 1) == " "')"
+# make test runs every game's JS tests, those of the overlay's game included.
+mk -n test || true
+expect "make test: the overlay game's JS tests" 1 \
+  "$(grep '^node --test ' "$tmp/out" | grep -c ' extra/proef/test/proef\.test\.mjs' || true)"
+# A game in both games/ and extra/, or a settings file not named after its folder,
+# stops make before it does anything.
+mkdir "$repo/extra/presidenten" && cp "$repo/games/presidenten/presidenten.mk" "$repo/extra/presidenten/"
+run quadlet
+expect "a game in games/ and extra/, exit status" 2 "$status"
+expect "a game in games/ and extra/ is named" 1 "$(has 'presidenten is a game twice, in games/presidenten extra/presidenten' "$tmp/out")"
+expect "a game in games/ and extra/: nothing run" "" "$(cat "$calls")"
+rm -r "$repo/extra/presidenten" "$repo/games/presidenten"
+mkdir "$repo/games/pesten" && cp "$repo/extra/proef/proef.mk" "$repo/games/pesten/"
+run quadlet
+expect "a settings file not named after its folder, exit status" 2 "$status"
+expect "a settings file not named after its folder is named" 1 "$(has 'games/pesten/proef.mk: ' "$tmp/out")"
+rm -r "$repo/games/pesten"
+# Without the overlay: the games of games/ alone, and the image builds make the
+# empty extra/ that the Containerfile copies (podman refuses a missing one).
+rm -r "$repo/extra"
+# A symlink named extra, which the tools cannot follow, is ignored too.
+ln -s "$tmp/elsewhere" "$repo/extra"
+expect "a symlink named extra ignored by git" 1 "$(holds git check-ignore -q extra)"
+rm "$repo/extra"
+run quadlet
+expect "make quadlet without the overlay, exit status" 0 "$status"
+expect "make quadlet without the overlay: no game of it" 0 "$(has 'proef' "$tmp/out")"
+for t in image-server image-web; do
+  rm -rf "$repo/extra"
+  run $t GAME=klaverjas
+  expect "make $t without the overlay, exit status" 0 "$status"
+  expect "make $t without the overlay makes an empty extra/" 1 "$(holds [ -d "$repo/extra" ])"
+  expect "make $t without the overlay builds" 1 "$(grep -c '^podman build ' "$calls" || true)"
+done
+
+# ---- scripts/dev-server ------------------------------------------------------------
+# The checks above run a stub; this is the real one, in a throwaway tree of its own:
+# klaverjas with cmd/klaverjas, pesten and proef with their folders' main packages,
+# kwartet with none.
+ds=$tmp/ds
+mkdir -p "$ds/scripts" "$ds/cmd/klaverjas" "$ds/games/klaverjas" "$ds/games/pesten/cmd/pesten" \
+  "$ds/extra/proef/cmd/proef" "$ds/extra/kwartet"
+cp "$root/scripts/dev-server" "$ds/scripts/"
+printf '#!/bin/sh\necho "$KJ_GO_NAME go $*" >> "%s"\n' "$calls" > "$ds/scripts/go"
+chmod +x "$ds/scripts/dev-server" "$ds/scripts/go"
+touch "$ds/games/klaverjas/klaverjas.mk" "$ds/games/pesten/pesten.mk" "$ds/extra/proef/proef.mk" \
+  "$ds/extra/kwartet/kwartet.mk"
+# Runs it with GAME=$1; $calls holds what it ran, $tmp/out what it said, $status
+# its exit status.
+dev() {
+  : > "$calls"
+  if GAME=$1 PATH=$tmp/bin:$PATH "$ds/scripts/dev-server" 18200 -fast > "$tmp/out" 2>&1; then
+    status=0
+  else status=$?; fi
+}
+for gm in klaverjas:cmd/klaverjas pesten:games/pesten/cmd/pesten proef:extra/proef/cmd/proef; do
+  g=${gm%%:*} m=${gm#*:}
+  dev "$g"
+  expect "dev-server GAME=$g, exit status" 0 "$status"
+  expect "dev-server GAME=$g runs $m" "kj-dev-18200 go run ./$m -addr 127.0.0.1:18200 -static /src -fast" \
+    "$(grep ' go ' "$calls" || true)"
+done
+dev kwartet
+expect "dev-server, a game without a main package: exit status" 1 "$status"
+expect "dev-server, a game without a main package: says so" 1 \
+  "$(has 'there is no cmd/kwartet or extra/kwartet/cmd/kwartet' "$tmp/out")"
+expect "dev-server, a game without a main package: nothing run" "" "$(cat "$calls")"
+mkdir "$ds/cmd/proef"
+dev proef
+expect "dev-server, a game with two main packages: exit status" 1 "$status"
+expect "dev-server, a game with two main packages: names them" 1 \
+  "$(has 'two servers for proef, cmd/proef extra/proef/cmd/proef' "$tmp/out")"
+expect "dev-server, a game with two main packages: nothing run" "" "$(cat "$calls")"
+rmdir "$ds/cmd/proef"
+mkdir "$ds/games/proef" && touch "$ds/games/proef/proef.mk"
+dev proef
+expect "dev-server, a game in games/ and extra/: exit status" 1 "$status"
+expect "dev-server, a game in games/ and extra/: names both" 1 \
+  "$(has 'proef is a game twice, in games/proef extra/proef' "$tmp/out")"
+expect "dev-server, a game in games/ and extra/: nothing run" "" "$(cat "$calls")"
+rm -r "$ds/games/proef"
+for g in '' bogus ../klaverjas games/klaverjas Klaverjas; do
+  dev "$g"
+  expect "dev-server GAME='$g', exit status" 2 "$status"
+  expect "dev-server GAME='$g': the games named" 1 "$(has 'the games are klaverjas kwartet pesten proef' "$tmp/out")"
+  expect "dev-server GAME='$g': nothing run" "" "$(cat "$calls")"
+done
 
 # ---- the Containerfile ------------------------------------------------------------
 cf=$root/Containerfile
-for g in $games; do
-  awk -v s="server-$g" '$1 == "FROM" { p = ($NF == s) } p' "$cf" > "$tmp/stage"
-  expect "Containerfile: a target server-$g" 1 "$(grep -c "^FROM scratch AS server-$g\$" "$tmp/stage" || true)"
-  for l in "COPY --from=build /out/$g /$g" "ENTRYPOINT [\"/$g\"]" 'USER 65532:65532'; do
-    expect "server-$g: $l" 1 "$(hasline "$l" "$tmp/stage")"
-  done
-  expect "server-$g: its label" 1 "$(has "org.opencontainers.image.title=\"$g server\"" "$tmp/stage")"
+awk '$1 == "FROM" { p = ($NF == "build") } p' "$cf" > "$tmp/build"
+awk '$1 == "FROM" { p = ($NF == "server") } p' "$cf" > "$tmp/stage"
+expect "Containerfile: one target server" 1 "$(grep -c '^FROM scratch AS server$' "$cf" || true)"
+expect "Containerfile: no target of one game" 0 "$(grep -c '^FROM .* AS server-' "$cf" || true)"
+for l in 'ARG GAME' 'COPY --from=build /out/${GAME}/ /' 'ENTRYPOINT ["/server"]' 'USER 65532:65532' \
+         'CMD ["-addr", "127.0.0.1:8081"]'; do
+  expect "server: $l" 1 "$(hasline "$l" "$tmp/stage")"
 done
+expect "server: labelled with its game" 1 "$(has 'org.opencontainers.image.title="${GAME} server"' "$tmp/stage")"
+# Every game's binary, /out/<game>/<game>, named as the unit's HealthCmd runs it,
+# and next to it the link /server that the ENTRYPOINT runs.
+expect "build: the servers of cmd/" 1 "$(has 'for m in cmd/*; do' "$tmp/build")"
+expect "build: each folder's own server, <folder>/cmd/<game>, and no other command" 1 \
+  "$(has 'for d in games/* extra/*; do [ ! -d "$d/cmd/${d##*/}" ] || echo "./$d/cmd/${d##*/}"; done' "$tmp/build")"
+expect "build: /out/<game>/<game> and the link /out/<game>/server" 1 \
+  "$(has 'mv "$b" "/out/$g/$g" && ln -s "$g" "/out/$g/server"' "$tmp/build")"
+expect "build: two servers of one name refused" 1 "$(has 'echo "two servers named"' "$tmp/build")"
+# An empty GAME would copy every server: the build stage refuses a GAME that
+# names none, after the servers are built (so that GAME reruns neither tests nor build).
+expect "build: GAME must name a server" 1 "$(has "case \"\$GAME\" in '' | *[!a-z0-9-]*) false;; esac && [ -x \"/out/\$GAME/\$GAME\" ]" "$tmp/build")"
+expect "build: GAME after the servers are built" 1 \
+  "$(holds [ "$(grep -n -m 1 '^ARG GAME$' "$tmp/build" | cut -d: -f1)" -gt "$(grep -n -m 1 'go build ' "$tmp/build" | cut -d: -f1)" ])"
+expect "build: the Go stage copies platform/, games/ and extra/ without their sites" 3 \
+  "$(grep -c '^COPY --exclude=\*\*/web .* \(platform\|games\|extra\)/ \(platform\|games\|extra\)/$' "$cf" || true)"
+expect "build: no git directory of the overlay" 1 "$(grep -c '^COPY .*--exclude=\*\*/\.git extra/ extra/$' "$cf" || true)"
 expect "Containerfile: one target web" 1 "$(grep -c '^FROM .* AS web$' "$cf" || true)"
 expect "web: labelled with its game" 1 "$(has 'org.opencontainers.image.title="${GAME} web"' "$cf")"
-expect "web-conf: an empty GAME refused before games/\${GAME}/web/ is copied" 1 \
+expect "web-conf: an empty GAME refused before the game's web/ is copied" 1 \
   "$(holds [ "$(grep -n -m 1 'test -n "$GAME"' "$cf" | cut -d: -f1)" -lt \
-           "$(grep -n -m 1 'COPY games/${GAME}/web/' "$cf" | cut -d: -f1)" ])"
+           "$(grep -n -m 1 'COPY ${GAME_DIR}/web/' "$cf" | cut -d: -f1)" ])"
+expect "web-conf: GAME_DIR, the game's folder, checked before it is copied" 1 \
+  "$(holds [ "$(grep -n -m 1 'case "$GAME_DIR" in "games/$GAME" | "extra/$GAME")' "$cf" | cut -d: -f1)" -lt \
+           "$(grep -n -m 1 'COPY ${GAME_DIR}/web/' "$cf" | cut -d: -f1)" ])"
 awk '$1 == "FROM" { p = ($NF == "web-conf") } p' "$cf" > "$tmp/stage"
 expect "web-conf: SUPPORT_URL, empty by default" 1 "$(hasline 'ARG SUPPORT_URL=' "$tmp/stage")"
 expect "web-conf: fills in @SUPPORT_URL@" 1 "$(has '-e "s|@SUPPORT_URL@|' "$tmp/stage")"
 expect "web-conf: no @SUPPORT_URL@ left in index.html" 1 "$(has '-e @SUPPORT_URL@ /tmp/index.html' "$tmp/stage")"
 expect "web: nothing copied from the sites but what web-conf checked" \
-  "COPY platform/web/ /tmp/shared/ COPY games/\${GAME}/web/ /tmp/game/ " \
-  "$(grep -E '^COPY (platform/web|games/\$\{GAME\}/web)' "$cf" | tr '\n' ' ')"
-expect "build: the Go stage copies platform/ and games/ without their sites" 2 \
-  "$(grep -c '^COPY --exclude=\*\*/web .* \(platform\|games\)/ \(platform\|games\)/$' "$cf" || true)"
+  "COPY platform/web/ /tmp/shared/ COPY \${GAME_DIR}/web/ /tmp/game/ " \
+  "$(grep -E '^COPY (platform/web|\$\{GAME_DIR\}/web|games/|extra/)' "$cf" | grep -v '^COPY --exclude' | tr '\n' ' ')"
 
 # ---- each game's code, pages and simulation, once they are there ----------------
-for g in $games; do
-  if [ -d "$root/cmd/$g" ]; then
-    expect "cmd/$g: a main package" 1 "$(holds grep -qx 'package main' "$root/cmd/$g"/*.go)"
-  else
-    note "GAME=$g: no cmd/$g yet; not checked"
-  fi
-  site=$root/games/$g/web html=$root/games/$g/web/index.html
+# The games of this checkout, the overlay's included.
+for g in $(make -s -C "$root" --no-print-directory --eval='deploy-test-games: ; @echo $(GAMES)' deploy-test-games); do
+  dir=
+  for d in games extra; do [ ! -f "$root/$d/$g/$g.mk" ] || dir=$d/$g; done
+  mains=
+  for m in "cmd/$g" "$dir/cmd/$g"; do [ ! -d "$root/$m" ] || mains="$mains${mains:+ }$m"; done
+  case $mains in
+    '') note "GAME=$g: no cmd/$g or $dir/cmd/$g yet; not checked" ;;
+    *' '*) expect "GAME=$g: one server" "one of cmd/$g and $dir/cmd/$g" "$mains" ;;
+    *) expect "$mains: a main package" 1 "$(holds grep -qx 'package main' "$root/$mains"/*.go)" ;;
+  esac
+  site=$root/$dir/web html=$root/$dir/web/index.html
   if [ -f "$html" ]; then
-    expect "games/$g/web/index.html: the title, TITLE" 1 "$(has "<title>$(val "$g" TITLE)</title>" "$html")"
+    expect "$dir/web/index.html: the title, TITLE" 1 "$(has "<title>$(val "$g" TITLE)</title>" "$html")"
     for ph in @SITE@ @VERSION@ @SUPPORT_URL@; do
-      expect "games/$g/web/index.html: $ph, which the build fills in" 1 "$(has "$ph" "$html")"
+      expect "$dir/web/index.html: $ph, which the build fills in" 1 "$(has "$ph" "$html")"
     done
-    expect "games/$g/web/index.html: the support link's meta" 1 \
+    expect "$dir/web/index.html: the support link's meta" 1 \
       "$(hasline '<meta name="support" content="@SUPPORT_URL@">' "$html")"
-    expect "games/$g/web/manifest.webmanifest: the name, TITLE" "\"$(val "$g" TITLE)\"" \
+    expect "$dir/web/manifest.webmanifest: the name, TITLE" "\"$(val "$g" TITLE)\"" \
       "$(tr -d '\n' < "$site/manifest.webmanifest" 2>/dev/null \
         | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' | head -n 1 | sed 's/^[^:]*:[[:space:]]*//')"
     if [ -d "$root/platform/web" ]; then
-      expect "no path in both platform/web and games/$g/web" "" "$( {
+      expect "no path in both platform/web and $dir/web" "" "$( {
         (cd "$root/platform/web" && find . ! -type d; cd "$site" && find .) | sort | uniq -d
         (cd "$site" && find . ! -type d; cd "$root/platform/web" && find .) | sort | uniq -d
       } | sort -u | tr '\n' ' ')"
     fi
   else
-    note "GAME=$g: no games/$g/web/index.html yet; not checked"
+    note "GAME=$g: no $dir/web/index.html yet; not checked"
   fi
   if [ ! -f "$root/$(val "$g" E2E_SIM)" ]; then
     note "GAME=$g: no $(val "$g" E2E_SIM) yet; make e2e GAME=$g cannot run"

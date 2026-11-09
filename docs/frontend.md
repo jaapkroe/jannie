@@ -3,8 +3,10 @@
 `platform/web` is the shell every game's site is built from: routing, the
 websocket and the update queue, the home screen and the lobby, panels,
 settings, chat, calling, sounds and card faces. A game brings its page,
-icons, table and styles in `games/<game>/web` and plugs in through its
-`game.js` ("One site per game" below). What the table sends is in
+icons, table and styles in the `web/` of its folder (`games/<game>/web`,
+or `extra/<game>/web` in the overlay;
+[adding-a-game.md, "The folder"](adding-a-game.md#the-folder)) and plugs
+in through its `game.js` ("One site per game" below). What the table sends is in
 [protocol.md](protocol.md).
 
 ## Rules
@@ -14,7 +16,7 @@ and no `style="…"` attributes or `setAttribute('style')` (CSP `style-src
 'self'`; setting `el.style.x` from JS is fine). Build DOM with
 `document.createElement`/`textContent`; never `innerHTML` with user or server
 text. The site is the union of `platform/web` (the shell every game's site
-uses) and `games/<game>/web` (the game's page, icons, modules and styles); a
+uses) and the game's `web/` (the game's page, icons, modules and styles); a
 path in both is an error (see "One site per game" below).
 No service worker. System font stack.
 
@@ -95,11 +97,12 @@ built from the same shell:
 
 - `platform/web/js`: `main.js` (routing, the websocket, the update queue),
   `util.js` (the app context, DOM building, icons, storage, preferences,
-  toasts, motion, the on-screen keyboard, names, suits and avatars),
+  toasts, motion, the on-screen keyboard, names, suits, avatars and
+  whether a turn is the player's),
   `panels.js` (modals, back button, settings, bot picker, menu, feedback,
   chat), `home.js` (home, invite, lobby), `sound.js`, `cards.js`, `call.js`
   (lazy); `platform/web/css`: `app.css`, `cards.css`.
-- `games/<game>/web`: `index.html`, `manifest.webmanifest`, `favicon.svg`,
+- the game's `web/`: `index.html`, `manifest.webmanifest`, `favicon.svg`,
   `icon-full.svg`, the PNG icons, `og.png`, and `js/game.js`, the game
   module, with the game's other modules and its stylesheet. A game's own
   helpers are in its own modules (klaverjas's and toepen's `rules.js`),
@@ -119,10 +122,15 @@ and nothing a player sees names another game.
 ### The game module
 
 ```js
-// games/<game>/web/js/game.js — what the shell needs from the game of the site
+// js/game.js in the game's web/ — what the shell needs from the game of the site
 export const name;          // 'Klaverjas': titles ("Klaverjas · ABCD"), the share title
 export const maxPlayers;    // the largest table: the lobby's hints, the refused-join toast
-export const PLAYING;       // Set of phases in which a turn may be the player's (sound and title cues)
+export const PLAYING;       // Set of phases in which a turn may be the player's (sound and title cues, when
+                            //   myTurn is absent)
+export function myTurn(s);  // optional: whether the player is to act in state s (the turn sound and buzz, the tab
+                            //   title; isMyTurn and turnOpens in util.js); without it, s.turn === s.you in a
+                            //   PLAYING phase. The server's turn is the seat that decides, so playing for another
+                            //   seat needs no hook; a game may use it to hold the cue while a lesson step is on screen
 export const ACKED;         // Set of moves the server answers at once (silence: a dead socket)
 export const table;         // the table module: init, render(s), animate(ev, prev, next), settle, welcomeBack,
                             //   bubble(s, seat, text), staleVote(m), resync, resetRoom, relayout, renderCall
@@ -144,12 +152,16 @@ export const lobby;         // seats(miniTable) → its seat slots; slot(s, seat
 // platform/web/js/cards.js — card faces and backs (with platform/web/css/cards.css)
 export const SUITS = { C:{name:'klaveren',symbol:'♣',color:'black'}, D:{name:'ruiten',symbol:'♦',color:'red'},
                        H:{name:'harten',symbol:'♥',color:'red'}, S:{name:'schoppen',symbol:'♠',color:'black'} };
-export const RANKS = { '7':'7','8':'8','9':'9','T':'10','J':'B','Q':'V','K':'H','A':'A' };  // face letters
-export function cardName(code)            // "harten boer"
+export const RANKS = { '2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9',
+                       'T':'10','J':'B','Q':'V','K':'H','A':'A' };  // face letters, low to high
+export function cardName(code)            // "harten boer", "schoppen 2"
 export function cardShort(code)           // "♥B"
 export function createCard(code, opts={}) // → HTMLElement .card; opts: {size:'sm'|'md'|'lg'} (default md);
                                           //   dataset.card = code; aria-label = cardName
 export function createBack(opts={})       // → HTMLElement .card.back
+// The 32-card games deal 7 to A; a 52-card game also 2 to 6, with index glyphs in the style of the
+//   others (none wider than the 10's) and the standard pips. A golden hash in
+//   test/ui/cards-unit.test.mjs keeps the markup of the 32 faces 7 to A and of the backs as it was.
 // Card size scales with the CSS custom property --card-w on any ancestor (height = 1.4 × width).
 // Four-colour deck when an ancestor has class .four-color (♣ green, ♦ blue/orange). In the
 //   two-colour deck the courts of ♣ and ♦ wear those inks on a garment (tunic, bodice, doublet
@@ -208,7 +220,7 @@ bots only never ask for a name: without one the
 player is "Speler", which is not stored as their name. Under the footer,
 small: "Versie a05a087", the commit the web image was built from (the
 Containerfile fills in index.html's `<meta name="version">`; `versionText`
-shortens it, "dev" when run from source; `pod-check` compares it with
+shortens it, both commits of a game of the overlay, "dev" when run from source; `pod-check` compares it with
 `/api/health`). The commit is a link to the source, `SOURCE_URL` in
 `home.js` (the public repository), in a new tab: a site that runs a
 modified version must offer its players that version's source (section 13
