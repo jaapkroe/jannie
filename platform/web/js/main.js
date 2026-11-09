@@ -1,14 +1,14 @@
 // Entry point: routing, connection handling and the update queue that
 // animates every server event before rendering the new state.
 import { sound } from './sound.js';
-import { app, store, toast, vibrate, watchKeyboard, DEFAULT_NAME } from './util.js';
+import { app, store, toast, vibrate, watchKeyboard, isMyTurn, turnOpens, DEFAULT_NAME } from './util.js';
 import * as game from './game.js';
 import * as panels from './panels.js';
 import * as home from './home.js';
 
 // The game of this site (its game.js, docs/frontend.md#the-game-module): its
 // table and what differs per game. The shell reaches the game only here.
-const { table, PLAYING } = game;
+const { table } = game;
 const ROUTE = /^\/([A-Za-z]{4})\/?$/;
 // Moves the server answers at once; silence after one means a dead socket.
 // A vote is only sent when it changes the answer, so an update follows it too.
@@ -454,7 +454,7 @@ function onRefused(name) {
     if (s.players.some(p => p?.bot)) sub = 'Haal een AI-speler weg om een plaats vrij te maken.';
     else if (more) sub = `Wil je er nog iemand bij? Zet Spelers op ${n + 1}.`;
   } else if (s.phase === 'gameOver') {
-    sub = `Tik op Spelers of regels wijzigen${more ? ' en ' + more : ''} om een plaats vrij te maken.`;
+    sub = `Tik op “Spelers of regels wijzigen”${more ? ' en ' + more : ''} om een plaats vrij te maken.`;
   }
   sound.play('join');
   toast(`${name || 'Iemand'} wil meedoen, maar de tafel is vol`, { sub, ms: 7000 });
@@ -591,16 +591,15 @@ function holdLobby() {
   }, START_HOLD_MS);
 }
 
-// Sound and buzz when a turn opens, or when the table is asked whether an
+// Sound and buzz when a turn opens (turnOpens in util.js, which asks
+// game.myTurn when the game has one), or when the table is asked whether an
 // AI may play for someone who is gone (that asks for attention as much),
 // also in a background tab; only a long backlog (a rejoin catching up) is
 // history rather than news.
 function turnCue(prev, next) {
-  const mine = next.turn === next.you && PLAYING.has(next.phase);
-  const was = prev && prev.turn === prev.you && prev.phase === next.phase;
   const q = next.takeover;
   const asked = !!q && !(prev?.takeover?.seat === q.seat && prev.takeover.left === q.left);
-  if (((mine && !was) || asked) && !app.backlog) {
+  if ((turnOpens(game, prev, next) || asked) && !app.backlog) {
     sound.play('turn');
     vibrate(15);
   }
@@ -611,7 +610,7 @@ function turnCue(prev, next) {
 // while the table waits for your answer to the takeover question.
 function titleCue() {
   const s = app.s;
-  const mine = inRoom && s && s.turn === s.you && PLAYING.has(s.phase);
+  const mine = inRoom && s && isMyTurn(game, s);
   const asked = inRoom && !!s?.takeover && s.players[s.you]?.vote == null;
   const base = inRoom && app.code ? `${game.name} · ${app.code}` : game.name;
   let want = base;

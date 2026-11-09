@@ -35,6 +35,9 @@ const (
 	chatLog      = 50
 )
 
+// msgLocked refuses a change to a game's fixed table (Opening.Locked).
+const msgLocked = "Deze tafel ligt vast."
+
 type seatKind uint8
 
 const (
@@ -99,6 +102,7 @@ type room struct {
 	overAt    time.Time
 	retired   map[string]bool // seat tokens replaced when a seat was taken back by name
 	refusedAt time.Time       // the last refused-join notice (see refused)
+	locked    string          // a game's fixed table (Opening.Locked): the text that turns joiners away; "" for none
 
 	// The match.
 	handNo    int
@@ -383,8 +387,8 @@ func (r *room) randomPersona(skip ...string) Persona {
 func botName(p Persona) string { return p.Name + " (AI)" }
 
 // numberNL writes 2..4 as a Dutch word ("drie"), other numbers in digits,
-// for klaverjas's texts (the lessons count trumps with it: "dus de anderen
-// hebben er 5").
+// for klaverjas's texts (the lesson on signals counts the agreements with
+// it: "Aan deze tafel spreken we er drie af").
 func numberNL(n int) string {
 	if n >= 2 && n <= 4 {
 		return [...]string{"twee", "drie", "vier"}[n-2]
@@ -399,6 +403,15 @@ func seatsNL(n int) string {
 		return [...]string{"vijf", "zes", "zeven", "acht"}[n-5]
 	}
 	return numberNL(n)
+}
+
+// allSeatsNL names every seat of a table of n, for "… zijn bezet":
+// "beide plaatsen" for two, else "alle vier de plaatsen".
+func allSeatsNL(n int) string {
+	if n == 2 {
+		return "beide plaatsen"
+	}
+	return "alle " + seatsNL(n) + " de plaatsen"
 }
 
 // displayName is how a seat appears in chat and texts.
@@ -520,12 +533,17 @@ func (r *room) sysChat(format string, args ...any) {
 // ---- joining and leaving ----
 
 func (r *room) handleCreate(c *client, m *inMsg) {
+	var o Opening // klaverjas's training and expert are its own; another game may open a room of its own kind
 	if r.x != nil {
-		r.x.createOpts(m.Opts) // training and the expert are klaverjas's: the ordinary game
+		o = r.x.create(m)
 	} else {
 		r.createKlaverjas(m)
 	}
-	var i cards.Seat // the expert sits where they chose; anyone else at seat 0
+	i := o.Seat // the expert sits where they chose; anyone else at seat 0, or where the game opens the room
+	if !i.ValidFor(r.players()) {
+		r.log.Error("opening on a seat off the table", "seat", int(i))
+		i = 0
+	}
 	if r.expert && m.Seat != nil && *m.Seat >= 0 && *m.Seat < 4 {
 		i = cards.Seat(*m.Seat)
 	}
@@ -535,11 +553,43 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	if r.training {
 		r.seatTraining()
 	}
-	r.log.Info("room created", "training", r.training, "expert", r.expert, "players", r.opts.Players, "start", m.Start)
+	r.openBots(o.Bots)
+	r.locked = o.Locked
+	// One line for every game (training and expert are klaverjas's); a
+	// game's fixed table (Opening.Locked) adds locked.
+	logArgs := []any{"training", r.training, "expert", r.expert, "players", r.opts.Players, "start", m.Start || o.Start}
+	if r.locked != "" {
+		logArgs = append(logArgs, "locked", true)
+	}
+	r.log.Info("room created", logArgs...)
 	r.welcome(c, i)
 	r.emitTo(evLobby{Type: "lobby"}, c)
-	if m.Start || r.expert { // an expert game has no lobby
+	if m.Start || r.expert || o.Start { // an expert game has no lobby
 		r.startMatch()
+	}
+}
+
+// openBots seats the bots of a game's Opening, a persona ID per seat; one
+// it cannot seat (on a seat that is taken or off the table, unknown, or
+// at the table already) is logged and left out.
+func (r *room) openBots(ids []string) {
+	for k, id := range ids {
+		if id == "" {
+			continue
+		}
+		i := cards.Seat(k)
+		p, ok := r.persona(id)
+		switch {
+		case !i.ValidFor(r.players()) || r.seats[i].kind != seatEmpty:
+			ok = false
+		case r.firstSeat(func(st *seat) bool { return st.kind == seatBot && st.persona.ID == id }) != cards.NoSeat:
+			ok = false
+		}
+		if !ok {
+			r.log.Error("opening bot not seated", "seat", k, "bot", id)
+			continue
+		}
+		r.seats[i] = r.newBot(p)
 	}
 }
 
@@ -584,6 +634,10 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 		fail(errFull, "Dit is een expertspel; daar kun je niet aan meedoen.")
 		return
 	}
+	if r.locked != "" {
+		fail(errFull, r.locked)
+		return
+	}
 	if r.phase == phaseLobby {
 		i := r.firstSeat(func(st *seat) bool { return st.kind == seatEmpty })
 		switch {
@@ -591,9 +645,9 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 		case r.firstSeat(func(st *seat) bool { return st.kind == seatBot }) != cards.NoSeat:
 			fail(errFull, "Deze tafel is vol. Vraag de host om een AI-speler weg te halen en probeer het dan opnieuw.")
 		case r.players() < len(r.seats):
-			fail(errFull, fmt.Sprintf("Deze tafel is vol: alle %s plaatsen zijn bezet. Vraag de host om bij Spelers een plaats bij te zetten en probeer het dan opnieuw.", seatsNL(r.players())))
+			fail(errFull, fmt.Sprintf("Deze tafel is vol: %s zijn bezet. Vraag de host om bij Spelers een plaats bij te zetten en probeer het dan opnieuw.", allSeatsNL(r.players())))
 		default:
-			fail(errFull, fmt.Sprintf("Deze tafel is vol: alle %s de plaatsen zijn bezet.", seatsNL(len(r.seats))))
+			fail(errFull, fmt.Sprintf("Deze tafel is vol: %s zijn bezet.", allSeatsNL(len(r.seats))))
 		}
 		if i == cards.NoSeat {
 			r.refused(name)
@@ -994,6 +1048,9 @@ func (r *room) cmdSit(c *client, i cards.Seat, m *inMsg) {
 	case r.training:
 		c.sendError(errInvalid, "In de oefenmodus ligt de tafel vast.")
 		return
+	case r.locked != "":
+		c.sendError(errInvalid, msgLocked)
+		return
 	case to == i:
 		return
 	case r.seats[to].kind != seatEmpty:
@@ -1018,6 +1075,9 @@ func (r *room) cmdBot(c *client, i cards.Seat, m *inMsg) {
 		return
 	case r.training:
 		c.sendError(errInvalid, "In de oefenmodus ligt de tafel vast.")
+		return
+	case r.locked != "":
+		c.sendError(errInvalid, msgLocked)
 		return
 	case r.seats[to].kind == seatHuman:
 		c.sendError(errInvalid, "Daar zit al iemand.")
@@ -1061,6 +1121,9 @@ func (r *room) cmdUnbot(c *client, i cards.Seat, m *inMsg) {
 		return
 	case r.training:
 		c.sendError(errInvalid, "In de oefenmodus ligt de tafel vast.")
+		return
+	case r.locked != "":
+		c.sendError(errInvalid, msgLocked)
 		return
 	case r.seats[to].kind != seatBot:
 		c.sendError(errInvalid, "Daar zit geen AI-speler.")
@@ -1184,6 +1247,9 @@ func (r *room) cmdLobby(c *client, i cards.Seat) {
 		return
 	case r.expert:
 		c.sendError(errInvalid, "In de expertmodus ligt de tafel vast.")
+		return
+	case r.locked != "":
+		c.sendError(errInvalid, msgLocked)
 		return
 	}
 	if i != r.host {

@@ -79,8 +79,8 @@ const OPTS = [
     info: ['De afspraken aan deze tafel: welke kaarten je maat iets vertellen. De AI-spelers op Normaal en Sterk en de tips houden zich eraan. Bij de start van een spel staan ze in de chat.',
       'Met de aas seinen: gooi je op een slag van je maat een aas bij van een bijkleur die nog niet gespeeld is, dan heb je de 10 van die kleur ook.',
       'Op- en afseinen: kun je niet bekennen op een slag van je maat, dan zegt een 7, 8 of 9 “speel deze kleur, daar heb ik de hoogste van” (opseinen) en een 10, boer, vrouw of heer “de hoogste van deze kleur heb ik niet” (afseinen). Op een slag van de tegenpartij zegt je bijkaart niets.',
-      'Kleintje boer: komt de spelende partij voor het eerst uit met een 7, 8 of 9 van een bijkleur, dan heeft die de troefboer.',
-      'Boer over boer: komt de spelende partij voor het eerst uit met een boer van een bijkleur, dan heeft die de troefboer.',
+      'Kleintje boer: komt iemand van de spelende partij voor het eerst uit met een 7, 8 of 9 van een bijkleur, dan heeft die de troefboer.',
+      'Boer over boer: komt iemand van de spelende partij voor het eerst uit met een boer van een bijkleur, dan heeft die de troefboer.',
       'Tegenkleur seinen staat hier niet bij: dat sein gebruiken de AI-spelers en de tips niet.'] },
   { key: 'seed', label: 'Seed', input: true, choices: [],
     info: ['Leeg: elke partij krijgt nieuwe kaarten.',
@@ -204,7 +204,7 @@ function openTraining() {
       h('details', { class: 'train-opts', open: !opts.tips || opts.open || !!opts.seed },
         h('summary', { text: 'Spelopties' }),
         switchRow('tips', 'Tips', 'Een tip bij elke beurt en uitleg na elke slag'),
-        switchRow('open', 'Open kaarten', 'Zie de kaarten van alle spelers'),
+        switchRow('open', 'Open kaarten', 'Je ziet de kaarten van alle spelers'),
         form),
       h('div', { class: 'sheet-foot' }, go),
     ],
@@ -243,7 +243,7 @@ function openExpert() {
     id: 'expert', title: 'Expert', cls: 'm-sheet m-train', body: [
       h('p', { class: 'sheet-note', text: 'Speel een spel opnieuw met de seed, of één potje ervan, op een plaats naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op de robot voor de redenering van de AI, en geef je commentaar. Na elk potje tik je op een slag en dan op Dit potje terugkijken.' }),
       h('label', { class: 'set-row' },
-        h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Zie de kaarten van alle spelers' })),
+        h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Je ziet de kaarten van alle spelers' })),
         h('span', { class: 'switch' }, open, h('i'))),
       form,
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-expert-go', onclick: () => {

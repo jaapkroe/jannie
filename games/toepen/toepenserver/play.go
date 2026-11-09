@@ -102,12 +102,13 @@ func (p *play) deal() {
 	t.Pause(stepDealt, t.Pace().Deal)
 	t.Emit(evDeal{Type: "deal", HandNo: p.handNo, Dealer: p.d.Dealer(), Koning: p.d.Koning()})
 	if d := p.d; d.Koning() {
-		lay := ""
+		deal, lay := fmt.Sprintf("Ieder speelt met %d kaarten", d.Size()), ""
 		if d.DealtSize() > d.Size() {
+			deal = fmt.Sprintf("Ieder krijgt %d kaarten en speelt met %d", d.DealtSize(), d.Size())
 			lay = fmt.Sprintf(" Leg er eerst %d dicht weg.", d.DealtSize()-d.Size())
 		}
-		t.SysChat("Koningsspel: iedereen die nog meedoet, staat op armoede. %d kaarten elk; je speelt met %d, zonder vuile was en zonder toepen: wie de laatste slag haalt, wint het spel.%s",
-			d.DealtSize(), d.Size(), lay)
+		t.SysChat("Koningsspel: iedereen die nog meedoet, staat op armoede. %s, zonder vuile was en zonder toepen: wie de laatste slag haalt, wint het spel.%s",
+			deal, lay)
 		t.BotsReact(1, 1200*time.Millisecond, func(i cards.Seat) (server.ChatEvent, bool) {
 			return server.ChatEvent{Kind: "koning", Mine: true}, p.d.Status(i) == toepen.StatusIn
 		})
@@ -200,8 +201,8 @@ func (p *play) proceed() {
 		}
 		t.Pause(stepAnnounced, 2*t.Pace().Announce)
 		t.Emit(evArmoede{Type: "armoede", Seats: poor, Stake: d.Stake()})
-		t.SysChat("Armoede: %s %s nog één strafpunt van eruit. De inzet is meteen %d.", joinNL(names),
-			map[bool]string{true: "staat", false: "staan"}[len(names) == 1], d.Stake())
+		t.SysChat("Armoede: nog één strafpunt en %s %s eruit. De inzet is meteen %d.", joinNL(names),
+			map[bool]string{true: "ligt", false: "liggen"}[len(names) == 1], d.Stake())
 	default:
 		t.OpenTurn()
 		t.Emit(nil)
@@ -583,7 +584,7 @@ func (p *play) Next() {
 	t := p.t
 	w := p.m.Winner()
 	p.winner = int(w)
-	t.SysChat("%s wint het spel na %d potjes!", t.DisplayName(w), p.handNo) // before the table's line with the seed
+	t.SysChat("%s wint het spel na %d %s!", t.DisplayName(w), p.handNo, map[bool]string{true: "potje", false: "potjes"}[p.handNo == 1]) // before the table's line with the seed
 	t.GameOver(slices.Clone(p.total), p.winner)
 	t.BotsReact(2, 1800*time.Millisecond, func(i cards.Seat) (server.ChatEvent, bool) {
 		if i == w {

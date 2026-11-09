@@ -404,7 +404,7 @@ func TestSterkReason(t *testing.T) {
 	if hint, _ := teachPick(&m, res, card("8S"), ruleCash); res[si].card != card("AS") || hint != card("8S") {
 		t.Fatalf("sterk %v, hint %v", res[si].card, hint)
 	}
-	want = "Sterk is volgens de berekening 3,0 punten beter dan de kaart van Normaal, minder dan 5 punten: dan blijft de tip bij die kaart."
+	want = "De kaart van Sterk is volgens de berekening 3,0 punten beter dan de kaart van Normaal, minder dan 5 punten: dan blijft de tip bij die kaart."
 	if got := hintKeptReason(res, si, j); got != want {
 		t.Errorf("hint kept:\n got %q\nwant %q", got, want)
 	}

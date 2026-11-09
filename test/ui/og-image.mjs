@@ -1,52 +1,33 @@
-// Renders games/<site>/web/og.png, the 1200×630 preview image that chat
-// apps show for a shared link (og:image in the site's index.html): the
-// felt, the site's emblem (klaverjas: the gold clover; toepen: a ten of
-// hearts), its name and a fan of real card faces from cards.js. Run it
-// again when the cards or the look change, and commit the PNG. Without
-// --url it serves the site itself (test/ui/site.mjs): no game server
-// needed.
+// Renders the site's og.png in its folder's web/, the 1200×630 preview image
+// that chat apps show for a shared link (og:image in the site's index.html):
+// the felt, the site's emblem (klaverjas: the gold clover; toepen: a ten of
+// hearts), its name and a fan of real card faces from cards.js, as the scene
+// of the game's test/facts.mjs has them. Run it again when the cards or the
+// look change, and commit the PNG. Without --url it serves the site itself
+// (test/ui/site.mjs): no game server needed.
 //
 //   scripts/chrome 9700
-//   cd test/ui && node og-image.mjs --cdp http://127.0.0.1:9700 [--site klaverjas|toepen] [--out FILE]
+//   cd test/ui && node og-image.mjs --cdp http://127.0.0.1:9700 [--site <game>] [--out FILE]
 //
 // test/ui/app-icons.test.mjs checks the result (size, opaque, under 300 KB).
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import { fileURLToPath } from 'node:url';
 import http from 'node:http';
 import puppeteer from 'puppeteer-core';
 import { args } from './app-lib.mjs';
-import { siteFile } from './site.mjs';
+import { facts, siteDir, siteFile } from './site.mjs';
 
 const a = args();
 const argv = process.argv.slice(2);
 const opt = name => (argv.includes('--' + name) ? argv[argv.indexOf('--' + name) + 1] : '');
 const site = opt('site') || 'klaverjas';
-const out = opt('out') || path.join(path.dirname(fileURLToPath(import.meta.url)), `../../games/${site}/web/og.png`);
+const out = opt('out') || path.join(siteDir(site), 'og.png');
 
-// Each site's scene: the felt's colour stops, the background, the emblem,
-// the name, the two lines and the fan.
-const CLOVER = '<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/>'
-  + '<stop offset="1" stop-color="#d79b28"/></linearGradient></defs><g fill="url(#g)"><circle cx="32" cy="20" r="9.5"/>'
-  + '<circle cx="21" cy="35" r="9.5"/><circle cx="43" cy="35" r="9.5"/><path d="M29 34h6l3 18H26z"/></g>';
-const TEN = '<g transform="rotate(-9 32 33)"><rect x="18.5" y="11" width="27" height="40" rx="4" fill="#fffaf0"/>'
-  + '<text x="32" y="34" text-anchor="middle" font-family="system-ui, sans-serif" font-weight="900" font-size="17" fill="#c8102e">10</text>'
-  + '<path d="M32 47.5c-5.8-3.9-7.6-7.2-5.2-9.6 1.8-1.8 4.1-.9 5.2.9 1.1-1.8 3.4-2.7 5.2-.9 2.4 2.4.6 5.7-5.2 9.6z" fill="#c8102e"/></g>';
-const SCENES = {
-  klaverjas: {
-    bg: '#0b2b21', stops: [[0, [0x2f, 0x9a, 0x62]], [0.45, [0x1b, 0x6b, 0x43]], [0.75, [0x0f, 0x4a, 0x2d]], [1, [0x0b, 0x2b, 0x21]]],
-    emblem: CLOVER, title: 'Klaverjas', t1: 'Speel mee aan tafel', t2: 'Met vrienden of tegen AI-spelers met karakter. Geen account nodig.',
-    t2color: '#bfe0cc', codes: ['TD', 'AS', 'JH', '9H', 'KC'],
-  },
-  toepen: {
-    bg: '#0b1f2e', stops: [[0, [0x3a, 0x7f, 0xb0]], [0.45, [0x22, 0x59, 0x7f]], [0.75, [0x0f, 0x35, 0x52]], [1, [0x0b, 0x1f, 0x2e]]],
-    emblem: TEN, title: 'Toepen', t1: 'Wie haalt de laatste slag?', t2: 'Met vrienden of tegen AI-spelers met karakter. Geen account nodig.',
-    t2color: '#c4dbec', codes: ['JS', '7C', '8D', '9S', 'TH'],
-  },
-};
-const scene = SCENES[site];
-if (!scene) throw new Error(`og-image: no scene for site ${site}`);
+// The site's scene, from its folder's test/facts.mjs: the felt's colour stops,
+// the background, the emblem, the name, the two lines and the fan.
+const { scene } = await facts(site);
+if (!scene) throw new Error(`og-image: no scene for site ${site} (the scene of its test/facts.mjs)`);
 
 // The site's files, unless --url names a server.
 let server = null;

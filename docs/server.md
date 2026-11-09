@@ -7,7 +7,8 @@ question, pacing, the game log and the limits. One server plays one game
 built-in game, and `cmd/toepen` toepen's `server.Game`
 (`games/toepen/toepenserver`,
 [games/toepen/README.md](../games/toepen/README.md)). The table imports no
-game's bots: each `cmd/<game>/ai.go` adapts the game's bot package to the
+game's bots: each game's main package (`cmd/<game>`, or `<folder>/cmd/<game>`
+for a later game) has an `ai.go` that adapts the game's bot package to the
 interfaces its server side needs (klaverjas: the table's `AI`; toepen:
 `toepenserver.AI`). It does import klaverjas's rules,
 for the built-in game (the `klaverjas_*.go` files;
@@ -66,6 +67,15 @@ type Game interface {
     Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
     New(t *Table) Play                      // one match at table t
 }
+type Opener interface {                     // optional: rooms of the game's own kind
+    Open(m Msg, o GameOptions) Opening      // once, on create, after the options are set
+}
+type Opening struct {                       // the zero Opening: an ordinary room
+    Seat   Seat                             // the creator's seat
+    Bots   []string                         // a persona ID per seat ("" none), kept on rematch
+    Start  bool                             // the match at once, as create's start
+    Locked string                           // not "": a fixed table; joiners get vol with this text
+}
 type GameOptions interface {
     Set(fields map[string]json.RawMessage, lenient bool) error // the game's keys; Dutch errors
     Wire(TableOpts) any                     // the state's opts and the game log's: table's and game's
@@ -73,7 +83,8 @@ type GameOptions interface {
 type TableOpts struct{ Players int; AI, Tempo string; Seed int }   // what every game has (below)
 type Play interface {
     Start(); Next()                         // deal the first hand; the next one, or Table.GameOver
-    Turn() Seat; HandLen(i Seat) int; Single() bool
+    Turn() Seat                             // the seat that decides, also for another seat's cards
+    HandLen(i Seat) int; Single() bool
     State(i Seat) any                       // Table.Shared(i) embedded, and the game's own keys
     Move(i Seat, m Msg) error               // a human's message: ErrUnknownMsg, ErrIgnore,
                                             // NotYourTurn(err) or ErrPaused, or ongeldig
@@ -90,6 +101,22 @@ it as `game.Seat`, the same type), as are the cards a game deals
 ("platform/cards" below).
 `Shared` is the part of the state every game sends
 ([protocol.md, "The shared state"](protocol.md#the-shared-state)).
+
+`Turn` is the seat whose decision the match waits for, and that is the
+seat that decides: when one player plays the cards of two seats (a
+partner's hand laid open on the table, say) it is that player's seat while
+the other seat's card is due, so its bot decides, its persona's think time
+counts and the question about an absent player is about it ("Takeover
+consent" below). Which hand to play from is the game's own state. A
+partnership the others may not see yet is the game's too: `State(i)` is
+per seat, and the table shows no sides.
+
+A game that implements `Opener` may open rooms of its own kind, such as a
+training table: `Open` reads the create message (`m.Raw`, the game's own
+fields) and the game options create set, and says where the creator sits,
+which bots sit where, whether the match starts at once and whether the
+table is fixed ("Rooms without a lobby" below). A game without it gets
+ordinary rooms.
 
 ### Table options
 
@@ -111,19 +138,43 @@ same seed and options give the same cards, whatever the players do.
 `*Table` is the game's handle on its room: reads (`Code`, `Opts`,
 `Options`, `Players`, `Deals`, `MatchID`, `DisplayName`,
 `BotPlays`, `HumanCount`, `InHand`, `Pending`, `PauseEnds`, `Pace`,
-`Logger`, `Shared`) and the moves of the table (`SetPhase`, `SetHand`,
-`Pause`, `EndPause`, `OpenTurn`, `Emit`, `Later`, `Think` for a question
-everyone answers at once, `Background` for an analysis off the room
-goroutine, `Trick`, `Summary`, `GameOver`, `SysChat`,
-`BotSay`, `BotsReact`, `Log`), every duration scaled by the room's tempo.
+`Logger`, `Shared`, `Current`) and the moves of the table (`SetPhase`,
+`SetHand`, `Pause`, `EndPause`, `OpenTurn`, `Emit`, `Later`, `Think` for a
+question everyone answers at once, `Background` for an analysis off the
+room goroutine, `Trick`, `Summary`, `GameOver`, `SysChat`,
+`BotSay`, `BotsReact`, `CoachChat`, `Send`, `Log`), every duration scaled
+by the room's tempo.
+`Later`, `Think` and `Background` call back unless a new match or the
+lobby has replaced the match they were asked in, or the room has closed:
+game over does not stop them, so a callback that must not act after
+game over checks the game's own phase. `Current()` returns that test as a
+func that is safe on any goroutine (the table's other methods run on the
+room goroutine only), so a game's own workers can skip a job of a match
+that is gone.
+`CleanText(s, limit)`, a function of the package, cleans text a person
+sent for the game's own use (feedback, as klaverjas's) line by line,
+each line as the table cleans a chat line ("Limits" below), lines with
+nothing visible left out, at most `limit` characters in all.
+`CoachChat(i, text)` puts a line of the bot at seat `i` in the chat
+outside the limits of bot chat, marked `coach` (a lesson step; "Bot chat"
+below); for a seat without a bot it puts nothing, so no line goes in a
+human's name. `Send(i, msg)` sends a message of the game's own to the human at
+seat `i` alone, if connected, and reports whether it went: an answer for
+that player only (the review of one hand), where `Emit`'s event goes to
+everyone. Its `t` must be none of the table's (`joined`, `update`,
+`chat`, `chatlog`, `refused`, `rtc`, `error`, `pong`); such a message, or
+one without a `t`, is logged and not sent
+([protocol.md, "Server → client"](protocol.md#server--client)).
 A game never sees the seed, only the stream its deals come from (`Deals`);
 `GameOver` names it in the chat ("The seed" below), so a game's own line
 about the end goes before that call.
 The table drives the match after every call into the game and every
 callback; a game never schedules itself. For another game the table reads
-`players`, `ai`, `tempo` and `seed` ("Kies N tot en met M spelers.") and
-hands the other keys to `Set`; `training` and `expert` are klaverjas's and
-ignored.
+`players`, `ai`, `tempo` and `seed` ("Kies N tot en met M spelers.", or
+for a game of one table size "Dit spel speel je met N spelers.") and
+hands the other keys to `Set`; `training`, `expert` and `seat` of `create`
+are klaverjas's, and another game reads what it wants of `create` in
+`Opener.Open`.
 
 ### servertest and the toy game
 
@@ -131,7 +182,12 @@ ignored.
 with `Create`, `Join`, `Until`, `WaitEvent`, `Poll` for several clients
 in one loop, `Keep` to keep every message, …; `SeedAtEnd` checks a
 client's messages for the seed, "The seed" below), and `toy_test.go` a toy
-game ("hoogste kaart") that is the template for the next one.
+game ("hoogste kaart") that is the template for the next one. Its
+variants show the rest of the API: `toyTable` a table of the game's own
+(`Opener`) with coach lines (`CoachChat`) and messages to one seat
+(`Send`), `toyThree` a game of one table size, and `toyLate` work that
+outlives game over (`Later`, `Background`, `Think`), `Current` and
+`CleanText`.
 
 ### Personas
 
@@ -161,8 +217,9 @@ sheets at `/api/score`,
 [games/toepen/README.md, "Score bijhouden"](../games/toepen/README.md#score-bijhouden))
 with the flags `-addr 127.0.0.1:8081`, `-games DIR` (the game log),
 `-static DIR` (dev only: `DIR` is the repository, and the server also
-serves the frontend, the union of `DIR/platform/web` and
-`DIR/games/<game>/web`, a path in both or a missing directory being a
+serves the frontend, the union of `DIR/platform/web` and the `web/` of
+the game's folder, `DIR/games/<game>` or, for a game of the overlay,
+`DIR/extra/<game>` (the one with `<game>.mk`), a path in both or a missing directory being a
 start-up error; the same `/^[A-Za-z]{4}$/` → index.html rule as nginx,
 `Cache-Control: no-cache`, the nginx CSP and the game's 404 page),
 `-fast`, `-origin PATTERN` (repeatable), `-healthcheck` (GET
@@ -216,7 +273,8 @@ of the state (skipped without the flag).
 - Code: 4 letters from `ABCDEFGHJKLMNPQRSTUVWXYZ` (no I, O), unique among live
   rooms, case-insensitive on input. Join link: `https://SITE/ABCD`
   (`https://klaverjas.kroes.dev/ABCD`).
-- Creator sits at seat 0 and is host. If the host leaves, the next human
+- Creator sits at seat 0 (or where the game's `Opening` says) and is
+  host. If the host leaves, the next human
   becomes host (a connected one first); if the host stays disconnected for
   30 s while another human is connected, the next connected human does. With
   nobody else connected the role stays, so a host who comes back first keeps
@@ -238,7 +296,8 @@ of the state (skipped without the flag).
 ## Seats and the lobby
 
 `players` seats (`0..players-1`). The lobby starts with only the
-creator seated; nobody places bots by option. The host can put a bot (chosen
+creator seated (and the bots of the game's `Opening`, "Rooms without a
+lobby" below); nobody places bots by option. The host can put a bot (chosen
 or random) on any empty seat and remove bots. Humans may move to any empty
 seat. At start, empty seats get random distinct bots. Changing `players` in
 the lobby keeps everyone whose seat stays; a human on a seat that goes moves
@@ -261,6 +320,11 @@ mensen aan tafel.").
   Opa Dirk (AI) over."), and "Anna neemt de plaats weer in." for the same
   name again (anyone with the code may type it, so the line claims no
   more).
+- A fixed table (klaverjas's training and expert mode, a game's
+  `Opening.Locked`) refuses every joiner with `vol`, whose text is the
+  game's; only its own player gets back in after a lost connection, by
+  the seat token or by name, and not after `leave` ("Reconnect, dropping
+  out and leaving" below).
 - A join refused from a full lobby or after game over is told to the table:
   the system line "… wilde aanschuiven, maar de tafel is vol." and, for the
   host only, a `refused` message
@@ -280,7 +344,53 @@ and the host can change seats, bots and options before starting. Scores
 and the previous hand are cleared.
 The system line says "Wie wil, kan nu aanschuiven." only when a seat is
 free. A game may have rooms without a lobby (klaverjas's training and
-expert mode).
+expert mode, and a game's fixed tables: "Rooms without a lobby" below);
+there `lobby` is refused.
+
+## Rooms without a lobby
+
+A game that implements `Opener` says how each new room opens
+(`Opening`): mostly a table of its own that starts at once and that
+nobody else joins (a training table), though a fixed table may keep its
+lobby. The zero `Opening` is an ordinary room, and so is every room of a
+game without `Opener`. The table calls `Open` once, on `create`, after
+the room's options are set, with the game's own options and the create
+message. The table's options (`players`, `ai`, `tempo`, `seed`) are not
+passed: a game that needs them, say for `Seat` or `Bots` on a table of
+several sizes, reads them from `m.Raw`, unchecked, as `create` asked
+for them.
+
+- `Seat`: the creator's seat, and the host's (a seat off the table is
+  logged, and the creator sits at 0).
+- `Bots`: a persona ID per seat, "" for none. These bots sit down at once
+  and stay, also on `rematch`, as bots placed in the lobby do; the seats
+  left empty get random bots at the start as usual. A bot the table cannot
+  seat (on the creator's seat or off the table, an unknown persona, one at
+  the table already) is logged and left out.
+- `Start`: the match starts at once, as with `create`'s `start` (the
+  creator gets the lobby state first, as one update).
+- `Locked`: when not empty, the table is fixed. A joiner who would take a
+  seat, in the lobby, in a match or after it, gets `vol` with this text
+  (a seat its player left is no exception, and nobody is told: the host
+  cannot make room). In the lobby `sit`, `bot`, `unbot` and an `opts`
+  that changes `players` get `ongeldig` "Deze tafel ligt vast.", and so
+  does `lobby` after game over; the other options and `start` work in a
+  fixed lobby, and `rematch` after game over. The room's own player gets
+  back in after a lost connection: with the seat token, and without it by
+  the same name once the seat has been disconnected for 3 min; one who
+  left (`leave`) does not ("Reconnect, dropping out and leaving" below).
+
+`o` is the room's own game options: `Open` may change them (a lesson that
+fixes its form), and the state shows them from the first update. It
+cannot change the table's options (`players`, `ai`, `tempo`, `seed`), nor
+the texts of the refused lobby commands. A game that wants its bots at
+one strength on such a table, whatever `ai` says, keeps brains of its own
+for them and decides with those in `Play.Decision` instead of the
+table's.
+
+Klaverjas's training and expert mode are rooms of this kind, built in,
+with their own texts
+([games/klaverjas/README.md](../games/klaverjas/README.md)).
 
 ## Reconnect, dropping out and leaving
 
@@ -363,7 +473,9 @@ What a bot says is its game's (klaverjas:
 toepen: `toepbot.Chat`). The server allows a bot at most one line per trick
 and one per 8 s, scaled by Chattiness (the gap is 8 s / max(Chattiness,
 0.2)); per event at most one bot speaks (two for the greeting and game
-end), and about 60% of human lines get a reply attempt. A bot does not
+end), and about 60% of human lines get a reply attempt. A game's coach
+lines (`Table.CoachChat`: a lesson step) are outside these limits; the
+game says them and decides how many. A bot does not
 repeat one of its last two lines for the same kind of event (numbers aside:
 "20 roem" and "50 roem" are one line); it asks for another line a few times
 and otherwise stays silent.

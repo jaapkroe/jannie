@@ -23,7 +23,8 @@ class FakeNode {
 globalThis.Node = FakeNode;
 globalThis.document = { createElement: tag => new FakeNode(tag) };
 const {
-  store, cap, playerName, keyboardOpen, textField, DEFAULT_NAME, countWord, versionText, supportURL,
+  store, cap, playerName, keyboardOpen, textField, DEFAULT_NAME, countWord, versionText, supportURL, isMyTurn,
+  turnOpens,
 } = await import('../../platform/web/js/util.js');
 
 test('store keeps values in memory when localStorage is blocked', () => {
@@ -127,6 +128,10 @@ test('a player without a name is "Speler", as the server calls one', () => {
 test('versionText: the commit shortened, -dirty kept, "dev" when not filled in', () => {
   assert.equal(versionText('a05a087d1f9ff827b5d8c4f9de0bc387d2c23957'), 'a05a087');
   assert.equal(versionText('a05a087d1f9ff827b5d8c4f9de0bc387d2c23957-dirty'), 'a05a087-dirty');
+  // A game of the overlay: both commits.
+  assert.equal(versionText('a05a087d1f9ff827b5d8c4f9de0bc387d2c23957.0b1c2d3e4f5a'), 'a05a087.0b1c2d3');
+  assert.equal(versionText('a05a087d1f9ff827b5d8c4f9de0bc387d2c23957.0b1c2d3e4f5a-dirty'), 'a05a087.0b1c2d3-dirty');
+  assert.equal(versionText('a05a087d1f9ff827b5d8c4f9de0bc387d2c23957.'), 'dev');
   assert.equal(versionText('@VERSION@'), 'dev');
   assert.equal(versionText('dev'), 'dev');
   assert.equal(versionText(''), 'dev');
@@ -140,4 +145,40 @@ test('supportURL: an https link as it is, nothing when not filled in or not one'
     ' https://pay.example/r', 'https://pay.example/a b', 'https://pay.example/"x', 'https://pay.example/<x>']) {
     assert.equal(supportURL(v), '', String(v));
   }
+});
+
+test('isMyTurn: without a hook the own seat on turn in a phase of play; a hook decides both ways', () => {
+  const plain = { PLAYING: new Set(['play', 'bid']) };
+  const st = (turn, phase) => ({ you: 2, turn, phase });
+  assert.equal(isMyTurn(plain, st(2, 'play')), true);
+  assert.equal(isMyTurn(plain, st(2, 'bid')), true);
+  assert.equal(isMyTurn(plain, st(1, 'play')), false, 'another seat');
+  assert.equal(isMyTurn(plain, st(2, 'lobby')), false, 'not a phase of play');
+  // A hook overrides the default test either way, even outside PLAYING.
+  const never = { ...plain, myTurn: () => false };
+  const always = { ...plain, myTurn: () => true };
+  assert.equal(isMyTurn(never, st(2, 'play')), false);
+  assert.equal(isMyTurn(always, st(1, 'play')), true);
+  assert.equal(isMyTurn(always, st(1, 'lobby')), true);
+  const held = { ...plain, myTurn: s => !s.lesson && s.turn === s.you };
+  assert.equal(isMyTurn(held, { ...st(2, 'play'), lesson: { step: 1 } }), false);
+  assert.equal(isMyTurn(held, st(2, 'play')), true);
+});
+
+test('turnOpens: a turn opens when it becomes the player\'s, or theirs again in another phase', () => {
+  const plain = { PLAYING: new Set(['play', 'bid']) };
+  const st = (turn, phase) => ({ you: 0, turn, phase });
+  assert.equal(turnOpens(plain, null, st(0, 'play')), true, 'the first state');
+  assert.equal(turnOpens(plain, st(3, 'play'), st(0, 'play')), true, 'from another seat');
+  assert.equal(turnOpens(plain, st(0, 'play'), st(0, 'play')), false, 'still the same turn');
+  assert.equal(turnOpens(plain, st(0, 'bid'), st(0, 'play')), true, 'across a phase change');
+  assert.equal(turnOpens(plain, st(0, 'lobby'), st(0, 'bid')), true, 'out of the lobby');
+  assert.equal(turnOpens(plain, st(0, 'play'), st(1, 'play')), false, 'not theirs');
+  assert.equal(turnOpens(plain, st(0, 'play'), st(0, 'lobby')), false, 'not a phase of play');
+  // With a hook: the turn opens when the hook turns true, also on the same seat and phase.
+  const held = { ...plain, myTurn: s => !s.lesson && s.turn === s.you && plain.PLAYING.has(s.phase) };
+  const lesson = { ...st(0, 'play'), lesson: { step: 2 } };
+  assert.equal(turnOpens(held, st(3, 'play'), lesson), false, 'held while the step shows');
+  assert.equal(turnOpens(held, lesson, st(0, 'play')), true, 'opens when the step goes');
+  assert.equal(turnOpens(held, st(0, 'play'), st(0, 'play')), false);
 });

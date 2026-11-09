@@ -285,7 +285,7 @@ func TestRuleTexts(t *testing.T) {
 			spec:  [4]string{"8D", "7C 8C 9C AS 7S 8S 9S 7H", "7D", "AD JS TC QD 8H KH"},
 			plays: "7D AD 8D",
 			want:  "7S",
-			text:  "Speel ♠7: je maat heeft de slag zeker, maar ♠A is de hoogste schoppen en kan zelf nog een slag halen. ♣7 zou je maat lezen als “speel klaveren, daar heb ik de hoogste van” (opseinen), maar die heb je niet. Zo zeg je ook tegen je maat: “speel schoppen, daar heb ik de hoogste van” (opseinen).",
+			text:  "Speel ♠7: je maat heeft de slag zeker, maar ♠A is de hoogste schoppen en kan zelf nog een slag halen. Je maat zou ♣7 lezen als “speel klaveren, daar heb ik de hoogste van” (opseinen), maar die heb je niet. Zo zeg je ook tegen je maat: “speel schoppen, daar heb ik de hoogste van” (opseinen).",
 		},
 		{
 			name: "lead to partner's opseinen", voorhand: 2, trump: game.Hearts,
@@ -610,11 +610,11 @@ func TestBidAndTrumpWording(t *testing.T) {
 			"Kies ♥ als troef: je hebt de aas, in totaal vier harten. Je haalt het zo naar schatting in 6 van de 10 potjes."},
 		{"pass: likely to make it, but passing scores more",
 			bidText(ptr(view("JC QC AH TH 7H QS AD TD", game.Clubs, 2)), false, stats(26, 0.78)),
-			"Passen: je hebt wel de boer van ♣, maar met maar twee klaveren is dat te weinig. Als je speelt, haal je het naar schatting in 8 van de 10 potjes, " +
+			"Passen: je hebt wel de boer van ♣, maar met alleen twee klaveren is dat te weinig. Als je speelt, haal je het naar schatting in 8 van de 10 potjes, " +
 				"maar passen levert gemiddeld meer op: gaat het mis, dan krijgen de tegenstanders 162 punten en alle roem, en met je azen verdedig je sterk."},
 		{"pass as voorhand",
 			bidText(ptr(view("JC QC AH TH 7H QS AD TD", game.Clubs, 1)), false, stats(26, 0.78)),
-			"Passen: je hebt wel de boer van ♣, maar met maar twee klaveren is dat te weinig. Als je speelt, haal je het naar schatting in 8 van de 10 potjes, " +
+			"Passen: je hebt wel de boer van ♣, maar met alleen twee klaveren is dat te weinig. Als je speelt, haal je het naar schatting in 8 van de 10 potjes, " +
 				"maar passen levert gemiddeld meer op: passen de anderen ook, dan kies jij een andere kleur als troef."},
 		{"pass: nat is too likely",
 			bidText(ptr(view("7C 8C AH TH 7H QS 9D TD", game.Clubs, 2)), false, stats(-40, 0.4)),

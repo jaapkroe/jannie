@@ -1001,7 +1001,7 @@ var voices = map[string]*voice{
 		},
 		replies: map[string][]string{
 			"hello":    {"Yo! 👋", "Hoi 😎", "Hé 🙌", "Hallo 👋"},
-			"praise":   {"Dankje 😎", "🙏", "Haha dank je 🔥", "Jij ook 👊"},
+			"praise":   {"Dank je 😎", "🙏", "Haha dank je 🔥", "Jij ook 👊"},
 			"gg":       {"gg 🫡", "gg wp 👏", "ggg 🏆"},
 			"laugh":    {"😂😂", "lol 😆", "🤣"},
 			"help":     {"Handleiding zit onder het vraagteken 👆", "Bekennen, anders troeven 🃏", "Gewoon op gevoel 🤙 (en tellen)"},
@@ -1038,7 +1038,7 @@ var voices = map[string]*voice{
 			},
 			"pass": {
 				"Pas. Dit deeg rijst niet.",
-				"Ik pas. Geen zin in een half gebakken potje.",
+				"Ik pas. Geen zin in een halfgebakken potje.",
 				"Pas. Ik bewaar mijn krachten.",
 				"Pas, lieverd.",
 			},

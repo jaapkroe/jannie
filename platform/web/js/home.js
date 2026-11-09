@@ -238,7 +238,7 @@ function openNewGame() {
     id: 'new', title: 'Nieuw spel', cls: 'm-sheet m-new', body: [
       // A seed holds for this game only: a remembered one would deal the same cards forever.
       optionsForm(opts, (k, v) => { opts[k] = v; store.setJSON('opts', { ...opts, seed: undefined }); showQuickSub(); }),
-      h('p', { class: 'sheet-note', text: 'Je krijgt een code en een link om te delen. Lege plaatsen worden aangevuld met AI-spelers.' }),
+      h('p', { class: 'sheet-note', text: 'Je krijgt een code en een link om te delen. Lege plaatsen worden opgevuld met AI-spelers.' }),
       h('div', { class: 'sheet-foot' }, h('button', { class: 'btn btn-go btn-big btn-block', type: 'button', id: 'btn-create', onclick: () => {
         if (!currentName()) { m.close(); return; }
         m.close(true);
@@ -423,7 +423,7 @@ function codeHint(s, host, free, bots) {
   if (!host) return 'Alle plaatsen zijn bezet.';
   if (bots) return 'Alle plaatsen zijn bezet. Haal een AI-speler weg als er nog iemand mee wil doen.';
   if (seatCount(s) < game.maxPlayers) return 'Alle plaatsen zijn bezet. Zet Spelers hoger als er nog iemand mee wil doen.';
-  return `Alle ${countWord(seatCount(s))} de plaatsen zijn bezet.`;
+  return seatCount(s) === 2 ? 'Beide plaatsen zijn bezet.' : `Alle ${countWord(seatCount(s))} de plaatsen zijn bezet.`;
 }
 
 // A seat in the lobby. Where it sits, its classes, what it is to you and

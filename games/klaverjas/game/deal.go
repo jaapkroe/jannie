@@ -26,7 +26,7 @@ var (
 	ErrWrongPhase  = errors.New("Dat kan nu niet.")
 	ErrNotYourTurn = errors.New("Je bent niet aan de beurt.")
 	ErrBadSuit     = errors.New("Ongeldige kleur.")
-	ErrTurnedSuit  = errors.New("De gedraaide kleur is door iedereen gepast: kies een andere kleur.")
+	ErrTurnedSuit  = errors.New("Iedereen heeft op de gedraaide kleur gepast: kies een andere kleur.")
 	ErrNotInHand   = errors.New("Die kaart heb je niet.")
 	ErrIllegal     = errors.New("Die kaart mag je nu niet spelen.")
 	ErrBadBid      = errors.New("Dat bod kan niet.")

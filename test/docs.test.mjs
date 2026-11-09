@@ -1,11 +1,12 @@
 // The links of the docs and the code's references to them. Checks every
-// tracked file:
+// tracked file, and every file of the overlay, extra/
+// (docs/adding-a-game.md#the-overlay):
 //   - a relative link or image in a Markdown file names a file of the
 //     repository, and its #anchor a heading of that file (#anchor alone: of
 //     the same file), with GitHub's anchors;
-//   - a reference to docs/<name>.md, games/<game>/README.md or
-//     test/e2e/README.md in any other text file, with or without an
-//     #anchor, does the same;
+//   - a reference to docs/<name>.md, games/<game>/README.md,
+//     extra/<game>/README.md or test/e2e/README.md in any other text file,
+//     with or without an #anchor, does the same;
 //   - no file cites the docs these replaced, or their numbered sections,
 //     but for the one comment that renders into the installed units.
 //   node --test test/docs.test.mjs
@@ -20,35 +21,52 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SELF = path.relative(ROOT, fileURLToPath(import.meta.url)).split(path.sep).join('/');
 
 // What .gitignore leaves out, for a tree without git: no checkout's own
-// files, no packages, no build output.
+// files, no packages, no build output; and the overlay, which is listed on
+// its own.
 const UNTRACKED = new Set(['.git', '.worktrees', '.claude', '.vscode', 'build', 'test/ui/out', 'local.mk',
-  'CLAUDE.local.md']);
+  'CLAUDE.local.md', 'extra']);
 
-// Every file under dir, as paths from the root, but UNTRACKED and
-// node_modules.
+// Every file under dir, as paths from the root, but UNTRACKED, git
+// directories and node_modules.
 function walk(dir, out = []) {
   for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
     const f = dir ? `${dir}/${e.name}` : e.name;
-    if (UNTRACKED.has(f) || e.name === 'node_modules') continue;
+    if (UNTRACKED.has(f) || e.name === 'node_modules' || e.name === '.git') continue;
     if (e.isDirectory()) walk(f, out);
     else if (e.isFile()) out.push(f);
   }
   return out;
 }
 
+// The files of git's checkout at dir ("" for the root), as paths from the
+// root: the tracked ones and the untracked ones its .gitignore keeps.
+function gitFiles(dir) {
+  const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
+    { cwd: path.join(ROOT, dir), encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 26 });
+  return out.split('\0').filter(Boolean).map(f => dir ? `${dir}/${f}` : f);
+}
+
 // The files, as paths from the root ("docs/server.md"): the tracked ones
 // that exist and the untracked ones git does not ignore, or, outside a git
-// checkout, every file but those git would ignore.
+// checkout, every file but those git would ignore. And the overlay's, which
+// git ignores here: those of its own checkout, or every file in it.
 function repoFiles() {
   let files;
   try {
-    const out = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'],
-      { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 1 << 26 });
-    files = [...new Set(out.split('\0').filter(Boolean))];
+    files = gitFiles('').filter(f => !f.startsWith('extra/'));
   } catch {
     files = walk('');
   }
-  return files.filter(f => fs.statSync(path.join(ROOT, f), { throwIfNoEntry: false })?.isFile()).sort();
+  if (fs.existsSync(path.join(ROOT, 'extra'))) {
+    let overlay;
+    try {
+      overlay = fs.existsSync(path.join(ROOT, 'extra', '.git')) ? gitFiles('extra') : walk('extra');
+    } catch {
+      overlay = walk('extra');
+    }
+    files.push(...overlay);
+  }
+  return [...new Set(files)].filter(f => fs.statSync(path.join(ROOT, f), { throwIfNoEntry: false })?.isFile()).sort();
 }
 
 const FILES = repoFiles();
@@ -168,7 +186,7 @@ function markdownLinks(file) {
 }
 
 // A reference to a doc in a file that is not Markdown, from the root.
-const DOC_REF = /(?<![\w./-])(?:docs\/[\w-]+\.md|games\/[\w-]+\/README\.md|test\/e2e\/README\.md)(?:#[\p{L}\p{M}\p{N}_-]+)?/gu;
+const DOC_REF = /(?<![\w./-])(?:docs\/[\w-]+\.md|(?:games|extra)\/[\w-]+\/README\.md|test\/e2e\/README\.md)(?:#[\p{L}\p{M}\p{N}_-]+)?/gu;
 
 // The docs replaced by docs/architecture.md, server.md, protocol.md,
 // frontend.md, deployment.md, adding-a-game.md and the games' READMEs, by

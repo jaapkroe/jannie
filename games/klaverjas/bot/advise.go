@@ -194,8 +194,11 @@ func bidText(v *game.View, play bool, st optionStats) string {
 		case len(hon) > 0:
 			what = joinNL(hon) + " van " + s.Symbol() + " (" + numberNL(n) + " troeven in totaal)"
 		}
-		return "Spelen: met " + what + " is je hand sterk genoeg." + sideAcesText(h, s) +
-			" Je haalt het naar schatting " + chance + "."
+		head := "Spelen: met " + what + " is je hand sterk genoeg."
+		if n == 0 {
+			head = "Spelen: ook zonder " + name + " is je hand sterk genoeg."
+		}
+		return head + sideAcesText(h, s) + " Je haalt het naar schatting " + chance + "."
 	}
 	var why string
 	switch {
@@ -208,7 +211,7 @@ func bidText(v *game.View, play bool, st optionStats) string {
 	case n == 1:
 		why = "je hebt wel " + hon[0] + " van " + s.Symbol() + ", maar verder geen " + name
 	case n <= 2:
-		why = "je hebt wel " + joinNL(hon) + " van " + s.Symbol() + ", maar met maar " + numberNL(n) + " " + name + " is dat te weinig"
+		why = "je hebt wel " + joinNL(hon) + " van " + s.Symbol() + ", maar met alleen " + numberNL(n) + " " + name + " is dat te weinig"
 	default:
 		why = "je hebt " + joinNL(hon) + " van " + s.Symbol() + " en " + numberNL(n) + " " + name + ", maar de rest van je hand is te zwak"
 	}
@@ -323,7 +326,9 @@ func addedRoemNames(before []game.Card, c game.Card, trump game.Suit) string {
 }
 
 // ExplainTrick describes a finished trick in Dutch: who won it, with what
-// and why, and what it was worth. For example
+// and why, and what it was worth. names are as in the middle of a sentence
+// ("jij" for the player it is for); the one that starts it gets a capital.
+// For example
 // "Fatima (AI) wint de slag met ♥B, de hoogste troef. 27 punten, roem: stuk (20)."
 func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
 	if len(t.Cards) != 4 || !t.Winner.Valid() {
@@ -345,7 +350,7 @@ func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string {
 			under = append(under, names[p.Seat])
 		}
 	}
-	name := names[t.Winner]
+	name := capital(names[t.Winner])
 	var b strings.Builder
 	switch {
 	case win.Suit == trump && led == trump:

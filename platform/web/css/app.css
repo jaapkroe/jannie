@@ -1,6 +1,6 @@
 /* The shell's styles, shared by every site: tokens, layout, home, lobby, table
    chrome, seats, overlays, chat. Cards: cards.css. Each site adds a
-   stylesheet of its own (games/<game>/web/css). */
+   stylesheet of its own (css/ in the game's web/). */
 
 :root {
   color-scheme: dark;

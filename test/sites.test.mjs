@@ -1,6 +1,7 @@
 // One site per game (docs/frontend.md#one-site-per-game,
 // docs/architecture.md#one-site-per-game): each game's site is the union of
-// platform/web (the shell) and games/<game>/web. Checks, for every site:
+// platform/web (the shell) and the web/ of the game's folder, games/<game>
+// or extra/<game> (docs/adding-a-game.md#the-folder). Checks, for every site:
 //   - the two trees share no path (no file of the shell is replaced);
 //   - a page load stays within 17 requests, which a rate limit in front of
 //     the site must let through at once, and
@@ -13,7 +14,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { SHELL, GAMES, siteDir, siteFile, treeFiles } from './ui/site.mjs';
+import { SHELL, GAMES, facts, siteDir, siteFile, treeFiles } from './ui/site.mjs';
 
 const SHARED = SHELL;
 const read = f => fs.readFileSync(f, 'utf8');
@@ -107,8 +108,10 @@ for (const game of GAMES) {
     assert.ok(fs.existsSync(path.join(dir, 'js', 'game.js')), 'the game has its game.js');
   });
 
-  test(`${game}: nothing a player sees names another game`, () => {
-    const others = GAMES.filter(g => g !== game).map(g => g === 'klaverjas' ? 'klaverj' : g.slice(0, 4));
+  test(`${game}: nothing a player sees names another game`, async () => {
+    // How a game is named: mention in its test/facts.mjs, or the first four
+    // letters of its name.
+    const others = await Promise.all(GAMES.filter(g => g !== game).map(async g => (await facts(g)).mention ?? g.slice(0, 4)));
     const files = [...treeFiles(dir).map(f => path.join(dir, f)), ...treeFiles(SHARED).map(f => path.join(SHARED, f))];
     for (const f of files) {
       const text = visibleText(f).toLowerCase();

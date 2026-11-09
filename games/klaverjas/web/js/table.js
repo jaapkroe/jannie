@@ -237,7 +237,7 @@ function renderTop(s) {
   E.badgeCnt.textContent = left ?? '';
   E.badge.title = known
     ? `Troef is ${suitName(s.trump)}, gekozen door ${nameOf(s, s.trumpBy, false)}.` +
-      (left === null ? '' : ` De anderen hebben nog ${left} ${left === 1 ? 'troef' : 'troeven'}.`) + ' Tik voor details.'
+      (left === null ? '' : left === 0 ? ' De anderen hebben geen troef meer.' : ` De anderen hebben nog ${left} ${left === 1 ? 'troef' : 'troeven'}.`) + ' Tik voor details.'
     : 'Er is nog geen troef gekozen. Tik voor details over de spelvariant.';
   panels.setLastEnabled(!!s.lastTrick?.cards?.length);
 }
@@ -529,7 +529,7 @@ function trumpSub(s, forced) {
   }
   const we = n === 2 ? 'Je moet' : 'Jullie moeten';
   if (forced) return `${suitText(s.turned)} mag niet meer. ${n === 2 ? 'Jij speelt en moet' : 'Jullie spelen en moeten'} meer dan de helft van de punten halen.`;
-  return `Jij komt uit. ${we} daarna meer dan de helft van de punten halen.${n === 2 ? ' Dan gaan de achterste kaarten open.' : ''}`;
+  return `Jij komt uit. ${we} daarna meer dan de helft van de punten halen.${n === 2 ? ' Na de troefkeuze gaan de achterste kaarten open.' : ''}`;
 }
 
 function bidPanel(s, my) {
@@ -2213,7 +2213,7 @@ function discardLine(s, r) {
   const pts = (r.discards || []).reduce((n, c) => n + cardPoints(c, r.trump), 0);
   return h('p', { class: 'sum-why' }, infoBtn('Alleen spelen', [
     'Wie alleen speelt, moet minstens het bod halen: punten plus roem, de weggelegde kaarten meegeteld.',
-    'Gehaald: ieder krijgt wat hij haalde, en de andere twee delen hun punten, ieder de helft. Nat: wie alleen speelde krijgt niets en de andere twee delen alle 162 punten en alle roem.',
+    'Gehaald: ieder krijgt wat hij haalde, en de andere twee delen hun punten, ieder de helft. Nat: wie alleen speelde, krijgt niets en de andere twee delen alle 162 punten en alle roem.',
   ]), ' Weggelegd: ', suitify(r.discards.map(c => cardShort(c)).join(' ')), ` (${pts} ${pts === 1 ? 'punt' : 'punten'}).`);
 }
 
@@ -2357,8 +2357,8 @@ function openReview() {
       h('div', { class: 'rv-head' },
         h('small', { class: 'rv-who', text: 'Volgens Juf Jannie' }),
         h('div', { class: 'rv-pct' }, h('b', { text: `${r.pct}%` }), h('span', { text: `(${reviewVerdict(r.pct)})` }), infoBtn('Spelanalyse', [
-          'Juf Jannie is de game engine van dit spel: dezelfde die de AI-spelers laat spelen en bij Oefenen de tips geeft. Dit is haar berekening, met alleen wat jij op dat moment wist.',
-          'Bij elke keuze speelt ze het potje honderden keren uit, voor elke kaart, troefkleur of elk bod dat je had, telkens met een andere verdeling van de kaarten die je niet kon zien. Wat een keuze gemiddeld oplevert, is haar waarde.',
+          'Juf Jannie is de game-engine van dit spel: dezelfde die de AI-spelers laat spelen en bij Oefenen de tips geeft. Dit is haar berekening, met alleen wat jij op dat moment wist.',
+          'Bij elke keuze speelt ze het potje honderden keren uit, voor elke kaart, troefkleur of elk bod dat je kon kiezen, telkens met een andere verdeling van de kaarten die je niet kon zien. Wat een keuze gemiddeld oplevert, is haar waarde.',
           'Punten zijn het verschil tussen de score van jullie koppel en die van de tegenstanders aan het eind van het potje. Een punt dat naar de tegenstanders gaat in plaats van naar jullie, telt dus twee keer. Gaat een potje nat, dan krijgen de tegenstanders alle punten: een keuze die de kans op nat groter maakt, kost gemiddeld veel, ook als de kaart zelf weinig punten waard is.',
           'Het blijft een schatting: Juf Jannie speelt de rest van het potje met eenvoudige regels uit.',
           'Het percentage zegt hoeveel van de punten die met je keuzes te winnen waren, je ook haalde. Je kaarten tellen niet mee: ook met slechte kaarten kun je 100% halen.',
@@ -2383,7 +2383,7 @@ function openReview() {
       sp ? h('section', { class: 'rv-sec' }, h('h3', {}, 'Snelheid'),
         h('table', { class: 'rv-table' }, h('tbody', {},
           row('Bedenktijd per zet', timeText(sp.median), infoBtn('Bedenktijd', [
-            'De tijd van het moment dat je aan de beurt was tot je kaart, troefkeuze of bod. Per zet staat de middelste van je tijden: de helft van je zetten ging sneller, de helft langzamer. Zo telt één lange pauze niet zwaar mee.',
+            'De tijd van het moment dat je aan de beurt was tot je kaart, troefkeuze of bod. Je ziet de middelste van je tijden: de helft van je zetten ging sneller, de helft langzamer. Zo telt één lange pauze niet zwaar mee.',
             'Een beurt waarin je verbinding even weg was, telt niet mee. De AI-spelers tellen niet mee bij de anderen.',
           ])),
           row('Langste bedenktijd', `${timeText(sp.slowest.ms)} (${momentWhere(sp.slowest).toLowerCase()})`),
@@ -2398,7 +2398,7 @@ function openReview() {
       r.replay?.length ? h('button', { class: 'btn btn-ghost btn-block rv-replay', type: 'button', onclick: () => openReplay(s, { hands: r.replay, owner: 'review' }) },
         icon('history'), 'Potjes terugkijken') : null,
       prev.length ? h('p', { class: 'rv-prev' }, 'Vorige partijen ', h('b', { text: prev.map(p => `${p}%`).join(' · ') })) : null,
-      h('p', { class: 'legend', text: 'Disclaimer: Dit is slechts de mening van Juf Jannie.' }),
+      h('p', { class: 'legend', text: 'Disclaimer: dit is slechts de mening van Juf Jannie.' }),
       h('section', { class: 'rv-sec' }, h('h3', {}, 'Opmerkingen'),
         feedbackForm(() => ({}), 'Opmerking over dit spel of de analyse'),
         h('p', { class: 'legend', text: 'Je opmerking wordt met je naam bewaard, net als de partij zelf: hooguit 12 maanden, voor statistieken en om het spel te verbeteren.' })),
@@ -2573,7 +2573,7 @@ export function openReplay(s, { hands, moment = null, owner = 'review' }) {
           alt?.card ? h('span', {}, h('span', { class: 'rp-key ' + (mo.better ? 'rp-better' : 'rp-alt') }),
             suitify(`${cardShort(alt.card)} ${mo.better ? 'beter volgens Juf Jannie' : 'voor de hand liggend'}`)) : null) : null,
         seats.slice(1).map(hand4)),
-      h('p', { class: 'legend', text: 'Alle kaarten liggen open. Bij een keuze wist de speler alleen de eigen kaarten en wat er gespeeld was.' }),
+      h('p', { class: 'legend', text: 'Alle kaarten liggen open. Bij een keuze zag de speler alleen de eigen kaarten en wat er gespeeld was.' }),
     ].filter(Boolean));
     // The player's card in a trick that lost points has a light dot, a
     // strong one a gold dot.

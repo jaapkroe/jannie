@@ -20,8 +20,9 @@
 //   cd test/ui && node css-same.mjs --base main app-screens.mjs --url ... --cdp ...
 //   node css-same.mjs --base main --waits app-checks.mjs --only lessons --url ... --cdp ...
 //
-// --base REV   the revision to compare with (default main); it must have the
-//              games/<game>/web and platform/web layout.
+// --base REV   the revision of this repository to compare with (default main),
+//              with games/<game>/web and platform/web; a game of the overlay,
+//              extra/, has nothing there to compare with.
 // --waits      compare also at every condition waitFor sees come true
 //              (app-checks.mjs takes screenshots only on failure).
 // --report F   write every difference as JSON to F.

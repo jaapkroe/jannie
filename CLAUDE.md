@@ -13,7 +13,8 @@ the layout; `docs/` and `games/<game>/README.md` are the design.
   the same commit.
 - Code cites a doc by its path and a section by its heading anchor:
   `docs/<file>.md#<anchor>` or `games/<game>/README.md#<anchor>`
-  (`docs/server.md#pacing`, `games/klaverjas/README.md#seinen-signals`).
+  (`extra/<game>/README.md#<anchor>` in the overlay;
+  `docs/server.md#pacing`, `games/klaverjas/README.md#seinen-signals`).
   `test/docs.test.mjs` checks every relative link and anchor in the
   markdown and every such reference in the code, so a renamed heading needs
   its citations changed with it.
@@ -37,31 +38,44 @@ the layout; `docs/` and `games/<game>/README.md` are the design.
 
 - **17 requests per page load**, the websocket included.
   `test/sites.test.mjs` counts them from index.html and the static imports.
-  Both sites are at the limit, so a new module is loaded lazily (dynamic
-  `import()`) or replaces one.
-- **One site per game.** A site is `platform/web` plus `games/<game>/web`;
-  the two trees share no path, and nothing on a site names another game
-  (`test/sites.test.mjs`).
+  Klaverjas's and toepen's sites are at the limit, so a new module is
+  loaded lazily (dynamic `import()`) or replaces one.
+- **One folder per game.** A game is a folder, `games/<game>/` or
+  `extra/<game>/` (the overlay, a checkout of a repository of private
+  games, which git ignores), with its settings in `<game>.mk`. The
+  Makefile, `scripts/dev-server`, the Containerfile and the shared tests
+  find it there, so adding a game touches its folder alone
+  ([docs/adding-a-game.md, "The folder"](docs/adding-a-game.md#the-folder)).
+  What a shared test needs to know of a game goes in the folder's
+  `test/facts.mjs`, not into the shared test.
+- **One site per game.** A site is `platform/web` plus the `web/` of the
+  game's folder; the two trees share no path, and nothing on a site names
+  another game (`test/sites.test.mjs`).
 - **Import boundaries**, checked by `test/layout.test.mjs` on the imports
-  of every Go file: nothing under `platform/` imports a package of
-  `games/`, except klaverjas's `platform/server/klaverjas_*.go` files and
-  the server's tests (`platform/server/*_test.go`), which may import
-  `games/klaverjas/`; no game imports another game's packages; `cmd/<g>`
-  imports only `platform/` and `games/<g>/`; and `platform/cards` imports
-  no package of the module. A new import must pass it.
+  of every Go file, the overlay's included: nothing under `platform/`
+  imports a package of a game, except klaverjas's
+  `platform/server/klaverjas_*.go` files and the server's tests
+  (`platform/server/*_test.go`), which may import `games/klaverjas/`; no
+  game imports another game's packages; a game's server, `cmd/<g>` or
+  `<folder>/cmd/<g>`, imports only `platform/` and the game's folder;
+  `platform/cards` imports no package of the module; and a game with an
+  import table in its `test/facts.mjs` keeps to it. A new import must pass
+  it.
 - **Production names never change**: per game the unit names
   (`<game>.pod`, `<game>-web.container`, `<game>-server.container`), the pod
   name, the images `localhost/<game>-server` and `localhost/<game>-web`, the
-  `<game>-games` volume (the game log), the `cmd/<game>` directory names
-  (they name the binary the health check runs), the rendered output of
+  `<game>-games` volume (the game log), the directory names of the
+  servers' main packages, `cmd/klaverjas`, `cmd/toepen` and a later game's
+  `<folder>/cmd/<game>` (they name the binary the health check runs), the
+  rendered output of
   `deploy/*.in` (compare `make -s quadlet GAME=klaverjas` and `GAME=toepen`
   before and after touching anything near them; the comments render too),
   the `kj.` localStorage prefix (players' saved state), and the constant in
   `dealRNG` (`platform/server`), which makes a seed deal the same cards.
-- **Ports** come from `games/<game>/<game>.mk`: klaverjas `DEV_PORT` 18093,
-  `E2E_PORT` 18094; toepen 18095, 18096. The rule, checked by
+- **Ports** come from each game's `<game>.mk`. The rule, checked by
   `scripts/deploy-test`: `ADDR` is an odd port P, `DEV_PORT` 10000+P,
-  `E2E_PORT` 10001+P. A new game takes the next odd port.
+  `E2E_PORT` 10001+P, and no two games share one. A new game takes the
+  next free odd port.
 - `make install`, `deploy`, `uninstall` and `image` build, install or
   remove a game's production pod on this machine: run them only when asked.
 - **No payment link in the repository.** `SUPPORT_URL`, the link behind
@@ -91,7 +105,7 @@ the layout; `docs/` and `games/<game>/README.md` are the design.
 
 ```sh
 make test       # go vet, go test -short, node --test, scripts/deploy-test; ~2 min cold, ~10 s warm
-make test-all   # every Go test, including the bot arenas: sterk beats normaal beats makkelijk
+make test-all   # every Go test (-timeout 60m), including the bot arenas: sterk beats normaal beats makkelijk
 make e2e        # full games over the websocket against each game's server, -fast (GAME=… for one)
 scripts/go test -run '^$' -bench . ./games/klaverjas/bot ./games/klaverjas/game  # CPU per decision, per hand
 scripts/go test -run '^$' -bench . ./platform/server                              # the server's cost per match
@@ -102,8 +116,9 @@ scripts/go test -run '^TestIdentity$' ./games/klaverjas/bot -args -identity.out=
 `TestIdentity` writes every decision, hint and grade of 384 seeded deals
 (`/src` is the repo root in the container): a change that must keep every
 decision (a speed-up) leaves the file byte for byte the same, so run it
-before and after and compare. `make test`'s JS part runs `test/*.test.mjs` and
-`test/ui/*.test.mjs`. `scripts/deploy-test` puts every game's units through
+before and after and compare. `make test`'s JS part runs `test/*.test.mjs`,
+`test/ui/*.test.mjs` and every game's `<folder>/test/*.test.mjs`.
+`scripts/deploy-test` puts every game's units through
 podman's quadlet generator and checks how `make deploy` labels, tags and
 refuses builds, with stubs for podman and systemd.
 
@@ -112,8 +127,8 @@ refuses builds, with stubs for podman and systemd.
 - `make dev GAME=<game>` serves on `DEV_PORT` and follows the log; Ctrl-C
   or `make dev-stop` stops it.
 - `GAME=<game> scripts/dev-server PORT [-fast]` runs it in the background
-  as the container `kj-dev-PORT`, serving `platform/web` and
-  `games/<game>/web`. Poll `/api/health` until it answers (the first compile
+  as the container `kj-dev-PORT`, serving `platform/web` and the game's
+  `web/`. Poll `/api/health` until it answers (the first compile
   takes about a minute). `podman restart kj-dev-PORT` recompiles after a Go
   change; `podman stop kj-dev-PORT` ends it. `-fast` cuts every pause to 5%.
 
@@ -126,7 +141,7 @@ node test/ui/mock/server.mjs --rig &       # klaverjas mock on 18100: four playe
 cd test/ui
 node app-screens.mjs [--only iphone,desktop] [--dpr 2]   # every screen at six sizes, into test/ui/out/
 node app-perf.mjs                          # main-thread work and chat keystrokes on two emulated phones
-node og-image.mjs --site klaverjas         # rewrites games/<site>/web/og.png (--out FILE elsewhere)
+node og-image.mjs --site klaverjas         # rewrites the site's web/og.png (--out FILE elsewhere)
 ```
 
 The scripts default to the mock's 18100 and Chromium's 9301; `--url` and

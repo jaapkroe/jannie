@@ -306,10 +306,12 @@ export function vibrate(ms) {
 
 // The version the home page shows: the commit the web image was built from
 // (index.html's meta version, filled in by the Containerfile), shortened as
-// git does, with -dirty kept; "dev" when it was not filled in.
+// git does, with -dirty kept; "dev" when it was not filled in. A game of the
+// overlay's names two commits, this repository's and the overlay's after a dot
+// (docs/deployment.md#make-targets), each shortened.
 export function versionText(v) {
-  const m = /^([0-9a-f]{7})[0-9a-f]*(-dirty)?$/.exec(v || '');
-  return m ? m[1] + (m[2] || '') : 'dev';
+  const m = /^([0-9a-f]{7})[0-9a-f]*(?:\.([0-9a-f]{7})[0-9a-f]*)?(-dirty)?$/.exec(v || '');
+  return m ? m[1] + (m[2] ? '.' + m[2] : '') + (m[3] || '') : 'dev';
 }
 
 // The payment link behind "Support deze app" (index.html's meta support,
@@ -323,6 +325,15 @@ export function supportURL(v) {
 
 // The number of seats at the table of state s: four without a state yet.
 export const seatCount = s => s?.players?.length || 4;
+
+// Whether the player is to act in state s (the turn cues): the game's
+// myTurn when it has one, otherwise their own seat's turn in a phase of play.
+export const isMyTurn = (game, s) => (game.myTurn ? game.myTurn(s) : s.turn === s.you && game.PLAYING.has(s.phase));
+
+// Whether a turn opens for the player from prev to next: theirs now, and
+// not theirs already in the same phase.
+export const turnOpens = (game, prev, next) =>
+  isMyTurn(game, next) && !(prev && isMyTurn(game, prev) && prev.phase === next.phase);
 
 // Dutch number words for counts at the table ("drie AI-spelers").
 export const countWord = n => ['geen', 'één', 'twee', 'drie', 'vier', 'vijf', 'zes'][n] ?? String(n);

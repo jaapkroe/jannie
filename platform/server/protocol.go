@@ -79,8 +79,9 @@ type chatMsg struct {
 	TS   int64  `json:"ts"`
 	Bot  bool   `json:"bot"`
 	Sys  bool   `json:"sys"`
-	// Coach: training, a line of Juf Jannie that the coach bubble shows (a
-	// lesson step or the explanation of a trick), not a speech bubble.
+	// Coach: a line of the game's coach that the coach bubble shows, not a
+	// speech bubble (Table.CoachChat; klaverjas's Juf Jannie in training: a
+	// lesson step or the explanation of a trick).
 	Coach bool `json:"coach,omitempty"`
 }
 

@@ -96,7 +96,7 @@ export const CONTENT = {
         'Jouw kaarten liggen onderaan als een waaier. Je **maat** zit tegenover je, de tegenstanders links en rechts. Met z’n drieën zitten de twee anderen links en rechts; met z’n tweeën liggen jouw stapeltjes onderaan en die van de ander bovenaan.',
         'Er wordt met de klok mee gespeeld: na jou is links aan de beurt.',
         'Wie aan de beurt is, licht op. Het fiche met de **G** staat bij de gever.',
-        'De terugknop van je telefoon of browser sluit eerst wat er open staat, zoals het scorebord of de chat. Aan tafel vraagt hij of je het spel wilt verlaten.',
+        'De terugknop van je telefoon of browser sluit eerst wat er openstaat, zoals het scorebord of de chat. Aan tafel vraagt hij of je het spel wilt verlaten.',
       ],
     },
     { h4: 'Een kaart spelen' },
@@ -135,7 +135,7 @@ export const CONTENT = {
     { tip: 'Zie je ergens een ⓘ? Tik erop voor een korte uitleg.' },
 
     { h: 'Bellen' },
-    { p: 'Speel je met anderen, dan vraagt het spel bij de start of je meebelt: met je microfoon, en met je camera als je wilt. Je browser vraagt daarna om toestemming. Bel je niet meteen mee, dan kan het later met de knop Bellen. In het gesprek hoor en zie je wie de microfoon of camera aan heeft, ook als die van jou uit staan.' },
+    { p: 'Speel je met anderen, dan vraagt het spel bij de start of je meebelt: met je microfoon, en met je camera als je wilt. Je browser vraagt daarna om toestemming. Bel je niet meteen mee, dan kan het later met de knop Bellen. In het gesprek hoor en zie je wie de microfoon of camera aanheeft, ook als die van jou uitstaan.' },
     { p: 'De eerste keer dat je meebelt, kun je ook **Automatisch meebellen** aanzetten. Dan zit je voortaan bij een spel met anderen meteen in het gesprek, al bij Klaarzetten, met je microfoon en camera zoals de vorige keer.' },
     {
       dl: [
@@ -149,18 +149,18 @@ export const CONTENT = {
     {
       ul: [
         'Staat bij iemand in het gesprek de microfoon uit, dan staat er een doorgestreept microfoontje in de cirkel op die plaats aan tafel.',
-        'Of je microfoon en camera aan stonden, wordt onthouden voor het volgende spel. Krijgt het spel geen toegang tot je microfoon of camera, dan staat die de volgende keer uit. Wil je het niet meer gevraagd krijgen, zet dan **Bellen voorstellen** uit bij Instellingen. Daar zet je ook **Automatisch meebellen** aan of uit.',
+        'Of je microfoon en camera aanstonden, wordt onthouden voor het volgende spel. Krijgt het spel geen toegang tot je microfoon of camera, dan staat die de volgende keer uit. Wil je het niet meer gevraagd krijgen, zet dan **Bellen voorstellen** uit bij Instellingen. Daar zet je ook **Automatisch meebellen** aan of uit.',
       ],
     },
-    { note: 'Beeld en geluid gaan rechtstreeks van toestel naar toestel, niet via de server van het spel. Wie in het gesprek zit, krijgt daarbij elkaars IP-adres te zien; met Automatisch meebellen aan zit je meteen in het gesprek. Sommige netwerken laten geen rechtstreekse verbinding toe, vooral mobiel internet: dan staat er een waarschuwingsteken bij die speler en horen jullie elkaar niet.' },
+    { note: 'Beeld en geluid gaan rechtstreeks van toestel naar toestel, niet via de server van het spel. De spelers in het gesprek krijgen daarbij elkaars IP-adres te zien; met Automatisch meebellen aan zit je meteen in het gesprek. Sommige netwerken laten geen rechtstreekse verbinding toe, vooral mobiel internet: dan staat er een waarschuwingsteken bij die speler en horen jullie elkaar niet.' },
 
     { h: 'Na elk potje' },
     { p: 'Na de laatste slag zie je de uitslag: **gehaald**, **nat** of **pit**, met de punten, de roem, de stand en alle slagen. Tik op een slag om te zien wie wat speelde. Met z’n vieren staat onder die slag de knop [Dit potje terugkijken]: je ziet het potje dan kaart voor kaart, met alle kaarten open, en bij elke keuze van jou wat Juf Jannie ervan vindt. Rekent ze nog, dan komt het er vanzelf bij. Dat terugkijken kan ook nog tijdens het volgende potje: tik op het scorebord op het laatste potje en dan op een slag. Speel je met anderen, dan begint het volgende potje na een korte aftelling vanzelf, of eerder als iedereen op [Volgend potje] heeft getikt. Speel je alleen met AI-spelers, dan wacht het spel tot je op [Volgend potje] tikt, zodat je de slagen rustig kunt nalopen.' },
     { p: 'Na het laatste potje wint het koppel met de meeste punten, of met z’n drieën of tweeën de speler met de meeste punten. De host kan met [Nog een partij] meteen opnieuw beginnen, met dezelfde spelers en spelregels.' },
-    { p: 'Onder de eindstand staat **Jouw spel volgens Juf Jannie**: een percentage voor je eigen keuzes. Juf Jannie is de game engine die ook de AI-spelers en de tips aanstuurt; ze rekent met alleen wat jij op dat moment wist. Tik erop voor hoe je kaarten waren, je bedenktijd, je sterkste zetten en waar punten bleven liggen. Tik op zo’n zet om het potje kaart voor kaart terug te kijken, met alle kaarten open en bij elke keuze van jou wat Juf Jannie ervan vindt. Alleen jij ziet je eigen analyse. De analyse is er alleen bij een spel met z’n vieren.' },
+    { p: 'Onder de eindstand staat **Jouw spel volgens Juf Jannie**: een percentage voor je eigen keuzes. Juf Jannie is de game-engine die ook de AI-spelers en de tips aanstuurt; ze rekent met alleen wat jij op dat moment wist. Tik erop voor hoe je kaarten waren, je bedenktijd, je sterkste zetten en waar punten bleven liggen. Tik op zo’n zet om het potje kaart voor kaart terug te kijken, met alle kaarten open en bij elke keuze van jou wat Juf Jannie ervan vindt. Alleen jij ziet je eigen analyse. De analyse is er alleen bij een spel met z’n vieren.' },
     { p: 'Onder de spelanalyse kun je een **opmerking** achterlaten. De **seed** van de partij staat aan het eind in de chat (“De seed van dit spel was 482913.”) en bovenaan de analyse: vul die bij Nieuw spel in om dezelfde kaarten nog eens te spelen.' },
     { p: 'De server bewaart van elke partij de kaarten, de zetten, de spelanalyse, je opmerkingen, de versie van het spel, en de naam, het IP-adres en het apparaat van de spelers. Die gegevens gebruiken we voor statistieken en om het spel te verbeteren. Ze worden na hooguit 12 maanden verwijderd.' },
-    { p: 'Wil je eerst iets veranderen, of is er nog iemand bij gekomen? Met [Spelers of regels wijzigen] gaat de tafel terug naar Klaarzetten, met dezelfde spelcode. De AI-spelers die bij de start de lege plaatsen opvulden, staan dan weer op, zodat vrienden kunnen aanschuiven (zet zo nodig **Spelers** hoger), en de host kan de spelregels aanpassen.' },
+    { p: 'Wil je eerst iets veranderen, of is er nog iemand bijgekomen? Met [Spelers of regels wijzigen] gaat de tafel terug naar Klaarzetten, met dezelfde spelcode. De AI-spelers die bij de start de lege plaatsen opvulden, staan dan weer op, zodat vrienden kunnen aanschuiven (zet zo nodig **Spelers** hoger), en de host kan de spelregels aanpassen.' },
 
     { h: 'Oefenen' },
     { p: 'Tik op [Oefenen], kies een les en tik op [Start les]. Je speelt alleen met AI-spelers: **Juf Jannie (AI)** is je maat en niemand anders kan aanschuiven. Een les duurt 8 potjes. Juf Jannie legt het stap voor stap uit, en het spel wacht tot je op [Verder] of ergens op tafel tikt.' },
@@ -184,7 +184,7 @@ export const CONTENT = {
     {
       ul: [
         'Onder **Spelopties** staan **Tips**, **Open kaarten** en de spelregels, zoals bij Nieuw spel. **Potjes** staat er alleen bij Vrij spelen, **Seinen** alleen bij de les Seinen en Vrij spelen. Je browser onthoudt je keuzes.',
-        'Dit menu is ingeklapt. Het staat vanzelf open als Tips uit staat, Open kaarten aan staat of er een seed is ingevuld.',
+        'Dit menu is ingeklapt. Het staat vanzelf open als Tips uitstaat, Open kaarten aanstaat of er een seed is ingevuld.',
         'Zet je **Tips** uit, dan krijg je geen tip bij je beurt en geen uitleg na de slag. Een les gaat gewoon door. De robot bovenin blijft werken.',
         'Zet **Open kaarten** aan als je alle vier de handen wilt zien. Zo snap je beter waarom iemand iets speelt.',
         'Het tempo staat standaard op rustig, zodat je alles goed kunt volgen.',
@@ -406,7 +406,7 @@ export const CONTENT = {
       ul: [
         'Wie alleen speelt, moet minstens het **bod** halen: kaartpunten plus roem, de weggelegde kaarten meegeteld.',
         'Gehaald? Dan krijgt die speler zijn punten plus roem. De andere twee **delen** wat zij samen haalden: ieder de helft, naar boven afgerond.',
-        'Niet gehaald? Dan is het **nat**: wie alleen speelde krijgt 0, de andere twee delen alles, 162 plus alle roem.',
+        'Niet gehaald? Dan is het **nat**: wie alleen speelde, krijgt 0, de andere twee delen alles, 162 plus alle roem.',
         'Alle tien slagen halen is **pit**: 100 roem extra.',
       ],
     },
@@ -414,11 +414,11 @@ export const CONTENT = {
     { h: 'Met z’n tweeën' },
     { p: 'Jullie zitten tegenover elkaar. Iedereen krijgt **zestien kaarten**, op tafel in **acht stapeltjes van twee**: twee rijen van vier. Van de voorste rij, het dichtst bij je, liggen de bovenste kaarten open; de rest ligt dicht.' },
     { h4: 'Troef en de achterste rij' },
-    { p: 'Troef bepalen gaat zoals bij **Troef** ingesteld: bij Utrechts kiest voorhand, bij Gedraaid zeg je om de beurt spelen of passen op de gedraaide kleur. Daarna gaan ook de bovenste kaarten van de achterste rijen open. Iedereen heeft er dan acht open liggen en ziet die van de ander ook.' },
+    { p: 'Troef bepalen gaat zoals bij **Troef** ingesteld: bij Utrechts kiest voorhand, bij Gedraaid zeg je om de beurt spelen of passen op de gedraaide kleur. Daarna gaan ook de bovenste kaarten van de achterste rijen open. Iedereen heeft er dan acht openliggen en ziet die van de ander ook.' },
     { h4: 'Roem van je open kaarten' },
     { p: 'De roem in je **acht open kaarten**, zodra troef bekend is, telt voor jou: drie of vier op een rij, vier gelijke en stuk. In een slag van twee kaarten kan alleen nog stuk vallen.' },
     { h4: 'Spelen' },
-    { p: 'Je speelt alleen kaarten die open liggen, en je bekent en troeft met wat er open ligt. Is een slag af, dan gaan de kaarten open die vrijkwamen. Er zijn zestien slagen; de laatste is 10 punten extra waard.' },
+    { p: 'Je speelt alleen kaarten die openliggen, en je bekent en troeft met wat er openligt. Is een slag af, dan gaan de kaarten open die vrijkwamen. Er zijn zestien slagen; de laatste is 10 punten extra waard.' },
     { p: 'Tellen gaat als met z’n vieren: wie troef maakte, moet meer dan de helft halen, anders is het nat. Alle zestien slagen halen is pit.' },
     { note: 'Met z’n tweeën heb je geen maat, dus maakt Amsterdams of Rotterdams geen verschil.' },
   ],
@@ -582,7 +582,7 @@ export const CONTENT = {
   ],
 
   jannie: [
-    { lead: '**Juf Jannie** is de game engine van dit spel. Ze laat de AI-spelers spelen, geeft de tips bij **Oefenen** en maakt **Jouw spelanalyse**. Hier lees je hoe ze een kaart kiest, hoe sterk ze is en hoe ze gemaakt is.' },
+    { lead: '**Juf Jannie** is de game-engine van dit spel. Ze laat de AI-spelers spelen, geeft de tips bij **Oefenen** en maakt **Jouw spelanalyse**. Hier lees je hoe ze een kaart kiest, hoe sterk ze is en hoe ze gemaakt is.' },
 
     { h: 'Wat ze weet' },
     { p: 'Juf Jannie kijkt nooit in de kaarten van anderen. Ze weet wat jij aan tafel ook weet: haar eigen hand, de kaarten die gespeeld zijn en wie een kleur niet kon bekennen of niet kon troeven of overtroeven. Daaruit leidt ze af welke kaarten nog bij wie kunnen zitten. Met z’n vieren leest ze op Normaal en Sterk ook de seinen. Op Sterk, en bij de tips en Jouw spelanalyse, let ze daarnaast op wie troef koos, wie speelde of paste en met welke kaart iemand uitkwam.' },
@@ -590,13 +590,13 @@ export const CONTENT = {
     { h: 'Hoe ze een kaart kiest' },
     { p: 'Met z’n vieren verdeelt ze op **Sterk** bij elke beurt de kaarten die ze niet kan zien op **400** manieren. Elke verdeling klopt met de gespeelde kaarten en met wie welke kleur niet kon bekennen of niet kon troeven. Verdelingen die goed passen bij de troefkeuze, bij wie speelde of paste en bij de seinen, komen vaker voor. Voor elke kaart die ze mag spelen, speelt ze al die verdelingen tot het eind van het potje uit, met de vuistregels van Normaal voor alle vier de spelers. Ze speelt de kaart die gemiddeld het meest oplevert. Elke AI-speler heeft daarbij een eigen karakter: de een gaat eerder voor pit of speelt eerder dan de ander. Voor troef kiezen en spelen of passen doet ze hetzelfde met **320** verdelingen.' },
     { p: 'Op **Normaal** rekent ze met z’n vieren niets door: ze speelt volgens vaste vuistregels, houdt bij welke kaarten gevallen zijn en geeft en leest de seinen van de tafel. Op **Makkelijk** telt ze met z’n vieren geen kaarten. Ze kiest de langste kleur als troef en speelt ongeveer 1 op de 3 keer een willekeurige kaart.' },
-    { note: 'Met z’n tweeën of drieën is een potje sneller uitgespeeld. Op Sterk speelt ze dan bij elke beurt **1.200** verdelingen uit, en seinen spelen geen rol. Op Makkelijk speelt ze haar kaarten dan volgens de vuistregels van Normaal, maar ongeveer 1 op de 3 keer speelt ze een willekeurige kaart. Troef kiest ze ook dan op de langste kleur. Bij het bieden met z’n drieën speelt ze op elk niveau verdelingen uit: 24 op Makkelijk, 96 op Normaal en 320 op Sterk. Op Makkelijk biedt ze daarbij vaker en hoger dan verstandig is.' },
+    { note: 'Met z’n tweeën of drieën is een potje sneller uitgespeeld. Op Sterk speelt ze dan bij elke beurt **1.200** verdelingen uit, en seinen spelen geen rol. Op Makkelijk speelt ze haar kaarten dan volgens de vuistregels van Normaal, maar ongeveer 1 op de 3 keer speelt ze een willekeurige kaart. Ook dan kiest ze de langste kleur als troef. Bij het bieden met z’n drieën speelt ze op elk niveau verdelingen uit: 24 op Makkelijk, 96 op Normaal en 320 op Sterk. Op Makkelijk biedt ze daarbij vaker en hoger dan verstandig is.' },
     { note: 'Op Sterk geeft Juf Jannie een sein alleen als het haar weinig kost. Een vals sein speelt ze alleen als dat duidelijk meer oplevert, of als ze geen andere keus heeft. Op haar seinen met de aas en op haar kleintje boer kun je bijna altijd rekenen. Een klein kaartje dat ze bijspeelt (opseinen), is minder zeker: soms moet ze dat gewoon kwijt.' },
 
     { h: 'Hoe sterk ze is' },
     { p: 'Juf Jannie op Sterk speelde tegen **7** klaverjasprogramma’s van anderen. Hun broncode staat openbaar op internet: sommige komen uit onderzoek, andere zijn hobbyprojecten. Elk potje werd twee keer gespeeld met dezelfde kaarten: de tweede keer kregen de teams elkaars kaarten. Zo valt het geluk met de kaarten grotendeels weg. Per programma en instelling ging het om 400 tot 1.000 van zulke dubbele potjes. Juf Jannie koos daarbij voor beide teams troef en de seinen stonden uit, zodat alleen het spelen van de kaarten verschilde.' },
-    { p: 'Tegen elk van die programma’s haalde Juf Jannie per potje **6 tot 34** punten meer dan de tegenpartij. Bij de programma’s die zetten vooruitrekenen, bepaalden we zelf hoeveel rekentijd ze kregen. Met meer rekentijd kwamen ze dichterbij, bijvoorbeeld van 23 naar 9 punten verschil, maar Juf Jannie bleef in elke vergelijking voor. Op dezelfde manier gemeten haalt Sterk per potje **27** punten meer dan Normaal en **57** meer dan Makkelijk.' },
-    { p: 'Meer rekenen helpt haar zelf nauwelijks: met 3.200 verdelingen in plaats van 400 speelde ze niet meetbaar beter. Ook de seinen maakten voor haar weinig uit: Sterk met seinen speelde tegen Sterk zonder seinen niet meetbaar beter, en tegen de andere programma’s veranderde het verschil met de seinen aan hooguit ongeveer 2 punten per potje.' },
+    { p: 'Tegen elk van die programma’s haalde Juf Jannie per potje **6 tot 34** punten meer dan de tegenpartij. Bij de programma’s die zetten doorrekenen, bepaalden we zelf hoeveel rekentijd ze kregen. Met meer rekentijd kwamen ze dichterbij, bijvoorbeeld van 23 naar 9 punten verschil, maar Juf Jannie bleef in elke vergelijking voor. Op dezelfde manier gemeten haalt Sterk per potje **27** punten meer dan Normaal en **57** meer dan Makkelijk.' },
+    { p: 'Meer rekenen helpt haar zelf nauwelijks: met 3.200 verdelingen in plaats van 400 speelde ze niet meetbaar beter. Ook de seinen maakten voor haar weinig uit: Sterk met seinen speelde tegen Sterk zonder seinen niet meetbaar beter, en tegen de andere programma’s veranderden de seinen het verschil met hooguit ongeveer 2 punten per potje.' },
 
     { h: 'Hoe ze gemaakt is' },
     { p: 'De code en de tests van Juf Jannie en de rest van dit spel zijn geschreven door het taalmodel **Claude Opus 5.5** van Anthropic. Een mens bepaalde wat er gebouwd werd en welke afspraken aan tafel gelden, controleerde het werk en stuurde bij.' },
