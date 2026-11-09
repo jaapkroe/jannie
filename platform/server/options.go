@@ -49,6 +49,26 @@ func cleanName(s string) string {
 // when nothing visible is left (the line is dropped).
 func cleanChat(s string) string { return cleanText(s, maxChatRunes) }
 
+// CleanText makes text a person sent safe to show or log, for a game's own
+// text (feedback, say): every line cleaned as the table cleans a chat line
+// (cleanText, docs/server.md#limits), lines with nothing visible left out,
+// at most limit characters in all, the newlines between the lines counted.
+// It returns "" when nothing visible is left.
+func CleanText(s string, limit int) string {
+	var lines []string
+	left := limit
+	for _, l := range strings.Split(s, "\n") {
+		if left <= 0 {
+			break
+		}
+		if l = cleanText(l, left); l != "" {
+			lines = append(lines, l)
+			left -= utf8.RuneCountInString(l) + 1
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 const (
 	zwnj = '\u200C' // zero-width non-joiner
 	zwj  = '\u200D' // zero-width joiner

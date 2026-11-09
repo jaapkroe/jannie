@@ -18,7 +18,7 @@ table's messages is in [server.md](server.md).
 
 | `t` | Fields | When |
 |---|---|---|
-| `create` | `name`, `opts` (partial ok), `start` bool; a game may read more (klaverjas: `training`, `expert`, `seat`) | Home. `start:true` starts at once (quick play vs bots); you sit at seat 0 |
+| `create` | `name`, `opts` (partial ok), `start` bool; a game may read more (klaverjas: `training`, `expert`, `seat`) | Home. `start:true` starts at once (quick play vs bots); you sit at seat 0, unless the game opens the room otherwise ([server.md, "Rooms without a lobby"](server.md#rooms-without-a-lobby)) |
 | `join` | `code`, `name`, `token` (optional) | Join link, code entry, reconnect |
 | `sit` | `seat` | Lobby: move to an empty seat |
 | `bot` | `seat`, `id` ("" = random) | Host, lobby: put a bot on an empty seat (or replace a bot) |
@@ -35,6 +35,13 @@ table's messages is in [server.md](server.md).
 | `leave` | | Leave the room |
 | `ping` | | Keepalive (server answers `pong`) |
 
+A fixed table (klaverjas's training and expert mode, a game's locked
+room) refuses a new joiner with `vol` (its own player still gets back in
+by the seat token, or by name after 3 min); in its lobby `sit`, `bot`,
+`unbot` and an `opts` that changes `players` get `ongeldig`, and so does
+`lobby` after game over
+([server.md, "Rooms without a lobby"](server.md#rooms-without-a-lobby)).
+
 The shell's feedback form (`panels.feedbackForm`,
 [frontend.md](frontend.md)) sends `feedback` and waits for `saved`; those
 are a game's messages, klaverjas's
@@ -47,17 +54,26 @@ and toepen refuses them.
 |---|---|
 | `joined` | `code`, `seat`, `token` (store in localStorage under `kj.token.<code>`) |
 | `update` | `seq`, `ev` (event or null), `s` (full state for you) |
-| `chat` | `msg`: `{seat, name, text, ts, bot, sys}` (`sys`: system line, seat -1); a game may add a field (klaverjas: `coach`) |
+| `chat` | `msg`: `{seat, name, text, ts, bot, sys}` (`sys`: system line, seat -1), and `coach: true` on a line of the game's coach (the bot at `seat`; a lesson step, klaverjas's Juf Jannie), which the client shows as the coach's, not as a speech bubble; other lines have no `coach` |
 | `chatlog` | `msgs`: last 50, sent after `joined` |
 | `refused` | `name`: to the host only, someone could not join because the table is full ([server.md, "Joining"](server.md#joining)); no state change, so no `update` |
 | `rtc` | `from` (the sender's session), `seat` (the sender's), `desc` as sent: to the session named only ([server.md, "Calls"](server.md#calls)) |
 | `error` | `code`, `msg` (Dutch, ready to show) |
 | `pong` | |
 
+A game may send a message of its own to one seat (`Table.Send`,
+[server.md, "Table"](server.md#table)): an answer for that player alone,
+such as the review of one hand, with a `t` that is none of the above.
+Such a message does not count as the answer to a move in the game
+module's `ACKED`, which only `update` and `error` give
+([frontend.md, "Connection"](frontend.md#connection)), so a move the
+server answers only this way stays out of `ACKED`.
+
 ## Error codes
 
 `onbekend` (no such room, or no longer in it: room removed, seat
-taken over by another window, or taken back by name on another device), `vol`,
+taken over by another window, or taken back by name on another device), `vol`
+(a full table, or a fixed one: then `msg` is the game's text),
 `gestart`, `geen-host`, `niet-jouw-beurt`, `ongeldig` (bad card/suit/fields;
 `msg` is the game's Dutch explanation, for a card why it may not be played;
 a `vote` with no open question about
