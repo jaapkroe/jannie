@@ -31,21 +31,38 @@ func notFoundPage(site Site) string {
 
 // StaticHandler serves the frontend of site for development from the
 // repository at dir: the union of dir/platform/web (the shell every game
-// shares) and dir/games/<game>/web, as the image's web stage puts them
-// together. A path in both is an error, as are missing directories. No directory listings; / and
+// shares) and the web/ of the game's folder, dir/games/<game> or, for a game
+// of the overlay, dir/extra/<game> (docs/adding-a-game.md#the-overlay), the
+// one with <game>.mk, as the image's web stage puts them together. A path in both is an error, as
+// are missing directories. No directory listings; / and
 // join links serve <game>/index.html; nothing is cached, so edits show at
 // once; the CSP is nginx's.
 func StaticHandler(dir string, site Site) (http.Handler, error) {
+	isDir := func(d string) bool {
+		info, err := os.Stat(d)
+		return err == nil && info.IsDir()
+	}
+	isFile := func(p string) bool {
+		info, err := os.Stat(p)
+		return err == nil && info.Mode().IsRegular()
+	}
+	// The game's folder is the one with its settings file, as the Makefile
+	// and scripts/dev-server find it.
 	shared, own := filepath.Join(dir, "platform", "web"), filepath.Join(dir, "games", site.Game, "web")
+	mk := site.Game + ".mk"
+	if !isFile(filepath.Join(dir, "games", site.Game, mk)) && isFile(filepath.Join(dir, "extra", site.Game, mk)) {
+		own = filepath.Join(dir, "extra", site.Game, "web")
+	}
 	for _, d := range []string{shared, own} {
-		if info, err := os.Stat(d); err != nil || !info.IsDir() {
+		if !isDir(d) {
 			return nil, fmt.Errorf("-static %s: no directory %s", dir, d)
 		}
 	}
 	if both, err := clashes(shared, own); err != nil {
 		return nil, err
 	} else if len(both) > 0 {
-		return nil, fmt.Errorf("-static %s: in both platform/web and games/%s/web: %s", dir, site.Game, strings.Join(both, ", "))
+		rel, _ := filepath.Rel(dir, own)
+		return nil, fmt.Errorf("-static %s: in both platform/web and %s: %s", dir, filepath.ToSlash(rel), strings.Join(both, ", "))
 	}
 	mime.AddExtensionType(".webmanifest", "application/manifest+json")
 	mime.AddExtensionType(".mjs", "text/javascript; charset=utf-8")

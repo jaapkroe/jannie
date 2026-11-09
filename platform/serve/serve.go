@@ -24,7 +24,7 @@ import (
 
 // Site is one game's site.
 type Site struct {
-	Game  string // the game: its directory under games/ (-static), and its name in the log ("klaverjas")
+	Game  string // the game: its folder under games/ or extra/ (-static), and its name in the log ("klaverjas")
 	Title string // the site's name, in the title of the 404 page ("Klaverjas")
 	Verb  string // the 404 page's way back: "Terug naar klaverjassen"
 	// Extras are services the site runs besides the game's table (toepen:
@@ -43,7 +43,7 @@ type Extra struct {
 // Flags are the command line of a game server.
 type Flags struct {
 	Addr        string   // listen address
-	Static      string   // the repository, whose platform/web and games/<game>/web are served too (development); "": none
+	Static      string   // the repository, whose platform/web and the game's web/ are served too (development); "": none
 	Fast        bool     // scale every game delay by 0.05 (tests)
 	Games       string   // the directory of the game log (docs/server.md#game-log); "": none
 	Origins     []string // websocket Origin patterns besides the request host
@@ -60,7 +60,7 @@ func Parse(name string, args []string) (Flags, error) {
 	var f Flags
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.StringVar(&f.Addr, "addr", "127.0.0.1:8081", "listen address")
-	fs.StringVar(&f.Static, "static", "", "also serve the frontend from this repository: platform/web and games/<game>/web (development)")
+	fs.StringVar(&f.Static, "static", "", "also serve the frontend from this repository: platform/web and the game's web/ (development)")
 	fs.BoolVar(&f.Fast, "fast", false, "scale all game delays by 0.05 (tests)")
 	fs.BoolVar(&f.Healthcheck, "healthcheck", false, "check /api/health on -addr and exit 0 (healthy) or 1")
 	fs.StringVar(&f.Games, "games", "", "keep the game log (docs/server.md#game-log) in this directory; empty keeps none")

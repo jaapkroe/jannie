@@ -41,7 +41,7 @@ try {
     const { createCard, createBack, suitIcon } = mod;
 
     const faces = [...document.querySelectorAll('#gallery .card:not(.back)')];
-    expect(new Set(faces.map((c) => c.dataset.card)).size === 32, 'gallery lacks some of the 32 cards');
+    expect(new Set(faces.map((c) => c.dataset.card)).size === 52, 'gallery lacks some of the 52 cards');
     expect(faces.every((c) => c.getAttribute('role') === 'img' && c.getAttribute('aria-label')), 'card without role/aria-label');
     expect(!document.querySelector('.card [style], .card style, .card [id]'), 'style attribute, <style> or id inside a card');
 

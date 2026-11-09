@@ -3,8 +3,8 @@
 jannie is a platform for Dutch card games played in the browser, with
 friends or against bots: one site per game, each with its own address, pod
 and interface, built from shared code. Klaverjas
-(`klaverjas.kroes.dev`) and toepen (`toepen.kroes.dev`) are live; bridge
-is next ([adding-a-game.md, "Order"](adding-a-game.md#order)).
+(`klaverjas.kroes.dev`) and toepen (`toepen.kroes.dev`) are live; others
+could follow ([adding-a-game.md, "Order"](adding-a-game.md#order)).
 
 The docs are the contract between the parts of the system. Code that
 deviates from them must update them in the same change. The Go API sections
@@ -87,8 +87,9 @@ on each site. Nothing links the sites to each other.
 
 ```
 go.mod                       module jannie (Go 1.27), one dependency: github.com/coder/websocket
-cmd/<game>/                  a game's binary: its AI adapter (ai.go) and platform/serve; named after
-                             the game (cmd/klaverjas, cmd/toepen), as the image's binary and health check are
+cmd/<game>/                  klaverjas's and toepen's binaries: the AI adapter (ai.go) and platform/serve;
+                             named after the game, as the image's binary and health check are (a later
+                             game keeps its main package in its folder, <folder>/cmd/<game>)
 platform/                    what every game shares
   server/                    the table: rooms and codes, seats and the lobby, bots and their chat, calls,
                              reconnects, the takeover question, pacing, limits, the game-log writer; the
@@ -96,7 +97,7 @@ platform/                    what every game shares
   server/klaverjas_*.go      klaverjas's server side, still built into the table
   server/servertest/         a test kit for any game's server tests
   serve/                     what every binary shares: flags, HTTP server, graceful shutdown, -healthcheck,
-                             the dev static handler (platform/web ∪ games/<game>/web) and the game's 404 page
+                             the dev static handler (platform/web ∪ the game's web/) and the game's 404 page
   persona/                   the personas' identities, shared by every game (bios per game)
   cards/                     the seats and the 32-card deck that klaverjas and toepen share
   web/                       the shell every game's site uses, vanilla ES modules (docs/frontend.md)
@@ -104,9 +105,13 @@ platform/                    what every game shares
     js/main.js (routing, the websocket, the update queue)  js/util.js  js/panels.js  js/home.js
     js/cards.js  js/sound.js
     js/call.js               the call with the others at the table, loaded once another person sits there
-games/<game>/                one game: README.md (its design and contracts), <game>.mk (its settings:
-                             TITLE, VERB, SITE, ADDR, DEV_PORT, E2E_PORT, E2E_SIM), web/ (its site,
-                             served with platform/web, no path in both), and its Go packages
+games/<game>/                one game, one folder (docs/adding-a-game.md#the-folder): README.md (its design
+                             and contracts), <game>.mk (its settings: TITLE, VERB, SITE, ADDR, DEV_PORT,
+                             E2E_PORT, E2E_SIM), web/ (its site, served with platform/web, no path in both),
+                             its Go packages, a later game's main package cmd/<game>/, and test/ (its JS
+                             tests and simulation, and facts.mjs, what the shared tests need to know of it)
+extra/<game>/                a game of the overlay: a checkout of a repository of private games, which git
+                             ignores here, with a folder per game as in games/ (docs/adding-a-game.md#the-overlay)
 games/klaverjas/
   game/                      pure rules engine: legal moves, tricks, roem, scoring, the deal state machine;
                              re-exports platform/cards's seats and cards
@@ -127,8 +132,9 @@ deploy/                      the templates every game renders (game.pod.in, game
 docs/                        the platform's docs
 test/sites.test.mjs          every site: its own files, its request budget, its own game only
 test/layout.test.mjs         the Go imports: the platform imports no game (but for klaverjas's files and
-                             the tests in platform/server), no game imports another, cmd/<g> only
-                             platform/ and games/<g>/, and platform/cards nothing of the module
+                             the tests in platform/server), no game imports another, a game's main package
+                             only platform/ and its folder, platform/cards nothing of the module, and a
+                             game's packages what the import table of its test/facts.mjs allows
 test/docs.test.mjs           the docs' links and anchors, and every reference to a doc in the code
 test/manual.test.mjs         klaverjas's manual: its sections, and its examples against an independent
                              rules checker
@@ -140,12 +146,13 @@ test/ui/                     puppeteer-core browser checks (`npm ci` there first
                              toepen-screens.mjs, every screen of a site at six sizes; app-perf.mjs, a
                              benchmark of the frontend on two emulated phones; css-same.mjs, which checks
                              along any of them that a change of stylesheets changes nothing on screen;
-                             og-image.mjs, which renders a site's og.png; site.mjs, a site's files; and
-                             node tests of the sites' icons and of the shell's and the games' pure modules
+                             og-image.mjs, which renders a site's og.png; site.mjs, the games (their
+                             folders in games/ and extra/), their sites' files and their test/facts.mjs;
+                             and node tests of the sites' icons and of the shell's and the games' pure modules
                              (*.test.mjs)
 scripts/go                   Go toolchain in a container: `scripts/go test ./...`
 GAME=<game> scripts/dev-server PORT  run the game's server from source on 127.0.0.1:PORT, serving
-                             platform/web and games/<game>/web (flags after PORT)
+                             platform/web and the game's web/ (flags after PORT)
 scripts/chrome PORT          headless Chromium with CDP on 127.0.0.1:PORT, with a fake camera and microphone
 scripts/pod-check ADDR SITE TITLE  check a game's running pod without the reverse proxy: pages and titles,
                              websocket, link preview, manifest, CSP, security headers (`make check`)
@@ -184,8 +191,10 @@ a budget of 17 requests per page load. The contract, the budget and what
 **Deployment.** `GAME` selects the site in the Makefile; names derive from
 it (pod, units, containers, images, volume), and klaverjas's rendered units
 are byte for byte those from before there were more games. One
-Containerfile: Go is vetted and tested once, every binary built; a
-`server-<game>` target per game and one `web` target with `ARG GAME`.
+Containerfile: Go is vetted and tested once, every binary built; one
+`server` target and one `web` target, each with `ARG GAME`. Everything
+finds the games by their folders, so a game is added in its folder alone
+([adding-a-game.md, "The folder"](adding-a-game.md#the-folder)).
 [deployment.md](deployment.md) has the rest.
 
 ## What is not generic yet
@@ -193,23 +202,28 @@ Containerfile: Go is vetted and tested once, every binary built; a
 - **Klaverjas on the table.** Klaverjas's server side is still built into
   the table: the `platform/server/klaverjas_*.go` files, in package
   `server`, behind an unexported seam (`games.go`) next to the exported
-  Game API that toepen uses. Moving it onto the exported API needs what
-  that API lacks so far: the fields of `create` (training, expert, a chosen
-  seat), table locks, messages to one seat, the coach's chat lines, hooks
-  in the match loop for the lessons, the timing and seat changes the review
-  reads, a summary that waits for `ready` while one person is at the table
-  and counts down once there are two, and its own shape of the game-log
-  record.
+  Game API that toepen uses. The API now has part of what training and
+  the expert mode need of the table: the fields of `create`, a chosen
+  seat, bots on chosen seats and a fixed table (`Opener`,
+  [server.md, "Rooms without a lobby"](server.md#rooms-without-a-lobby)),
+  messages to one seat (`Table.Send`) and the coach's chat lines
+  (`Table.CoachChat`). Moving klaverjas onto it still needs what the API
+  lacks so far: table options a room fixes (training plays with four, its
+  lesson on signals with bots at least at normaal), its own texts for the
+  lobby commands a fixed table refuses, hooks in the match loop for the
+  lessons, the timing and seat changes the review reads, a summary that
+  waits for `ready` while one person is at the table and counts down once
+  there are two, and its own shape of the game-log record.
 - **Cards.** `platform/cards` holds the seats and the 32-card deck that
   klaverjas and toepen share ([server.md, "platform/cards"](server.md#platformcards));
-  `cards.js` knows the ranks 7–A only. A 52-card game brings its own `Card`
-  and `Rank` and shares `Seat` and `Suit`; `cards.js` needs 2–6 and the
-  jokers.
+  a 52-card game brings its own `Card` and `Rank` and shares `Seat` and
+  `Suit`. `cards.js` draws all 52 faces (ranks 2–A) but no jokers, and its
+  backs carry the clover.
 - **The shell's klaverjas leftovers.** Klaverjas's helpers are its own
   `rules.js` and its table styles its own stylesheet, `klaverjas.css`
   ([frontend.md, "Stylesheets"](frontend.md#stylesheets)). The shell still
   has a little of klaverjas alone: in `panels.js` `setLastEnabled` (its
-  *Laatste slag* tool) and the coach's chat lines; in `util.js` its first
+  *Laatste slag* tool); in `util.js` its first
   manual tab as the default of `prefs.tab`; and in `app.css` two kinds of
   leftovers, kept on purpose:
   - Klaverjas-only alternatives inside the `:is()` lists of four shell
@@ -229,11 +243,23 @@ Containerfile: Go is vetted and tested once, every binary built; a
   expert alone with bots
   ([games/toepen/README.md, "Redenering van de AI"](../games/toepen/README.md#redenering-van-de-ai)).
   A game that wants them brings its own; the table offers
-  `Table.Background` for the analysis.
+  `Table.Background` for the analysis, `Opener` for a training table
+  ([server.md, "Rooms without a lobby"](server.md#rooms-without-a-lobby)),
+  `Table.CoachChat` for a coach's lines, `Table.Send` for an answer to
+  one player, `CleanText` for a person's text such as feedback and
+  `Table.Current` for a game's own workers
+  ([server.md, "Table"](server.md#table)).
+- **Another seat's cards.** The Game API already lets one player play
+  two seats: `Play.Turn` is the seat that decides, so a player who plays
+  a partner's open hand too is on turn while that hand's card is due (the
+  bot that decides, the think time and the takeover question are that
+  player's), and the game's state says which hand to play from. A
+  partnership the others may not see yet can stay in the game's
+  `State(i)`, which is per seat
+  ([server.md, "The Game API"](server.md#the-game-api)).
 - **The manual.** Klaverjas has its handleiding, toepen a rules sheet; a
   shared renderer with per-game sections and a common *Bediening* would
   suit more games.
 - **Seats.** A table has at most 6 seats in the lobby layout so far.
-- **Two seats, one person; hidden sides.** Bridge's dummy and rikken's
-  called ace need `controller(seat)` in the table and views that hide a
+- **Hidden sides.** Rikken's called ace needs views that hide a
   partnership.

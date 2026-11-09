@@ -1,7 +1,7 @@
 // Package cards is what the games share at the table: the seats and the
 // 32-card deck (7 to ace) of the Dutch games, with their wire codes ("JH")
-// and Dutch names. A 52-card game such as bridge brings its own Card and
-// Rank, and shares Seat and Suit.
+// and Dutch names. A 52-card game brings its own Card and Rank, and shares
+// Seat and Suit.
 //
 // Klaverjas's package game re-exports these types, and its reexport
 // function names every method that can be inlined: a new one belongs there

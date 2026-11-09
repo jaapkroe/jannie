@@ -15,9 +15,15 @@ export const SUITS = Object.freeze({
   S: Object.freeze({ name: 'schoppen', symbol: '♠', color: 'black' }),
 });
 
-export const RANKS = Object.freeze({ 7: '7', 8: '8', 9: '9', T: '10', J: 'B', Q: 'V', K: 'H', A: 'A' });
+// Rank code → what its index shows. A 32-card game deals 7 to A; a 52-card
+// game also 2 to 6.
+export const RANKS = Object.freeze({
+  2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9', T: '10', J: 'B', Q: 'V', K: 'H', A: 'A',
+});
 
-const RANK_NAMES = { 7: '7', 8: '8', 9: '9', T: '10', J: 'boer', Q: 'vrouw', K: 'heer', A: 'aas' };
+const RANK_NAMES = {
+  2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8', 9: '9', T: '10', J: 'boer', Q: 'vrouw', K: 'heer', A: 'aas',
+};
 
 export function parseCard(code) {
   if (typeof code !== 'string' || code.length !== 2) return null;
@@ -116,8 +122,14 @@ const SUIT_PATHS = {
 // condensed like classic card indices: identical on every platform and
 // bolder than system fonts at tiny sizes. k scales the stroke per glyph.
 // The boer's B is two closed loops with mitred joins: a straight stem with
-// square corners, so even a tiny B never reads as the round-sided 8.
+// square corners, so even a tiny B never reads as the round-sided 8. The 6 is
+// the 9 turned about its centre; the 4 is closed, so it never reads as an H.
 const GLYPHS = {
+  2: { w: 46, d: 'M2.5 24C3 11 12 3 23 3S44 12 44 27C44 45 31 59 1 100H45' },
+  3: { w: 46, d: 'M3.5 13C8 6.5 15 3 23 3 34 3 42 11 42 24.5S34 47 19 47C35 47 45 57 45 73.5S35 100 22 100C12 100 6 96 2.5 90' },
+  4: { w: 52, d: 'M52 70H0L38 3V100' },
+  5: { w: 46, d: 'M41 3H7L4 46C9 41 16 39 23 39C36 39 45 51 45 69.5S36 100 22 100C12 100 6 96 2.5 90' },
+  6: { w: 46, d: 'M1 72C1 88 11 100 23 100S45 88 45 72 35 44 23 44 1 56 1 72ZM1 72V45C1 18 12 3 27 3 35 3 40 6 43.5 11' },
   7: { w: 48, d: 'M0 3H48C35 30 25 62 21 100' },
   8: { w: 46, d: 'M23 47C13 47 6 37 6 25S13 3 23 3 40 13 40 25 33 47 23 47ZM23 47C35 47 45 57 45 73.5S35 100 23 100 1 90 1 73.5 11 47 23 47Z' },
   9: { w: 46, d: 'M45 31C45 15 35 3 23 3S1 15 1 31 11 59 23 59 45 47 45 31ZM45 31V58C45 85 34 100 19 100 11 100 6 97 2.5 92' },
@@ -203,6 +215,11 @@ const ROW = [52, 110.67, 169.33, 228];
 const PIP_SIZE = 32;
 
 const PIPS = {
+  2: [[COL_C, ROW[0]], [COL_C, ROW[3], 1]],
+  3: [[COL_C, ROW[0]], [COL_C, MID], [COL_C, ROW[3], 1]],
+  4: [[COL_L, ROW[0]], [COL_R, ROW[0]], [COL_L, ROW[3], 1], [COL_R, ROW[3], 1]],
+  5: [[COL_L, ROW[0]], [COL_R, ROW[0]], [COL_C, MID], [COL_L, ROW[3], 1], [COL_R, ROW[3], 1]],
+  6: [[COL_L, ROW[0]], [COL_R, ROW[0]], [COL_L, MID], [COL_R, MID], [COL_L, ROW[3], 1], [COL_R, ROW[3], 1]],
   7: [[COL_L, 52], [COL_R, 52], [COL_C, 96], [COL_L, MID], [COL_R, MID], [COL_L, 228, 1], [COL_R, 228, 1]],
   8: [[COL_L, 52], [COL_R, 52], [COL_C, 96], [COL_L, MID], [COL_R, MID], [COL_C, 184, 1], [COL_L, 228, 1], [COL_R, 228, 1]],
   9: [[COL_L, ROW[0]], [COL_R, ROW[0]], [COL_L, ROW[1]], [COL_R, ROW[1]], [COL_C, MID],

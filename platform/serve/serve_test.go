@@ -31,7 +31,7 @@ func webDir(t *testing.T, files map[string]string) string {
 }
 
 // web is the layout of the frontend: the shell in platform/web, each game
-// in games/<game>/web.
+// in the web/ of its folder, here games/<game>/web.
 var web = map[string]string{
 	"platform/web/js/main.js":                  "export {main};",
 	"platform/web/css/app.css":                 "body{}",
@@ -120,6 +120,42 @@ func TestStaticHandlerToepen(t *testing.T) {
 	if code != 404 || !strings.Contains(body, "<title>Niet gevonden - Toepen</title>") ||
 		!strings.Contains(body, `<a href="/">Terug naar toepen</a>`) || strings.Contains(body, "laverjas") {
 		t.Errorf("404: %d %q", code, body)
+	}
+}
+
+// A game of the overlay, with its settings file in extra/, serves its
+// folder's web/ there, also when a games/<game>/web is left behind.
+func TestStaticHandlerOverlay(t *testing.T) {
+	files := map[string]string{"extra/pesten/pesten.mk": "", "extra/pesten/web/index.html": "<!doctype html>pesten",
+		"games/pesten/web/index.html": "stale"}
+	for k, v := range web {
+		files[k] = v
+	}
+	h, err := StaticHandler(webDir(t, files), Site{Game: "pesten", Title: "Pesten", Verb: "pesten"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for p, want := range map[string]string{"/": "<!doctype html>pesten", "/js/main.js": "export {main};"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest("GET", "http://x"+p, nil))
+		if rec.Code != 200 || rec.Body.String() != want {
+			t.Errorf("%s: %d %q", p, rec.Code, rec.Body.String())
+		}
+	}
+	files["extra/pesten/web/js/main.js"] = "x"
+	if _, err := StaticHandler(webDir(t, files), Site{Game: "pesten"}); err == nil || !strings.Contains(err.Error(), "extra/pesten/web: js/main.js") {
+		t.Errorf("clash: %v", err)
+	}
+	// Without a settings file in extra/, the game is games/'s.
+	delete(files, "extra/pesten/pesten.mk")
+	h, err = StaticHandler(webDir(t, files), Site{Game: "pesten"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, httptest.NewRequest("GET", "http://x/", nil))
+	if rec.Body.String() != "stale" {
+		t.Errorf("games/pesten/web not served: %q", rec.Body.String())
 	}
 }
 

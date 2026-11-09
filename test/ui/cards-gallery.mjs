@@ -4,7 +4,7 @@ import { SUITS, RANKS, cardName, cardShort, createCard, createBack, suitIcon } f
 
 const main = document.getElementById('gallery');
 const SUIT_ORDER = ['S', 'H', 'C', 'D'];
-const RANK_ORDER = Object.keys(RANKS).sort((a, b) => '789TJQKA'.indexOf(a) - '789TJQKA'.indexOf(b));
+const RANK_ORDER = Object.keys(RANKS).sort((a, b) => '23456789TJQKA'.indexOf(a) - '23456789TJQKA'.indexOf(b));
 const ALL = SUIT_ORDER.flatMap((s) => RANK_ORDER.map((r) => r + s));
 
 function el(tag, cls, text) {

@@ -6,10 +6,8 @@ import (
 	"math"
 	"runtime"
 	"slices"
-	"strings"
 	"sync/atomic"
 	"time"
-	"unicode/utf8"
 
 	"jannie/games/klaverjas/game"
 )
@@ -644,22 +642,9 @@ func (r *room) cmdFeedback(c *client, i game.Seat, m *inMsg) {
 	c.send(mustJSON(savedMsg{T: "saved", What: "feedback"}))
 }
 
-// cleanFeedback cleans feedback line by line (cleanText), keeping the
+// cleanFeedback cleans feedback line by line (CleanText), keeping the
 // lines, at most maxFeedbackLen characters in all.
-func cleanFeedback(s string) string {
-	var lines []string
-	left := maxFeedbackLen
-	for _, l := range strings.Split(s, "\n") {
-		if left <= 0 {
-			break
-		}
-		if l = cleanText(l, left); l != "" {
-			lines = append(lines, l)
-			left -= utf8.RuneCountInString(l) + 1
-		}
-	}
-	return strings.Join(lines, "\n")
-}
+func cleanFeedback(s string) string { return CleanText(s, maxFeedbackLen) }
 
 // listed picks the moments with the most points, in the order they were
 // played, each with the trick its card went into.

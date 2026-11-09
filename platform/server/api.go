@@ -45,6 +45,35 @@ type Game interface {
 	New(t *Table) Play
 }
 
+// Opener is an optional interface of a Game whose create may open a room
+// of its own kind, such as a training table
+// (docs/server.md#rooms-without-a-lobby). The table calls Open once, on
+// create, after the room's options are set; m is the create message, to
+// read the game's own fields from, and o the room's own game options,
+// which Open may change. The table's options are not passed: m.Raw has
+// them, unchecked, as create asked for them.
+type Opener interface {
+	Open(m Msg, o GameOptions) Opening
+}
+
+// Opening is how a room opens (Opener); the zero Opening is an ordinary
+// room.
+type Opening struct {
+	// Seat is the creator's seat.
+	Seat cards.Seat
+	// Bots is a persona ID per seat ("" none): seated at once and kept on
+	// rematch; the other empty seats are filled at the start as usual.
+	Bots []string
+	// Start starts the match at once, as create's start does.
+	Start bool
+	// Locked, when not empty, fixes the table: a joiner who would take a
+	// seat gets vol with this Dutch text, and the lobby commands that
+	// change the table get ongeldig. The room's own player still gets
+	// back in after a lost connection (by the seat token, or by name),
+	// not after leave.
+	Locked string
+}
+
 // GameOptions are the game's own options of a room. The table reads the
 // options every game has: players, ai, tempo and seed (TableOpts).
 type GameOptions interface {
@@ -75,7 +104,10 @@ type Play interface {
 	// record.
 	Start()
 	// Turn is the seat whose decision the match waits for, NoSeat when it
-	// waits for nobody in particular (a pause, or everyone at once).
+	// waits for nobody in particular (a pause, or everyone at once). It is
+	// the seat that decides, also when that player plays another seat's
+	// cards (a partner's hand laid open, say): its bot decides, and
+	// the question about an absent player is about it.
 	Turn() cards.Seat
 	// HandLen is the number of cards seat i holds (players[i].cards).
 	HandLen(i cards.Seat) int
