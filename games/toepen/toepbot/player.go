@@ -293,7 +293,7 @@ func combinations(hand []cards.Card, n int) [][]cards.Card {
 // ---- the stake ----
 
 // cost is what taking n penalty points costs a player with points of
-// limit: the points, and being out of the match as much as five more.
+// limit: the points, and being out of the match outCost more.
 func cost(points, n, limit int) float64 {
 	if points+n >= limit {
 		return float64(limit-points) + outCost

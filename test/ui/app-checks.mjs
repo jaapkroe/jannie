@@ -506,7 +506,7 @@ CHECKS.lessonSheet = async browser => {
     const inFold = await P.page.$$eval('.train-opts > *', els => els.map(e => e.querySelector?.('input')?.id || e.className || e.tagName));
     if (String(inFold.slice(0, 4)) !== 'SUMMARY,train-tips,train-open,opts') throw new Error(`in the fold ${inFold}`);
     const small = await P.page.$$eval('.train-opts .set-txt small', els => els.map(e => e.textContent));
-    if (String(small) !== 'Een tip bij elke beurt en uitleg na elke slag,Zie de kaarten van alle spelers') throw new Error(`switch texts ${small}`);
+    if (String(small) !== 'Een tip bij elke beurt en uitleg na elke slag,Je ziet de kaarten van alle spelers') throw new Error(`switch texts ${small}`);
     for (const [lesson, rows, go] of [
       ['basis', 'trumpMode,rules,ai,tempo,seed', 'Start les'],
       ['roem', 'trumpMode,rules,ai,tempo,seed', 'Start les'],
@@ -1244,7 +1244,7 @@ CHECKS.summary = async browser => {
       const st = await P.page.evaluate(SUMMARY_FIT);
       const wide = VP[vp].isLandscape;
       if (st.bad.length || st.tiles !== 8 || st.cols !== (wide ? 2 : 4) || st.title !== 'Zij gaan nat!' || st.cls !== 'sum-head nat good'
-        || st.sub !== 'Zij spelen en halen het niet. Alle punten voor Wij!' || st.why !== !wide) {
+        || st.sub !== 'Zij spelen en halen het niet. Wij krijgen alle punten!' || st.why !== !wide) {
         throw new Error(`summary at ${vp}: ${JSON.stringify(st)}`);
       }
       await shot(P, `nat-${vp}`);

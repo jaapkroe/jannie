@@ -87,8 +87,8 @@ export function handHeadline(r, w, s = null) {
   }
   if (r.nat) {
     return we
-      ? { t: 'Nat!', sub: 'Wij spelen en halen het niet. Alle punten gaan naar Zij.', cls: 'nat bad' }
-      : { t: 'Zij gaan nat!', sub: 'Zij spelen en halen het niet. Alle punten voor Wij!', cls: 'nat good' };
+      ? { t: 'Nat!', sub: 'Wij spelen en halen het niet. Zij krijgen alle punten.', cls: 'nat bad' }
+      : { t: 'Zij gaan nat!', sub: 'Zij spelen en halen het niet. Wij krijgen alle punten!', cls: 'nat good' };
   }
   return we
     ? { t: 'Gehaald!', sub: 'Wij spelen en halen het.', cls: 'good' }

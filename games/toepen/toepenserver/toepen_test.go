@@ -528,7 +528,7 @@ func TestToepenFullTable(t *testing.T) {
 	h2.Create("Kees", map[string]any{"players": 2}, false)
 	srv.Dial().Join(h2.Code, "Bram", "")
 	m = srv.Dial().TryJoin(h2.Code, "Te laat", "")
-	if m.ErrMsg() != "Deze tafel is vol: alle twee plaatsen zijn bezet. Vraag de host om bij Spelers een plaats bij te zetten en probeer het dan opnieuw." {
+	if m.ErrMsg() != "Deze tafel is vol: beide plaatsen zijn bezet. Vraag de host om bij Spelers een plaats bij te zetten en probeer het dan opnieuw." {
 		t.Errorf("third at two: %s %s", m.Code, m.ErrMsg())
 	}
 }

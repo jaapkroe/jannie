@@ -226,7 +226,7 @@ func TestJoinErrors(t *testing.T) {
 	}
 	y := dial(t, ts)
 	y.send(map[string]any{"t": "join", "code": h.code, "name": "Y"})
-	if e := y.waitError(errFull); !strings.Contains(e.errMsg(), "alle twee plaatsen zijn bezet") {
+	if e := y.waitError(errFull); !strings.Contains(e.errMsg(), "beide plaatsen zijn bezet") {
 		t.Errorf("refusal %q", e.errMsg())
 	}
 

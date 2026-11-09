@@ -272,7 +272,7 @@ keeps the one that wins most. Toepen, overtoepen, going along and claiming
 a vuile was follow the chance to take the last trick
 (sampled: makkelijk 12 deals, normaal 48, sterk 240) against what is at
 stake: passing costs the stake before the toep, losing the stake, and going
-out counts as five points more (so who is out either way goes along).
+out counts as eight points more (so who is out either way goes along).
 **Memory**: the match keeps a public record per seat (`Record`, in every
 view): its toeps whose cards came on the table (it stayed in to the last
 trick), of which those without a card above an aas count as bluffs, and
@@ -406,7 +406,7 @@ options, worlds}`, `options` each `{label | cards, value, points, best}`:
   take the last trick with it, and, when you may, *Toepen* against the
   bar for a toep;
 - **antwoord**: *Meegaan* (expected penalty points: the stake times the
-  chance to lose, going out counting five more), *Overtoepen* (the chance
+  chance to lose, going out counting eight more), *Overtoepen* (the chance
   against its bar) and *Passen* (the stake before the toep); with what the
   table saw of the toeper's bluffs;
 - **was**: whether the hand is a real vuile was, and the chance with it;

@@ -74,7 +74,7 @@ func (m *mover) ruleWhy(c game.Card, r rule) string {
 	// ruleDuck
 	head := "je kunt de slag niet winnen"
 	if _, ok := m.bestWinner(false, false); ok {
-		head = "je kunt de slag niet zeker winnen: na jou kan er nog overheen"
+		head = "je kunt de slag niet zeker winnen: na jou kan er nog iemand overheen"
 	}
 	return head + ", dus geef zo weinig mogelijk weg. " + m.discardWhy(c, true) + m.signalNote(c)
 }
@@ -244,9 +244,9 @@ func (m *mover) keptWhy(p, c game.Card, toOpp bool) string {
 	case p.Suit != t.trump && m.isBoss(p) && m.unk.inSuit(p.Suit) != 0:
 		return ps + " is de hoogste " + suit + " en kan zelf nog een slag halen"
 	case m.falseLow(p):
-		return ps + " zou je maat lezen als “speel " + suit + ", daar heb ik de hoogste van” (opseinen), maar die heb je niet"
+		return "je maat zou " + ps + " lezen als “speel " + suit + ", daar heb ik de hoogste van” (opseinen), maar die heb je niet"
 	case m.falseAce(p):
-		return ps + " zou je maat lezen als “ik heb " + game.CardShortNL(tenOf(p.Suit)) + " ook” (met de aas seinen), maar die heb je niet"
+		return "je maat zou " + ps + " lezen als “ik heb " + game.CardShortNL(tenOf(p.Suit)) + " ook” (met de aas seinen), maar die heb je niet"
 	case m.guardPenalty(p) > 0:
 		return ps + " houd je als dekking van je " + game.CardShortNL(tenOf(p.Suit))
 	}
@@ -568,7 +568,7 @@ func (m *mover) lieWhat(c game.Card) string {
 // sterk plays res[i] (see teachPick): the search does not rate sterk's card
 // clearly higher.
 func hintKeptReason(res []playResult, i, j int) string {
-	return "Sterk is volgens de berekening " + tenthsDownNL(res[i].mean()-res[j].mean()) + " punten beter dan de kaart van Normaal, minder dan " +
+	return "De kaart van Sterk is volgens de berekening " + tenthsDownNL(res[i].mean()-res[j].mean()) + " punten beter dan de kaart van Normaal, minder dan " +
 		toleranceNL(max(teachTolerance, 2*pairSE(res, i, j))) + ": dan blijft de tip bij die kaart."
 }
 

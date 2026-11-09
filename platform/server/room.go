@@ -383,8 +383,8 @@ func (r *room) randomPersona(skip ...string) Persona {
 func botName(p Persona) string { return p.Name + " (AI)" }
 
 // numberNL writes 2..4 as a Dutch word ("drie"), other numbers in digits,
-// for klaverjas's texts (the lessons count trumps with it: "dus de anderen
-// hebben er 5").
+// for klaverjas's texts (the lesson on signals counts the agreements with
+// it: "Aan deze tafel spreken we er drie af").
 func numberNL(n int) string {
 	if n >= 2 && n <= 4 {
 		return [...]string{"twee", "drie", "vier"}[n-2]
@@ -399,6 +399,15 @@ func seatsNL(n int) string {
 		return [...]string{"vijf", "zes", "zeven", "acht"}[n-5]
 	}
 	return numberNL(n)
+}
+
+// allSeatsNL names every seat of a table of n, for "… zijn bezet":
+// "beide plaatsen" for two, else "alle vier de plaatsen".
+func allSeatsNL(n int) string {
+	if n == 2 {
+		return "beide plaatsen"
+	}
+	return "alle " + seatsNL(n) + " de plaatsen"
 }
 
 // displayName is how a seat appears in chat and texts.
@@ -591,9 +600,9 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 		case r.firstSeat(func(st *seat) bool { return st.kind == seatBot }) != cards.NoSeat:
 			fail(errFull, "Deze tafel is vol. Vraag de host om een AI-speler weg te halen en probeer het dan opnieuw.")
 		case r.players() < len(r.seats):
-			fail(errFull, fmt.Sprintf("Deze tafel is vol: alle %s plaatsen zijn bezet. Vraag de host om bij Spelers een plaats bij te zetten en probeer het dan opnieuw.", seatsNL(r.players())))
+			fail(errFull, fmt.Sprintf("Deze tafel is vol: %s zijn bezet. Vraag de host om bij Spelers een plaats bij te zetten en probeer het dan opnieuw.", allSeatsNL(r.players())))
 		default:
-			fail(errFull, fmt.Sprintf("Deze tafel is vol: alle %s de plaatsen zijn bezet.", seatsNL(len(r.seats))))
+			fail(errFull, fmt.Sprintf("Deze tafel is vol: %s zijn bezet.", allSeatsNL(len(r.seats))))
 		}
 		if i == cards.NoSeat {
 			r.refused(name)

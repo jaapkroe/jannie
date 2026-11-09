@@ -781,9 +781,9 @@ func TestSignalStep(t *testing.T) {
 			"Dat was een sein. Ik gooide ♣7 bij op jouw slag, een laag kaartje, en aan deze tafel betekent dat: “speel klaveren, daar heb ik de hoogste van” (opseinen). " +
 				"Speel later klaveren, dan haal ik die slag."},
 		{Signal{Seat: 3, Card: game.Card{Rank: game.Seven, Suit: game.Clubs}, Kind: "kleintjeBoer", Means: game.Card{Rank: game.Jack, Suit: game.Hearts}},
-			"Dat was een sein. " + r.displayName(3) + " kwam voor het eerst uit, met ♣7: een kleintje van een bijkleur. Van het koppel dat troef koos, betekent dat aan deze tafel: “ik heb de troefboer” (kleintje boer)."},
+			"Dat was een sein. " + r.displayName(3) + " kwam voor het eerst uit, met ♣7: een kleintje van een bijkleur. Van iemand van het koppel dat troef koos, betekent dat aan deze tafel: “ik heb de troefboer” (kleintje boer)."},
 		{Signal{Seat: 1, Card: game.Card{Rank: game.Jack, Suit: game.Spades}, Kind: "boerOverBoer", Means: game.Card{Rank: game.Jack, Suit: game.Hearts}},
-			"Dat was een sein. " + opp + " kwam voor het eerst uit, met ♠B: de boer van een bijkleur. Van het koppel dat troef koos, betekent dat aan deze tafel: “ik heb de troefboer” (boer over boer)."},
+			"Dat was een sein. " + opp + " kwam voor het eerst uit, met ♠B: de boer van een bijkleur. Van iemand van het koppel dat troef koos, betekent dat aan deze tafel: “ik heb de troefboer” (boer over boer)."},
 	} {
 		if got := r.signalStep(c.sig).Text; got != c.want {
 			t.Errorf("got  %q\nwant %q", got, c.want)

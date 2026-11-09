@@ -79,6 +79,15 @@ func pts(x float64) string {
 	return strings.TrimSuffix(s, ",0")
 }
 
+// penalty writes a number of penalty points from pts with its noun: "1
+// strafpunt", "1,4 strafpunten".
+func penalty(s string) string {
+	if s == "1" {
+		return "1 strafpunt"
+	}
+	return s + " strafpunten"
+}
+
 // ---- a card ----
 
 // shares is, per card of legal, the weighted share of sampled deals in
@@ -199,13 +208,13 @@ func (p *Player) explainAnswer(v *toepen.View) Explanation {
 	}
 	out := ""
 	if me+v.Stake >= limit {
-		out = " Verlies je, dan lig je eruit: dat telt hier als vijf strafpunten extra."
+		out = fmt.Sprintf(" Verlies je, dan lig je eruit: dat telt hier als %d strafpunten extra.", outCost)
 	}
-	why := fmt.Sprintf("Je kans op de laatste slag is %s. Meegaan kost gemiddeld %s strafpunten (de inzet %d maal je kans om te verliezen), passen kost er %d (de inzet waarmee je het laatst akkoord ging).%s",
-		pct(q), pts(lose), v.Stake, passCost(v), out)
+	why := fmt.Sprintf("Je kans op de laatste slag is %s. Meegaan kost gemiddeld %s (de inzet %d maal je kans om te verliezen), passen kost er %d (de inzet waarmee je het laatst akkoord ging).%s",
+		pct(q), penalty(pts(lose)), v.Stake, passCost(v), out)
 	if o := v.Toeper; o != cards.NoSeat && v.Record[o].Toeps > 0 {
 		r := v.Record[o]
-		why += fmt.Sprintf(" Van de %d toeps van de toeper die op tafel kwamen, waren er %d bluf: zo vaak telt een zwakke hand mee in die kans.",
+		why += fmt.Sprintf(" Toeps van de toeper die op tafel kwamen: %d, waarvan %d bluf. Zo vaak telt een zwakke hand mee in die kans.",
 			r.Toeps, r.ToepBluffs)
 	}
 	stays := true
@@ -269,7 +278,7 @@ func (p *Player) explainWas(v *toepen.View) Explanation {
 		e.Why = fmt.Sprintf("Je hand is geen vuile was. Je kans op de laatste slag is %s.", pct(q))
 	case q < 0.12:
 		e.Advice = "Geen (een bluf kan)"
-		e.Why = fmt.Sprintf("Je hand is geen vuile was en bijna kansloos (%s op de laatste slag). Sterk bluft dan zo'n %s van de keren, maar wordt het gecontroleerd, dan krijg je een strafpunt.",
+		e.Why = fmt.Sprintf("Je hand is geen vuile was en bijna kansloos (%s op de laatste slag). Sterk bluft dan zo'n %s van de keren, maar wordt die bluf gecontroleerd, dan krijg je een strafpunt.",
 			pct(q), pct(0.12*(0.5+p.aggr)))
 	default:
 		e.Advice = "Geen"
@@ -294,9 +303,9 @@ func (p *Player) explainCheck(v *toepen.View) Explanation {
 	e.Advice = map[bool]string{true: "Controleer", false: "Laat gaan"}[check]
 	seen := "De bots gaan uit van zo'n " + pct(bluff) + " bluf"
 	if r := v.Record[v.Claimant]; r.Claims > 0 {
-		seen = fmt.Sprintf("Van de %d gecontroleerde vuile wassen van deze speler waren er %d bluf: reken op zo'n %s", r.Claims, r.ClaimBluffs, pct(bluff))
+		seen = fmt.Sprintf("Gecontroleerde vuile wassen van deze speler: %d, waarvan %d bluf; reken op zo'n %s", r.Claims, r.ClaimBluffs, pct(bluff))
 	}
-	e.Why = fmt.Sprintf("Van de kaarten die jij niet ziet, vormt %s van de handen van vier een vuile was. %s. Samen is de kans dat dit bluf is %s; controleer boven %s",
+	e.Why = fmt.Sprintf("Van de kaarten die jij niet ziet, vormt %s van de mogelijke handen van vier kaarten een vuile was. %s. Samen is de kans dat dit bluf is %s; controleer boven %s",
 		pct(g), seen, pct(pb), pct(bar))
 	if bar > 0.5 {
 		e.Why += ", want een verkeerde controle zet je eruit."
@@ -323,7 +332,7 @@ func (p *Player) explainDiscard(v *toepen.View) Explanation {
 	best := lays[order[0]]
 	e.Chance = float64(wins[order[0]]) / float64(e.Worlds)
 	e.Advice = "Leg weg: " + cardsNL(best)
-	e.Why = fmt.Sprintf("Elke keuze van %d kaarten is uitgespeeld in dezelfde %d verdelingen van de kaarten die je niet ziet. Met de overige %d haal je zo in %s de laatste slag.",
+	e.Why = fmt.Sprintf("Elke keuze van %d kaarten is uitgespeeld in dezelfde %d verdelingen van de kaarten die je niet ziet. Met de overige %d haal je zo in %s van de verdelingen de laatste slag.",
 		v.Lay, e.Worlds, len(v.Hand)-v.Lay, pct(e.Chance))
 	weak := weakestN(v.Hand, v.Lay)
 	e.Rule = "Leg je zwakste kaarten weg: " + cardsNL(weak) + "."

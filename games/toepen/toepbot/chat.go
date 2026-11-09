@@ -30,7 +30,8 @@ var chance = map[string]float64{
 	"out": 0.9, "gameWon": 0.9, "gameLost": 0.7,
 }
 
-// lines are the Dutch lines per kind, for every persona; {n} is Points.
+// lines are the Dutch lines per kind, for every persona; {n} is Points with
+// its noun ("1 strafpunt", "3 strafpunten").
 // Like klaverjas's bots they name no time of day and never give away a
 // card they hold.
 var lines = map[string][]string{
@@ -51,11 +52,11 @@ var lines = map[string][]string{
 		"Eerlijk is eerlijk: een mooie vuile was.", "Dat had ik niet gedacht."},
 	"checkRight": {"Dacht ik het niet! Geen vuile was.", "Mij hou je niet voor de gek.", "Ha, betrapt!", "Nette poging."},
 	"boer":       {"Met de boer! Puntje eraf.", "De laagste kaart, en toch de laatste slag.", "Een boer als laatste: dat scheelt een punt."},
-	"koning": {"Het koningsspel! Nu wordt het spannend.", "Acht kaarten, één laatste slag. Daar gaan we.",
+	"koning": {"Het koningsspel! Nu wordt het spannend.", "Alles draait om één laatste slag. Daar gaan we.",
 		"Iedereen op armoede: wie de laatste slag haalt, wint."},
 	"wonRound": {"De laatste slag is voor mij!", "Die laatste slag, daar gaat het om.", "Mooi zo, geen strafpunten.",
 		"Zo hoort dat. Volgende!"},
-	"lostRound": {"Au, {n} strafpunten.", "Dat had ik niet zien aankomen.", "Hm. Volgend potje beter.",
+	"lostRound": {"Au, {n}.", "Dat had ik niet zien aankomen.", "Hm. Volgend potje beter.",
 		"Ik had moeten passen."},
 	"out": {"Ik lig eruit. Succes nog!", "Dat was het voor mij. Ik kijk wel toe.", "Eruit… maar met opgeheven hoofd.",
 		"Speel mooi verder, ik ben klaar."},
@@ -98,7 +99,11 @@ func Chat(personaID string, chattiness float64, ev ChatEvent, rng *rand.Rand) st
 		return ""
 	}
 	pool = append(pool[:len(pool):len(pool)], flavour[personaID][key]...)
-	return strings.ReplaceAll(pool[rng.IntN(len(pool))], "{n}", fmt.Sprint(ev.Points))
+	n := fmt.Sprint(ev.Points, " strafpunten")
+	if ev.Points == 1 {
+		n = "1 strafpunt"
+	}
+	return strings.ReplaceAll(pool[rng.IntN(len(pool))], "{n}", n)
 }
 
 // reply answers a human line now and then.
