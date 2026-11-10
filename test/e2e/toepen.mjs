@@ -136,6 +136,14 @@ class Player {
     }
     for (const c of s.legal || []) if (!s.hand.includes(c)) this.fail(`legal ${c} not in hand`);
     const p = this.prev;
+    // Out of a round that goes on, your hand stays, unchanged, until it
+    // ends: from a pass on (never with a card), and while out already (who
+    // goes out with the last trick has just played its last card).
+    const was = p?.status?.[s.you], now = s.status[s.you];
+    if (p && p.handNo === s.handNo && IN_HAND.has(p.phase) && IN_HAND.has(s.phase) && now !== 'in' && (was !== 'in' || now === 'gepast') &&
+      s.hand.join() !== p.hand.join()) {
+      this.fail(`out of the round (${now}), the hand went from ${p.hand} to ${s.hand}`);
+    }
     if (p && p.handNo === s.handNo && p.phase !== 'lobby') {
       // Points only go up within a round, but for the boer: one off for the
       // winner of the last trick.

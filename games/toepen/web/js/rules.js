@@ -86,7 +86,11 @@ export function prompt(s) {
   const st = s.status?.[me];
   if (st && st !== 'in') {
     const why = { gepast: 'Je hebt gepast.', betrapt: 'Betrapt: dat was geen vuile was.' }[st] || 'Je ligt eruit.';
-    return { text: `${why} Je kijkt mee tot het potje uit is.`, actions: [] };
+    return {
+      text: `${why} Je kijkt mee tot het potje uit is.`,
+      sub: s.hand?.length ? 'Je kaarten blijven zichtbaar, alleen voor jou, maar doen niet meer mee.' : '',
+      actions: [],
+    };
   }
   switch (s.phase) {
     case 'discard': {
@@ -480,7 +484,8 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
     { id: 'bediening', title: 'Bediening', parts: [
       ['Je kaarten', [touch
         ? 'Tik een kaart aan om hem op te tillen, en nog een keer om hem te spelen. Kaarten die niet mogen, zijn donkerder.'
-        : 'Klik op een kaart om hem te spelen, of gebruik de toetsen 1 tot 4 (in het koningsspel 1 tot 8). Kaarten die niet mogen, zijn donkerder.']],
+        : 'Klik op een kaart om hem te spelen, of gebruik de toetsen 1 tot 4 (in het koningsspel 1 tot 8). Kaarten die niet mogen, zijn donkerder.',
+        `Speel je het potje niet meer mee (je hebt gepast${on('bluf') ? '' : ', bent betrapt'} of ligt eruit), dan blijven je kaarten zichtbaar tot het potje uit is, grijs en alleen voor jou. Zo kun je nagaan of je de laatste slag nog had kunnen halen.`]],
       ['Toepen en antwoorden', [
         `Toepen doe je met de knop Toep! naast je naam, voordat je speelt${touch ? '' : ', of met de toets T'}.`,
         'Wordt er getoept, dan kies je onder de tafel: Meegaan, Overtoepen of Passen. Na het delen: Vuile was! of Geen, en bij een vuile was van een ander: Controleren of Laten gaan.',

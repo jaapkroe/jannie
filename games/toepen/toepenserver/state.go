@@ -44,7 +44,7 @@ type state struct {
 	Asking      []int           `json:"asking"`      // check, toep: who still answers, in order
 	Checks      []toepen.Check  `json:"checks"`      // the claims settled this round
 	Stock       int             `json:"stock"`
-	Hand        []cards.Card    `json:"hand"` // yours, display-sorted
+	Hand        []cards.Card    `json:"hand"` // yours, display-sorted; also once you are out of the round, until it ends
 	Legal       []cards.Card    `json:"legal,omitempty"`
 	Rule        string          `json:"rule,omitempty"`
 	CanToep     bool            `json:"canToep"`
@@ -120,9 +120,10 @@ func (p *play) State(i cards.Seat) any {
 	if !t.InHand() {
 		return s
 	}
-	if d.Status(i) == toepen.StatusIn {
-		s.Hand = toepen.SortHand(d.Hand(i))
-	}
+	// Out of the round (passed, a bluff caught under bluf off, out by a
+	// check) you still see your seat's own cards until the round ends;
+	// nobody else gets them.
+	s.Hand = nonNil(toepen.SortHand(d.Hand(i))) // a seat out of the match holds none: []
 	for k := range cards.Seat(n) {
 		if d.Open(k) {
 			s.Open[k] = toepen.SortHand(d.Hand(k))

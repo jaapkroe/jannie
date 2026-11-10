@@ -157,6 +157,9 @@ func checkKeys(t *testing.T, m *servertest.Msg, s *state) {
 	}
 	servertest.WantKeys(t, s.Phase, m.S, want)
 	servertest.WantKeys(t, s.Phase+" opts", servertest.Field(t, m.S, "opts"), optsKeys)
+	if string(servertest.Field(t, m.S, "hand")) == "null" {
+		t.Errorf("%s: hand null, not []", s.Phase)
+	}
 }
 
 // courseTypes are the events of a round's course (play.emit).
@@ -166,7 +169,8 @@ var courseTypes = map[string]bool{"claims": true, "wasDone": true, "armoede": tr
 // playToepen plays c's decisions at random until game over and returns the
 // toepen states seen, per phase, and the event types. At game over every
 // round's course is the events of its types c received in that round, in
-// order and byte for byte: what everyone saw, nothing more or less.
+// order and byte for byte: what everyone saw, nothing more or less. Out of
+// a round that goes on, c's hand stays as it was until the round ends.
 func playToepen(t *testing.T, c *servertest.Client, rng *rand.Rand) (map[string]*state, map[string]int) {
 	t.Helper()
 	phases := map[string]*state{}
@@ -216,6 +220,10 @@ func playToepen(t *testing.T, c *servertest.Client, rng *rand.Rand) (map[string]
 			if !slices.Contains(s.Hand, l) {
 				t.Fatalf("legal %v not in hand %v", l, s.Hand)
 			}
+		}
+		if s.You >= 0 && s.Status[s.You] != toepen.StatusIn && len(s.Hand) > 0 &&
+			prev != nil && prev.HandNo == s.HandNo && len(prev.Hand) > 0 && !slices.Equal(s.Hand, prev.Hand) {
+			t.Fatalf("out of the round (%s), the hand changed: %v → %v", s.Status[s.You], prev.Hand, s.Hand)
 		}
 		if !slices.Equal(s.Hand, toepen.SortHand(s.Hand)) {
 			t.Errorf("hand not sorted: %v", s.Hand)
@@ -710,6 +718,62 @@ func TestToepenToepAndPass(t *testing.T) {
 	}
 	if s := toepS(t, m); s.Points[other.Seat] != 1 || len(s.Rounds) != 1 || s.NextAt == 0 {
 		t.Errorf("after: points %v rounds %d next %d", s.Points, len(s.Rounds), s.NextAt)
+	}
+}
+
+// Who passes while the round goes on still sees its own cards, unchanged,
+// until the round ends; the others see none of them.
+func TestToepenHandAfterPass(t *testing.T) {
+	srv, _ := newToepServer(t)
+	h := srv.Dial()
+	h.Create("Jaap", map[string]any{"players": 3, "was": false, "armoede": false, "seed": 77}, false)
+	clients := []*servertest.Client{h, srv.Dial(), srv.Dial()}
+	clients[1].Join(h.Code, "Kees", "")
+	clients[2].Join(h.Code, "Mia", "")
+	h.Send(map[string]any{"t": "start"})
+	bySeat := map[int]*servertest.Client{}
+	for _, c := range clients {
+		bySeat[c.Seat] = c
+	}
+	s := untilToep(t, h, "a turn", func(s *state) bool { return s.Phase == phasePlay && s.Turn >= 0 })
+	toeper := bySeat[s.Turn]
+	untilToep(t, toeper, "my turn", func(s *state) bool { return s.Turn == s.You && s.CanToep })
+	toeper.Send(map[string]any{"t": "toep"})
+	// The first asked passes, the other goes along: two play on.
+	asked := untilToep(t, toeper, "asked", func(s *state) bool { return s.Phase == phaseToep && len(s.Asking) == 2 })
+	passer, stayer := bySeat[asked.Asking[0]], bySeat[asked.Asking[1]]
+	before := untilToep(t, passer, "my question", func(s *state) bool { return s.Phase == phaseToep && s.Turn == s.You })
+	passer.Send(map[string]any{"t": "answer", "play": false})
+	out := untilToep(t, passer, "passed", func(s *state) bool { return s.Status[s.You] == toepen.StatusPassed })
+	if len(out.Hand) != 4 || !slices.Equal(out.Hand, before.Hand) {
+		t.Fatalf("passed: hand %v, before %v", out.Hand, before.Hand)
+	}
+	untilToep(t, stayer, "my question", func(s *state) bool { return s.Phase == phaseToep && s.Turn == s.You })
+	stayer.Send(map[string]any{"t": "answer", "play": true})
+	acted := ""
+	for {
+		ps := untilToep(t, passer, "the round", func(*state) bool { return true })
+		if ps.Phase == "handEnd" {
+			if len(ps.Hand) != 0 {
+				t.Errorf("after the round: hand %v", ps.Hand)
+			}
+			break
+		}
+		if !slices.Equal(ps.Hand, before.Hand) {
+			t.Fatalf("while the others play: hand %v, before %v", ps.Hand, before.Hand)
+		}
+		if ps.Phase != phasePlay || ps.Turn < 0 || ps.Trick == nil {
+			continue
+		}
+		if key := fmt.Sprint(ps.Tricks, len(ps.Trick.Cards)); key != acted {
+			acted = key
+			c := bySeat[ps.Turn]
+			cs := untilToep(t, c, "my turn", func(s *state) bool { return s.Phase == phasePlay && s.Turn == s.You && len(s.Legal) > 0 })
+			if cs.Players[passer.Seat].Cards != 0 || len(cs.Open[passer.Seat]) != 0 {
+				t.Errorf("the others see the passer's cards: %d, %v", cs.Players[passer.Seat].Cards, cs.Open[passer.Seat])
+			}
+			c.Send(map[string]any{"t": "play", "card": cs.Legal[0].String()})
+		}
 	}
 }
 

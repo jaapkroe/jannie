@@ -26,7 +26,8 @@ const shown = (P, sel) => P.page.evaluate(s => !!document.querySelector(s)?.getC
 
 // Wraps the page's WebSocket: once a message matches window.__holdOn (a
 // regular expression), the ones after it wait until window.__release(),
-// which hands them on until one matches again.
+// which hands them on until one matches again. The last state handed on
+// is window.__s.
 function holdHook() {
   const Native = window.WebSocket;
   window.WebSocket = class extends Native {
@@ -34,6 +35,10 @@ function holdHook() {
       const take = e => {
         if (window.__held) { window.__held.push(() => take(e)); return; }
         fn(e);
+        try {
+          const m = JSON.parse(e.data);
+          if (m.t === 'update' && m.s) window.__s = m.s;
+        } catch { /* not JSON */ }
         if (window.__holdOn && new RegExp(window.__holdOn).test(e.data)) {
           window.__holdOn = '';
           window.__held = [];
@@ -157,12 +162,18 @@ const state = P => P.page.evaluate(() => {
     lay: [...document.querySelectorAll('.tp-actions .btn b')].some(b => b.textContent === 'Wegleggen'),
     play: !!document.querySelector('.tp-hand.mine .card.legal'),
     summary: !!document.querySelector('.tp-summary.open .btn-go:not(:disabled)'),
+    // Asked about a toep: how many others stay in for sure (not asked any
+    // more), and how many are still asked after you.
+    sure: (s => (s?.status || []).filter((st, k) => st === 'in' && k !== s.you && !(s.asking || []).includes(k)).length)(window.__s),
+    after: Math.max(0, (window.__s?.asking?.length ?? 1) - 1),
+    you: window.__s?.you ?? -1,
+    cards: window.__s?.hand?.length ?? 0,
   };
 });
 
 // Plays until stop matches: answers every question of the table, toeps
 // when told to, takes the shots of the prompts as they come (once each).
-async function playUntil(P, stop, { timeout = 240000, toep = false, ready = true, shots = {} } = {}) {
+async function playUntil(P, stop, { timeout = 240000, toep = false, pass = false, ready = true, shots = {} } = {}) {
   const t0 = Date.now();
   while (Date.now() - t0 < timeout) {
     if (await has(P, stop)) return;
@@ -181,7 +192,18 @@ async function playUntil(P, stop, { timeout = 240000, toep = false, ready = true
       await act(P, 'Laten gaan');
     } else if (st.labels.includes('Meegaan')) {
       await once('toep', shots.toep?.label);
-      await act(P, 'Meegaan');
+      // Pass when the round goes on after this answer (two stay for sure,
+      // or one and more still to answer) and you hold cards to show,
+      // holding what follows the pass, so the state after it stays on
+      // screen: the client then catches up on the rest of the round in a
+      // burst.
+      const goesOn = st.sure >= 2 || st.sure >= 1 && st.after >= 1;
+      if (pass && goesOn && st.cards > 0 && st.labels.includes('Passen')) {
+        await P.page.evaluate(you => { window.__holdOn = `"type":"answer","seat":${you},"stay":false`; }, st.you);
+        await act(P, 'Passen');
+      } else {
+        await act(P, 'Meegaan');
+      }
     } else if (st.lay) {
       // The koningsspel: tap the cards to lay away (each once), then lay them away.
       await once('koning', shots.koning?.label);
@@ -309,6 +331,18 @@ async function mainFlow(P) {
   await release(P);
 }
 
+// Six players to 15: pass on a toep while the round goes on; your cards
+// stay in sight, grey (the updates after the pass held until the shot).
+async function passFlow(P) {
+  await home(P);
+  await newGame(P, { players: '6', limit: '15 punten', tempo: 'Snel' });
+  await press(P, '#btn-start:not(:disabled)');
+  await playUntil(P, '.tp-hand.out .card', { pass: true, timeout: 300000 });
+  await sleep(400);
+  await snap(P, '14b-passed');
+  await release(P);
+}
+
 // Two players to the end, toeping where it can: game over.
 async function overFlow(P) {
   await home(P);
@@ -376,7 +410,7 @@ async function run(name) {
   const browser = await connect(A.cdp);
   const errors = [];
   try {
-    for (const flow of [mainFlow, overFlow, scoreFlow]) errors.push(...(await scenario(browser, name, flow)));
+    for (const flow of [mainFlow, passFlow, overFlow, scoreFlow]) errors.push(...(await scenario(browser, name, flow)));
   } finally {
     await browser.disconnect();
   }

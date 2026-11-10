@@ -121,6 +121,9 @@ test('the prompt asks what the round awaits', () => {
   assert.equal(prompt(table({ phase: 'check', turn: 1, claimant: 0 })).actions.length, 0);
   // Out of the round: look on.
   assert.match(prompt(table({ status: ['gepast', 'in', 'in', 'in'] })).text, /^Je hebt gepast/);
+  // Your cards stay in sight after a pass; none left, nothing to say.
+  assert.equal(prompt(table({ status: ['gepast', 'in', 'in', 'in'], legal: [] })).sub, 'Je kaarten blijven zichtbaar, alleen voor jou, maar doen niet meer mee.');
+  assert.equal(prompt(table({ status: ['eruit', 'in', 'in', 'in'], hand: [], legal: [] })).sub, '');
   assert.equal(prompt(table({ phase: 'handEnd' })), null);
 });
 
