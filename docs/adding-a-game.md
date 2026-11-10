@@ -135,7 +135,9 @@ the second shortened to 12 characters), with `-dirty` when either tree
 differs from its commit; so `make deploy` of one of its games refuses a
 change in either, and an `extra/` that is not a git checkout
 ([deployment.md, "Make targets"](deployment.md#make-targets)). The games
-of `games/` keep this repository's commit alone.
+of `games/` keep this repository's commit alone. A deploy builds a new
+server for a game of the overlay when its code changed since either
+commit, its folder in `extra/` being part of it.
 
 ## Checklist
 

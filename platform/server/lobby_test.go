@@ -1,9 +1,12 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
@@ -563,7 +566,7 @@ func TestHealth(t *testing.T) {
 	if err := json.Unmarshal(body, &h); err != nil {
 		t.Fatalf("health %s: %v", body, err)
 	}
-	if h["ok"] != true || h["version"] != "abc123" || h["rooms"] != 1.0 || h["players"] != 1.0 || len(h) != 4 {
+	if h["ok"] != true || h["version"] != "abc123" || h["rooms"] != 1.0 || h["players"] != 1.0 || h["playing"] != 0.0 || len(h) != 5 {
 		t.Errorf("health %s", body)
 	}
 	if ct := resp.Header.Get("Content-Type"); ct != "application/json" {
@@ -576,6 +579,68 @@ func TestHealth(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("POST health: %d", resp.StatusCode)
+	}
+}
+
+// TestHealthPlaying: /api/health counts the matches in progress with a
+// person at the table, the games a restart would end (make playing): not a
+// lobby, not a finished match, not a match its only person left.
+func TestHealthPlaying(t *testing.T) {
+	s, ts, _ := newTestServer(t)
+	playing := func() float64 {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/api/health")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var h map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&h); err != nil {
+			t.Fatal(err)
+		}
+		n, _ := h["playing"].(float64)
+		return n
+	}
+	h := dial(t, ts)
+	h.create("Host", map[string]any{"hands": 4}, false, false)
+	g := dial(t, ts)
+	g.create("Gast", nil, false, false)
+	if n := playing(); n != 0 {
+		t.Errorf("two lobbies: playing %v", n)
+	}
+	h.send(map[string]any{"t": "start"})
+	h.waitEvent("deal")
+	waitFor(t, "one match in progress", func() bool { return playing() == 1 })
+	r := roomOf(t, s, h.code)
+	call(r, func() {
+		r.pending = stepNone
+		r.handNo = r.opts.Hands
+		r.nextHand()
+	})
+	h.waitEvent("gameOver")
+	waitFor(t, "the match over", func() bool { return playing() == 0 })
+	h.send(map[string]any{"t": "rematch"})
+	h.waitEvent("deal")
+	waitFor(t, "the rematch in progress", func() bool { return playing() == 1 })
+	h.send(map[string]any{"t": "leave"})
+	waitFor(t, "the only person gone from the match", func() bool { return playing() == 0 })
+}
+
+// TestPongVersion: a pong names the server's version, so that a page sees
+// when another server has taken over (docs/frontend.md#connection).
+func TestPongVersion(t *testing.T) {
+	s := New(Config{Game: Klaverjas(&fakeAI{}), Version: "abc123", Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
+	ts := httptest.NewServer(s.Handler())
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		s.Shutdown(ctx)
+		ts.Close()
+	})
+	c := dial(t, ts)
+	c.send(map[string]any{"t": "ping"})
+	if m := c.waitType("pong"); string(m.raw) != `{"t":"pong","v":"abc123"}` {
+		t.Errorf("pong %s", m.raw)
 	}
 }
 

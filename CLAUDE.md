@@ -98,7 +98,7 @@ the layout; `docs/` and `games/<game>/README.md` are the design.
 - Node 22.15 or later (`module.registerHooks`; developed on 26) for
   `node --test`. The unit tests import no packages.
 - `curl`: `make dev`, `make e2e` and `make deploy` poll `/api/health` with
-  it.
+  it, and `make playing` asks it for the games in progress.
 - Go module `jannie`, Go 1.27, one dependency: `github.com/coder/websocket`.
 
 ## Tests and benchmarks
@@ -120,7 +120,8 @@ before and after and compare. `make test`'s JS part runs `test/*.test.mjs`,
 `test/ui/*.test.mjs` and every game's `<folder>/test/*.test.mjs`.
 `scripts/deploy-test` puts every game's units through
 podman's quadlet generator and checks how `make deploy` labels, tags and
-refuses builds, with stubs for podman and systemd.
+refuses builds and what it rebuilds and restarts, with stubs for podman and
+systemd.
 
 ## A server from source
 

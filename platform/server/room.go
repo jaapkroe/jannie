@@ -87,6 +87,7 @@ type room struct {
 	stopOnce sync.Once
 	creator  string       // client address that made the room (Server.live)
 	idle     atomic.Int64 // unix ns since no human is connected, 0 while one is; read by Server
+	playing  atomic.Bool  // a match in progress with a person at the table; read by Server (/api/health)
 
 	rng       *rand.Rand
 	opts      Options
@@ -173,6 +174,8 @@ func (r *room) run(f func()) {
 		if v := recover(); v != nil {
 			r.log.Error("room command panicked", "panic", fmt.Sprint(v), "stack", string(debug.Stack()))
 		}
+		// Every change to the room comes through here.
+		r.playing.Store(r.phase != phaseLobby && r.phase != phaseGameOver && r.humanCount() > 0)
 	}()
 	f()
 }

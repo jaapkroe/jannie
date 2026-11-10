@@ -37,7 +37,7 @@ let roomGen = 0;       // bumped by enterRoom: an update still animating belongs
 const PING_MS = 20000;   // client keepalive
 const OUTBOX_MAX = 8;    // messages kept while (re)connecting
 
-function createNet({ onMessage, onOpen, onClose }) {
+function createNet({ onMessage, onOpen, onClose, onVersion }) {
   let ws = null;
   let delay = 500;
   let timer = 0;
@@ -63,6 +63,8 @@ function createNet({ onMessage, onOpen, onClose }) {
       if (ws !== sock) return;
       delay = 500;
       lastRx = Date.now();
+      // Its pong names the server, before the answer to a rejoin.
+      raw({ t: 'ping' });
       onOpen();
       const queued = outbox;
       outbox = [];
@@ -73,7 +75,8 @@ function createNet({ onMessage, onOpen, onClose }) {
       lastRx = Date.now();
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
-      if (m && m.t !== 'pong') onMessage(m);
+      if (m?.t === 'pong') onVersion(m.v);
+      else if (m) onMessage(m);
     };
     sock.onclose = () => {
       if (ws !== sock) return;
@@ -193,7 +196,26 @@ function createNet({ onMessage, onOpen, onClose }) {
   return { connect, send, reconnect, isOpen, flushOutbox, oneShot, raw: m => isOpen() && raw(m) };
 }
 
-const net = createNet({ onMessage, onOpen, onClose });
+// The server's version, from the first pong this page got. A pong with
+// another one means a new server has taken over (a deploy, or going back
+// to an older one): the room went with the old server, and this page's
+// code may not fit the new one. So the page loads anew, with the site's
+// code as it is now, and the room in its address answers as at any reload.
+// Until the page goes, it reads nothing more: the answer to the rejoin sent
+// with the ping would take the room out of the address and drop its seat
+// token, and the page loaded anew could no longer say the game is gone.
+let serverVersion = '';
+let reloading = false;
+function onVersion(v) {
+  if (typeof v !== 'string' || !v) return;
+  if (!serverVersion) serverVersion = v;
+  else if (v !== serverVersion && !reloading) {
+    reloading = true;
+    location.reload();
+  }
+}
+
+const net = createNet({ onMessage, onOpen, onClose, onVersion });
 app.send = send;
 app.leave = leave;
 app.create = create;
@@ -350,6 +372,7 @@ function banner(on) {
 }
 
 function onMessage(m) {
+  if (reloading) return;
   if (m.t === 'update' || m.t === 'error') {
     clearTimeout(ackTimer); // the socket is alive
     ackTimer = 0;

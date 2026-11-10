@@ -33,7 +33,7 @@ table's messages is in [server.md](server.md).
 | `rematch` | | Host, phase `gameOver`: new match, same seats and options |
 | `lobby` | | Host, phase `gameOver`: back to the lobby, same code and options ([server.md, "Rematch and back to the lobby"](server.md#rematch-and-back-to-the-lobby)); refused in a room without a lobby |
 | `leave` | | Leave the room |
-| `ping` | | Keepalive (server answers `pong`) |
+| `ping` | | Keepalive (server answers `pong`); the page also sends one as each connection opens |
 
 A fixed table (klaverjas's training and expert mode, a game's locked
 room) refuses a new joiner with `vol` (its own player still gets back in
@@ -59,7 +59,7 @@ and toepen refuses them.
 | `refused` | `name`: to the host only, someone could not join because the table is full ([server.md, "Joining"](server.md#joining)); no state change, so no `update` |
 | `rtc` | `from` (the sender's session), `seat` (the sender's), `desc` as sent: to the session named only ([server.md, "Calls"](server.md#calls)) |
 | `error` | `code`, `msg` (Dutch, ready to show) |
-| `pong` | |
+| `pong` | `v`: the server's version (`/api/health`'s), so a page sees when a new server has taken over ([frontend.md, "Connection"](frontend.md#connection)) |
 
 A game may send a message of its own to one seat (`Table.Send`,
 [server.md, "Table"](server.md#table)): an answer for that player alone,

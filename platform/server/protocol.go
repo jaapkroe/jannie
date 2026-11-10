@@ -122,7 +122,12 @@ func errorJSON(code, msg string) []byte {
 	return mustJSON(errorMsg{T: "error", Code: code, Msg: msg})
 }
 
-var pongJSON = []byte(`{"t":"pong"}`)
+// pongMsg answers a ping with the server's version: a page that sees it
+// change knows another server took over (docs/frontend.md#connection).
+type pongMsg struct {
+	T string `json:"t"`
+	V string `json:"v"`
+}
 
 // Events (ev.type), one struct per kind so zero values are always written.
 

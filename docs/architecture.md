@@ -158,7 +158,7 @@ scripts/chrome PORT          headless Chromium with CDP on 127.0.0.1:PORT, with 
 scripts/pod-check ADDR SITE TITLE  check a game's running pod without the reverse proxy: pages and titles,
                              websocket, link preview, manifest, CSP, security headers (`make check`)
 scripts/deploy-test          `make test`: every game's units through podman's quadlet generator, and how
-                             `make deploy` labels, tags and refuses builds (stubbed podman/systemd)
+                             `make deploy` labels, tags, refuses and restarts (stubbed podman/systemd)
 Containerfile  Makefile  README.md
 ```
 
