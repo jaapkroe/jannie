@@ -2,18 +2,22 @@
 # Checks a game's running pod from the host, without the reverse proxy: the
 # page and its title, a join link, a 404 (with the game's name), the server
 # through nginx, the websocket upgrade and its Origin check, the link preview
-# (og:image for SITE, the image itself), the manifest's name, the version in
-# the page (the server's), that the CSP allows the websocket of SITE and of no
-# other site, and that every kind of path carries each security header exactly
-# once (a location with an add_header of its own would drop them all; see
-# deploy/nginx.conf).
-#   scripts/pod-check ADDR SITE TITLE     the settings of the game's <game>.mk, e.g.
+# (og:image for SITE, the image itself), the manifest's name, the versions of
+# the page and of the server (those of WEB and SERVER, the revisions of the
+# images the pod should run, when given), that the CSP allows the websocket of
+# SITE and of no other site, and that every kind of path carries each security
+# header exactly once (a location with an add_header of its own would drop them
+# all; see deploy/nginx.conf).
+#   scripts/pod-check ADDR SITE TITLE [WEB SERVER]   the settings of the game's <game>.mk, e.g.
 #   scripts/pod-check 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas
-# `make check [GAME=<game>]` runs it with them; `make deploy GAME=<game>` too.
+# `make check [GAME=<game>]` runs it with them and the revisions of the game's
+# :current images; `make deploy GAME=<game>` too. The two differ after a deploy
+# that left the server as it was (docs/deployment.md#make-targets).
 # Prints the failures and a summary; exits 1 if anything failed.
 set -u
-[ $# -eq 3 ] || { echo "usage: pod-check ADDR SITE TITLE, e.g. 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas" >&2; exit 2; }
-addr=$1 site=$2 title=$3
+[ $# -eq 3 ] || [ $# -eq 5 ] || {
+  echo "usage: pod-check ADDR SITE TITLE [WEB SERVER], e.g. 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas" >&2; exit 2; }
+addr=$1 site=$2 title=$3 web=${4:-} server=${5:-}
 base=http://$addr
 n=0 failed=0
 
@@ -50,9 +54,15 @@ expect "/bestaat-niet title" "<title>Niet gevonden - $title</title>" \
 expect "og:image of the link preview" "https://$site/og.png" \
   "$(curl -s --max-time 5 "$base/KQXB" | sed -n 's/.*<meta property="og:image" content="\([^"]*\)">.*/\1/p')"
 expect "/og.png" '200 image/png' "$(typed /og.png)"
-expect "the version in the page, the server's" \
-  "$(curl -s --max-time 5 "$base/api/health" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')" \
+# The version in the page is its web image's, and the server's its image's; an
+# empty WEB or SERVER (no such image) asks only for a version.
+version() { # what, wanted, got
+  if [ -n "$2" ]; then expect "$1" "$2" "$3"; else expect "$1: there" 1 "$(if [ -n "$3" ]; then echo 1; else echo 0; fi)"; fi
+}
+version "the version in the page" "$web" \
   "$(curl -s --max-time 5 "$base/" | sed -n 's/.*<meta name="version" content="\([^"]*\)">.*/\1/p')"
+version "the server's version" "$server" \
+  "$(curl -s --max-time 5 "$base/api/health" | sed -n 's/.*"version":"\([^"]*\)".*/\1/p')"
 expect "/apple-touch-icon.png" '200 image/png' "$(typed /apple-touch-icon.png)"
 expect "the manifest's name" "$title" \
   "$(curl -s --max-time 5 "$base/manifest.webmanifest" | tr -d '\n' | grep -o '"name"[[:space:]]*:[[:space:]]*"[^"]*"' \

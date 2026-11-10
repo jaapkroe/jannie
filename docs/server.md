@@ -33,7 +33,7 @@ type Config struct {
     Fast bool           // scale all delays by 0.05 (tests)
     MaxRooms int        // default 1500
     AllowedOrigins []string // websocket Origin patterns besides same-host
-    Version  string     // reported by /api/health {ok, version, rooms, players}
+    Version  string     // reported by /api/health {ok, version, rooms, players, playing} and in every pong
     Logger   *slog.Logger // nil: slog.Default()
     GameLog  string     // directory of the game log ("Game log" below); "" keeps none
 }
@@ -45,6 +45,14 @@ func (s *Server) Shutdown(ctx context.Context)
 
 `Klaverjas(ai)` takes klaverjas's bots and analysis through the interface
 `AI` ([games/klaverjas/README.md, "The AI seam"](../games/klaverjas/README.md#the-ai-seam)).
+
+`/api/health` counts the rooms (`rooms`), the people connected to a seat
+(`players`) and the matches in progress with a person at the table
+(`playing`): a room past its lobby and before game over, with a human
+seat its player has not left, connected or not. Those are the games a
+restart ends; `make playing` asks for them, and `make deploy` waits for
+none before it restarts the pod
+([deployment.md, "Make targets"](deployment.md#make-targets)).
 
 ### The Game API
 

@@ -22,6 +22,16 @@
 #   not one) as its revision; a game of the overlay's names the overlay's
 #   commit too, and its deploy refuses a change there or an extra/ that is no
 #   git checkout;
+# - `make deploy` builds a new server, and restarts the pod, only when the
+#   server's code changed since the commit the running one was built from (for
+#   a game of the overlay, either commit; a game package the platform imports
+#   counts for every game), with SERVER=1, or when no server of a known commit
+#   runs; otherwise it builds the web image alone, tags the running server with
+#   the build's tag and restarts nginx alone, or the pod for units written since
+#   it started or a server that is not running. A restart of the pod waits for
+#   no game in progress (make playing, which fails when a running server does
+#   not answer), before the build and after it, unless ALLOW_PLAYING=1; make
+#   check and deploy check the pod against the revisions of its :current images;
 # - the deployment's SUPPORT_URL (local.mk, which git ignores) reaches every
 #   web image build, and only from there or make's command line; a value that
 #   is not an https URL is refused; the repository itself holds no payment link;
@@ -37,7 +47,8 @@
 #   folders and a game with no main package or two.
 # The Makefile runs in a throwaway git repository with podman, systemctl,
 # loginctl, journalctl, curl, node, sleep, scripts/dev-server and
-# scripts/pod-check replaced by stubs that only record their calls; the real
+# scripts/pod-check replaced by stubs that only record their calls (podman's
+# image inspect and curl's /api/health answer what the checks set); the real
 # scripts/dev-server runs in a throwaway tree of its own, with scripts/go a stub.
 # The fixtures' games are named proef, presidenten and pesten, with ports from
 # 8997 up, which no game of the checkout may take.
@@ -100,11 +111,26 @@ for stub in podman systemctl journalctl node scripts/pod-check; do
   printf '#!/bin/sh\necho "%s $*" >> "%s"\n' "${stub#scripts/}" "$calls" > "$f"
   chmod +x "$f"
 done
+# podman image inspect names $STUB_REV as the revision of the image asked
+# about (the :current images, which make deploy and check look up); none when
+# it is empty. podman container inspect says $STUB_RUNNING (true: the server
+# runs), and systemctl show $STUB_SINCE (when the pod started, @<unix time>).
+# Unless a check says otherwise, the server runs and the pod started after its
+# units were written (in 2100).
+printf 'case "$1 ${STUB_REV:-}" in "image "?*) echo "$STUB_REV" ;; esac\n' >> "$tmp/bin/podman"
+printf 'case "$1 $2 ${STUB_RUNNING:-}" in "container inspect "?*) echo "$STUB_RUNNING" ;; esac\n' >> "$tmp/bin/podman"
+printf 'case "$1 $2 ${STUB_SINCE:-}" in "--user show "?*) echo "$STUB_SINCE" ;; esac\n' >> "$tmp/bin/systemctl"
+STUB_RUNNING=true STUB_SINCE=@4102444800
+export STUB_RUNNING STUB_SINCE
 # The server from source, with the game it was asked for.
 printf '#!/bin/sh\necho "GAME=${GAME:-} dev-server $*" >> "%s"\n' "$calls" > "$repo/scripts/dev-server"
 # curl fails when its arguments hold $FAIL_CURL (an address that does not answer).
+# /api/health answers $HEALTH, from the $HEALTH_FROM-th time it is asked on (1
+# when unset), counted in $tmp/health.n; nothing when $HEALTH is empty.
 printf '#!/bin/sh\necho "curl $*" >> "%s"\ncase "${FAIL_CURL:-}" in ?*) case "$*" in *"$FAIL_CURL"*) exit 7 ;; esac ;; esac\n' \
   "$calls" > "$tmp/bin/curl"
+printf 'case "$* ${HEALTH:-}" in */api/health*" "?*)\n  n=$(($(cat "%s") + 1)); echo "$n" > "%s"\n  [ "$n" -lt "${HEALTH_FROM:-1}" ] || echo "$HEALTH" ;;\nesac\n' \
+  "$tmp/health.n" "$tmp/health.n" >> "$tmp/bin/curl"
 printf '#!/bin/sh\necho Linger=yes\n' > "$tmp/bin/loginctl"
 # The waits for /api/health do not wait.
 printf '#!/bin/sh\n' > "$tmp/bin/sleep"
@@ -117,7 +143,7 @@ git() { command git -C "$repo" -c init.defaultBranch=main -c user.name=deploy-te
   -c user.email=deploy-test@localhost -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
 # Runs make in the repository with the stubs first on PATH; $calls holds what it
 # called, $tmp/out what it said, $status its exit status.
-mk() { : > "$calls"; PATH=$tmp/bin:$PATH make -s -C "$repo" "$@" > "$tmp/out" 2>&1; }
+mk() { : > "$calls"; echo 0 > "$tmp/health.n"; PATH=$tmp/bin:$PATH make -s -C "$repo" "$@" > "$tmp/out" 2>&1; }
 run() { if mk "$@"; then status=0; else status=$?; fi; }
 # Make's own answer: $(GAMES), and setting $2 of game $1.
 games=$(make -s -C "$repo" --no-print-directory --eval='deploy-test-games: ; @echo $(GAMES)' deploy-test-games)
@@ -139,6 +165,11 @@ tag() { sed -n "s|^podman build .* -t localhost/$1:\([^ ]*\) \.\$|\1|p" "$calls"
 line() { grep -n -F -m 1 -- "$1" "$calls" | cut -d: -f1 | grep . || echo 0; }
 # $calls without curl's, which only wait for health.
 steps() { grep -v '^curl ' "$calls" || true; }
+# The look-up of the revision of image $1 (<game>-server or <game>-web) :current,
+# and the call of pod-check for game $1 with the revisions $2 and $3 of its web and
+# server images, as the stubs note them.
+inspect() { echo "podman image inspect --format {{index .Config.Labels \"org.opencontainers.image.revision\"}} localhost/$1:current"; }
+podcheck() { echo "pod-check $(val "$1" ADDR) $(val "$1" SITE) $(val "$1" TITLE) $2 $3"; }
 stamp='[0-9]\{8\}-[0-9]\{6\}'
 # What `make e2e` plays must be there; the stub node runs nothing.
 for g in $games; do
@@ -338,7 +369,10 @@ for c in server web; do
   expect "make deploy points klaverjas-$c:current at the build, before the restart" 1 \
     "$(if [ "$t" -gt 0 ] && [ "$t" -lt "$(line 'systemctl --user restart')" ]; then echo 1; else echo 0; fi)"
 done
-expect "make deploy runs pod-check" 1 "$(hasline 'pod-check 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas' "$calls")"
+expect "make deploy runs pod-check" 1 "$(hasline 'pod-check 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas  ' "$calls")"
+t=$(line "$(inspect klaverjas-server)")
+expect "make deploy looks up the server the pod runs, before it builds" 1 \
+  "$(if [ "$t" -gt 0 ] && [ "$t" -lt "$(line 'podman build')" ]; then echo 1; else echo 0; fi)"
 # klaverjas's images, with its settings as they were before the other games; the
 # web image with the deployment's support link, none here (no local.mk).
 expect "klaverjas's server image" 1 \
@@ -369,7 +403,7 @@ for g in $games; do
   expect "make deploy GAME=$g restarts only its pod" "$g-pod.service" \
     "$(sed -n 's/^systemctl --user restart //p' "$calls" | tr '\n' ' ' | sed 's/ $//')"
   expect "make deploy GAME=$g checks its pod" 1 \
-    "$(hasline "pod-check $(val "$g" ADDR) $(val "$g" SITE) $(val "$g" TITLE)" "$calls")"
+    "$(hasline "$(podcheck "$g" "" "")" "$calls")"
   for h in $(others "$g"); do
     expect "make deploy GAME=$g: nothing of $h" 0 "$(words "$h" "$calls")"
   done
@@ -396,10 +430,14 @@ for g in $games; do
   fi
   prev=$g
 done
-# The first game's pod does not answer: the games after it are left alone.
+# The first game's pod does not answer (nor runs a server, so no game is in
+# progress): the games after it are left alone.
 FAIL_CURL="$(val "$first" ADDR)/"
 export FAIL_CURL
+unset STUB_RUNNING
 run deploy GAME=all
+STUB_RUNNING=true
+export STUB_RUNNING
 unset FAIL_CURL
 expect "make deploy GAME=all with $first failing, exit status" 2 "$status"
 expect "make deploy GAME=all with $first failing says where to look" 1 "$(has "make status GAME=$first" "$tmp/out")"
@@ -443,9 +481,12 @@ run quadlet
 expect "make quadlet: every game's units, in turn" "$(for g in $games; do
     printf '# ---- %s ' "$g.pod" "$g-web.container" "$g-server.container"; done)" \
   "$(grep '^# ---- ' "$tmp/out" | tr '\n' ' ')"
+STUB_REV=r1
+export STUB_REV
 run check
-expect "make check: every game's pod, in turn" "$(for g in $games; do
-    echo "pod-check $(val "$g" ADDR) $(val "$g" SITE) $(val "$g" TITLE)"; done)" "$(steps)"
+unset STUB_REV
+expect "make check: every game's pod, in turn, with the revisions of its :current images" "$(for g in $games; do
+    inspect "$g-web"; inspect "$g-server"; podcheck "$g" r1 r1; done)" "$(steps)"
 run logs
 expect "make logs: every game's containers" "journalctl --user$(for g in $games; do
     printf ' -u %s-web.service -u %s-server.service' "$g" "$g"; done) -f" "$(steps)"
@@ -598,6 +639,248 @@ run image GAME=proef
 expect "revision of a game of the overlay after a commit in extra/" 2 "$(grep -c -- "--build-arg GIT_SHA=$head\.$xhead " "$calls")"
 run image GAME=klaverjas
 expect "revision of klaverjas after a commit in extra/" 2 "$(grep -c -- "--build-arg GIT_SHA=$head " "$calls")"
+
+# ---- what a deploy restarts -----------------------------------------------------
+# The server the pod runs is the one its :current image names (the stub's
+# $STUB_REV). A deploy builds a new one only when the server's code changed
+# since that commit; else it builds the web image alone, tags the running server
+# with the build's tag too, and restarts nginx alone, which keeps the games.
+# Commits a line more in each of the files $@ of this repository; head is then
+# the new commit.
+change() {
+  for f in "$@"; do mkdir -p "$(dirname "$repo/$f")"; echo "// $f" >> "$repo/$f"; done
+  git add -A
+  git commit -q --no-verify -m change
+  head=$(git rev-parse HEAD)
+}
+# The same in extra/, the overlay; xhead is then its new commit.
+xchange() {
+  for f in "$@"; do mkdir -p "$(dirname "$repo/extra/$f")"; echo "// $f" >> "$repo/extra/$f"; done
+  git -C extra add -A
+  git -C extra commit -q --no-verify -m change
+  xhead=$(git -C extra rev-parse --short=12 HEAD)
+}
+# The revision of game $1's server built from commit $2 (and the overlay's $3).
+running() { case $(folder "$1") in extra/*) echo "$2.${3:-$xhead}" ;; *) echo "$2" ;; esac; }
+# Runs make deploy GAME=$1, and the rest of the arguments, with the server of
+# revision $2 running.
+deploy_on() {
+  STUB_REV=$2
+  export STUB_REV
+  g=$1
+  shift 2
+  run deploy GAME="$g" "$@"
+  unset STUB_REV
+}
+# 1 when the last make built game $1's server, else 0; the services it restarted.
+built() { if grep -q "^podman build --target server .* -t localhost/$1-server:" "$calls"; then echo 1; else echo 0; fi; }
+restarted() { sed -n 's/^systemctl --user restart //p' "$calls" | tr '\n' ' ' | sed 's/ $//'; }
+
+deploy_on klaverjas "$head"
+expect "deploy, the server's code as it runs: exit status" 0 "$status"
+expect "deploy, the server's code as it runs: no server built" 0 "$(built klaverjas)"
+expect "deploy, the server's code as it runs: the web image built" 1 "$(grep -c '^podman build --target web ' "$calls" || true)"
+t=$(tag klaverjas-web)
+expect "deploy, the server's code as it runs: the running server gets the build's tag" 1 \
+  "$(hasline "podman tag localhost/klaverjas-server:current localhost/klaverjas-server:$t" "$calls")"
+expect "deploy, the server's code as it runs: the web image :current" 1 \
+  "$(hasline "podman tag localhost/klaverjas-web:$t localhost/klaverjas-web:current" "$calls")"
+expect "deploy, the server's code as it runs: nginx alone restarted" klaverjas-web.service "$(restarted)"
+expect "deploy, the server's code as it runs: says so" 1 "$(has 'a new web image only, and the games go on' "$tmp/out")"
+expect "deploy, the server's code as it runs: checks that the pod runs its :current images" 1 \
+  "$(hasline "$(podcheck klaverjas "$head" "$head")" "$calls")"
+expect "deploy, the server's code as it runs: asks nobody about games in progress" 0 \
+  "$(grep -c '^curl -fsS ' "$calls" || true)"
+# Sites, docs, JS tests, Go tests and their data are none of the server's code.
+was=$head
+change games/klaverjas/web/js/x.js platform/web/js/x.js platform/server/x.md README.md games/klaverjas/test/x.mjs \
+  platform/server/x_test.go platform/server/testdata/x.json
+deploy_on klaverjas "$was"
+expect "deploy after a change to sites, docs and tests: exit status" 0 "$status"
+expect "deploy after a change to sites, docs and tests: no server built" 0 "$(built klaverjas)"
+expect "deploy after a change to sites, docs and tests: nginx alone restarted" klaverjas-web.service "$(restarted)"
+# The platform's Go code: a new server for every game, and its pod restarted.
+was=$head
+change platform/server/x.go
+for g in $games; do
+  deploy_on "$g" "$(running "$g" "$was")"
+  expect "deploy GAME=$g after a change to the platform's Go code: a new server" 1 "$(built "$g")"
+  expect "deploy GAME=$g after a change to the platform's Go code: the pod restarted" "$g-pod.service" "$(restarted)"
+  expect "deploy GAME=$g after a change to the platform's Go code: the pod's checks" 1 \
+    "$(grep -c "^pod-check $(val "$g" ADDR) " "$calls" || true)"
+done
+was=$head
+change go.mod
+deploy_on klaverjas "$was"
+expect "deploy after a change to go.mod: a new server" 1 "$(built klaverjas)"
+# A game's own Go code, in its folder or its main package: its server alone.
+was=$head
+change games/klaverjas/x.go cmd/klaverjas/x.go
+deploy_on klaverjas "$was"
+expect "deploy GAME=klaverjas after a change to its Go code: a new server" 1 "$(built klaverjas)"
+for h in $(others klaverjas); do
+  deploy_on "$h" "$(running "$h" "$was")"
+  expect "deploy GAME=$h after a change to klaverjas's Go code: no new server" 0 "$(built "$h")"
+  expect "deploy GAME=$h after a change to klaverjas's Go code: nginx alone restarted" "$h-web.service" "$(restarted)"
+done
+# A game package the platform imports (klaverjas's rules, for its built-in game)
+# is in every game's server; the rest of that game's folder is not.
+printf 'package server\n\nimport "jannie/games/klaverjas/game"\n' > "$repo/platform/server/klaverjas_x.go"
+change games/klaverjas/game/doc.go
+was=$head
+change games/klaverjas/game/x.go
+for g in $games; do
+  deploy_on "$g" "$(running "$g" "$was")"
+  expect "deploy GAME=$g after a change to a game package the platform imports: a new server" 1 "$(built "$g")"
+done
+was=$head
+change games/klaverjas/bot/x.go
+for h in $(others klaverjas); do
+  deploy_on "$h" "$(running "$h" "$was")"
+  expect "deploy GAME=$h after a change to klaverjas's bots: no new server" 0 "$(built "$h")"
+done
+# A game of the overlay: its revision names extra/'s commit too, and its folder
+# there is its server's code.
+was=$head xwas=$xhead
+xchange proef/web/js/x.js proef/README.md
+deploy_on proef "$(running proef "$was" "$xwas")"
+expect "deploy GAME=proef after a change to its site in extra/: no new server" 0 "$(built proef)"
+xchange proef/x.go
+deploy_on proef "$(running proef "$was" "$xwas")"
+expect "deploy GAME=proef after a change to its Go code in extra/: a new server" 1 "$(built proef)"
+deploy_on klaverjas "$was"
+expect "deploy GAME=klaverjas after a change in extra/: no new server" 0 "$(built klaverjas)"
+deploy_on proef "$head"
+expect "deploy GAME=proef, a running server without extra/'s commit: a new server" 1 "$(built proef)"
+# A new server whatever the code: asked for, and when the running one is no commit
+# this repository knows, one with changes, or none.
+deploy_on klaverjas "$head" SERVER=1
+expect "deploy SERVER=1: a new server" 1 "$(built klaverjas)"
+expect "deploy SERVER=1: the pod restarted" klaverjas-pod.service "$(restarted)"
+SERVER=1
+export SERVER
+deploy_on klaverjas "$head"
+unset SERVER
+expect "a SERVER=1 in the environment builds no server" 0 "$(built klaverjas)"
+for r in 0123456789abcdef0123456789abcdef01234567 "$head-dirty" ''; do
+  deploy_on klaverjas "$r"
+  expect "deploy with the server '$r' running: a new server" 1 "$(built klaverjas)"
+done
+# With the server left as it was, the pod restarts all the same, after asking
+# about games in progress: for units written after it started (make install),
+# when systemd cannot say when it started, and when its server is not running.
+# The pod started on 2 January 2000, after the units were last written (the checks
+# of install above dated them the day before).
+STUB_SINCE=@946771200
+run install GAME=klaverjas QUADLET_DIR="$units"
+expect "make install, units as they were: none written" "" "$(find "$units" -name 'klaverjas*' -newer "$tmp/ref")"
+expect "make install, units as they were: says so" 3 "$(grep -c '(unchanged)$' "$tmp/out" || true)"
+deploy_on klaverjas "$head" QUADLET_DIR="$units"
+expect "deploy, units written before the pod started: nginx alone restarted" klaverjas-web.service "$(restarted)"
+touch "$units/klaverjas-web.container"
+deploy_on klaverjas "$head" QUADLET_DIR="$units"
+expect "deploy, the web container's unit written since the pod started: nginx alone restarted" \
+  klaverjas-web.service "$(restarted)"
+run install GAME=klaverjas QUADLET_DIR="$units" SITE=elsewhere.example
+expect "make install, a changed setting: the units written" 3 "$(find "$units" -name 'klaverjas*' -newer "$tmp/ref" | wc -l | tr -d ' ')"
+deploy_on klaverjas "$head" QUADLET_DIR="$units"
+expect "deploy, units written since the pod started: exit status" 0 "$status"
+expect "deploy, units written since the pod started: no new server" 0 "$(built klaverjas)"
+expect "deploy, units written since the pod started: the server keeps its image" 1 \
+  "$(hasline "podman tag localhost/klaverjas-server:current localhost/klaverjas-server:$(tag klaverjas-web)" "$calls")"
+expect "deploy, units written since the pod started: the pod restarted" klaverjas-pod.service "$(restarted)"
+expect "deploy, units written since the pod started: says why" 1 \
+  "$(has 'but the pod restarts: its units changed since it started' "$tmp/out")"
+expect "deploy, units written since the pod started: asks about games in progress, before and after the build" 2 \
+  "$(grep -c '^curl -fsS ' "$calls" || true)"
+STUB_SINCE=
+deploy_on klaverjas "$head"
+expect "deploy, systemd cannot say when the pod started: the pod restarted" klaverjas-pod.service "$(restarted)"
+expect "deploy, systemd cannot say when the pod started: says why" 1 "$(has 'systemd cannot say when it started' "$tmp/out")"
+STUB_SINCE=@4102444800
+unset STUB_RUNNING
+deploy_on klaverjas "$head"
+STUB_RUNNING=true
+export STUB_RUNNING
+expect "deploy, the server not running: the pod restarted" klaverjas-pod.service "$(restarted)"
+expect "deploy, the server not running: says why" 1 "$(has 'but the pod restarts: its server is not running' "$tmp/out")"
+
+# ---- games in progress ------------------------------------------------------------
+# /api/health's playing: make playing says how many, and a new server waits for none.
+busy='{"ok":true,"players":5,"playing":2,"rooms":3,"version":"x"}'
+HEALTH=$busy
+export HEALTH
+run playing GAME=klaverjas
+expect "make playing GAME=klaverjas, games in progress: exit status" 2 "$status"
+expect "make playing GAME=klaverjas, games in progress: how many" 1 \
+  "$(has 'klaverjas: games in progress 2, players connected 5' "$tmp/out")"
+run playing
+expect "make playing, games in progress: exit status" 2 "$status"
+for g in $games; do
+  expect "make playing: $g's too, after a game with games in progress" 1 "$(has "$g: games in progress 2" "$tmp/out")"
+  expect "make playing: $g's own health" 1 "$(grep -c "^curl .*http://$(val "$g" ADDR)/api/health" "$calls" || true)"
+done
+deploy_on klaverjas ''
+expect "deploy of a new server, games in progress: exit status" 2 "$status"
+expect "deploy of a new server, games in progress: says why and what to do" 111 \
+  "$(has 'restarting the klaverjas pod ends its games in progress' "$tmp/out")$(has 'make playing GAME=klaverjas' "$tmp/out")$(has 'ALLOW_PLAYING=1' "$tmp/out")"
+expect "deploy of a new server, games in progress: builds nothing" 0 "$(has 'podman build' "$calls")"
+expect "deploy of a new server, games in progress: restarts nothing" 0 "$(has 'systemctl' "$calls")"
+deploy_on klaverjas "$head"
+expect "deploy of the web image alone, games in progress: exit status" 0 "$status"
+expect "deploy of the web image alone, games in progress: nginx restarted" klaverjas-web.service "$(restarted)"
+deploy_on klaverjas '' ALLOW_PLAYING=1
+expect "deploy ALLOW_PLAYING=1, games in progress: exit status" 0 "$status"
+expect "deploy ALLOW_PLAYING=1, games in progress: a new server" 1 "$(built klaverjas)"
+expect "deploy ALLOW_PLAYING=1, games in progress: the pod restarted" klaverjas-pod.service "$(restarted)"
+ALLOW_PLAYING=1
+export ALLOW_PLAYING
+deploy_on klaverjas ''
+unset ALLOW_PLAYING
+expect "an ALLOW_PLAYING=1 in the environment: deploy refused" 2 "$status"
+run deploy GAME=all
+expect "deploy GAME=all, games in progress: exit status" 2 "$status"
+for h in $(others "$first"); do
+  expect "deploy GAME=all, games in progress at $first: nothing of $h" 0 "$(words "$h" "$calls")"
+done
+# A game that starts during the build: the new server waits, and :current stays.
+HEALTH_FROM=2
+export HEALTH_FROM
+deploy_on klaverjas ''
+unset HEALTH_FROM
+expect "deploy, a game started during the build: exit status" 2 "$status"
+expect "deploy, a game started during the build: built" 1 "$(built klaverjas)"
+expect "deploy, a game started during the build: :current stays" 0 "$(grep -c '^podman tag .*:current$' "$calls" || true)"
+expect "deploy, a game started during the build: restarts nothing" 0 "$(has 'systemctl' "$calls")"
+# A server from before the count: the players connected count instead.
+HEALTH='{"ok":true,"players":3,"rooms":3,"version":"x"}'
+deploy_on klaverjas ''
+expect "deploy, a server without the count and players connected: exit status" 2 "$status"
+expect "deploy, a server without the count: says so" 1 "$(has 'does not count its games in progress' "$tmp/out")"
+HEALTH='{"ok":true,"players":3,"playing":0,"rooms":3,"version":"x"}'
+deploy_on klaverjas ''
+expect "deploy of a new server, no game in progress: exit status" 0 "$status"
+run playing GAME=klaverjas
+expect "make playing GAME=klaverjas, no game in progress: exit status" 0 "$status"
+unset HEALTH
+# No answer: no game in progress when the server does not run either; when it
+# runs (nginx down, say) the games in progress are unknown, and make playing fails.
+FAIL_CURL="$(val klaverjas ADDR)/"
+export FAIL_CURL
+unset STUB_RUNNING
+run playing GAME=klaverjas
+expect "make playing GAME=klaverjas, no answer and no server: exit status" 0 "$status"
+expect "make playing GAME=klaverjas, no answer and no server: says so" 1 \
+  "$(has 'no server running, so no game in progress' "$tmp/out")"
+STUB_RUNNING=true
+export STUB_RUNNING
+run playing GAME=klaverjas
+expect "make playing GAME=klaverjas, no answer from a running server: exit status" 2 "$status"
+expect "make playing GAME=klaverjas, no answer from a running server: says so" 1 \
+  "$(has 'does not answer: games in progress unknown' "$tmp/out")"
+deploy_on klaverjas ''
+expect "deploy of a new server, no answer from a running server: refused" 2 "$status"
+unset FAIL_CURL
 
 # A changed file that is tracked.
 echo '# changed' >> "$repo/deploy/game.pod.in"

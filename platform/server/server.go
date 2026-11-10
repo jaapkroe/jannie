@@ -84,6 +84,7 @@ type Server struct {
 	janitorO sync.Once
 
 	players atomic.Int64 // humans connected to a room seat
+	pong    []byte       // the answer to a ping, with the version
 
 	grading  chan struct{} // analysis slots (see analyse)
 	explains chan struct{} // the reasoning's why (expert, training): one search at a time, on every core (see cmdWhy)
@@ -132,6 +133,7 @@ func New(cfg Config) *Server {
 		maxSeats:       most,
 		personas:       cfg.Game.Personas(),
 		games:          newGameLog(cfg.GameLog, log),
+		pong:           mustJSON(pongMsg{T: "pong", V: cfg.Version}),
 		scale:          1,
 		idleTimeout:    30 * time.Minute,
 		abandonTimeout: 5 * time.Minute,
@@ -203,6 +205,12 @@ func (s *Server) serveHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	rooms, closing := len(s.rooms), s.closing
+	playing := 0
+	for _, r := range s.rooms {
+		if r.playing.Load() {
+			playing++
+		}
+	}
 	s.mu.Unlock()
 	status := http.StatusOK
 	if closing {
@@ -213,6 +221,7 @@ func (s *Server) serveHealth(w http.ResponseWriter, r *http.Request) {
 		"version": s.cfg.Version,
 		"rooms":   rooms,
 		"players": s.players.Load(),
+		"playing": playing,
 	})
 }
 
@@ -293,7 +302,7 @@ func (s *Server) releaseIP(ip string) {
 func (s *Server) dispatch(c *client, m *inMsg) {
 	switch m.T {
 	case "ping":
-		c.send(pongJSON)
+		c.send(s.pong)
 	case "create":
 		s.create(c, m)
 	case "join":

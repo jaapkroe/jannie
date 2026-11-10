@@ -276,7 +276,8 @@ player is "Speler", which is not stored as their name. Under the footer,
 small: "Versie a05a087", the commit the web image was built from (the
 Containerfile fills in index.html's `<meta name="version">`; `versionText`
 shortens it, both commits of a game of the overlay, "dev" when run from source; `pod-check` compares it with
-`/api/health`). The commit is a link to the source, `SOURCE_URL` in
+the web image's revision). The server's own commit, in `/api/health`, is older when a deploy left the
+server as it was ([deployment.md, "Make targets"](deployment.md#make-targets)). The commit is a link to the source, `SOURCE_URL` in
 `home.js` (the public repository), in a new tab: a site that runs a
 modified version must offer its players that version's source (section 13
 of the AGPL), so a fork points it at its own. Five quick taps on the word
@@ -422,6 +423,19 @@ your answer. Leaving while offline sends `join` (with the seat
 token) + `leave` over a short-lived connection of its own once the network
 is back. A rejoin of a page in the call joins it again
 with a new session (the server ended the old one with its connection).
+
+As each connection opens, before the rejoin, the page sends a `ping`; every
+`pong` names the server's version. A page whose server has changed since its
+first `pong` (a deploy with a new server, or going back to an older one)
+loads itself anew: its room went with the old server, and its code may not
+fit the new one. The reload brings the site's code as it is now, and the
+room in the address answers as at any reload: with `onbekend`, so the page
+goes home and says the game is gone. A deploy that renews
+only the site restarts nginx and keeps the server: the pages reconnect, the
+games go on, and a page keeps running the modules it has loaded. A module it
+loads later (the score chart, the call, the manual) comes from the new site
+and links to those loaded modules, so a change it makes to what it needs from
+them works only after a reload.
 
 ### Game over
 

@@ -61,9 +61,13 @@ its rendered units are byte for byte the same.
 
 All images are built on the host from the checkout; nothing is pulled at
 start (`Pull=never`). There is no secret and no database: games live in the
-server's memory, so **every restart of a pod ends every game in progress in
-it** (and only there). The one volume of each pod holds its game log
-("The game log" below).
+server's memory, so **every restart of a server ends every game in progress
+in its pod** (and only there). So `make deploy` restarts the pod only
+when it must (a change to the server's code or to the pod's units, a
+server that is not running), and only while no game is in progress; a
+deploy of the site alone restarts nginx, and the games go on ("Make
+targets" below). The one volume of each pod holds its game log ("The game
+log" below).
 
 ## Settings
 
@@ -123,7 +127,7 @@ games):
 | Commands | Without `GAME` |
 |---|---|
 | `install`, `deploy`, `uninstall`, `dev`, `image`, `image-server`, `image-web` | refuse (exit 2, nothing run), and list the games |
-| `status`, `check`, `logs`, `quadlet`, `e2e`, `dev-stop` | every game |
+| `status`, `check`, `playing`, `logs`, `quadlet`, `e2e`, `dev-stop` | every game |
 | `help`, `test`, `test-all` | do not take it |
 
 `GAME=all` goes through the games one after another, in the order of their
@@ -174,7 +178,7 @@ extra` ([adding-a-game.md, "The overlay"](adding-a-game.md#the-overlay)).
 The base tags (minor versions) live only in the `Containerfile`;
 `scripts/go` and `scripts/dev-server` read the build image from its `FROM …
 AS build` line, and `make image` builds with `--pull=newer`, so a fix
-re-published under the same tag reaches the next deploy.
+re-published under the same tag reaches the next build.
 
 ## nginx
 
@@ -205,7 +209,7 @@ tmpfs mounts, and logs errors only: the reverse proxy logs the requests.
 
 The quadlets are rendered by `make install GAME=G` into
 `~/.config/containers/systemd/` from `deploy/game*.in` (`@GAME@`,
-`@TITLE@`, `@SITE@`, `@ADDR@`):
+`@TITLE@`, `@SITE@`, `@ADDR@`), each written only when its text changes:
 
 - `G.pod`: `PublishPort=ADDR:8080`, the only published port;
   `Network=pasta:--host-lo-to-ns-lo`, so the reverse proxy's connections
@@ -227,7 +231,7 @@ user, the pods start at boot.
 ## Make targets
 
 `help test test-all e2e dev dev-stop image image-server image-web install
-deploy check status logs uninstall quadlet` (`make help` lists them; `GAME`
+deploy check playing status logs uninstall quadlet` (`make help` lists them; `GAME`
 as above). The revision (`GIT_SHA`, the image label and `/api/health`'s
 version) is `HEAD`, with `-dirty` when `git status` lists anything. For a
 game of the overlay it is `HEAD`, a dot and the overlay's commit
@@ -240,6 +244,59 @@ then moves `:current` (what the units run) to it, so `make image` alone
 never changes what a restart starts. `make deploy` refuses a revision with
 `-dirty` unless `ALLOW_DIRTY=1` (`GAME=all` before its first game), and
 ends with `make check`.
+
+A deploy keeps the games in progress where it can. A restart of nginx
+alone keeps them: their pages reconnect within seconds, to the same
+server. So `make deploy` builds the web image every time, and when the
+server stays as it was it restarts only the web container. It builds a
+new server, and restarts the whole pod, when:
+
+- the server's code changed since the commit the running server (its
+  `:current` image's label) was built from: `go.mod`, `go.sum`, the
+  `Containerfile`, and the Go code of `platform/`, of the game packages
+  `platform/` imports (klaverjas's rules, for its built-in game), of the
+  game's folder and of its main package, without Go tests and their
+  `testdata/` and without what the image's build stage leaves out (`web/`,
+  `*.md`, `*.mk`, `*.mjs`). For a game of the overlay both of its commits
+  count, its folder being in `extra/`'s;
+- `SERVER=1` is on the command line (for a Go fix in the base image);
+- the tree has changes (`ALLOW_DIRTY=1`), no server built from a commit
+  runs yet, or git does not know the running server's commit.
+
+With the server left as it was, the pod restarts all the same when
+`make install` wrote its pod's or its server's unit after the pod started
+(a changed setting, or a change to `deploy/*.in`: the pod runs its units
+as they were when it started; `make install` writes a unit only when its
+text changes, and the web container's own unit comes with nginx's
+restart), when systemd cannot say when it started (it can from version
+251 on; with an older one every deploy restarts the pod), and when its
+server is not running.
+
+A restart of the pod ends the game's games in progress, so `make deploy`
+asks first: `make playing GAME=<game>` says how many matches are in
+progress with a person at the table (`/api/health`'s `playing`,
+[server.md, "Config and New"](server.md#config-and-new)) and fails when
+there is one, and then `make deploy` stops, before it builds anything and
+again after the build, before it moves `:current` (a game may have
+started meanwhile). Deploy when they are over, or now with
+`ALLOW_PLAYING=1`. A pod that does not answer has no game in progress if
+its server does not run either; if the server runs (nginx down, say),
+the games in progress are unknown and `make playing` fails too. It fails
+the same way after a change to `ADDR`, until the pod restarts on the new
+address: look at the old one (`curl http://<old ADDR>/api/health`), then
+deploy with `ALLOW_PLAYING=1`. A server
+from before the count says how many players are connected instead, and
+stops a deploy when one is. `SERVER=1` and `ALLOW_PLAYING=1` count from
+make's command line only, as `GAME` does. `make playing` without `GAME`
+asks every game, also after one with a game in progress.
+
+A server that stays as it was gets the build's tag as well, so each tag
+still names both images ("Going back" below); its label keeps the commit
+it was built from. After such a deploy the page's version (the web
+image's revision) is newer than the server's (`/api/health`): `make
+check`, and so `make deploy`, checks each against the revision of its
+`:current` image. A page notices a new server by its version and loads
+anew ([frontend.md, "Connection"](frontend.md#connection)).
 
 ## Reverse proxy
 
@@ -344,7 +401,7 @@ comes back from a restart: `systemctl --user restart toepen-pod`, then
 
 ```sh
 make check                  # every game's pod; `make deploy GAME=<game>` runs it for its game
-make check GAME=toepen      # one game: scripts/pod-check 127.0.0.1:8095 toepen.kroes.dev Toepen
+make check GAME=toepen      # one game: scripts/pod-check 127.0.0.1:8095 toepen.kroes.dev Toepen WEB SERVER
 ```
 
 It checks a pod on its `ADDR` from the host, and prints only what fails:
@@ -352,12 +409,15 @@ It checks a pod on its `ADDR` from the host, and prints only what fails:
 the same page), a 404 (an HTML page with the game's name, also for a missing
 image, and not cached), the link preview (`og:image` is
 `https://SITE/og.png`, and that image and the apple-touch-icon are there as
-`image/png`), the manifest's name, the version in the page (the server's),
-the websocket upgrade with the page's own `Origin` (`101`) and with another
-site's (`403`), that the CSP allows the websocket of `SITE` and of no other
-site, and the security headers, HSTS included, each sent exactly once on
-every kind of path. `scripts/pod-check ADDR SITE TITLE` checks a pod
-elsewhere. The websocket upgrade by hand:
+`image/png`), the manifest's name, the versions in the page and in
+`/api/health` (`WEB` and `SERVER`, the revisions of the game's `:current`
+images, so that the pod runs those), the websocket upgrade with the page's
+own `Origin` (`101`) and with another site's (`403`), that the CSP allows
+the websocket of `SITE` and of no other site, and the security headers,
+HSTS included, each sent exactly once on every kind of path.
+`scripts/pod-check ADDR SITE TITLE` checks a pod elsewhere, without the
+revisions: then the page and the server need only name a version. The
+websocket upgrade by hand:
 
 ```sh
 curl -si --max-time 2 http://127.0.0.1:8093/ws -H 'Origin: http://127.0.0.1:8093' \
@@ -423,11 +483,12 @@ server's per-address limits (150 connections).
 |---|---|
 | State, image revision and health | `make status` (every game), `make status GAME=toepen` |
 | Logs of both containers | `make logs GAME=toepen`; `make logs` follows every game's |
-| Update a game after merging changes | `git pull && make deploy GAME=toepen` (ends its games in progress) |
-| Update every game | `git pull && make deploy GAME=all` (ends every game in progress, pod after pod) |
-| A fix in a base image (a vulnerability scanner's finding on a game's images) | `make deploy GAME=<game>` (it rebuilds on the newest base image of the same tag); `GAME=all` for a base image every game has |
+| Games in progress, which a new server would end | `make playing` (every game), `make playing GAME=toepen` |
+| Update a game after merging changes | `git pull && make deploy GAME=toepen` (a restart of the pod only when it must, such as for a change to the server's code, and only while no game is in progress; otherwise nginx alone, and the games go on) |
+| Update every game | `git pull && make deploy GAME=all` (the same, pod after pod; it stops at a game with a game in progress) |
+| A fix in a base image (a vulnerability scanner's finding on a game's images) | `make deploy GAME=<game> SERVER=1` (it rebuilds both images on the newest base image of the same tag; without `SERVER=1` the server only when its code changed); `GAME=all` for a base image every game has |
 | Restart | `systemctl --user restart toepen-pod` (also ends its games) |
-| Changed a game's settings | `make install GAME=toepen && make deploy GAME=toepen` |
+| Changed a game's settings | `make install GAME=toepen && make deploy GAME=toepen` (the deploy restarts the pod for its new units, once no game is in progress) |
 | Stop a game and remove its units; keeps its images and game log | `make uninstall GAME=toepen` |
 
 `make deploy` builds a committed tree only, and says so when `git status`
@@ -445,11 +506,13 @@ tags and restarts `toepen-*` alone, and klaverjas plays on.
 Each build tags both of a game's images with a tag of its own, the revision
 and the time (`<commit>-20261020-213000`), so every earlier build is still
 there to go back to, a rebuild of the same commit included; a `GAME=all`
-build gives every game the same tag. Only `make deploy` then points
+build gives every game the same tag, and a deploy that left the server as
+it was tags that server with it too. Only `make deploy` then points
 `:current`, the tag the units run, at the new build: a `make image
 GAME=<game>` on its own, to try a build, never changes what the pod starts
 after a restart or a failed health check. `make deploy` ends by naming the
-tag. To take one game back, here toepen:
+tag. To take one game back, here toepen (the restart ends its games in
+progress: `make playing GAME=toepen` first):
 
 ```sh
 podman images 'localhost/toepen-*'                                          # the builds
@@ -463,16 +526,21 @@ Old builds pile up; `podman rmi` removes them.
 
 ## Updating
 
-Deploy when nobody is playing if you can: the restart takes seconds, but the
-rooms of that game are gone afterwards. On shutdown the server tells
-connected players it is restarting; their pages reconnect and find their
-room no longer exists.
+A new server takes seconds to start, but the rooms of that game are gone
+afterwards, so `make deploy` starts one only when no game is in progress
+("Make targets" above); a deploy of the site alone keeps them. On shutdown
+the server tells connected players it is restarting; their pages
+reconnect, see the new server's version, load anew and find their room no
+longer exists.
 
 The `Containerfile` names its base images by minor version, without a
 digest (see its `FROM` lines). Security fixes in Go, nginx or Alpine are
-published again under those same tags, and every `make deploy` builds with
+published again under those same tags, and every image build uses
 `--pull=newer`, so it picks them up: rebuilding is the response to a
-vulnerability found in any game's image. A move to the next minor version is
+vulnerability found in any game's image. `make deploy` rebuilds the web
+image every time, and the server with a change to its code or with
+`SERVER=1`, which a fix in Go or in the golang image needs (the server
+image holds nothing else). A move to the next minor version is
 a change to the `Containerfile` (a dependency update), for every game at
 once. `scripts/go` and `scripts/dev-server` read the build image from the
 `Containerfile`, so they follow such a change.
@@ -600,5 +668,6 @@ game.
 | The page stays on its loading dots, or loads without styles | The proxy refused part of the load with `429`, its rate limit: many players behind one address loaded at the same moment. A reload a few seconds later works. If it happens to one player alone, the limit for the name is too tight for the page budget ("Reverse proxy" above) |
 | `make deploy` stops with "which game?" | Add `GAME=<game>`, or `GAME=all` |
 | `make deploy` stops with "changes that are not committed" | `git status` lists something: commit it, or deploy anyway with `ALLOW_DIRTY=1` |
+| `make deploy` stops with "ends its games in progress" | The deploy restarts the pod (a new server, new units, a server that is not running) and a game is in progress, or the server runs but the pod does not answer (`make playing GAME=<game>`): deploy when the games are over, or now with `ALLOW_PLAYING=1` |
 | No *Support deze app* on the home page | No `SUPPORT_URL` in `local.mk` when the web image was built (`make image-web` said so; "SUPPORT_URL" above) |
 | Unit fails with `image not known` | `make deploy GAME=<game>` has not built the game's images yet (`Pull=never`) |
