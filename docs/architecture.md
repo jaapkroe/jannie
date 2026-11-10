@@ -105,6 +105,7 @@ platform/                    what every game shares
     js/main.js (routing, the websocket, the update queue)  js/util.js  js/panels.js  js/home.js
     js/cards.js  js/sound.js
     js/call.js               the call with the others at the table, loaded once another person sits there
+    js/chart.js              the course of a match as a line chart, loaded with the first chart shown
 games/<game>/                one game, one folder (docs/adding-a-game.md#the-folder): README.md (its design
                              and contracts), <game>.mk (its settings: TITLE, VERB, SITE, ADDR, DEV_PORT,
                              E2E_PORT, E2E_SIM), web/ (its site, served with platform/web, no path in both),
@@ -120,7 +121,7 @@ games/klaverjas/
                              icon-full.svg  apple-touch-icon.png  icon-192.png  icon-512.png  icon-maskable-512.png
                              css/klaverjas.css (linked between app.css and cards.css; the manual's styles last)
                              js/game.js (the game module)  js/table.js (the table and its overlays)
-                             js/rules.js (klaverjas's helpers without the DOM: sides, scores, roem, review lines)
+                             js/rules.js (klaverjas's helpers without the DOM: sides, scores, the score chart's data, roem, review lines)
                              js/manual.js (the handleiding) and js/expert.js (the sheet Redenering van de AI),
                              each loaded only when first opened
 games/toepen/

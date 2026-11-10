@@ -360,7 +360,16 @@ sterk decision takes about 4 ms.
   question, a summary after every round (the boer's point off as a green
   bar after the red ones), game over with the course of the score (every
   round; 🏆 and a green bar for the boer), *Stand* (the points and every
-  round), the overview of a round at game over (below) and the manual. While a choice other than a card is yours (a
+  round), the overview of a round at game over (below) and the manual.
+  Game over and *Stand* show, between the standings and the rounds,
+  **Verloop**: the shell's score chart
+  ([docs/frontend.md, "The score chart"](../../docs/frontend.md#the-score-chart);
+  data from `chartSpec` in `rules.js`), a line per player of the points
+  after every round, you first, the limit dashed (*eruit bij 10*), a line
+  ending where its player went out; the tooltip has the round's stake and
+  per player 🏆 (🏆 −1 with the boer) or +n and the points. The rounds do
+  not say who went away, so there are no rings for a lijntoeper here, as
+  there are in [Score bijhouden](#score-bijhouden). While a choice other than a card is yours (a
   vuile was, a check, a toep), your cards are darkened; out of the round
   while it goes on (passed, a bluff caught with `bluf` off, out by a
   check) they stay in sight, grey and not playable, until it ends
@@ -401,8 +410,9 @@ sterk decision takes about 4 ms.
   tokens), its own icons (a ten of hearts) and link preview.
 - Page load: 17 requests (html, app.css, cards.css, toepen.css, favicon,
   manifest, a PNG icon, the shell's 6 modules, game.js, table.js, rules.js,
-  the websocket); call.js is lazy, and so are score.js, scorecalc.js and
-  scorechart.js ([Score bijhouden](#score-bijhouden)), loaded when the score sheet opens.
+  the websocket); call.js and chart.js are lazy (the shell's), and so are
+  score.js and scorecalc.js ([Score bijhouden](#score-bijhouden)), loaded
+  when the score sheet opens.
 
 ## Deployment
 
@@ -491,8 +501,10 @@ timeouts of `/ws`. A sheet is written to `<games>/scores/<CODE>.json`
 restart or deploy keeps it; one untouched for **seven days** is removed
 (hourly, and at start). Without `-games` the sheets live in memory only.
 
-**The page** (`js/score.js`, the pure sums in `js/scorecalc.js`, the chart
-in `js/scorechart.js`; loaded on demand). *Score bijhouden* on the home
+**The page** (`js/score.js` and the pure sums in `js/scorecalc.js`,
+loaded on demand; the chart is the shell's,
+[docs/frontend.md, "The score chart"](../../docs/frontend.md#the-score-chart),
+with its data from `chartSpec` in `scorecalc.js`). *Score bijhouden* on the home
 screen opens the start: the sheets of this device (*Verder met*, from
 `kj.scores`: code, token if host, names; a week at most), a new sheet
 (names, *Eruit bij*, *Begin met bijhouden*) and *Meekijken* with a code.

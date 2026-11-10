@@ -412,6 +412,50 @@ export function countUp(el, to, ms = 900) {
   requestAnimationFrame(step);
 }
 
+// ---------- the score chart ----------
+
+let chartMod = null;  // chart.js, once imported
+let chartLoad = null; // its import, while under way
+const loadChart = () => (chartLoad ||= import('./chart.js').then(m => { chartMod = m; }, () => { chartLoad = null; }));
+
+// A box for the course of a match as a line chart (chart.js, imported
+// when the first box gets a spec; docs/frontend.md#the-score-chart), with
+// title as its heading over it. el.set(spec) draws the chart at the box's
+// width, and again when that width changes; a spec equal to the one drawn
+// is not drawn again, so an overlay may set it on every update. It stays
+// put only while the element stays in the page: taking it out drops the
+// tooltip and the focus. Without a spec the box shows empty, or the whole
+// element hides when empty is ''. If chart.js cannot be loaded, it hides.
+export function chartBox({ empty = '', title = '' } = {}) {
+  const box = h('div', { class: 'chart-box' });
+  const el = title ? h('div', { class: 'chart-sec' }, h('h3', { class: 'chart-h', text: title }), box) : box;
+  let spec = null, key = '', drawn = null, drawnW = 0;
+  const draw = () => {
+    // While chart.js loads the box keeps the room of a chart (.loading).
+    const loading = !!spec && !chartMod;
+    box.classList.toggle('loading', loading);
+    el.hidden = loading ? !chartLoad : !spec && !empty;
+    if (!box.isConnected || loading || el.hidden) return;
+    const w = box.clientWidth;
+    if (key === drawn && Math.abs(w - drawnW) <= 4) return;
+    drawn = key;
+    drawnW = w;
+    // A new chart (a round more, another width) keeps the focus there.
+    const had = box.contains(document.activeElement);
+    box.replaceChildren(spec ? chartMod.chart(spec, w) || '' : h('p', { class: 'chart-empty', text: empty }));
+    if (had) box.querySelector('.chart-svg')?.focus({ preventScroll: true });
+  };
+  new ResizeObserver(draw).observe(box);
+  el.set = next => {
+    spec = next || null;
+    key = spec ? JSON.stringify(spec) : '';
+    if (spec && !chartMod) loadChart().then(draw);
+    draw();
+    return el;
+  };
+  return el;
+}
+
 export async function copyText(text) {
   try {
     await navigator.clipboard.writeText(text);

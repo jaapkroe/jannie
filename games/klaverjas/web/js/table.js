@@ -6,11 +6,11 @@ import { createCard, createBack, cardShort } from './cards.js';
 import { sound } from './sound.js';
 import {
   app, h, clear, prefs, savePrefs, toast, wait, dur, anim, sleep, EASE, seatCount, nameOf, suitSym, suitName, suitText, isRed,
-  fillAvatar, countUp, icon, suitify, cap, playerName, shortLandscape, onKeyboard,
+  fillAvatar, countUp, icon, suitify, cap, playerName, shortLandscape, onKeyboard, chartBox,
 } from './util.js';
 import {
   POS, posOf, isWij, teamCls, teamName, mySide, scorerOrder, scorerName, myScorer, roemTotal, ROEM_NAMES, roemText,
-  variantText, handHeadline, pointsText,
+  variantText, handHeadline, pointsText, rowMarks, playedBy, chartSpec,
   reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
   MANUAL_SECTIONS,
 } from './rules.js';
@@ -1814,40 +1814,22 @@ export function openScoreSheet() {
   sound.play('click');
   const m = openModal({ id: 'score', title: 'Scorebord', cls: 'm-score', body: [] });
   m.view = 'score';
+  // The course of the match under the table (chartSpec in rules.js). An
+  // update replaces the table only: the chart stays in the page, with its
+  // tooltip and focus.
+  const chart = chartBox({ title: 'Verloop' });
+  let table = null;
   // Runs on every update; the review of a hand stays put until "Terug".
   m.refresh = () => {
     if (m.view !== 'score') return;
     m.titleEl.textContent = 'Scorebord';
-    m.body.replaceChildren(scoreBody(app.s, m));
+    const next = scoreBody(app.s, m);
+    if (table?.parentNode === m.body) table.replaceWith(next);
+    else m.body.replaceChildren(next, chart);
+    table = next;
+    chart.set(chartSpec(app.s));
   };
   m.refresh();
-}
-
-// The side a scorer played on in a finished hand r (see sideOf in rules.js):
-// its team with four players, itself with two, with three 0 for the
-// soloist (r.trumpBy) and 1 for the other two.
-function rowSide(s, r, k) {
-  const n = seatCount(s);
-  return n === 3 ? (k === r.trumpBy ? 0 : 1) : k;
-}
-
-// What is shown of hand r in scorer k's column: nat and pit for the side
-// that went nat or made pit; roem for a side that kept it (with three
-// players only the soloist's, as the other two share theirs).
-function rowMarks(s, r, k) {
-  const side = rowSide(s, r, k);
-  const nat = r.nat && r.playingTeam === side;
-  const pit = r.pit && (r.nat ? 1 - r.playingTeam : r.playingTeam) === side;
-  const roem = !r.nat && !(seatCount(s) === 3 && side === 1) ? r.roem?.[side] || 0 : 0;
-  return { nat, pit, roem };
-}
-
-// Who played a hand, under its trump suit: jij, Wij/Zij with four players,
-// else the player's face (as in the score pill), and the bid with three.
-function playedBy(s, r) {
-  if (r.trumpBy === s.you) return 'jij';
-  if (seatCount(s) === 4) return r.playingTeam === s.you % 2 ? 'Wij' : 'Zij';
-  return scorerName(s, r.trumpBy);
 }
 
 function scoreBody(s, m) {

@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   strength, wasKind, seatAngle, onEllipse, seatStatus, prompt, roundHeadline, standings, variantText, manual, isOut, washes, yours, alone, cardLabel, whyRows,
-  courseView,
+  courseView, chartSpec,
 } from '../../games/toepen/web/js/rules.js';
 
 const player = name => ({ name, bot: false, connected: true });
@@ -145,6 +145,29 @@ test('the summary of a round, from your seat', () => {
     'Met de boer in de laatste slag, bij inzet 1: een strafpunt eraf.');
   assert.equal(roundHeadline(s, { winner: 2, stake: 1, tricks: true, koning: true, gains: [1, 1, 0, 1] }).sub,
     'Het koningsspel: Sjaak (AI) haalde de laatste slag. Jij krijgt 1 strafpunt.');
+});
+
+test('the chart of the score: you first, a line ending where its player went out', () => {
+  assert.equal(chartSpec(table()), null);
+  const row = (hand, winner, stake, gains, points, out = [false, false, false, false]) =>
+    ({ hand, dealer: 0, winner, stake, tricks: true, boer: false, koning: false, gains, points, out });
+  const s = table({ you: 1, rounds: [
+    row(1, 2, 1, [1, 1, 0, 1], [1, 1, 0, 1]),
+    row(2, 1, 3, [3, -1, 3, 9], [4, 0, 3, 10], [false, false, false, true]),
+    row(3, 0, 1, [0, 1, 1, 0], [4, 1, 4, 10], [false, false, false, true]),
+  ] });
+  const c = chartSpec(s);
+  assert.deepEqual(c.names, ['Jij', 'Sjaak (AI)', 'Truus (AI)', 'Jaap']);
+  assert.deepEqual(c.pts, [[0, 0, 0, 0], [1, 0, 1, 1], [0, 3, 10, 4], [1, 4, 10, 4]]);
+  assert.deepEqual(c.ends, [3, 3, 2, 3]);
+  assert.deepEqual(c.out, [false, false, true, false]);
+  assert.deepEqual(c.limit, { value: 10, label: 'eruit bij 10' });
+  assert.equal(c.rings, undefined);
+  assert.deepEqual(c.tips[2], { title: 'Na potje 2 · inzet 3', rows: [
+    { k: 0, note: '🏆 −1', value: 0 }, { k: 1, note: '+3', value: 3 }, { k: 3, note: '+3', value: 4 }, { k: 2, note: '+9', value: 10 }] });
+  assert.deepEqual(c.tips[3].rows, [
+    { k: 0, note: '+1', value: 1 }, { k: 1, note: '+1', value: 4 }, { k: 3, note: '🏆', value: 4 }, { k: 2, note: '', value: 'eruit', out: true }]);
+  assert.match(c.label, /3 potjes/);
 });
 
 test('the overview of a round at game over: only what was on the table', () => {

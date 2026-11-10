@@ -18,7 +18,7 @@ siteImports();
 const {
   roemText, handHeadline, posOf, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText,
   reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
-  MANUAL_SECTIONS,
+  MANUAL_SECTIONS, chartSpec,
 } = await import('../../games/klaverjas/web/js/rules.js');
 const { store } = await import('../../platform/web/js/util.js');
 const { SECTIONS } = await import('../../games/klaverjas/web/js/manual.js');
@@ -100,6 +100,35 @@ test('scores: per team with four players, else per player, ours first', () => {
   assert.equal(scorerName(table(3, 1), 1), 'Jij');
   assert.equal(scorerName(table(3, 1), 2), 'Kees');
   assert.deepEqual(scorerOrder(table(2, 0)), [0, 1]);
+});
+
+test('the chart of a match: Wij and Zij in their colours, a ring where a side went nat', () => {
+  assert.equal(chartSpec({ ...table(4, 1), scores: [] }), null);
+  const row = o => ({ players: 4, nat: false, pit: false, pitTeam: -1, bid: 0, roem: [0, 0], ...o, gains: o.score });
+  const s = { ...table(4, 1), scores: [
+    row({ hand: 1, playingTeam: 0, trumpBy: 2, trump: 'H', points: [104, 58], roem: [20, 0], score: [124, 58] }),
+    row({ hand: 2, playingTeam: 1, trumpBy: 1, trump: 'S', points: [162, 0], roem: [20, 0], score: [182, 0], nat: true }),
+    row({ hand: 3, playingTeam: 1, trumpBy: 3, trump: 'C', points: [0, 162], roem: [0, 100], score: [0, 262], pit: true, pitTeam: 1 }),
+  ] };
+  const c = chartSpec(s);
+  assert.deepEqual(c.names, ['Wij', 'Zij']);
+  assert.deepEqual(c.colors, ['var(--wij)', 'var(--zij)']);
+  assert.deepEqual(c.pts, [[0, 0], [58, 124], [58, 306], [320, 306]]);
+  assert.deepEqual(c.rings, [[2], []]);
+  assert.equal(c.ringLabel, 'nat');
+  assert.equal(c.limit, undefined);
+  assert.deepEqual(c.tips[1], { title: 'Na potje 1 · ♥ Zij', rows: [{ k: 1, note: '+124, 20 roem', value: 124 }, { k: 0, note: '+58', value: 58 }] });
+  assert.deepEqual(c.tips[2], { title: 'Na potje 2 · ♠ jij', rows: [{ k: 1, note: '+182', value: 306 }, { k: 0, note: 'nat', value: 58 }] });
+  assert.deepEqual(c.tips[3], { title: 'Na potje 3 · ♣ Wij', rows: [{ k: 0, note: '+262, pit, 100 roem', value: 320 }, { k: 1, note: '+0', value: 306 }] });
+  assert.match(c.label, /3 potjes/);
+  // Three players: a line each, the soloist's bid in the tooltip.
+  const three = { ...table(3, 0), scores: [{ hand: 1, players: 3, playingTeam: 0, trumpBy: 2, bid: 100, trump: 'D', points: [110, 52],
+    roem: [0, 0], score: [110, 52], gains: [26, 26, 110], nat: false, pit: false, pitTeam: -1 }] };
+  const c3 = chartSpec(three);
+  assert.deepEqual(c3.names, ['Jij', 'Opa Dirk (AI)', 'Kees']);
+  assert.deepEqual(c3.colors, ['var(--wij)', 'var(--zij)', '#9085e9']);
+  assert.deepEqual(c3.pts, [[0, 0, 0], [26, 26, 110]]);
+  assert.equal(c3.tips[1].title, 'Na potje 1 · ♦ Kees voor 100');
 });
 
 test('the variant names the table size where it matters', () => {

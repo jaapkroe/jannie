@@ -5,12 +5,12 @@
 // No seats, no bots, no chat, no call: its own websocket (/api/score,
 // games/toepen/scoresheet) and its own overlay. Loaded on demand
 // (game.js), so a page load stays within its requests.
-import { h, icon, toast, store, avatar, playerName, vibrate, copyText } from './util.js';
+import { h, icon, toast, store, avatar, playerName, vibrate, copyText, chartBox } from './util.js';
 import * as panels from './panels.js';
 import { sound } from './sound.js';
 import { meter } from './table.js';
 import * as C from './scorecalc.js';
-import { chart, swatch, COLORS } from './scorechart.js';
+import { swatch, COLORS } from './chart.js';
 
 const PING_MS = 20000;  // the page's own ping, as on /ws
 const DEAD_MS = 8000;   // no answer this long after a ping: a dead socket
@@ -33,7 +33,6 @@ const S = {
   wasOver: false,
   retry: 0,
   timers: { retry: 0, ping: 0, dead: 0 },
-  width: 0,
 };
 
 // Fills el with kids, leaving out what is not there (null, false).
@@ -84,7 +83,6 @@ function stop() {
   S.want = null;
   disconnect();
   Object.assign(S, { sheet: null, host: false, draft: null, busy: '', opening: false, error: '', wasOver: false });
-  S.resize?.disconnect();
   if (new URLSearchParams(location.search).has('score')) history.replaceState(history.state, '', '/');
 }
 
@@ -268,7 +266,7 @@ function renderStart() {
         else e.target.blur();
       },
     });
-    return h('div', { class: 'sc-name-row' }, swatch(k), input,
+    return h('div', { class: 'sc-name-row' }, sw(k), input,
       f.names.length > C.MIN_PLAYERS ? h('button', {
         class: 'icon-btn sc-del', type: 'button', 'aria-label': `Speler ${k + 1} weghalen`, title: 'Weghalen',
         onclick: () => { sound.play('click'); f.names.splice(k, 1); drawNames(); },
@@ -354,23 +352,19 @@ function renderSheet() {
     E.over = h('div', { class: 'sc-over', hidden: true });
     E.entry = h('section', { class: 'sc-entry', 'aria-label': 'Potje invoeren' });
     E.stand = h('section', { class: 'sc-sec' });
-    E.course = h('section', { class: 'sc-sec' });
-    E.chart = h('div', { class: 'sc-chart-box' });
+    E.chart = chartBox({ empty: 'Na het eerste potje zie je hier hoe de strafpunten oplopen.' });
+    E.course = h('section', { class: 'sc-sec' }, h('h3', { text: 'Verloop' }), E.chart);
     E.rounds = h('section', { class: 'sc-sec' });
     E.tools = h('section', { class: 'sc-sec sc-tools' });
     E.root = h('div', { class: 'sc-root' }, E.bar, E.over, E.entry, E.stand, E.course, E.rounds, E.tools);
     put(S.m.body, E.root);
-    S.width = 0;
-    S.resize?.disconnect();
-    S.resize = new ResizeObserver(() => { if (Math.abs(E.chart.clientWidth - S.width) > 4) renderChart(); });
-    S.resize.observe(E.chart);
   }
   renderBar();
   renderOver();
   renderEntry();
   renderStand();
-  put(E.course, h('h3', { text: 'Verloop' }), E.chart);
-  renderChart();
+  // The chart stays in the page, with its tooltip and focus.
+  E.chart.set(C.chartSpec(s));
   renderRounds();
   renderTools();
 }
@@ -523,7 +517,7 @@ function renderEntry() {
     const won = d.winner === k;
     const armoede = before[k] === s.limit - 1;
     return h('div', { class: 'sc-row' + (won ? ' won' : '') + (d.passed[k] ? ' weg' : '') },
-      h('span', { class: 'sc-who' }, swatch(k), h('span', { class: 'sc-who-name', text: name }),
+      h('span', { class: 'sc-who' }, sw(k), h('span', { class: 'sc-who-name', text: name }),
         armoede ? h('small', { class: 'sc-badge armoede', text: 'armoede' }) : null),
       h('button', {
         class: 'sc-win', type: 'button', 'aria-pressed': String(won), dataset: { key: `w${k}` },
@@ -581,6 +575,9 @@ function renderEntry() {
 
 // ---------- the standings, the chart, the rounds ----------
 
+// Player k's colour beside the name: slot k, as the chart's line.
+const sw = k => swatch(COLORS[k % COLORS.length]);
+
 function avatarOf(k, cls) {
   const el = avatar({ name: S.sheet.names[k] }, cls);
   el.style.setProperty('--persona', COLORS[k % COLORS.length]);
@@ -608,14 +605,6 @@ function renderStand() {
         meter(x.points, s.limit, minus), h('b', { class: 'tp-sum-pts', text: String(x.points) }));
     })),
     h('p', { class: 'sheet-note', text: `Eruit bij ${s.limit} strafpunten; wie als laatste over is, wint.` }));
-}
-
-function renderChart() {
-  const box = S.E.chart;
-  if (!box?.isConnected) return;
-  S.width = box.clientWidth;
-  const c = S.sheet.rounds.length ? chart(S.sheet, S.width) : null;
-  put(box, c || h('p', { class: 'sc-empty', text: 'Na het eerste potje zie je hier hoe de strafpunten oplopen.' }));
 }
 
 function renderRounds() {
@@ -690,7 +679,7 @@ function openNames() {
   const draw = () => {
     put(m.body, 
       h('p', { class: 'sheet-note', text: 'Pas een naam aan of zet er iemand bij; die begint op 0. Weghalen kan niet: wie stopt, blijft gewoon op de lijst.' }),
-      h('div', { class: 'sc-names' }, names.map((name, k) => h('div', { class: 'sc-name-row' }, swatch(k),
+      h('div', { class: 'sc-names' }, names.map((name, k) => h('div', { class: 'sc-name-row' }, sw(k),
         h('input', {
           class: 'field sc-name-in', type: 'text', maxLength: C.MAX_NAME, value: name, placeholder: `Speler ${k + 1}`, autocomplete: 'off',
           'aria-label': `Naam van speler ${k + 1}`, oninput: e => { names[k] = e.target.value; err.textContent = ''; },

@@ -28,7 +28,8 @@ the websocket), the shell's 6 modules (main.js with the websocket, util,
 panels, home, sound, cards) and 2 stylesheets (app.css, cards.css), and at
 most 3 page-load modules and 1 stylesheet of the game. Every other module
 is imported when first needed: the shell's `call.js` once another person
-sits at the table, and a game's own extras (klaverjas's handleiding
+sits at the table and `chart.js` with the first score chart
+([The score chart](#the-score-chart)), and a game's own extras (klaverjas's handleiding
 `manual.js` and `expert.js`, toepen's score sheet), so a page load never
 fetches them.
 `test/sites.test.mjs` counts it from index.html and the static imports.
@@ -97,11 +98,11 @@ built from the same shell:
 
 - `platform/web/js`: `main.js` (routing, the websocket, the update queue),
   `util.js` (the app context, DOM building, icons, storage, preferences,
-  toasts, motion, the on-screen keyboard, names, suits, avatars and
-  whether a turn is the player's),
+  toasts, motion, the on-screen keyboard, names, suits, avatars,
+  whether a turn is the player's and the box of the score chart),
   `panels.js` (modals, back button, settings, bot picker, menu, feedback,
   chat), `home.js` (home, invite, lobby), `sound.js`, `cards.js`, `call.js`
-  (lazy); `platform/web/css`: `app.css`, `cards.css`.
+  and `chart.js` (both lazy); `platform/web/css`: `app.css`, `cards.css`.
 - the game's `web/`: `index.html`, `manifest.webmanifest`, `favicon.svg`,
   `icon-full.svg`, the PNG icons, `og.png`, and `js/game.js`, the game
   module, with the game's other modules and its stylesheet. A game's own
@@ -197,6 +198,60 @@ export const sound = {
 
 The palette serves every game: `roem`, `nat` and `pit` are klaverjas's,
 `knock` (a toep) toepen's.
+
+### The score chart
+
+The course of a match as a line chart: klaverjas's *Scorebord*, toepen's
+*Stand* and game over, and toepen's *Score bijhouden*. The shell draws it
+and knows no game; the game gives the data and every word, as a spec from
+its pure module (klaverjas's `chartSpec` in `rules.js`, toepen's in
+`rules.js` and, for Score bijhouden, `scorecalc.js`; unit tests check
+them).
+
+```js
+// platform/web/js/util.js — loaded with the page
+export function chartBox({empty, title})  // → the element with set(spec): a <div class="chart-box">, or with a title
+                                     //   a <div class="chart-sec"> holding an <h3 class="chart-h"> and the box. set
+                                     //   draws the chart of spec at the box's width, again when that width
+                                     //   changes (the focus, if in the chart, stays in the new one), and
+                                     //   imports chart.js for the first box; a spec equal to the one drawn is not
+                                     //   drawn again, so an overlay may set it on every update. An overlay that
+                                     //   rebuilds on every update keeps the element in the page and replaces the
+                                     //   parts around it: taking it out drops the tooltip and the focus. Without
+                                     //   a spec the box shows empty (in .chart-empty), or the element hides when
+                                     //   empty is ''; while chart.js loads the box keeps a chart's room
+                                     //   (.loading), and if it cannot be loaded the element hides.
+// platform/web/js/chart.js — imported when first needed: by the first box with a spec, or by a module loaded on
+//   demand that uses its colours (toepen's score.js)
+export const COLORS;                 // the eight categorical slots, in their fixed order
+export function chart(spec, width)   // → the chart's element (legend, svg, tooltip); null before the first round
+export function swatch(color)        // → a small mark in color beside a name (.chart-sw)
+export function gridStep(range)      // the grid's step: 1, 2 or 5 times a power of ten, at most five steps
+// spec: {names, colors?, pts, ends?, out?, limit?, rings?, ringLabel?, tips, label}
+//   names: the lines, in the legend's order; colors: per line a CSS colour (default COLORS in order);
+//   pts[i][k]: line k's score after i rounds (pts[0] before the first); ends[k]: the last i line k
+//   reaches (a player out of the match); out[k]: greyed in the legend; limit {value, label}: a dashed
+//   line; rings[k]: the rounds that get an open ring, named in the legend by ringLabel; tips[i]: the
+//   tooltip at round i, {title, rows: [{k, note, value, out}]}, rows in its order; label: the svg's
+//   aria-label. Plain data, so the box compares it as JSON.
+```
+
+What it shows: a line per player or side, a dot at each line's end, the
+names at the line ends for up to four lines (pushed apart where they
+meet), the legend above, recessive grid and axes (the rounds along the
+bottom). Under the pointer, or with the arrow keys once the chart has the
+focus (Home and End to the first and last round, Escape hides), a
+crosshair at the nearest round with a dot on every line and the tooltip in
+the top corner away from it. The table of rounds beside it is its table
+view. Inline SVG, no libraries; the shapes' colours are set from JS (the
+CSP allows no `style` attribute), the rest is in `app.css` (`.chart…`).
+
+Colours: the eight categorical slots of `COLORS` in fixed order, checked
+for colour-blind separation, the normal-vision floor and 3:1 contrast on
+both sites' chart surface (`--panel-solid`: toepen `#0f2433`, klaverjas
+`#10261f`). Toepen gives player k slot k; klaverjas uses `--wij` and
+`--zij`, the colours of its score sheet, and with three players `#9085e9`
+for the third, a set checked the same way on its surface.
 
 ## Shared screens
 

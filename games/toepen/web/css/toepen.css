@@ -1063,11 +1063,10 @@ body {
   }
 }
 
-/* ---------- score bijhouden (js/score.js, js/scorechart.js) ---------- */
+/* ---------- score bijhouden (js/score.js) ---------- */
 
 /* The score of a game at a real table: one long overlay, on a phone the
-   whole height. The chart sits on --panel-solid, the surface its colours
-   are checked against. */
+   whole height. The chart is the shell's (app.css, .chart). */
 .sc-modal > .dialog {
   width: min(100%, 580px);
 }
@@ -1114,16 +1113,6 @@ body {
   line-height: 1.4;
 }
 
-/* A player's colour: in the legend, the tooltip and the name fields. */
-.sc-sw {
-  display: inline-block;
-  flex: none;
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  background: var(--c);
-}
-
 /* The start: names, the limit, a code to watch, the sheets of before. */
 .sc-names {
   display: grid;
@@ -1137,7 +1126,7 @@ body {
   gap: 8px;
 }
 
-.sc-name-row .sc-sw {
+.sc-name-row .chart-sw {
   width: 12px;
   height: 12px;
   border-radius: 50%;
@@ -1526,181 +1515,6 @@ body {
 
 .sc-sum-row.lijn {
   box-shadow: inset 0 0 0 1.5px rgba(255, 170, 60, 0.55);
-}
-
-/* The chart. */
-.sc-chart-box {
-  padding: 10px 6px 4px;
-  border-radius: 16px;
-  background: var(--panel-solid);
-}
-
-.sc-chart-box .sc-empty {
-  padding: 22px 8px;
-}
-
-.sc-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 14px;
-  padding: 0 8px 6px;
-  color: var(--ink-2);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.sc-key {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Out: the name greys, the colour stays (it is the identity). */
-.sc-key.out span {
-  color: var(--ink-3);
-}
-
-.sc-ring-key {
-  width: 7px;
-  height: 7px;
-  border: 2px solid var(--ink-2);
-  border-radius: 50%;
-}
-
-.sc-plot {
-  position: relative;
-}
-
-.sc-svg {
-  display: block;
-  max-width: 100%;
-  height: auto;
-  outline: none;
-  touch-action: pan-y;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.sc-svg:focus-visible {
-  border-radius: 10px;
-  box-shadow: 0 0 0 2px var(--gold);
-}
-
-.sc-grid line {
-  stroke: rgba(255, 255, 255, 0.08);
-  stroke-width: 1;
-}
-
-.sc-tick {
-  fill: var(--ink-3);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-
-.sc-limit {
-  stroke: var(--ink-2);
-  stroke-width: 1.5;
-  stroke-dasharray: 5 4;
-}
-
-.sc-limit-lbl {
-  fill: var(--ink-2);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.sc-line {
-  fill: none;
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.sc-ring,
-.sc-end,
-.sc-dot {
-  stroke-width: 2;
-}
-
-.sc-name {
-  fill: var(--ink);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.sc-hair {
-  stroke: rgba(255, 255, 255, 0.4);
-  stroke-width: 1;
-}
-
-.sc-tip {
-  position: absolute;
-  top: 4px;
-  right: 6px;
-  z-index: 2;
-  display: grid;
-  gap: 1px;
-  min-width: 150px;
-  max-width: calc(100% - 44px);
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(5, 14, 21, 0.95);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  color: var(--ink);
-  font-size: 12.5px;
-  pointer-events: none;
-}
-
-.sc-tip-h {
-  margin-bottom: 3px;
-}
-
-.sc-tip.left {
-  right: auto;
-  left: 36px;
-}
-
-.sc-tip[hidden] {
-  display: none;
-}
-
-.sc-tip-row {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) auto 22px;
-  align-items: center;
-  gap: 0 6px;
-  line-height: 1.35;
-}
-
-.sc-tip-row b {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.sc-tip-row small {
-  color: var(--ink-3);
-  font-size: 11.5px;
-  white-space: nowrap;
-}
-
-.sc-tip-row.out small {
-  display: none;
-}
-
-.sc-tip-row.out b {
-  grid-column: 3 / -1;
-  font-weight: 700;
-}
-
-.sc-tip-row.out {
-  color: var(--ink-3);
-}
-
-.sc-tip-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The rounds, as at the table (.tp-st-table): who went away shaded,

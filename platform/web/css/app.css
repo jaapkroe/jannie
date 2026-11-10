@@ -2326,6 +2326,214 @@ body.busy::after {
   will-change: transform, opacity;
 }
 
+/* ---------- the score chart (chart.js) ---------- */
+
+/* The course of a match as a line chart (util.js chartBox). It sits on
+   --panel-solid, the surface its colours are checked against. */
+.chart-h {
+  margin: 18px 0 8px;
+  font-size: 17px;
+  font-weight: 900;
+  text-align: left;
+}
+
+.chart {
+  text-align: left;
+}
+
+.chart-box {
+  padding: 10px 6px 4px;
+  border-radius: 16px;
+  background: var(--panel-solid);
+}
+
+.chart-empty {
+  margin: 0;
+  padding: 22px 8px;
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* While chart.js loads, the room of a chart on a phone. */
+.chart-box.loading {
+  min-height: 220px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding: 0 8px 6px;
+  color: var(--ink-2);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.chart-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Out: the name greys, the colour stays (it is the identity). */
+.chart-key.out span {
+  color: var(--ink-3);
+}
+
+.chart-ring-key {
+  width: 7px;
+  height: 7px;
+  border: 2px solid var(--ink-2);
+  border-radius: 50%;
+}
+
+.chart-plot {
+  position: relative;
+}
+
+.chart-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  outline: none;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.chart-svg:focus-visible {
+  border-radius: 10px;
+  box-shadow: 0 0 0 2px var(--gold);
+}
+
+.chart-grid line {
+  stroke: rgba(255, 255, 255, 0.08);
+  stroke-width: 1;
+}
+
+.chart-tick {
+  fill: var(--ink-3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-limit {
+  stroke: var(--ink-2);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.chart-limit-lbl {
+  fill: var(--ink-2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.chart-line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chart-ring,
+.chart-end,
+.chart-dot {
+  stroke-width: 2;
+}
+
+.chart-label {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.chart-hair {
+  stroke: rgba(255, 255, 255, 0.4);
+  stroke-width: 1;
+}
+
+.chart-tip {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  z-index: 2;
+  display: grid;
+  gap: 1px;
+  min-width: 150px;
+  max-width: calc(100% - 44px);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(5, 14, 21, 0.95);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  color: var(--ink);
+  font-size: 12.5px;
+  pointer-events: none;
+}
+
+.chart-tip-h {
+  margin-bottom: 3px;
+}
+
+.chart-tip.left {
+  right: auto;
+  left: 36px;
+}
+
+.chart-tip[hidden] {
+  display: none;
+}
+
+.chart-tip-row {
+  display: grid;
+  /* The values' column: as wide as the widest value (--chart-digits, set by chart.js). */
+  grid-template-columns: 10px minmax(0, 1fr) auto max(22px, calc(var(--chart-digits, 0) * 1ch + 4px));
+  align-items: center;
+  gap: 0 6px;
+  line-height: 1.35;
+}
+
+.chart-tip-row b {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.chart-tip-row small {
+  color: var(--ink-3);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+.chart-tip-row.out small {
+  display: none;
+}
+
+.chart-tip-row.out b {
+  grid-column: 3 / -1;
+  font-weight: 700;
+}
+
+.chart-tip-row.out {
+  color: var(--ink-3);
+}
+
+.chart-tip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A line's colour beside a name: in the legend, the tooltip and a game's own lists. */
+.chart-sw {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--c);
+}
+
 /* ---------- chat ---------- */
 
 .chat {
