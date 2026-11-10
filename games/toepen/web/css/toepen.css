@@ -821,6 +821,86 @@ body {
   border-bottom: 0;
 }
 
+/* At game over a round opens its overview (.tp-course). */
+.tp-st-tap {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .tp-st-tap:hover td {
+    background: var(--soft);
+  }
+}
+
+.tp-st-open {
+  min-width: 28px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--soft);
+  color: inherit;
+  font: inherit;
+  font-weight: 800;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* ‹ › of the overview: off at the first and the last round. */
+.tp-course .dlg-head .icon-btn:disabled {
+  opacity: 0.35;
+}
+
+/* The overview of a round: the parts before the first card, per trick
+   and the result; a card that took the trick in gold, one of a seat that
+   passed later in the trick faded. */
+.tp-cs-part h3 {
+  margin: 14px 0 6px;
+  font-size: 15px;
+}
+
+.tp-cs-line {
+  margin: 0 0 6px;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+.tp-cs-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 2px 0 8px;
+}
+
+.tp-cs-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 64px;
+  --card-w: 40px;
+}
+
+.tp-cs-card.win .card {
+  box-shadow: 0 0 0 2px var(--gold), 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+
+.tp-cs-card.void {
+  opacity: 0.45;
+}
+
+.tp-cs-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-cs-card.win .tp-cs-name {
+  color: var(--gold-hi);
+}
+
 /* The manual: the shell's tabs and scrolling pane (.tabs, .man-scroll). */
 .tp-man {
   max-width: 68ch;

@@ -232,12 +232,114 @@ export function roundHeadline(s, row) {
   const w = row.winner;
   const title = w === s.you ? 'Jij wint het potje!' : `${name(s, w)} wint het potje`;
   const mine = row.gains?.[s.you] ?? 0;
-  let sub = row.tricks ? `Met de laatste slag, bij inzet ${row.stake}.` : `De anderen pasten, bij inzet ${row.stake}.`;
+  // Won without the last trick: everyone else passed, or some sat out (a
+  // bluff caught) or went out (a check).
+  const passed = (s.status || []).every((st, seat) => seat === w || st === 'uit' || st === 'gepast');
+  let sub = row.tricks ? `Met de laatste slag, bij inzet ${row.stake}.`
+    : `${passed ? 'De anderen pasten' : 'Niemand anders doet nog mee'}, bij inzet ${row.stake}.`;
   if (row.boer) sub = `Met de boer in de laatste slag, bij inzet ${row.stake}${(row.gains?.[w] ?? 0) < 0 ? ': een strafpunt eraf' : ''}.`;
   if (row.koning) sub = `Het koningsspel: ${w === s.you ? 'jij haalde' : `${name(s, w)} haalde`} de laatste slag.`;
   if (w !== s.you && mine > 0) sub += ` Jij krijgt ${points(mine)}.`;
   if (w !== s.you && mine === 0 && s.status?.[s.you] !== 'in') sub += ' Jij liep geen punten op.';
   return { title, sub, cls: w === s.you ? 'good' : mine > 0 ? 'bad' : 'neutral' };
+}
+
+// The overview of round k at game over (games/toepen/README.md#the-site),
+// from its course (s.courses[k]: what everyone saw happen): the round's
+// title, the dealer, and parts before the first card and per trick, each
+// a list of lines ({text}) and rows of cards ({cards}: per card its seat,
+// name, card, win: took the trick, void: its seat passed later in the
+// trick, so it no longer counts), then the result. Hands nobody saw stay
+// out: a vuile was nobody checked shows no cards.
+export function courseView(s, k) {
+  const row = s.rounds?.[k];
+  if (!row) return null;
+  const obj = seat => (seat === s.you ? 'jou' : named(s, seat));
+  const names = seats => cap(joinNL(seats.map(seat => named(s, seat))));
+  const cardsOf = cs => (cs || []).map(cardLabel).join(' ');
+  const n = s.players.length;
+  // The points through the round, from those after the round before: a
+  // check's point can put a seat out of it.
+  const pts = [...(s.rounds[k - 1]?.points || Array(n).fill(0))];
+  const outBy = (seat, p) => (pts[seat] += p) >= limitOf(s);
+  const claimed = new Set(), passed = new Set();
+  const parts = [];
+  let part = null, trick = 0, played = null;
+  const open = title => { part = { title, items: [] }; parts.push(part); };
+  const line = text => { if (!part) open('Voor de eerste kaart'); part.items.push({ text }); };
+  // A toep comes on a turn to play: it opens the next trick when none is
+  // in play, as the first card does.
+  const inTrick = () => { if (!played) { open(`Slag ${++trick}`); played = new Map(); } };
+  for (const ev of s.courses?.[k] || []) {
+    switch (ev.type) {
+      case 'claims':
+        // Again: who got new cards may hand them in once more.
+        line(`${names(ev.seats)} ${ev.seats.length === 1 ? 'meldt' : 'melden'} ${ev.seats.every(seat => claimed.has(seat)) ? 'weer ' : ''}een vuile was.`);
+        ev.seats.forEach(seat => claimed.add(seat));
+        break;
+      case 'wasDone': {
+        const who = name(s, ev.claimant);
+        if (ev.shown) line(`${who} staat op armoede en legt een echte ${wasName(ev.kind)} open: ${cardsOf(ev.cards)}. ${who} krijgt vier nieuwe kaarten.`);
+        else if (ev.checker < 0) line(`Niemand controleert: ${named(s, ev.claimant)} krijgt vier nieuwe kaarten.`);
+        else if (ev.genuine) {
+          const out = outBy(ev.checker, 1);
+          line(`${name(s, ev.checker)} controleert ${obj(ev.claimant)}: een echte ${wasName(ev.kind)}, ${cardsOf(ev.cards)}. ` +
+            (out ? `${name(s, ev.checker)} krijgt een strafpunt en ligt eruit; ${named(s, ev.claimant)} krijgt vier nieuwe kaarten.`
+              : `${name(s, ev.checker)} krijgt een strafpunt, ${named(s, ev.claimant)} vier nieuwe kaarten.`));
+        } else {
+          const then = outBy(ev.claimant, 1) ? 'ligt eruit' : s.opts?.bluf === false ? 'doet dit potje niet meer mee' : 'speelt open verder';
+          line(`${name(s, ev.checker)} controleert ${obj(ev.claimant)}: bluf, ${cardsOf(ev.cards)}. ${who} krijgt een strafpunt en ${then}.`);
+        }
+        break;
+      }
+      case 'armoede':
+        line(`Armoede: ${joinNL(ev.seats.map(seat => named(s, seat)))} ${ev.seats.length === 1 ? 'staat' : 'staan'} op ${limitOf(s) - 1} strafpunten. De inzet is ${ev.stake}.`);
+        break;
+      case 'discard':
+        line(`${name(s, ev.seat)} legt ${ev.n} ${ev.n === 1 ? 'kaart' : 'kaarten'} dicht weg.`);
+        break;
+      case 'toep':
+        if (!ev.over) inTrick();
+        line(`${name(s, ev.seat)} ${ev.over ? 'overtoept' : 'toept'}: inzet ${ev.stake}.`);
+        break;
+      case 'answer':
+        line(ev.auto ? `${name(s, ev.seat)} gaat vanzelf mee.` : ev.stay ? `${name(s, ev.seat)} gaat mee.` : `${name(s, ev.seat)} past: ${points(ev.points)}.`);
+        if (!ev.stay) { outBy(ev.seat, ev.points); passed.add(ev.seat); }
+        if (!ev.stay && played?.has(ev.seat)) played.get(ev.seat).void = true;
+        break;
+      case 'play': {
+        inTrick();
+        const c = { seat: ev.seat, name: name(s, ev.seat), card: ev.card, win: false, void: false };
+        played.set(ev.seat, c);
+        const last = part.items.at(-1);
+        if (last?.cards) last.cards.push(c);
+        else part.items.push({ cards: [c] });
+        break;
+      }
+      case 'trick':
+        if (played?.has(ev.winner)) played.get(ev.winner).win = true;
+        line(`${name(s, ev.winner)} haalt de slag.`);
+        played = null;
+        break;
+    }
+  }
+  const w = row.winner;
+  const before = s.rounds[k - 1]?.out || [];
+  // Won without the last trick: everyone else in the round passed, or some
+  // sat out (a bluff caught) or went out (a check).
+  const allPassed = [...Array(n).keys()].every(seat => seat === w || before[seat] || passed.has(seat));
+  let won = row.tricks ? `${name(s, w)} haalt de laatste slag en wint het potje, bij inzet ${row.stake}.`
+    : `${allPassed ? 'De anderen pasten' : 'Niemand anders doet nog mee'}: ${named(s, w)} wint het potje, bij inzet ${row.stake}.`;
+  if (row.boer) won += (row.gains?.[w] ?? 0) < 0 ? ' Met de boer in de laatste slag: een strafpunt eraf.' : ' Met de boer in de laatste slag.';
+  if (row.koning) won = `Koningsspel: ${named(s, w)} haalt de laatste slag en wint het spel.`;
+  const order = Array.from({ length: n }, (_, j) => (s.you + j) % n);
+  const gains = order.filter(seat => (row.gains?.[seat] ?? 0) > 0).map(seat => `${named(s, seat)} +${row.gains[seat]}`);
+  const out = order.filter(seat => row.out?.[seat] && !before[seat]);
+  const result = [won];
+  if (gains.length) result.push(`Strafpunten: ${gains.join(', ')}.`);
+  if (out.length) result.push(`${names(out)} ${out.length === 1 ? 'ligt' : 'liggen'} eruit.`);
+  parts.push({ title: 'Uitslag', items: result.map(text => ({ text })) });
+  return { title: `Potje ${row.hand} van ${s.rounds.length}`, sub: `Gever: ${named(s, row.dealer)}.`, parts };
 }
 
 // The standings: every seat with its points, from fewest to most; ties by
@@ -385,6 +487,7 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
         'In het koningsspel tik je eerst de kaarten aan die je weglegt (nog een keer tikken zet er een terug) en dan Wegleggen.']],
       ['Stand en meer', [
         'Bovenaan staan jouw strafpunten, het potje en de inzet. Tik op je punten voor de stand van iedereen en elk potje.',
+        'Na het laatste potje tik je in de tabel op een potje om terug te zien wat er gebeurde: de vuile was, armoede, wie toepte, wie meeging of paste, en elke slag. Je ziet alleen wat op tafel kwam: handen die niemand zag, blijven verborgen.',
         'Onder de drie puntjes vind je de stand, deze spelregels, de instellingen en het geluid. Met het ballonnetje open je de chat.']],
       ['Score bijhouden', [
         'Speel je met echte kaarten aan een echte tafel? Met Score bijhouden op het beginscherm houdt één iemand de strafpunten bij: namen invullen, en na elk potje de inzet, 🏆 bij wie de laatste slag haalde, Weg bij wie paste, en met − en + wat er nog anders ging (de boer, een vuile was).',

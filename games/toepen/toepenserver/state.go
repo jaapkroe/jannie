@@ -52,6 +52,7 @@ type state struct {
 	LastTrick   *toepen.Trick   `json:"lastTrick"`
 	Tricks      int             `json:"tricks"`        // taken this round
 	Rounds      []round         `json:"rounds"`        // the score sheet
+	Courses     [][]any         `json:"courses"`       // game over: per round, what everyone saw happen (play.emit)
 	Why         *Explanation    `json:"why,omitempty"` // the reasoning you asked for your decision now (alone with bots)
 }
 
@@ -78,7 +79,7 @@ func (p *play) State(i cards.Seat) any {
 		Points: make([]int, n), Status: make([]toepen.Status, n), Armoede: make([]bool, n),
 		Washed: make([]bool, n), Answered: make([]bool, n), Claims: make([]bool, n), Open: make([][]cards.Card, n),
 		Laid:   make([]int, n),
-		Asking: []int{}, Checks: []toepen.Check{}, Hand: []cards.Card{}, Rounds: nonNil(p.rounds),
+		Asking: []int{}, Checks: []toepen.Check{}, Hand: []cards.Card{}, Rounds: nonNil(p.rounds), Courses: [][]any{},
 	}
 	for k := range s.Open {
 		s.Open[k] = []cards.Card{}
@@ -91,6 +92,7 @@ func (p *play) State(i cards.Seat) any {
 		return s
 	case "gameOver":
 		s.Winner = p.winner
+		s.Courses = nonNil(p.courses)
 	}
 	d := p.d
 	if d == nil {

@@ -1,6 +1,7 @@
 package toepenserver
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math/rand/v2"
@@ -138,7 +139,7 @@ var toepKeys = append(slices.Clone(servertest.SharedKeys),
 	"winner", "handNo", "dealer", "voorhand", "stake", "toeper", "armoedeToep", "koning", "size", "wasRound",
 	"canRaise", "mustStay", "passCost", "open", "lay", "laid", "points",
 	"status", "armoede", "washed", "answered", "claims", "canClaim", "claimant", "asking", "checks",
-	"stock", "hand", "canToep", "trick", "lastTrick", "tricks", "rounds",
+	"stock", "hand", "canToep", "trick", "lastTrick", "tricks", "rounds", "courses",
 )
 
 // optsKeys are toepen's options on the wire.
@@ -158,12 +159,27 @@ func checkKeys(t *testing.T, m *servertest.Msg, s *state) {
 	servertest.WantKeys(t, s.Phase+" opts", servertest.Field(t, m.S, "opts"), optsKeys)
 }
 
+// courseTypes are the events of a round's course (play.emit).
+var courseTypes = map[string]bool{"claims": true, "wasDone": true, "armoede": true, "discard": true,
+	"toep": true, "answer": true, "play": true, "trick": true}
+
 // playToepen plays c's decisions at random until game over and returns the
-// toepen states seen, per phase, and the event types.
+// toepen states seen, per phase, and the event types. At game over every
+// round's course is the events of its types c received in that round, in
+// order and byte for byte: what everyone saw, nothing more or less.
 func playToepen(t *testing.T, c *servertest.Client, rng *rand.Rand) (map[string]*state, map[string]int) {
 	t.Helper()
 	phases := map[string]*state{}
 	events := map[string]int{}
+	var live [][]string // per round ended, the course events received
+	var cur []string
+	compact := func(raw []byte) string {
+		var b bytes.Buffer
+		if err := json.Compact(&b, raw); err != nil {
+			t.Fatal(err)
+		}
+		return b.String()
+	}
 	var prev *state
 	sent, wasIn := "", "" // the state last acted on, the time for a was we answered
 	for {
@@ -175,6 +191,14 @@ func playToepen(t *testing.T, c *servertest.Client, rng *rand.Rand) (map[string]
 			continue
 		}
 		s := toepS(t, m)
+		switch e := m.EvType(); {
+		case e == "deal":
+			cur = nil
+		case e == "handEnd":
+			live = append(live, cur)
+		case courseTypes[e]:
+			cur = append(cur, compact(m.Ev))
+		}
 		if e := m.EvType(); e != "" {
 			events[e]++
 		}
@@ -196,11 +220,30 @@ func playToepen(t *testing.T, c *servertest.Client, rng *rand.Rand) (map[string]
 		if !slices.Equal(s.Hand, toepen.SortHand(s.Hand)) {
 			t.Errorf("hand not sorted: %v", s.Hand)
 		}
+		if s.Phase != "gameOver" && len(s.Courses) > 0 {
+			t.Fatalf("the courses before game over, in %s", s.Phase)
+		}
 		prev = s
 		if phases[s.Phase] == nil {
 			phases[s.Phase] = s
 		}
 		if s.Phase == "gameOver" {
+			var courses [][]json.RawMessage
+			if err := json.Unmarshal(servertest.Field(t, m.S, "courses"), &courses); err != nil {
+				t.Fatal(err)
+			}
+			if len(courses) != len(live) {
+				t.Fatalf("%d courses, %d rounds received", len(courses), len(live))
+			}
+			for k, course := range courses {
+				got := make([]string, len(course))
+				for j, ev := range course {
+					got[j] = compact(ev)
+				}
+				if !slices.Equal(got, live[k]) {
+					t.Errorf("round %d: the course\n  %v\nis not what was received\n  %v", k+1, got, live[k])
+				}
+			}
 			return phases, events
 		}
 		key := string(m.S) // decide once per state, and once on a was
@@ -232,6 +275,48 @@ func checkOver(t *testing.T, over *state, players int) {
 	}
 	if left != 1 || len(over.Rounds) != over.HandNo || len(over.Players) != players {
 		t.Errorf("left %d, rounds %d of %d", left, len(over.Rounds), over.HandNo)
+	}
+	checkCourses(t, over)
+}
+
+// checkCourses checks the course of every round at game over: one per
+// round, of the events everyone saw only; a trick has a card of each seat
+// at most once, the last trick of a round won with it goes to the winner,
+// and the cards of a vuile was are there only when they were shown.
+func checkCourses(t *testing.T, over *state) {
+	t.Helper()
+	if len(over.Courses) != len(over.Rounds) {
+		t.Fatalf("%d courses for %d rounds", len(over.Courses), len(over.Rounds))
+	}
+	for k, course := range over.Courses {
+		row := over.Rounds[k]
+		trick, last := map[float64]bool{}, -1.0
+		for _, item := range course {
+			ev := item.(map[string]any)
+			switch ev["type"] {
+			case "play":
+				seat := ev["seat"].(float64)
+				if trick[seat] {
+					t.Errorf("round %d: seat %v played twice to a trick", row.Hand, seat)
+				}
+				trick[seat] = true
+			case "trick":
+				if len(trick) == 0 {
+					t.Errorf("round %d: a trick without cards", row.Hand)
+				}
+				trick, last = map[float64]bool{}, ev["winner"].(float64)
+			case "wasDone":
+				if ev["checker"].(float64) < 0 && !ev["shown"].(bool) && len(ev["cards"].([]any)) > 0 {
+					t.Errorf("round %d: the cards of a vuile was nobody saw: %v", row.Hand, ev)
+				}
+			case "claims", "armoede", "discard", "toep", "answer":
+			default:
+				t.Errorf("round %d: %v in the course", row.Hand, ev["type"])
+			}
+		}
+		if row.Tricks && last != float64(row.Winner) {
+			t.Errorf("round %d won by %d with the last trick, which went to %v", row.Hand, row.Winner, last)
+		}
 	}
 }
 

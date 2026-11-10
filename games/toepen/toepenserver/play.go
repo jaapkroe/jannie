@@ -28,6 +28,8 @@ type play struct {
 	last       *toepen.Trick // the trick just taken, on the table until collected
 	collected  bool          // the trick just taken has been collected
 	rounds     []round       // the score sheet
+	course     []any         // the round's course so far: what everyone saw happen (emit)
+	courses    [][]any       // the course of every round ended, for game over
 	total      []int         // the penalty points after the last round
 	winner     int           // game over: the seat left
 	acts       string        // the round's decisions, for the game log
@@ -85,7 +87,7 @@ func (p *play) Start() {
 	p.total = make([]int, n)
 	p.winner = -1
 	p.m = toepen.NewMatch(n, p.opts().rules(), cards.Seat(t.Deals().IntN(n)))
-	p.rounds = nil
+	p.rounds, p.courses = nil, nil
 	// Without the seed: the table names it at game over (docs/server.md#the-seed).
 	t.SysChat("Het spel begint: %s. Wie de laatste slag haalt, krijgt geen strafpunten. Veel plezier!", p.Variant())
 	p.deal()
@@ -98,9 +100,10 @@ func (p *play) deal() {
 	p.handNo = p.m.Round
 	t.SetHand(p.handNo)
 	p.acts, p.last, p.collected, p.told, p.stockTold = "", nil, false, 0, false
+	p.course = nil
 	t.SetPhase(p.phase())
 	t.Pause(stepDealt, t.Pace().Deal)
-	t.Emit(evDeal{Type: "deal", HandNo: p.handNo, Dealer: p.d.Dealer(), Koning: p.d.Koning()})
+	p.emit(evDeal{Type: "deal", HandNo: p.handNo, Dealer: p.d.Dealer(), Koning: p.d.Koning()})
 	if d := p.d; d.Koning() {
 		deal, lay := fmt.Sprintf("Ieder speelt met %d kaarten", d.Size()), ""
 		if d.DealtSize() > d.Size() {
@@ -167,12 +170,12 @@ func (p *play) Resume(s server.Step) {
 		p.collected = true
 		w := p.last.Winner
 		if p.d.Phase() == toepen.PhaseDone {
-			t.Emit(evCollect{Type: "collect", Winner: w})
+			p.emit(evCollect{Type: "collect", Winner: w})
 			p.endRound()
 			return
 		}
 		t.OpenTurn()
-		t.Emit(evCollect{Type: "collect", Winner: w})
+		p.emit(evCollect{Type: "collect", Winner: w})
 	}
 }
 
@@ -200,12 +203,12 @@ func (p *play) proceed() {
 			}
 		}
 		t.Pause(stepAnnounced, 2*t.Pace().Announce)
-		t.Emit(evArmoede{Type: "armoede", Seats: poor, Stake: d.Stake()})
+		p.emit(evArmoede{Type: "armoede", Seats: poor, Stake: d.Stake()})
 		t.SysChat("Armoede: nog één strafpunt en %s %s eruit. De inzet is meteen %d.", joinNL(names),
 			map[bool]string{true: "ligt", false: "liggen"}[len(names) == 1], d.Stake())
 	default:
 		t.OpenTurn()
-		t.Emit(nil)
+		p.emit(nil)
 	}
 }
 
@@ -233,7 +236,7 @@ func (p *play) openWas() {
 			}
 		})
 	}
-	t.Emit(nil)
+	p.emit(nil)
 }
 
 // was records the answer of seat i in the time for a was; after the last
@@ -250,7 +253,7 @@ func (p *play) was(i cards.Seat, claim bool) error {
 		p.act(i, "w")
 	}
 	if d.Phase() == toepen.PhaseWas {
-		t.Emit(nil) // who has answered
+		p.emit(nil) // who has answered
 		return nil
 	}
 	t.EndPause()
@@ -273,7 +276,7 @@ func (p *play) afterWas() {
 	}
 	t.SetPhase(p.phase())
 	t.Pause(stepAnnounced, t.Pace().Announce)
-	t.Emit(evClaims{Type: "claims", Seats: claims})
+	p.emit(evClaims{Type: "claims", Seats: claims})
 	for _, s := range claims {
 		t.BotSay(s, server.ChatEvent{Kind: "was", Mine: true}, 300*time.Millisecond)
 	}
@@ -421,7 +424,7 @@ func (p *play) Apply(i cards.Seat, a any) error {
 		p.act(i, "x"+cardsString(act.cards))
 		t.SetPhase(p.phase())
 		t.OpenTurn()
-		t.Emit(evDiscard{Type: "discard", Seat: i, N: len(act.cards)})
+		p.emit(evDiscard{Type: "discard", Seat: i, N: len(act.cards)})
 	case actToep:
 		if err := d.Toep(i); err != nil {
 			return err
@@ -429,7 +432,7 @@ func (p *play) Apply(i cards.Seat, a any) error {
 		p.act(i, "t")
 		t.SetPhase(phaseToep)
 		t.Pause(stepAnnounced, pace.Announce)
-		t.Emit(evToep{Type: "toep", Seat: i, Stake: d.Stake()})
+		p.emit(evToep{Type: "toep", Seat: i, Stake: d.Stake()})
 		p.autoStays()
 		t.BotSay(i, server.ChatEvent{Kind: "toep", Mine: true, Points: d.Stake()}, 200*time.Millisecond)
 	case actOvertoep:
@@ -439,7 +442,7 @@ func (p *play) Apply(i cards.Seat, a any) error {
 		p.act(i, "o")
 		t.SetPhase(phaseToep)
 		t.Pause(stepAnnounced, pace.Announce)
-		t.Emit(evToep{Type: "toep", Seat: i, Stake: d.Stake(), Over: true})
+		p.emit(evToep{Type: "toep", Seat: i, Stake: d.Stake(), Over: true})
 		p.autoStays()
 		t.BotSay(i, server.ChatEvent{Kind: "overtoep", Mine: true, Points: d.Stake()}, 200*time.Millisecond)
 	case actAnswer:
@@ -467,17 +470,17 @@ func (p *play) Apply(i cards.Seat, a any) error {
 			p.last, p.collected = &tr, false
 			t.Trick()
 			t.Pause(stepCollect, pace.Trick)
-			t.Emit(ev)
-			t.Emit(evTrick{Type: "trick", Winner: tr.Winner, Last: d.Phase() == toepen.PhaseDone})
+			p.emit(ev)
+			p.emit(evTrick{Type: "trick", Winner: tr.Winner, Last: d.Phase() == toepen.PhaseDone})
 			break
 		}
 		if d.Phase() == toepen.PhaseDone {
-			t.Emit(ev)
+			p.emit(ev)
 			p.endRound()
 			return nil
 		}
 		t.OpenTurn()
-		t.Emit(ev)
+		p.emit(ev)
 	case actCheck:
 		claimant := d.Claimant()
 		res, err := d.Check(i, act.play)
@@ -488,7 +491,7 @@ func (p *play) Apply(i cards.Seat, a any) error {
 		ev := evCheck{Type: "check", Seat: i, Claimant: claimant, Check: act.play}
 		if res == nil { // the next is asked
 			t.OpenTurn()
-			t.Emit(ev)
+			p.emit(ev)
 			break
 		}
 		if d.Phase() != toepen.PhaseWas { // else the next time for a was opens after the announcement
@@ -499,8 +502,8 @@ func (p *play) Apply(i cards.Seat, a any) error {
 			wait = 3 * pace.Announce // the hand is shown: time to look
 		}
 		t.Pause(stepAnnounced, wait)
-		t.Emit(ev)
-		t.Emit(wasDone(*res))
+		p.emit(ev)
+		p.emit(wasDone(*res))
 		p.told++
 		p.chatCheck(res)
 	case actPlay:
@@ -511,19 +514,33 @@ func (p *play) Apply(i cards.Seat, a any) error {
 		p.act(i, act.card.String())
 		if len(d.Tricks()) == before {
 			t.OpenTurn()
-			t.Emit(evPlay{Type: "play", Seat: i, Card: act.card})
+			p.emit(evPlay{Type: "play", Seat: i, Card: act.card})
 			break
 		}
 		tr := d.Tricks()[before]
 		p.last, p.collected = &tr, false
 		t.Trick()
 		t.Pause(stepCollect, pace.Trick)
-		t.Emit(evPlay{Type: "play", Seat: i, Card: act.card})
-		t.Emit(evTrick{Type: "trick", Winner: tr.Winner, Last: d.Phase() == toepen.PhaseDone})
+		p.emit(evPlay{Type: "play", Seat: i, Card: act.card})
+		p.emit(evTrick{Type: "trick", Winner: tr.Winner, Last: d.Phase() == toepen.PhaseDone})
 	default:
 		return errors.New("onbekende actie")
 	}
 	return nil
+}
+
+// emit sends ev to the table (nil: the state alone). The events everyone
+// saw happen in a round are also its course, which the overview at game
+// over shows (games/toepen/README.md#protocol): the claims of a vuile was
+// and how each was settled, armoede, the cards laid away, the toeps, the
+// answers, the cards played and who took each trick. Not the questions
+// about a check, which wasDone settles.
+func (p *play) emit(ev any) {
+	switch ev.(type) {
+	case evClaims, evWasDone, evArmoede, evDiscard, evToep, evAnswer, evPlay, evTrick:
+		p.course = append(p.course, ev)
+	}
+	p.t.Emit(ev)
 }
 
 // act adds a decision to the round's log: the seat, then "x" and the
@@ -552,6 +569,7 @@ func (p *play) endRound() {
 	row := round{Hand: p.handNo, Dealer: d.Dealer(), Winner: res.Winner, Stake: res.Stake, Tricks: res.Tricks,
 		Boer: res.Boer, Koning: res.Koning, Gains: res.Gains, Points: res.Points, Out: res.Out}
 	p.rounds = append(p.rounds, row)
+	p.courses = append(p.courses, nonNil(p.course))
 	p.logRound(row)
 	t.Summary(evRound{Type: "handEnd", Result: row}, p.pace().round) // short, as a round: on by itself, also alone
 	for s := range cards.Seat(t.Players()) {
@@ -678,7 +696,7 @@ func (p *play) askWhy(i cards.Seat) error {
 			e = Explanation{Chance: -1, Why: "De AI kon hier niets over zeggen.", Options: []WhyOption{}}
 		}
 		p.why = &whyAnswer{seat: i, key: key, e: e}
-		t.Emit(nil)
+		p.emit(nil)
 	})
 	return server.ErrIgnore // the answer comes in the state
 }
@@ -706,7 +724,7 @@ func safeLay(v toepen.View) []cards.Card {
 func (p *play) autoStays() {
 	for _, o := range p.d.AutoStays() {
 		p.act(o, "a1")
-		p.t.Emit(evAnswer{Type: "answer", Seat: o, Stay: true, Auto: true})
+		p.emit(evAnswer{Type: "answer", Seat: o, Stay: true, Auto: true})
 	}
 }
 
@@ -728,7 +746,7 @@ func (p *play) tellShown() {
 	t.Pause(stepAnnounced, 3*t.Pace().Announce)
 	for ; p.told < len(checks); p.told++ {
 		c := checks[p.told]
-		t.Emit(wasDone(c))
+		p.emit(wasDone(c))
 		p.chatCheck(&c)
 	}
 }
