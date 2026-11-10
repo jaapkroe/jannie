@@ -19,7 +19,7 @@ const PHASES = new Set(['lobby', ...IN_HAND, 'handEnd', 'gameOver']);
 const KEYS = ['code', 'phase', 'opts', 'you', 'host', 'players', 'turn', 'takeover', 'nextAt', 'winner', 'handNo',
   'dealer', 'voorhand', 'stake', 'toeper', 'armoedeToep', 'koning', 'size', 'wasRound', 'canRaise', 'mustStay', 'passCost', 'open', 'lay', 'laid', 'points',
   'status', 'armoede', 'washed', 'answered', 'claims', 'canClaim', 'claimant', 'asking', 'checks', 'stock', 'hand',
-  'canToep', 'trick', 'lastTrick', 'tricks', 'rounds'];
+  'canToep', 'trick', 'lastTrick', 'tricks', 'rounds', 'courses'];
 const OPTS = ['players', 'ai', 'tempo', 'seed', 'limit', 'was', 'armoede', 'koning', 'boer', 'lijntoep', 'bluf'];
 // The table's line at game over with the seed of the match, which no
 // message names before (docs/server.md#the-seed).
@@ -145,7 +145,25 @@ class Player {
     if (s.phase === 'gameOver') {
       const left = s.points.filter(n => n < s.opts.limit).length;
       if (left !== 1 || s.points[s.winner] >= s.opts.limit) this.fail(`game over with ${left} left, winner ${s.winner}`);
-    }
+      this.checkCourses(s);
+    } else if (s.courses.length) this.fail(`courses in phase ${s.phase}`);
+  }
+  // checkCourses: at game over a course per round, of what everyone saw
+  // only (games/toepen/README.md#protocol): the cards of a vuile was only
+  // when checked or shown, and a round won with the last trick ends with
+  // that trick taken by its winner.
+  checkCourses(s) {
+    if (s.courses.length !== s.rounds.length) this.fail(`${s.courses.length} courses for ${s.rounds.length} rounds`);
+    const seen = new Set(['claims', 'wasDone', 'armoede', 'discard', 'toep', 'answer', 'play', 'trick']);
+    s.courses.forEach((course, k) => {
+      const row = s.rounds[k];
+      for (const ev of course) {
+        if (!seen.has(ev.type)) this.fail(`round ${row.hand}: ${ev.type} in the course`);
+        if (ev.type === 'wasDone' && ev.checker < 0 && !ev.shown && ev.cards.length) this.fail(`round ${row.hand}: the cards of a vuile was nobody saw`);
+      }
+      const last = course.filter(ev => ev.type === 'trick').at(-1);
+      if (row.tricks && last?.winner !== row.winner) this.fail(`round ${row.hand} won by ${row.winner}, its last trick by ${last?.winner}`);
+    });
   }
   // seedNamed: the line with the seed (text) follows gameOver, and no
   // message before game over named that number; a seed under 10000 might

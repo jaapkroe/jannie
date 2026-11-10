@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   strength, wasKind, seatAngle, onEllipse, seatStatus, prompt, roundHeadline, standings, variantText, manual, isOut, washes, yours, alone, cardLabel, whyRows,
+  courseView,
 } from '../../games/toepen/web/js/rules.js';
 
 const player = name => ({ name, bot: false, connected: true });
@@ -127,15 +128,108 @@ test('the summary of a round, from your seat', () => {
   const s = table({ phase: 'handEnd', points: [2, 0, 3, 1] });
   assert.deepEqual(roundHeadline(s, { winner: 0, stake: 2, tricks: true, gains: [0, 2, 2, 1] }),
     { title: 'Jij wint het potje!', sub: 'Met de laatste slag, bij inzet 2.', cls: 'good' });
-  const lost = roundHeadline(s, { winner: 1, stake: 2, tricks: false, gains: [1, 0, 1, 0] });
+  const lost = roundHeadline({ ...s, status: ['gepast', 'in', 'gepast', 'uit'] }, { winner: 1, stake: 2, tricks: false, gains: [1, 0, 1, 0] });
   assert.equal(lost.title, 'Opa Dirk (AI) wint het potje');
   assert.equal(lost.sub, 'De anderen pasten, bij inzet 2. Jij krijgt 1 strafpunt.');
   assert.equal(lost.cls, 'bad');
+  // A bluff caught (rule bluf off) left one seat in: nobody passed.
+  assert.equal(roundHeadline({ ...s, status: ['in', 'betrapt', 'gepast', 'uit'] }, { winner: 0, stake: 1, tricks: false, gains: [0, 1, 1, 0] }).sub,
+    'Niemand anders doet nog mee, bij inzet 1.');
+  assert.equal(roundHeadline({ ...s, status: ['in', 'eruit', 'gepast', 'uit'] }, { winner: 0, stake: 1, tricks: false, gains: [0, 1, 1, 0] }).sub,
+    'Niemand anders doet nog mee, bij inzet 1.');
   assert.deepEqual(standings(s).map(x => x.seat), [1, 3, 0, 2]);
   assert.equal(roundHeadline(s, { winner: 0, stake: 1, tricks: true, boer: true, gains: [-1, 1, 1, 1] }).sub,
     'Met de boer in de laatste slag, bij inzet 1: een strafpunt eraf.');
   assert.equal(roundHeadline(s, { winner: 2, stake: 1, tricks: true, koning: true, gains: [1, 1, 0, 1] }).sub,
     'Het koningsspel: Sjaak (AI) haalde de laatste slag. Jij krijgt 1 strafpunt.');
+});
+
+test('the overview of a round at game over: only what was on the table', () => {
+  const s = table({
+    phase: 'gameOver', turn: -1,
+    rounds: [
+      { hand: 1, dealer: 3, winner: 2, stake: 2, tricks: true, boer: false, koning: false, gains: [2, 1, 0, 1], points: [3, 8, 0, 9], out: [false, false, false, false] },
+      { hand: 2, dealer: 0, winner: 1, stake: 2, tricks: false, boer: false, koning: false, gains: [1, 0, 1, 1], points: [4, 8, 1, 10], out: [false, false, false, true] },
+    ],
+    courses: [
+      [
+        { type: 'claims', seats: [1, 2] },
+        { type: 'wasDone', claimant: 1, checker: -1, kind: '', cards: [], genuine: false, washed: true, shown: false },
+        { type: 'wasDone', claimant: 2, checker: 0, kind: 'vuile', cards: ['JH', 'QS', 'KD', '7C'], genuine: true, washed: true, shown: false },
+        { type: 'play', seat: 0, card: 'TS' }, { type: 'play', seat: 1, card: '7S' },
+        { type: 'toep', seat: 2, stake: 2, over: false },
+        { type: 'answer', seat: 3, stay: false, points: 1 }, { type: 'answer', seat: 0, stay: true, points: 0 },
+        { type: 'answer', seat: 1, stay: false, points: 1 },
+        { type: 'play', seat: 2, card: '8S' }, { type: 'trick', winner: 0, last: false },
+        { type: 'play', seat: 0, card: '9H' }, { type: 'play', seat: 2, card: 'TH' }, { type: 'trick', winner: 2, last: true },
+      ],
+      [
+        { type: 'armoede', seats: [1], stake: 2 },
+        { type: 'answer', seat: 2, stay: false, points: 1 }, { type: 'answer', seat: 3, stay: false, points: 1 },
+        { type: 'answer', seat: 0, stay: false, points: 1 },
+      ],
+    ],
+  });
+  const v = courseView(s, 0);
+  assert.equal(v.title, 'Potje 1 van 2');
+  assert.equal(v.sub, 'Gever: Truus (AI).');
+  assert.deepEqual(v.parts.map(p => p.title), ['Voor de eerste kaart', 'Slag 1', 'Slag 2', 'Uitslag']);
+  assert.deepEqual(v.parts[0].items.map(i => i.text), [
+    'Opa Dirk (AI) en Sjaak (AI) melden een vuile was.',
+    'Niemand controleert: Opa Dirk (AI) krijgt vier nieuwe kaarten.',
+    'Jij controleert Sjaak (AI): een echte vuile was, ♥B ♠V ♦H ♣7. Jij krijgt een strafpunt, Sjaak (AI) vier nieuwe kaarten.',
+  ]);
+  // Trick 1: the cards in the order played, the toep and answers between
+  // them; Opa Dirk passed after his card, which no longer counts.
+  const t1 = v.parts[1].items;
+  assert.deepEqual(t1.map(i => i.text ?? i.cards.map(c => `${c.card}${c.win ? '+' : ''}${c.void ? '-' : ''}`).join(' ')), [
+    'TS+ 7S-', 'Sjaak (AI) toept: inzet 2.', 'Truus (AI) past: 1 strafpunt.', 'Jij gaat mee.', 'Opa Dirk (AI) past: 1 strafpunt.', '8S', 'Jij haalt de slag.',
+  ]);
+  assert.equal(t1[0].cards[0].name, 'Jij');
+  assert.deepEqual(v.parts[3].items.map(i => i.text), [
+    'Sjaak (AI) haalt de laatste slag en wint het potje, bij inzet 2.', 'Strafpunten: jij +2, Opa Dirk (AI) +1, Truus (AI) +1.',
+  ]);
+  const w = courseView(s, 1);
+  assert.deepEqual(w.parts.map(p => p.title), ['Voor de eerste kaart', 'Uitslag']);
+  // A toep before the first card of a trick belongs to that trick.
+  const lead = courseView({ ...s, courses: [[
+    { type: 'play', seat: 0, card: 'TS' }, { type: 'play', seat: 1, card: '7S' }, { type: 'play', seat: 2, card: '8S' },
+    { type: 'play', seat: 3, card: '9S' }, { type: 'trick', winner: 0, last: false },
+    { type: 'toep', seat: 0, stake: 2, over: false }, { type: 'answer', seat: 1, stay: true, points: 0 },
+    { type: 'play', seat: 0, card: 'AH' },
+  ], []] }, 0);
+  assert.deepEqual(lead.parts.map(p => p.title), ['Slag 1', 'Slag 2', 'Uitslag']);
+  assert.deepEqual(lead.parts[1].items.map(i => i.text ?? i.cards.map(c => c.card).join(' ')), ['Jij toept: inzet 2.', 'Opa Dirk (AI) gaat mee.', 'AH']);
+  assert.equal(w.parts[0].items[0].text, 'Armoede: Opa Dirk (AI) staat op 9 strafpunten. De inzet is 2.');
+  assert.deepEqual(w.parts[1].items.map(i => i.text), [
+    'De anderen pasten: Opa Dirk (AI) wint het potje, bij inzet 2.', 'Strafpunten: jij +1, Sjaak (AI) +1, Truus (AI) +1.', 'Truus (AI) ligt eruit.',
+  ]);
+  assert.equal(courseView(s, 2), null);
+  // A caught bluff: its cards were shown; the claimant plays on face up.
+  const bluff = table({ phase: 'gameOver', rounds: s.rounds.slice(0, 1), courses: [[
+    { type: 'claims', seats: [0] },
+    { type: 'wasDone', claimant: 0, checker: 3, kind: '', cards: ['JH', 'QS', 'KD', '8C'], genuine: false, washed: false, shown: false },
+  ]] });
+  assert.equal(courseView(bluff, 0).parts[0].items[1].text, 'Truus (AI) controleert jou: bluf, ♥B ♠V ♦H ♣8. Jij krijgt een strafpunt en speelt open verder.');
+  // Rule bluf off: the claimant sits out; at the limit, out of the match.
+  assert.match(courseView({ ...bluff, opts: { ...bluff.opts, bluf: false } }, 0).parts[0].items[1].text, /Jij krijgt een strafpunt en doet dit potje niet meer mee\.$/);
+  const atNine = { ...bluff, opts: { ...bluff.opts, armoede: false }, rounds: [s.rounds[0], { ...s.rounds[0], hand: 2 }], courses: [[], bluff.courses[0]] };
+  atNine.rounds[0] = { ...s.rounds[0], points: [9, 8, 0, 9] };
+  assert.match(courseView(atNine, 1).parts[0].items[1].text, /Jij krijgt een strafpunt en ligt eruit\.$/);
+  // A checker on armoede who checks a genuine witte was goes out.
+  const checkOut = { ...atNine, opts: bluff.opts, courses: [[], [
+    { type: 'claims', seats: [2] },
+    { type: 'wasDone', claimant: 2, checker: 3, kind: 'witte', cards: ['JH', 'QS', 'KD', 'AC'], genuine: true, washed: true, shown: false },
+  ]] };
+  assert.equal(courseView(checkOut, 1).parts[0].items[1].text,
+    'Truus (AI) controleert Sjaak (AI): een echte witte was, ♥B ♠V ♦H ♣A. Truus (AI) krijgt een strafpunt en ligt eruit; Sjaak (AI) krijgt vier nieuwe kaarten.');
+  // A second claim after new cards, and nobody passed when the others sat out.
+  const again = courseView({ ...bluff, courses: [[
+    { type: 'claims', seats: [2] }, { type: 'wasDone', claimant: 2, checker: -1, kind: '', cards: [], genuine: false, washed: true, shown: false },
+    { type: 'claims', seats: [2] },
+  ]], rounds: [{ ...s.rounds[0], winner: 2, tricks: false }] }, 0);
+  assert.equal(again.parts[0].items[2].text, 'Sjaak (AI) meldt weer een vuile was.');
+  assert.equal(again.parts.at(-1).items[0].text, 'Niemand anders doet nog mee: Sjaak (AI) wint het potje, bij inzet 2.');
 });
 
 test('the piles of a vuile was: handed in, not a caught bluff', () => {

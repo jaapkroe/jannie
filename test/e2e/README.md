@@ -183,7 +183,9 @@ up only with rule `bluf` and of a seat still in (yours: your hand), no
 bluff offered on armoede, before the first card the turn of the player on
 armoede (of two or more the first after the dealer, else voorhand),
 armoede's question going round from that player's left without a seat on
-armoede, nobody's points go down within a round (but for
+armoede, `courses` empty before game over and at game over one per round,
+with only what everyone saw (no cards of a vuile was nobody checked),
+nobody's points go down within a round (but for
 the boer's point off the last trick's winner), and at game over exactly one
 player is left, the winner, under the limit. Then every simulated player
 gets the line with the seed, after `gameOver`, and no message before game

@@ -423,7 +423,12 @@ function syncOverlays(s) {
   if (s.phase === 'handEnd') showSummary(s);
   else if (summaryFor) { summaryFor = 0; app.toepSummary?.close(true); }
   if (s.phase === 'gameOver') showOver(s);
-  else app.toepOver?.close(true);
+  else {
+    // Forgotten too: a rematch that ends after as many rounds shows its own.
+    app.toepOver?.close(true);
+    app.toepOver = null;
+    panels.byId('tp-course')?.close(true);
+  }
   if (s.phase === 'lobby') { app.toepStand?.close(true); }
   app.toepStand?.refresh?.(s);
 }
@@ -465,7 +470,8 @@ export function meter(points, limit, minus = 0) {
 }
 
 // The course of the score: per round who won it (🏆, a green bar for a
-// point off with the boer) and what each took, and the totals.
+// point off with the boer) and what each took, and the totals. At game
+// over a round opens its overview (openCourse).
 function roundsTable(s) {
   if (!s.rounds?.length) return null;
   const n = s.players.length;
@@ -479,10 +485,57 @@ function roundsTable(s) {
     }
     return h('td', { class: r.out?.[seat] && g > 0 ? 'out' : '', text: g ? `+${g}` : '·' });
   };
-  const rows = s.rounds.map(r => h('tr', {}, h('td', { class: 'tp-st-n', text: r.hand }), order.map(seat => cell(r, seat))));
+  const review = canReview(s);
+  const rows = s.rounds.map((r, k) => review
+    ? h('tr', { class: 'tp-st-tap', onclick: e => openCourse(s, k, e.currentTarget.querySelector('button')) },
+      h('td', { class: 'tp-st-n' }, h('button', { class: 'tp-st-open', type: 'button', 'aria-label': `Potje ${r.hand} terugkijken`, text: r.hand })),
+      order.map(seat => cell(r, seat)))
+    : h('tr', {}, h('td', { class: 'tp-st-n', text: r.hand }), order.map(seat => cell(r, seat))));
   const total = h('tr', { class: 'tp-st-total' }, h('td', { text: 'Σ' }),
     order.map(seat => h('td', { class: R.isOut(s, seat) ? 'out' : '', text: String(s.points?.[seat] ?? 0) })));
   return h('div', { class: 'tp-st-scroll' }, h('table', { class: 'tp-st-table' }, h('thead', {}, head), h('tbody', {}, rows, total)));
+}
+
+// At game over every round can be looked back at: the server sends what
+// happened in each (s.courses).
+const canReview = s => s.phase === 'gameOver' && s.courses?.length === s.rounds?.length && s.rounds.length > 0;
+
+// The overview of round k at game over (R.courseView): what happened
+// before the first card, every trick with the toeps and answers in
+// between, and the result; ‹ › go to the round before or after. Closed,
+// the focus goes back to the round's button (from).
+function openCourse(s, k, from = null) {
+  sound.play('click');
+  const prev = h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Vorig potje', title: 'Vorig potje', onclick: () => show(k - 1) }, icon('back'));
+  const next = h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'Volgend potje', title: 'Volgend potje', onclick: () => show(k + 1) }, icon('forward'));
+  // Stand rebuilds its table on every update: then the same round's new
+  // button in the same sheet.
+  const host = from?.closest('.modal');
+  const label = CSS.escape(from?.getAttribute('aria-label') || '');
+  const back = () => (from?.isConnected ? from : host?.querySelector(`.tp-st-open[aria-label="${label}"]`))?.focus();
+  const m = panels.openModal({ id: 'tp-course', title: 'Potje', cls: 'm-score tp-course', body: [], onClose: back });
+  m.titleEl.after(prev, next);
+  function show(j) {
+    const v = R.courseView(s, j);
+    if (!v) return;
+    k = j;
+    m.titleEl.textContent = v.title;
+    m.dlg.setAttribute('aria-label', v.title);
+    // A button that goes off drops the focus (Chromium at once): to the
+    // other one, which is on (a single round has neither ever focused).
+    const had = document.activeElement;
+    prev.disabled = k === 0;
+    next.disabled = k === s.rounds.length - 1;
+    if ((had === prev || had === next) && had.disabled) (had === prev ? next : prev).focus();
+    m.body.replaceChildren(h('p', { class: 'sheet-note', text: v.sub }), ...v.parts.map(part =>
+      h('section', { class: 'tp-cs-part' }, h('h3', { text: part.title }), part.items.map(item => (item.cards
+        ? h('div', { class: 'tp-cs-cards' }, item.cards.map(c =>
+          h('div', { class: 'tp-cs-card' + (c.win ? ' win' : '') + (c.void ? ' void' : ''), title: c.void ? 'Telt niet meer: gepast' : '' },
+            createCard(c.card, { size: 'sm' }), h('span', { class: 'tp-cs-name', text: c.name }))))
+        : h('p', { class: 'tp-cs-line', text: item.text }))))));
+    m.body.scrollTop = 0;
+  }
+  show(k);
 }
 
 function showOver(s) {
@@ -502,7 +555,8 @@ function showOver(s) {
     id: 'tp-over', cls: 'm-over passive tp-over' + (won ? ' won' : ' lost'), closable: false, label: title, body: [
       h('h2', { class: 'over-title', text: title }),
       h('p', { class: 'over-sub', text: `Na ${s.handNo} ${s.handNo === 1 ? 'potje' : 'potjes'} ${won ? 'ben jij als enige over' : 'is er nog één speler over'}.` }),
-      standTable(s), roundsTable(s), h('div', { class: 'btn-col' }, btns)],
+      standTable(s), canReview(s) ? h('p', { class: 'sheet-note', text: 'Tik op een potje om terug te zien wat er gebeurde.' }) : null,
+      roundsTable(s), h('div', { class: 'btn-col' }, btns)],
   });
   m.round = s.handNo;
   app.toepOver = m;
@@ -840,6 +894,7 @@ export function resetRoom() {
   summaryFor = 0;
   app.toepSummary?.close(true);
   app.toepOver?.close(true);
+  app.toepOver = null; // back at the same game over, it shows again
   app.toepStand?.close(true);
   if (E.shown) E.shown.hidden = true;
 }

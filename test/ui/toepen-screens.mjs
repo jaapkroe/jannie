@@ -317,6 +317,22 @@ async function overFlow(P) {
   await playUntil(P, '.m-over.open', { toep: true, timeout: 420000, shots: { koning: { label: '16-koning' } } });
   await sleep(1200);
   await snap(P, '15-game-over');
+  // The overview of the last round (the total row comes after it; the
+  // table scrolls on its own, so bring the row into view first), then the
+  // round before with ‹ when there is one.
+  const last = '.tp-over tbody tr.tp-st-tap:nth-last-child(2) .tp-st-open';
+  await P.page.$eval(last, e => e.scrollIntoView({ block: 'center' }));
+  await sleep(300);
+  await press(P, last);
+  await waitFor(P, () => document.querySelector('.tp-course.open .tp-cs-part'), { label: 'the overview of a round' });
+  await sleep(400);
+  await snap(P, '15b-round');
+  const title = await P.page.$eval('.tp-course .dlg-head h2', e => e.textContent);
+  if (!title.startsWith('Potje 1 ')) {
+    await press(P, '.tp-course .dlg-head [aria-label="Vorig potje"]');
+    await waitFor(P, t => document.querySelector('.tp-course .dlg-head h2')?.textContent !== t, { label: 'the round before' }, title);
+  }
+  await closeModal(P);
 }
 
 // Score bijhouden: a new sheet, two rounds, the players.

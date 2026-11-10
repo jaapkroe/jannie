@@ -251,9 +251,12 @@ off at the last trick), `status` (per seat: `in`, `gepast`, `betrapt`,
 cards, shown}`), `stock`, `hand` (yours, sorted), `legal` and `rule` (your
 turn to play), `canToep`, `trick` (`{leader, cards, winner}`; the trick
 just taken until `collect`; before the first card `leader` is who will
-lead), `lastTrick`, `tricks` (taken this round) and `rounds` (the score
+lead), `lastTrick`, `tricks` (taken this round), `rounds` (the score
 sheet: `{hand, dealer, winner, stake, tricks, boer, koning, gains, points,
-out}`, `gains` -1 for the boer).
+out}`, `gains` -1 for the boer) and `courses` (at game over, else empty:
+per round of `rounds`, what everyone saw happen in it, in order, as the
+events below: `claims`, `wasDone`, `armoede`, `discard`, `toep`,
+`answer`, `play`, `trick`).
 
 Events: `deal` `{handNo, dealer, koning}`; `discard` `{seat, n}`; `claims` `{seats}`; `check`
 `{seat, claimant, check}`; `wasDone` `{claimant, checker, kind, cards,
@@ -354,7 +357,7 @@ sterk decision takes about 4 ms.
   question, a summary after every round (the boer's point off as a green
   bar after the red ones), game over with the course of the score (every
   round; 🏆 and a green bar for the boer), *Stand* (the points and every
-  round) and the manual. While a choice other than a card is yours (a
+  round), the overview of a round at game over (below) and the manual. While a choice other than a card is yours (a
   vuile was, a check, a toep), your cards are darkened; a card lifts on
   hover only with a mouse (on a touch screen a hover sticks). A vuile was handed in flies face down to a small
   pile beside the claimant's seat (×n when more than once; the cards laid
@@ -372,6 +375,19 @@ sterk decision takes about 4 ms.
   ([docs/server.md, "Game log"](../../docs/server.md#game-log)).
 - Expert mode: the robot in the top bar and the sheet *Redenering van de
   AI* ([Redenering van de AI](#redenering-van-de-ai)).
+- **The overview of a round** (`openCourse`, from `R.courseView`): at
+  game over a tap on a round in the course of the score (game over, or
+  *Stand*) opens it, with ‹ › to the round before or after: *Potje 3 van
+  12*, the dealer, *Voor de eerste kaart* (the vuile was claimed, who
+  checked it and how it ended, its cards only when checked or shown;
+  armoede; how many cards each laid away in the koningsspel; the answers
+  to armoede), then per trick (*Slag 1*, …; a toep before its first card
+  belongs to it) the cards in the order played, with their players, the
+  toeps and answers between them as lines, the card that took the trick
+  in gold and a card of a seat that passed later in the trick faded (it
+  no longer counts), and *Uitslag*: who won and how, the points each
+  took and who went out. Only what everyone saw: the server sends
+  `courses` only at game over, and a hand nobody saw stays hidden.
 - Game over → *Spelers of regels wijzigen*: the overlays close when the
   room is back in the lobby (`game.sync`).
 - Its look: blue café felt (`css/toepen.css` overrides the shell's
