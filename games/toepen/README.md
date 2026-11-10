@@ -61,7 +61,9 @@ The rules engine is `games/toepen/toepen`.
   `limit − 1` points, the stake starts at 2 and everyone else still in, in
   order from voorhand, goes along or passes (passing: 1 point); there is
   no overtoepen on this question. Nobody is the toeper then; who is on
-  armoede may not toep at all.
+  armoede may not toep at all. Who is on armoede leads the first trick;
+  when two or more are, the first of them after the dealer
+  (`FirstLeader`).
 - **Koningsspel** (option `koning`, on by default): when everyone still in
   the match stands on `limit − 1`, each gets eleven cards and, in turn from
   voorhand, lays three away face down (`PhaseDiscard`, `Discard`), playing
@@ -71,9 +73,10 @@ The rules engine is `games/toepen/toepen`.
   that puts them out). Who takes the last trick wins the match; the others
   go out.
 - **Play**: voorhand leads (the next player still in, when voorhand is
-  out of the round). Follow suit when you can; otherwise any card, which
-  cannot win. The highest card of the suit led takes the trick; its
-  winner leads the next.
+  out of the round), unless someone still in is on armoede, who then
+  leads. Follow suit when you can; otherwise any card, which cannot win.
+  The highest card of the suit led takes the trick; its winner leads the
+  next.
 - **Toepen**: on your turn to play, before your card, you may toep: the
   stake goes up by one, and the others still in, from your left, say
   whether they go along (*meegaan*), pass (*passen*) or **overtoep**:
@@ -114,8 +117,11 @@ The rules engine is `games/toepen/toepen`.
   three and eight for four; laying away goes in turn (so a player who is
   away gets the takeover question, as for any turn); the boer takes one
   point off (rather than doubling the stake); anti-lijntoep
-  counts every toep (rather than only the first of a round); there is no
-  *blind toepen* and no cap on toepen.
+  counts every toep (rather than only the first of a round); of two or
+  more on armoede the first after the dealer leads (rather than who has
+  stood on it longest), and armoede's question goes round from voorhand
+  (rather than from the player on armoede); there is no *blind toepen*
+  and no cap on toepen.
 
 `Deal` is a pure state machine (`NewDeal`, `Discard`, `Was`, `CloseWas`,
 `Check`, `Toep`, `Overtoep`, `Answer`, `Play`, `View`, `Result`), `Match` the
@@ -245,9 +251,10 @@ off at the last trick), `status` (per seat: `in`, `gepast`, `betrapt`,
 `checks` (the settled claims, always an array: `{claimant, checker, kind,
 cards, shown}`), `stock`, `hand` (yours, sorted), `legal` and `rule` (your
 turn to play), `canToep`, `trick` (`{leader, cards, winner}`; the trick
-just taken until `collect`), `lastTrick`, `tricks` (taken this round) and
-`rounds` (the score sheet: `{hand, dealer, winner, stake, tricks, boer,
-koning, gains, points, out}`, `gains` -1 for the boer).
+just taken until `collect`; before the first card `leader` is who will
+lead), `lastTrick`, `tricks` (taken this round) and `rounds` (the score
+sheet: `{hand, dealer, winner, stake, tricks, boer, koning, gains, points,
+out}`, `gains` -1 for the boer).
 
 Events: `deal` `{handNo, dealer, koning}`; `discard` `{seat, n}`; `claims` `{seats}`; `check`
 `{seat, claimant, check}`; `wasDone` `{claimant, checker, kind, cards,

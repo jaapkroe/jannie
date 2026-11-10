@@ -429,7 +429,7 @@ func TestArmoede(t *testing.T) {
 	must(t, d.Answer(0, false))
 	must(t, d.Answer(2, true))
 	if d.Phase() != PhasePlay || d.Turn() != 1 || d.Points(0) != 1 {
-		t.Fatalf("phase %v turn %d: the passed voorhand's lead goes on", d.Phase(), d.Turn())
+		t.Fatalf("phase %v turn %d: seat 1, the first on armoede after the dealer, leads", d.Phase(), d.Turn())
 	}
 	// On armoede nobody toeps; the others may.
 	if d.CanToep(1) || !errors.Is(d.Toep(1), ErrToepArmoede) {
@@ -445,7 +445,6 @@ func TestArmoede(t *testing.T) {
 	d = NewDeal(4, rules, 3, [MaxPlayers]int{0, 9, 3, 9}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S", "JS QS KS AS"))
 	must(t, d.Answer(0, true))
 	must(t, d.Answer(2, true))
-	must(t, d.Play(0, parseCards("TH")[0]))
 	must(t, d.Play(1, parseCards("JH")[0]))
 	if !d.CanToep(2) {
 		t.Fatal("seat 2 may toep: seat 0 can pass")
@@ -686,6 +685,69 @@ func TestArmoedeAllPass(t *testing.T) {
 	}
 }
 
+// Who stands on armoede leads the first trick; of more, the first after the
+// dealer. The question still goes round from voorhand.
+func TestArmoedeLeads(t *testing.T) {
+	rules := Rules{Limit: 10, Armoede: true}
+	// Dealer 3, voorhand 0; seat 2 on armoede.
+	d := NewDeal(4, rules, 3, [MaxPlayers]int{6, 8, 9, 7}, cards.NewDeck())
+	if d.FirstLeader() != 2 || d.View(0).FirstLeader != 2 || !slices.Equal(d.Asking(), []cards.Seat{0, 1, 3}) {
+		t.Fatalf("first leader %d (view %d), asking %v", d.FirstLeader(), d.View(0).FirstLeader, d.Asking())
+	}
+	must(t, d.Answer(0, true))
+	must(t, d.Answer(1, false))
+	must(t, d.Answer(3, false))
+	if d.Phase() != PhasePlay || d.Turn() != 2 || d.Current().Leader != 2 {
+		t.Fatalf("phase %v turn %d leader %d: armoede leads", d.Phase(), d.Turn(), d.Current().Leader)
+	}
+	// Two on armoede: the first after the dealer, also past the last seat,
+	// and it leads once the others have answered.
+	for _, tc := range []struct {
+		dealer cards.Seat
+		points [MaxPlayers]int
+		want   cards.Seat
+	}{
+		{0, [MaxPlayers]int{0, 0, 9, 9}, 2},
+		{2, [MaxPlayers]int{9, 9, 0, 0}, 0},
+	} {
+		d := NewDeal(4, rules, tc.dealer, tc.points, cards.NewDeck())
+		if d.FirstLeader() != tc.want {
+			t.Errorf("dealer %d points %v: first leader %d, want %d", tc.dealer, tc.points, d.FirstLeader(), tc.want)
+		}
+		for d.Phase() == PhaseToep {
+			must(t, d.Answer(d.Turn(), true))
+		}
+		if d.Phase() != PhasePlay || d.Turn() != tc.want {
+			t.Errorf("dealer %d points %v: phase %v turn %d, want %d", tc.dealer, tc.points, d.Phase(), d.Turn(), tc.want)
+		}
+	}
+	// Without the rule voorhand leads.
+	d = NewDeal(4, Rules{Limit: 10}, 3, [MaxPlayers]int{6, 8, 9, 7}, cards.NewDeck())
+	if d.Phase() != PhasePlay || d.Turn() != 0 || d.FirstLeader() != 0 {
+		t.Errorf("no armoede rule: phase %v turn %d first leader %d", d.Phase(), d.Turn(), d.FirstLeader())
+	}
+	// Seat 1 on armoede checks a genuine was and is out: seat 3, the other
+	// on armoede, leads.
+	d = NewDeal(4, DefaultRules, 3, [MaxPlayers]int{0, 9, 0, 9}, deck("JH QS KD 7C", "TH 9H 8H 7H", "TS 9S 8S 7S", "TD 9D 8D 7D"))
+	if d.FirstLeader() != 1 {
+		t.Fatalf("first leader %d before the check", d.FirstLeader())
+	}
+	must(t, d.Was(0, true))
+	must(t, d.Was(1, false))
+	must(t, d.Was(2, false))
+	must(t, d.Was(3, false))
+	must2(t)(d.Check(1, true))
+	if d.Status(1) != StatusDead || d.FirstLeader() != 3 {
+		t.Fatalf("status %v first leader %d", d.Status(1), d.FirstLeader())
+	}
+	must(t, d.Was(0, false)) // asked again about the new cards
+	must(t, d.Answer(0, true))
+	must(t, d.Answer(2, true))
+	if d.Phase() != PhasePlay || d.Turn() != 3 {
+		t.Errorf("phase %v turn %d", d.Phase(), d.Turn())
+	}
+}
+
 // A player who reaches the limit during a round is out of it at once.
 func TestDeadInRound(t *testing.T) {
 	d := NewDeal(3, Rules{Limit: 10, Was: true}, 2, [MaxPlayers]int{0, 9, 0}, deck("JH QS KD 7C", "TH 9H 8H 7H", "TS 9S 8S 7S"))
@@ -849,6 +911,9 @@ func playRandom(t *testing.T, rng *rand.Rand, d *Deal) {
 			must(t, d.Answer(s, stay))
 		case PhasePlay:
 			s := d.Turn()
+			if len(d.Tricks()) == 0 && len(d.Current().Cards) == 0 && s != d.FirstLeader() {
+				t.Fatalf("turn %d before the first card, first leader %d", s, d.FirstLeader())
+			}
 			if d.Points(s)+d.Stake() >= d.Rules().Limit && d.CanToep(s) {
 				t.Fatalf("%d may toep with %d points at stake %d", s, d.Points(s), d.Stake())
 			}

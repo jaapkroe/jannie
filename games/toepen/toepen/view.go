@@ -45,8 +45,9 @@ type View struct {
 	Checks   []Check    // the claims settled so far
 	Stock    int        // cards left for a was
 
-	Current Trick
-	Tricks  []Trick
+	Current     Trick
+	Tricks      []Trick
+	FirstLeader cards.Seat // who leads the first trick, before its first card (Deal.FirstLeader)
 }
 
 // View returns what seat may know.
@@ -85,6 +86,7 @@ func (d *Deal) View(seat cards.Seat) View {
 		Current:  d.Current(),
 		Tricks:   d.Tricks(),
 	}
+	v.FirstLeader = d.FirstLeader()
 	if d.status[seat] != StatusIn {
 		v.Hand = nil
 	}

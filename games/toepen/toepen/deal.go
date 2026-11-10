@@ -559,10 +559,11 @@ func (d *Deal) afterWas() {
 	d.startPlay()
 }
 
+// startPlay starts the tricks: FirstLeader leads.
 func (d *Deal) startPlay() {
 	d.phase = PhasePlay
 	d.poorAsk = false
-	d.current = Trick{Leader: d.fromIn(d.voorhand), Winner: cards.NoSeat}
+	d.current = Trick{Leader: d.FirstLeader(), Winner: cards.NoSeat}
 	d.turn = d.current.Leader
 }
 
@@ -898,6 +899,21 @@ func (d *Deal) Phase() Phase         { return d.phase }
 func (d *Deal) Dealer() cards.Seat   { return d.dealer }
 func (d *Deal) Voorhand() cards.Seat { return d.voorhand }
 func (d *Deal) Stake() int           { return d.stake }
+
+// FirstLeader is the seat to lead the first trick, as things stand before
+// its first card: who stands on armoede and is still in the round, the
+// first of them from voorhand when there are more; else the first seat
+// still in from voorhand. In the koningsspel everyone is on armoede, so
+// voorhand leads. It can change before the first card: a seat on armoede
+// that checks a genuine was is out.
+func (d *Deal) FirstLeader() cards.Seat {
+	for k, s := 0, d.voorhand; k < d.players; k, s = k+1, d.next(s) {
+		if d.armoede[s] && d.status[s] == StatusIn {
+			return s
+		}
+	}
+	return d.fromIn(d.voorhand)
+}
 
 // Toeper is the last seat to toep, NoSeat before anyone did.
 func (d *Deal) Toeper() cards.Seat { return d.toeper }

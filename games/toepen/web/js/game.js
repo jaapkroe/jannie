@@ -54,7 +54,7 @@ const OPTS = [
       'Open spelen: die neemt de kaarten terug en speelt het potje uit met de kaarten open op tafel. Potje uit: die doet dat potje niet meer mee.'] },
   { key: 'armoede', label: 'Armoede', choices: [[true, 'Aan'], [false, 'Uit']],
     info: ['Staat iemand op armoede (nog één strafpunt en die ligt eruit), dan begint het potje meteen met inzet 2. De anderen kiezen of ze meegaan; passen kost een punt.',
-      'Op armoede kun je zelf niet toepen.'] },
+      'Op armoede kun je zelf niet toepen. Wie op armoede staat, komt uit; staan er meer op armoede, dan de eerste na de gever.'] },
   { key: 'koning', label: 'Koningsspel', choices: [[true, 'Aan'], [false, 'Uit']],
     info: ['Staat iedereen die nog meedoet op armoede, dan volgt het koningsspel: iedereen krijgt elf kaarten en legt er drie dicht weg, er wordt niet getoept en wie de laatste slag haalt, wint het spel.'] },
   { key: 'boer', label: 'Boer', choices: [[true, 'Punt eraf'], [false, 'Gewoon']],

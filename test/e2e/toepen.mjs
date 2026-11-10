@@ -119,6 +119,14 @@ class Player {
       if (k === s.you && h.length && h.join() !== s.hand.join()) this.fail(`my open hand ${h} is not my hand ${s.hand}`);
     });
     if (s.phase === 'was' && s.canClaim && s.armoede[s.you] && !wasKind(s.hand)) this.fail('a bluff offered on armoede');
+    // Before the first card: who is on armoede leads, of more the first
+    // after the dealer; else voorhand (games/toepen/README.md#rules-as-implemented).
+    if (s.phase === 'play' && s.turn >= 0 && s.tricks === 0 && !s.trick?.cards?.length) {
+      const n = s.status.length;
+      const order = [...Array(n).keys()].map(k => (s.voorhand + k) % n).filter(k => s.status[k] === 'in');
+      const lead = order.find(k => s.armoede[k]) ?? order[0];
+      if (s.turn !== lead) this.fail(`the first trick: turn ${s.turn}, want ${lead} (voorhand ${s.voorhand}, armoede ${s.armoede})`);
+    }
     for (const c of s.legal || []) if (!s.hand.includes(c)) this.fail(`legal ${c} not in hand`);
     const p = this.prev;
     if (p && p.handNo === s.handNo && p.phase !== 'lobby') {
