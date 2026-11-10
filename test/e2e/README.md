@@ -180,7 +180,10 @@ one of toepen's, a hand never holds more than four cards (eight in the
 koningsspel, and only with that rule) and `legal` is in it, `canRaise`
 only on a toep and `mustStay` only with anti-lijntoep, a hand played face
 up only with rule `bluf` and of a seat still in (yours: your hand), no
-bluff offered on armoede, nobody's points go down within a round (but for
+bluff offered on armoede, before the first card the turn of the player on
+armoede (of two or more the first after the dealer, else voorhand),
+armoede's question going round from that player's left without a seat on
+armoede, nobody's points go down within a round (but for
 the boer's point off the last trick's winner), and at game over exactly one
 player is left, the winner, under the limit. Then every simulated player
 gets the line with the seed, after `gameOver`, and no message before game

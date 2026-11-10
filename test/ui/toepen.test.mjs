@@ -156,6 +156,7 @@ test('variant and manual follow the options', () => {
   assert.match(part('extra', 'Armoede')[0], /14 strafpunten/);
   // Who is on armoede leads; without the rule only voorhand is named.
   assert.ok(part('extra', 'Armoede').some(p => /^Wie op armoede staat, komt uit\. .*de eerste na de gever/.test(p)));
+  assert.ok(part('extra', 'Armoede').some(p => /^Wie niet op armoede staat, zegt vóór de eerste kaart om de beurt of die meegaat, te beginnen links van wie uitkomt\./.test(p)));
   assert.match(part('regels', 'Een potje')[0], /komt uit, tenzij iemand anders op armoede staat\.$/);
   assert.match(part('begrippen', 'Voorhand')[0], /tenzij iemand anders op armoede staat\.$/);
   const poorOff = manual({ armoede: false });

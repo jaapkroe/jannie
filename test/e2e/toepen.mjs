@@ -119,13 +119,20 @@ class Player {
       if (k === s.you && h.length && h.join() !== s.hand.join()) this.fail(`my open hand ${h} is not my hand ${s.hand}`);
     });
     if (s.phase === 'was' && s.canClaim && s.armoede[s.you] && !wasKind(s.hand)) this.fail('a bluff offered on armoede');
-    // Before the first card: who is on armoede leads, of more the first
-    // after the dealer; else voorhand (games/toepen/README.md#rules-as-implemented).
-    if (s.phase === 'play' && s.turn >= 0 && s.tricks === 0 && !s.trick?.cards?.length) {
-      const n = s.status.length;
-      const order = [...Array(n).keys()].map(k => (s.voorhand + k) % n).filter(k => s.status[k] === 'in');
-      const lead = order.find(k => s.armoede[k]) ?? order[0];
-      if (s.turn !== lead) this.fail(`the first trick: turn ${s.turn}, want ${lead} (voorhand ${s.voorhand}, armoede ${s.armoede})`);
+    // Who is on armoede leads the first trick, of more the first after the
+    // dealer, else voorhand; armoede's question goes round from the left of
+    // that player (games/toepen/README.md#rules-as-implemented).
+    const n = s.status.length;
+    const order = [...Array(n).keys()].map(k => (s.voorhand + k) % n).filter(k => s.status[k] === 'in');
+    const lead = order.find(k => s.armoede[k]) ?? order[0];
+    if (s.phase === 'play' && s.turn >= 0 && s.tricks === 0 && !s.trick?.cards?.length && s.turn !== lead) {
+      this.fail(`the first trick: turn ${s.turn}, want ${lead} (voorhand ${s.voorhand}, armoede ${s.armoede})`);
+    }
+    if (s.phase === 'toep' && s.armoedeToep && s.toeper < 0) {
+      const at = s.asking.map(k => (k - lead + n) % n);
+      if (at.some((x, i) => x <= (at[i - 1] ?? 0) || s.armoede[s.asking[i]])) {
+        this.fail(`armoede's question asks ${s.asking}, want from the left of ${lead} (armoede ${s.armoede})`);
+      }
     }
     for (const c of s.legal || []) if (!s.hand.includes(c)) this.fail(`legal ${c} not in hand`);
     const p = this.prev;

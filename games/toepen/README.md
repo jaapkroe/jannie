@@ -58,12 +58,12 @@ The rules engine is `games/toepen/toepen`.
   moment (a `Check` with `shown`) and handed in, without anyone being
   asked.
 - **Armoede** (option `armoede`): when someone still in the round has
-  `limit − 1` points, the stake starts at 2 and everyone else still in, in
-  order from voorhand, goes along or passes (passing: 1 point); there is
-  no overtoepen on this question. Nobody is the toeper then; who is on
-  armoede may not toep at all. Who is on armoede leads the first trick;
-  when two or more are, the first of them after the dealer
-  (`FirstLeader`).
+  `limit − 1` points, the stake starts at 2. Who is on armoede leads the
+  first trick; when two or more are, the first of them after the dealer
+  (`FirstLeader`). Everyone still in and not on armoede, in turn from
+  that player's left, goes along or passes (passing: 1 point); there is
+  no overtoepen on this question. Nobody is the toeper then; who is on armoede may not
+  toep at all.
 - **Koningsspel** (option `koning`, on by default): when everyone still in
   the match stands on `limit − 1`, each gets eleven cards and, in turn from
   voorhand, lays three away face down (`PhaseDiscard`, `Discard`), playing
@@ -119,9 +119,8 @@ The rules engine is `games/toepen/toepen`.
   point off (rather than doubling the stake); anti-lijntoep
   counts every toep (rather than only the first of a round); of two or
   more on armoede the first after the dealer leads (rather than who has
-  stood on it longest), and armoede's question goes round from voorhand
-  (rather than from the player on armoede); there is no *blind toepen*
-  and no cap on toepen.
+  stood on it longest); there is no *blind toepen* and no cap on
+  toepen.
 
 `Deal` is a pure state machine (`NewDeal`, `Discard`, `Was`, `CloseWas`,
 `Check`, `Toep`, `Overtoep`, `Answer`, `Play`, `View`, `Result`), `Match` the

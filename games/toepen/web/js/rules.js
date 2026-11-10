@@ -310,8 +310,8 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
         ...choice('was')]],
       ['Armoede', !on('armoede') ? [off('armoede')] : [
         `Staat iemand op ${limit - 1} strafpunten (nog één en die ligt eruit), dan heet dat armoede. Het potje begint dan meteen met inzet 2.`,
-        'Wie niet op armoede staat, zegt na het delen of die meegaat. Passen kost dan één strafpunt.',
         'Wie op armoede staat, komt uit. Staan er meer spelers op armoede, dan komt de eerste na de gever uit.',
+        'Wie niet op armoede staat, zegt vóór de eerste kaart om de beurt of die meegaat, te beginnen links van wie uitkomt. Passen kost dan één strafpunt.',
         'Op armoede kun je zelf niet toepen, en ga je vanzelf mee met elke toep: passen zou je eruit zetten.', ...choice('armoede')]],
       ['Koningsspel', !on('koning') ? [off('koningsspel')] : [
         'Staat iedereen die nog meedoet op armoede, dan volgt het koningsspel: iedereen krijgt elf kaarten en legt er om de beurt drie dicht weg; je speelt met acht.',

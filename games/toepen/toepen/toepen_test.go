@@ -423,11 +423,11 @@ func TestArmoede(t *testing.T) {
 	if d.Phase() != PhaseToep || d.Stake() != 2 || !d.ArmoedeToep() || d.Toeper() != cards.NoSeat {
 		t.Fatalf("phase %v stake %d", d.Phase(), d.Stake())
 	}
-	if !slices.Equal(d.Asking(), []cards.Seat{0, 2}) {
-		t.Fatalf("asking %v: those on armoede are not asked", d.Asking())
+	if !slices.Equal(d.Asking(), []cards.Seat{2, 0}) {
+		t.Fatalf("asking %v: from the left of seat 1, who leads; those on armoede are not asked", d.Asking())
 	}
-	must(t, d.Answer(0, false))
 	must(t, d.Answer(2, true))
+	must(t, d.Answer(0, false))
 	if d.Phase() != PhasePlay || d.Turn() != 1 || d.Points(0) != 1 {
 		t.Fatalf("phase %v turn %d: seat 1, the first on armoede after the dealer, leads", d.Phase(), d.Turn())
 	}
@@ -443,8 +443,8 @@ func TestArmoede(t *testing.T) {
 	}
 	// With someone in who can pass, seat 2 may toep; armoede goes along.
 	d = NewDeal(4, rules, 3, [MaxPlayers]int{0, 9, 3, 9}, deck("TH 9H 8H 7H", "JH QH KH AH", "TS 9S 8S 7S", "JS QS KS AS"))
-	must(t, d.Answer(0, true))
 	must(t, d.Answer(2, true))
+	must(t, d.Answer(0, true))
 	must(t, d.Play(1, parseCards("JH")[0]))
 	if !d.CanToep(2) {
 		t.Fatal("seat 2 may toep: seat 0 can pass")
@@ -514,7 +514,7 @@ func TestOvertoep(t *testing.T) {
 	}
 	// Not on armoede's question.
 	d = NewDeal(3, Rules{Limit: 10, Armoede: true}, 2, [MaxPlayers]int{0, 9, 0}, cards.NewDeck())
-	if d.CanRaise(0) || !errors.Is(d.Overtoep(0), ErrNoRaise) {
+	if d.Turn() != 2 || d.CanRaise(2) || !errors.Is(d.Overtoep(2), ErrNoRaise) {
 		t.Error("an overtoep on armoede")
 	}
 }
@@ -686,33 +686,36 @@ func TestArmoedeAllPass(t *testing.T) {
 }
 
 // Who stands on armoede leads the first trick; of more, the first after the
-// dealer. The question still goes round from voorhand.
+// dealer. The others are asked from that player's left.
 func TestArmoedeLeads(t *testing.T) {
 	rules := Rules{Limit: 10, Armoede: true}
 	// Dealer 3, voorhand 0; seat 2 on armoede.
 	d := NewDeal(4, rules, 3, [MaxPlayers]int{6, 8, 9, 7}, cards.NewDeck())
-	if d.FirstLeader() != 2 || d.View(0).FirstLeader != 2 || !slices.Equal(d.Asking(), []cards.Seat{0, 1, 3}) {
-		t.Fatalf("first leader %d (view %d), asking %v", d.FirstLeader(), d.View(0).FirstLeader, d.Asking())
+	if d.FirstLeader() != 2 || d.View(0).FirstLeader != 2 || !slices.Equal(d.Asking(), []cards.Seat{3, 0, 1}) || d.Turn() != 3 {
+		t.Fatalf("first leader %d (view %d), asking %v, turn %d", d.FirstLeader(), d.View(0).FirstLeader, d.Asking(), d.Turn())
 	}
+	must(t, d.Answer(3, false))
 	must(t, d.Answer(0, true))
 	must(t, d.Answer(1, false))
-	must(t, d.Answer(3, false))
 	if d.Phase() != PhasePlay || d.Turn() != 2 || d.Current().Leader != 2 {
 		t.Fatalf("phase %v turn %d leader %d: armoede leads", d.Phase(), d.Turn(), d.Current().Leader)
 	}
-	// Two on armoede: the first after the dealer, also past the last seat,
-	// and it leads once the others have answered.
+	// Two on armoede: the first after the dealer, also past the last seat;
+	// the others are asked from its left, and it leads once they answered.
 	for _, tc := range []struct {
-		dealer cards.Seat
-		points [MaxPlayers]int
-		want   cards.Seat
+		players int
+		dealer  cards.Seat
+		points  [MaxPlayers]int
+		want    cards.Seat
+		asking  []cards.Seat
 	}{
-		{0, [MaxPlayers]int{0, 0, 9, 9}, 2},
-		{2, [MaxPlayers]int{9, 9, 0, 0}, 0},
+		{4, 0, [MaxPlayers]int{0, 0, 9, 9}, 2, []cards.Seat{0, 1}},
+		{4, 2, [MaxPlayers]int{9, 9, 0, 0}, 0, []cards.Seat{2, 3}},
+		{5, 1, [MaxPlayers]int{0, 9, 9, 0, 0}, 2, []cards.Seat{3, 4, 0}}, // the dealer on armoede comes last: seat 2 leads
 	} {
-		d := NewDeal(4, rules, tc.dealer, tc.points, cards.NewDeck())
-		if d.FirstLeader() != tc.want {
-			t.Errorf("dealer %d points %v: first leader %d, want %d", tc.dealer, tc.points, d.FirstLeader(), tc.want)
+		d := NewDeal(tc.players, rules, tc.dealer, tc.points, cards.NewDeck())
+		if d.FirstLeader() != tc.want || !slices.Equal(d.Asking(), tc.asking) {
+			t.Errorf("dealer %d points %v: first leader %d asking %v, want %d %v", tc.dealer, tc.points, d.FirstLeader(), d.Asking(), tc.want, tc.asking)
 		}
 		for d.Phase() == PhaseToep {
 			must(t, d.Answer(d.Turn(), true))
@@ -726,24 +729,29 @@ func TestArmoedeLeads(t *testing.T) {
 	if d.Phase() != PhasePlay || d.Turn() != 0 || d.FirstLeader() != 0 {
 		t.Errorf("no armoede rule: phase %v turn %d first leader %d", d.Phase(), d.Turn(), d.FirstLeader())
 	}
-	// Seat 1 on armoede checks a genuine was and is out: seat 3, the other
-	// on armoede, leads.
-	d = NewDeal(4, DefaultRules, 3, [MaxPlayers]int{0, 9, 0, 9}, deck("JH QS KD 7C", "TH 9H 8H 7H", "TS 9S 8S 7S", "TD 9D 8D 7D"))
-	if d.FirstLeader() != 1 {
+	// Seat 0 on armoede checks seat 1's genuine was and is out: seat 2, the
+	// other on armoede, leads, and seats 3 and 1 are asked in that order.
+	d = NewDeal(4, DefaultRules, 3, [MaxPlayers]int{9, 0, 9, 0}, deck("TH 9H 8H 7H", "JH QS KD 7C", "TS 9S 8S 7S", "TD 9D 8D 7D"))
+	if d.FirstLeader() != 0 {
 		t.Fatalf("first leader %d before the check", d.FirstLeader())
 	}
-	must(t, d.Was(0, true))
-	must(t, d.Was(1, false))
+	must(t, d.Was(0, false))
+	must(t, d.Was(1, true))
 	must(t, d.Was(2, false))
 	must(t, d.Was(3, false))
-	must2(t)(d.Check(1, true))
-	if d.Status(1) != StatusDead || d.FirstLeader() != 3 {
-		t.Fatalf("status %v first leader %d", d.Status(1), d.FirstLeader())
+	must2(t)(d.Check(2, false))
+	must2(t)(d.Check(3, false))
+	must2(t)(d.Check(0, true))
+	if d.Status(0) != StatusDead || d.FirstLeader() != 2 {
+		t.Fatalf("status %v first leader %d", d.Status(0), d.FirstLeader())
 	}
-	must(t, d.Was(0, false)) // asked again about the new cards
-	must(t, d.Answer(0, true))
-	must(t, d.Answer(2, true))
-	if d.Phase() != PhasePlay || d.Turn() != 3 {
+	must(t, d.Was(1, false)) // asked again about the new cards
+	if !slices.Equal(d.Asking(), []cards.Seat{3, 1}) {
+		t.Fatalf("asking %v", d.Asking())
+	}
+	must(t, d.Answer(3, true))
+	must(t, d.Answer(1, true))
+	if d.Phase() != PhasePlay || d.Turn() != 2 {
 		t.Errorf("phase %v turn %d", d.Phase(), d.Turn())
 	}
 }
@@ -896,6 +904,16 @@ func playRandom(t *testing.T, rng *rand.Rand, d *Deal) {
 				t.Fatalf("after laying away: %d cards", d.HandLen(s))
 			}
 		case PhaseToep:
+			if d.poorAsk { // armoede's question: clockwise from the left of who leads
+				lead, prev := int(d.FirstLeader()), 0
+				for _, a := range d.Asking() {
+					at := (int(a) - lead + d.Players()) % d.Players()
+					if at <= prev || d.Armoede(a) {
+						t.Fatalf("asking %v on armoede's question, first leader %d", d.Asking(), lead)
+					}
+					prev = at
+				}
+			}
 			s := d.Turn()
 			if d.CanRaise(s) && rng.IntN(5) == 0 {
 				must(t, d.Overtoep(s))

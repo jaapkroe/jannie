@@ -525,13 +525,14 @@ func (d *Deal) swap(s cards.Seat) {
 
 // afterWas starts the tricks, after the question of armoede when a player
 // still in is one point from out: the stake is then 2 from the start and
-// the others say whether they go along. Not in the koningsspel, where
+// the others say in turn whether they go along, from the left of the
+// player on armoede who leads (FirstLeader). Not in the koningsspel, where
 // everyone is.
 func (d *Deal) afterWas() {
 	if d.rules.Armoede && !d.koning {
 		poor := false
 		var ask []cards.Seat
-		for k, s := 0, d.voorhand; k < d.players; k, s = k+1, d.next(s) {
+		for k, s := 0, d.FirstLeader(); k < d.players; k, s = k+1, d.next(s) {
 			switch {
 			case d.status[s] != StatusIn:
 			case d.armoede[s]:
