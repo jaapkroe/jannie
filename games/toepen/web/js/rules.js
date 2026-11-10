@@ -355,6 +355,45 @@ export function standings(s) {
     .sort((a, b) => a.points - b.points);
 }
 
+// The course of the score for the shell's chart (chart.js,
+// docs/frontend.md#the-score-chart): every seat's points after each round
+// (s.rounds), you first, colour slots in that order; the limit dashed, a
+// line ending in the round its player went out, and per round the
+// tooltip: the stake, and per player 🏆 or +n and the points, the fewest
+// first. The rounds do not say who went away, so no rings for a
+// lijntoeper. null before the first round.
+export function chartSpec(s) {
+  const rs = s.rounds || [];
+  const n = s.players?.length || 0;
+  const N = rs.length;
+  if (!N || !n) return null;
+  const seats = Array.from({ length: n }, (_, k) => (s.you + k) % n);
+  const limit = limitOf(s);
+  const pts = [seats.map(() => 0), ...rs.map(r => seats.map(seat => r.points?.[seat] ?? 0))];
+  const ends = seats.map(seat => {
+    const i = rs.findIndex(r => r.out?.[seat]);
+    return i < 0 ? N : i + 1;
+  });
+  const tips = pts.map((p, i) => {
+    const r = i ? rs[i - 1] : null;
+    const order = seats.map((_, k) => k).sort((a, b) => p[a] - p[b] || a - b);
+    return {
+      title: (i ? `Na potje ${i}` : 'Begin') + (r?.stake ? ` · inzet ${r.stake}` : ''),
+      rows: order.map(k => {
+        if (i > ends[k]) return { k, note: '', value: 'eruit', out: true };
+        const g = r?.gains?.[seats[k]] || 0;
+        const note = !r ? '' : r.winner === seats[k] ? (g < 0 ? '🏆 −1' : '🏆') : g ? `+${g}` : '';
+        return { k, note, value: p[k] };
+      }),
+    };
+  });
+  return {
+    names: seats.map(seat => name(s, seat)), pts, ends, out: seats.map(seat => !!rs[N - 1].out?.[seat]),
+    limit: { value: limit, label: `eruit bij ${limit}` }, tips,
+    label: `Grafiek van de strafpunten na elk potje, ${N} ${N === 1 ? 'potje' : 'potjes'}. De tabel eronder heeft de strafpunten per potje.`,
+  };
+}
+
 // "Toepen tot 10 strafpunten, met vuile was, armoede, koningsspel en boer eraf"
 // (as the server's variant).
 export function variantText(o) {

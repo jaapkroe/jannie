@@ -1232,6 +1232,8 @@ order), favicon, manifest, one PNG icon, the shell's 6 modules, the game's
 - `rules.js`, klaverjas's helpers without the DOM ([rules.js](#rulesjs));
 - `manual.js`, the handleiding ([manual.js](#manualjs)), imported when
   the manual is first opened;
+- the shell's `chart.js`, imported when the *Scorebord* first shows its
+  chart ([Score sheet](#score-sheet));
 - `expert.js`, the sheet *Redenering van de AI*, imported when it is
   first opened (expert mode, training).
 
@@ -1257,6 +1259,9 @@ scorerOf(s, seat), myScorer(s), scorerName(s, k), scorerOrder(s)  // the scores 
 ROEM_NAMES, roemTotal(roem), roemText(roem)  // roem by name, in points, in words ("driekaart (20), stuk (20)")
 variantText(opts)                       // "Utrechts/Amsterdams", "Met z'n drieën, Rotterdams"
 handHeadline(r, w, s)                   // the hand summary's headline from the viewer's side: {t, sub, cls}
+rowSide(s, r, k), rowMarks(s, r, k)     // the side scorer k played on in finished hand r; what its column shows: {nat, pit, roem}
+playedBy(s, r)                          // who played hand r: "jij", "Wij"/"Zij" (4), else the player's name
+chartSpec(s)                            // the Scorebord's chart (docs/frontend.md#the-score-chart); null before the first hand
 reviewVerdict, luckText, pointsText, momentWhere, strongLine, missedLine, fineLine, handSum, outcomeLine,
   timeText, reviewHistory               // the lines of the Spelanalyse (below)
 MANUAL_SECTIONS                         // manual.js's SECTIONS, for before manual.js is loaded
@@ -1425,6 +1430,16 @@ column per player, the gains; roem under the soloist only, as the other
 two share theirs), nat (red) / pit (gold), running totals ("stand" under
 each hand).
 Team names keep "(AI)", one name per line.
+
+Under the table, from the first hand on, **Verloop**: the shell's score
+chart ([docs/frontend.md, "The score chart"](../../docs/frontend.md#the-score-chart);
+data from `chartSpec` in `rules.js`). A line per scorer of the stand after
+every hand: Wij and Zij with four players, in `--wij` and `--zij` as in
+the table; with three or two players a line per player, ours first (with
+three the third in `#9085e9`). No limit. An open ring where a side went
+nat. The tooltip has the hand's trump and who played (with three players
+the bid), and per scorer what the hand brought (+n, nat, pit, roem) and
+the stand, the highest first.
 
 ### Review
 

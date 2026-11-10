@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  course, points, matchWinner, streaks, runs, passes, startStake, defaultGain, validRound, standings, namesError, cleanName, cleanCode, LIJN,
+  course, points, matchWinner, streaks, runs, passes, startStake, defaultGain, validRound, standings, namesError, cleanName, cleanCode, chartSpec, LIJN,
 } from '../../games/toepen/web/js/scorecalc.js';
 
 // A round of n players: w won, gains as given, who went away.
@@ -80,6 +80,31 @@ test('the standings: in before out, fewest points first, the winner on top', () 
   assert.deepEqual(standings(s).map(x => x.out), [false, false, false, true]);
   const won = sheet(['A', 'B', 'C'], [round(2, [10, 12, 0])]);
   assert.deepEqual(standings(won).map(x => x.name), ['C', 'A', 'B']);
+});
+
+test('the chart: a line ends where its player went out, a ring where a lijntoeper went away again', () => {
+  assert.equal(chartSpec(sheet(['A', 'B'], [])), null);
+  const s = sheet(['A', 'B', 'C'], [
+    round(0, [0, 1, 1], [false, true, false]),
+    round(0, [0, 1, 9], [false, true, false]),
+    { ...round(1, [2, -1, 0]), stake: 2 },
+  ]);
+  const c = chartSpec(s);
+  assert.deepEqual(c.names, ['A', 'B', 'C']);
+  assert.deepEqual(c.pts, [[0, 0, 0], [0, 1, 1], [0, 2, 10], [2, 1, 10]]);
+  assert.deepEqual(c.ends, [3, 3, 2]);
+  assert.deepEqual(c.rings, [[], [2], []]);
+  assert.equal(c.ringLabel, `${LIJN}× of vaker achter elkaar weg`);
+  assert.deepEqual(c.out, [false, false, true]);
+  assert.deepEqual(c.limit, { value: 10, label: 'eruit bij 10' });
+  assert.equal(c.colors, undefined);
+  assert.deepEqual(c.tips[0], { title: 'Begin', rows: [0, 1, 2].map(k => ({ k, note: '', value: 0 })) });
+  assert.deepEqual(c.tips[2], { title: 'Na potje 2', rows: [
+    { k: 0, note: '🏆', value: 0 }, { k: 1, note: 'weg (2×), +1', value: 2 }, { k: 2, note: '+9', value: 10 }] });
+  // Out: the row says so, without the round's note.
+  assert.deepEqual(c.tips[3], { title: 'Na potje 3 · inzet 2', rows: [
+    { k: 1, note: '🏆 −1', value: 1 }, { k: 0, note: '+2', value: 2 }, { k: 2, note: '', value: 'eruit', out: true }] });
+  assert.match(c.label, /3 potjes/);
 });
 
 test('names and codes', () => {

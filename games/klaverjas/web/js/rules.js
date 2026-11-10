@@ -1,6 +1,7 @@
 // Klaverjas's own helpers, without the DOM: the places and sides at the
 // table, the scorers of a match, roem, the variant, the hand summary's
-// headline, the lines of the Spelanalyse, and the manual's sections.
+// headline, the score sheet's marks and its chart, the lines of the
+// Spelanalyse, and the manual's sections.
 // Node tests import it (test/ui/klaverjas.test.mjs).
 import { store, seatCount, nameOf, suitSym, cap } from './util.js';
 import { cardShort } from './cards.js';
@@ -133,6 +134,75 @@ function smallHeadline(r, w, s) {
   return we
     ? { t: 'Gehaald!', sub: 'Jij speelt en haalt het.', cls: 'good' }
     : { t: `${other} haalt het`, sub: `${other} speelt en haalt meer dan de helft van de punten.`, cls: 'neutral' };
+}
+
+// ---------- the score sheet ----------
+
+// The side a scorer played on in a finished hand r (see sideOf): its team
+// with four players, itself with two, with three 0 for the soloist
+// (r.trumpBy) and 1 for the other two.
+export function rowSide(s, r, k) {
+  const n = seatCount(s);
+  return n === 3 ? (k === r.trumpBy ? 0 : 1) : k;
+}
+
+// What is shown of hand r in scorer k's column: nat and pit for the side
+// that went nat or made pit; roem for a side that kept it (with three
+// players only the soloist's, as the other two share theirs).
+export function rowMarks(s, r, k) {
+  const side = rowSide(s, r, k);
+  const nat = r.nat && r.playingTeam === side;
+  const pit = r.pit && (r.nat ? 1 - r.playingTeam : r.playingTeam) === side;
+  const roem = !r.nat && !(seatCount(s) === 3 && side === 1) ? r.roem?.[side] || 0 : 0;
+  return { nat, pit, roem };
+}
+
+// Who played a hand, under its trump suit: jij, Wij/Zij with four players,
+// else the player's face (as in the score pill), and the bid with three.
+export function playedBy(s, r) {
+  if (r.trumpBy === s.you) return 'jij';
+  if (seatCount(s) === 4) return r.playingTeam === s.you % 2 ? 'Wij' : 'Zij';
+  return scorerName(s, r.trumpBy);
+}
+
+// The chart's colours, by place in scorerOrder: ours --wij, the next
+// --zij (the score sheet's colours), with three players the third the
+// shell's slot #9085e9. Checked for colour-blind separation, the
+// normal-vision floor and 3:1 contrast on klaverjas's --panel-solid.
+const LINE_COLORS = ['var(--wij)', 'var(--zij)', '#9085e9'];
+
+// The course of the match for the shell's chart (chart.js,
+// docs/frontend.md#the-score-chart): every scorer's stand after each hand
+// (Wij and Zij with four players, else every player; ours first), an open
+// ring where a side went nat, and per hand the tooltip: the trump and who
+// played, and per scorer what the hand brought (nat, pit, roem) and the
+// stand, the highest first. null before the first hand.
+export function chartSpec(s) {
+  const rows = s.scores || [];
+  const N = rows.length;
+  if (!N) return null;
+  const order = scorerOrder(s);
+  const gainsOf = r => r.gains || r.score || [];
+  const pts = [order.map(() => 0)];
+  for (const r of rows) pts.push(pts.at(-1).map((p, j) => p + (gainsOf(r)[order[j]] || 0)));
+  const tips = pts.map((p, i) => {
+    const r = i ? rows[i - 1] : null;
+    const bid = r && seatCount(s) === 3 && r.bid ? ` voor ${r.bid}` : '';
+    return {
+      title: r ? `Na potje ${i} · ${suitSym(r.trump)} ${playedBy(s, r)}${bid}` : 'Begin',
+      rows: order.map((_, j) => j).sort((a, b) => p[b] - p[a] || a - b).map(j => {
+        if (!r) return { k: j, note: '', value: p[j] };
+        const { nat, pit, roem } = rowMarks(s, r, order[j]);
+        const note = [nat ? 'nat' : `+${gainsOf(r)[order[j]] || 0}`, pit ? 'pit' : '', roem ? `${roem} roem` : ''];
+        return { k: j, note: note.filter(Boolean).join(', '), value: p[j] };
+      }),
+    };
+  });
+  return {
+    names: order.map(k => scorerName(s, k)), colors: order.map((_, j) => LINE_COLORS[j]), pts,
+    rings: order.map(k => rows.flatMap((r, i) => (rowMarks(s, r, k).nat ? [i + 1] : []))), ringLabel: 'nat', tips,
+    label: `Grafiek van de stand na elk potje, ${N} ${N === 1 ? 'potje' : 'potjes'}. De tabel erboven heeft dezelfde cijfers.`,
+  };
 }
 
 // ---------- spelanalyse (the review at the end of a match, and per hand) ----------

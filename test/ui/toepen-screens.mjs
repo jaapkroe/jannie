@@ -351,6 +351,10 @@ async function overFlow(P) {
   await playUntil(P, '.m-over.open', { toep: true, timeout: 420000, shots: { koning: { label: '16-koning' } } });
   await sleep(1200);
   await snap(P, '15-game-over');
+  // The course of the score, between the standings and the rounds.
+  await P.page.$eval('.tp-over .chart', e => e.scrollIntoView({ block: 'center' }));
+  await sleep(300);
+  await snap(P, '15a-verloop');
   // The overview of the last round (the total row comes after it; the
   // table scrolls on its own, so bring the row into view first), then the
   // round before with ‹ when there is one.
@@ -394,7 +398,7 @@ async function scoreFlow(P) {
     await press(P, '[data-key="save"]:not(:disabled)');
     await waitFor(P, k => document.querySelectorAll('.sc-table tbody tr').length > k, { label: 'a round saved' }, n);
   }
-  await P.page.evaluate(() => document.querySelector('.sc-modal .sc-chart')?.scrollIntoView({ block: 'center' }));
+  await P.page.evaluate(() => document.querySelector('.sc-modal .chart')?.scrollIntoView({ block: 'center' }));
   await sleep(400);
   await snap(P, '22-score-rounds');
   await P.page.evaluate(() => document.querySelector('.sc-modal .dlg-body').scrollTo(0, 1e6));

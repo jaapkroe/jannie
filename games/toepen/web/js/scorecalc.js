@@ -116,6 +116,47 @@ export function standings(sheet) {
     .sort((a, b) => (b.k === winner) - (a.k === winner) || a.out - b.out || a.points - b.points || a.k - b.k);
 }
 
+// The course of a sheet for the shell's chart (chart.js,
+// docs/frontend.md#the-score-chart): every player's points after each
+// round, the limit dashed, a line ending in the round its player went
+// out, an open ring where a lijntoeper went away again, and per round the
+// tooltip: the stake, and per player 🏆, weg or +n and the points, the
+// fewest first. Player k keeps colour slot k. null before the first round.
+export function chartSpec(sheet) {
+  const names = sheet?.names || [];
+  const rs = rounds(sheet);
+  const N = rs.length;
+  if (!N || !names.length) return null;
+  const pts = course(sheet);
+  const runs = streaks(sheet);
+  const limit = sheet.limit;
+  const ends = names.map((_, k) => {
+    const i = pts.findIndex(p => p[k] >= limit);
+    return i < 0 ? N : i;
+  });
+  const rings = names.map((_, k) => rs.flatMap((_, i) => (i < ends[k] && runs[i][k] >= LIJN ? [i + 1] : [])));
+  const tips = pts.map((p, i) => {
+    const r = i ? rs[i - 1] : null;
+    const order = names.map((_, k) => k).sort((a, b) => p[a] - p[b] || a - b);
+    return {
+      title: (i ? `Na potje ${i}` : 'Begin') + (r?.stake ? ` · inzet ${r.stake}` : ''),
+      rows: order.map(k => {
+        if (i > ends[k]) return { k, note: '', value: 'eruit', out: true };
+        const g = r?.gains?.[k] || 0;
+        const run = r ? runs[i - 1][k] : 0;
+        const note = !r ? '' : r.winner === k ? (g < 0 ? '🏆 −1' : '🏆')
+          : r.passed?.[k] ? `weg${run >= LIJN ? ` (${run}×)` : ''}${g ? `, +${g}` : ''}` : g ? `+${g}` : '';
+        return { k, note, value: p[k] };
+      }),
+    };
+  });
+  return {
+    names, pts, ends, rings, ringLabel: `${LIJN}× of vaker achter elkaar weg`,
+    out: pts[N].map(p => p >= limit), limit: { value: limit, label: `eruit bij ${limit}` }, tips,
+    label: `Grafiek van de strafpunten na elk potje, ${N} ${N === 1 ? 'potje' : 'potjes'}. De tabel eronder heeft dezelfde cijfers.`,
+  };
+}
+
 // Cleans a name as the server does: spaces collapsed, at most 20
 // characters.
 export const cleanName = s => String(s || '').split(/\s+/).filter(Boolean).join(' ').slice(0, MAX_NAME);

@@ -5,7 +5,7 @@
 // the game: the round summary, game over, the standings and the manual.
 // The shell (main.js, home.js, panels.js) does the rest; game.js ties the
 // two together. Pure parts: rules.js.
-import { app, h, clear, icon, toast, avatar, fillAvatar, playerName, wait, anim, dur, vibrate, store } from './util.js';
+import { app, h, clear, icon, toast, avatar, fillAvatar, playerName, wait, anim, dur, vibrate, store, chartBox } from './util.js';
 import { createCard, createBack, cardName } from './cards.js';
 import { sound } from './sound.js';
 import * as panels from './panels.js';
@@ -561,7 +561,8 @@ function showOver(s) {
     id: 'tp-over', cls: 'm-over passive tp-over' + (won ? ' won' : ' lost'), closable: false, label: title, body: [
       h('h2', { class: 'over-title', text: title }),
       h('p', { class: 'over-sub', text: `Na ${s.handNo} ${s.handNo === 1 ? 'potje' : 'potjes'} ${won ? 'ben jij als enige over' : 'is er nog één speler over'}.` }),
-      standTable(s), canReview(s) ? h('p', { class: 'sheet-note', text: 'Tik op een potje om terug te zien wat er gebeurde.' }) : null,
+      standTable(s), chartBox({ title: 'Verloop' }).set(R.chartSpec(s)),
+      canReview(s) ? h('p', { class: 'sheet-note', text: 'Tik op een potje om terug te zien wat er gebeurde.' }) : null,
       roundsTable(s), h('div', { class: 'btn-col' }, btns)],
   });
   m.round = s.handNo;
@@ -578,16 +579,25 @@ function standTable(s) {
       meter(x.points, s.opts?.limit || 10), h('b', { class: 'tp-sum-pts', text: String(x.points) }))));
 }
 
-// The standings and every round: who won it, and the points each took.
+// The standings, the course of the score (the shell's chart, from
+// R.chartSpec) and every round: who won it, and the points each took. An
+// update replaces the parts around the chart: it stays in the page, with
+// its tooltip and focus.
 export function openStand() {
   sound.unlock();
   sound.play('click');
   const m = panels.openModal({ id: 'tp-stand', title: 'Stand', cls: 'm-score tp-stand', body: [] });
+  const chart = chartBox({ title: 'Verloop' });
+  let parts = null;
   m.refresh = s => {
     if (!s) return;
-    m.body.replaceChildren(
+    const next = [
       h('p', { class: 'sheet-note', text: `${R.variantText(s.opts || {})}. Wie de laatste slag niet haalt, krijgt de inzet als strafpunten.` }),
-      standTable(s), roundsTable(s));
+      standTable(s), roundsTable(s) || h('div', { hidden: true })];
+    if (parts?.[1].parentNode === m.body) parts.forEach((el, i) => el.replaceWith(next[i]));
+    else m.body.replaceChildren(next[0], next[1], chart, next[2]);
+    parts = next;
+    chart.set(R.chartSpec(s));
   };
   m.refresh(app.view);
   app.toepStand = m;

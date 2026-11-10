@@ -132,6 +132,28 @@ async function checkTotals(P) {
   if (String(pill) !== String(over) || String(foot) !== String(over)) {
     throw new Error(`[${P.name}] totals differ: pill ${pill}, game over ${over}, sheet ${foot}`);
   }
+  // The course of the match under the table: a line per score, and at the
+  // last potje (the End key) the tooltip has the totals.
+  await waitFor(P, () => document.querySelector('.m-score .chart-svg'), { label: 'score chart' });
+  const keys = await P.page.$$eval('.m-score .chart-key:not(.chart-key-ring)', els => els.length);
+  if (keys !== over.length) throw new Error(`[${P.name}] score chart has ${keys} lines, want ${over.length}`);
+  await P.page.$eval('.m-score .chart', e => e.scrollIntoView({ block: 'center' }));
+  await sleep(300);
+  await shot(P, 'score-chart');
+  await P.page.$eval('.m-score .chart-svg', e => e.focus());
+  await P.page.keyboard.press('End');
+  const tip = await P.page.$$eval('.m-score .chart-tip-row b', els => els.map(e => Number(e.textContent)));
+  const sorted = xs => [...xs].sort((a, b) => a - b).join();
+  if (sorted(tip) !== sorted(over)) throw new Error(`[${P.name}] score chart ends at ${tip}, want ${over}`);
+  await shot(P, 'score-chart-tip');
+  // An update while the sheet is open keeps the chart, its tooltip and the focus.
+  const kept = await P.page.evaluate(async () => {
+    const svg = document.querySelector('.m-score .chart-svg');
+    (await import('/js/panels.js')).byId('score').refresh();
+    return document.querySelector('.m-score .chart-svg') === svg && document.activeElement === svg && !document.querySelector('.m-score .chart-tip').hidden;
+  });
+  if (!kept) throw new Error(`[${P.name}] an update of the score sheet dropped the chart's tooltip or focus`);
+  await P.page.$eval('.m-score .chart-svg', e => e.blur());
   return over.join('-');
 }
 
