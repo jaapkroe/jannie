@@ -248,7 +248,10 @@ off at the last trick), `status` (per seat: `in`, `gepast`, `betrapt`,
 `answered` (the time for a was), `claims` (once that time is over),
 `canClaim`, `claimant` (-1), `asking` (who still answers, in order),
 `checks` (the settled claims, always an array: `{claimant, checker, kind,
-cards, shown}`), `stock`, `hand` (yours, sorted), `legal` and `rule` (your
+cards, shown}`), `stock`, `hand` (yours, sorted; also out of a round that
+goes on, after a pass, a bluff caught with `bluf` off or a check that put
+you out, until it ends: your own cards, which nobody else gets), `legal`
+and `rule` (your
 turn to play), `canToep`, `trick` (`{leader, cards, winner}`; the trick
 just taken until `collect`; before the first card `leader` is who will
 lead), `lastTrick`, `tricks` (taken this round), `rounds` (the score
@@ -358,8 +361,12 @@ sterk decision takes about 4 ms.
   bar after the red ones), game over with the course of the score (every
   round; 🏆 and a green bar for the boer), *Stand* (the points and every
   round), the overview of a round at game over (below) and the manual. While a choice other than a card is yours (a
-  vuile was, a check, a toep), your cards are darkened; a card lifts on
-  hover only with a mouse (on a touch screen a hover sticks). A vuile was handed in flies face down to a small
+  vuile was, a check, a toep), your cards are darkened; out of the round
+  while it goes on (passed, a bluff caught with `bluf` off, out by a
+  check) they stay in sight, grey and not playable, until it ends
+  (`.tp-hand.out`; *Je kaarten blijven zichtbaar, alleen voor jou, maar
+  doen niet meer mee.*); a card lifts on hover only with a mouse (on a
+  touch screen a hover sticks). A vuile was handed in flies face down to a small
   pile beside the claimant's seat (×n when more than once; the cards laid
   away in the koningsspel lie there too) and four new
   cards come from the middle; on armoede the hand is shown in the middle

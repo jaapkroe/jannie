@@ -309,6 +309,11 @@ function renderHand(s) {
   E.hand.classList.toggle('mine', mine);
   // First another choice (a vuile was, a check, a toep): your cards wait.
   E.hand.classList.toggle('waiting', R.yours(s) && s.phase !== 'play');
+  // Out of the round (passed, a bluff caught, out): your cards stay in
+  // sight, faded, until the round ends.
+  const out = hand.length > 0 && s.status?.[s.you] !== 'in';
+  E.hand.classList.toggle('out', out);
+  E.hand.setAttribute('aria-label', out ? 'Jouw kaarten (doen niet meer mee)' : 'Jouw kaarten');
   E.hand.classList.toggle('many', hand.length > 4); // the koningsspel: the cards overlap
   E.hand.classList.toggle('lots', hand.length > 8);
 }
@@ -329,7 +334,8 @@ function renderDiscard(s, hand) {
     return c;
   }));
   E.hand.classList.add('mine');
-  E.hand.classList.remove('waiting');
+  E.hand.classList.remove('waiting', 'out');
+  E.hand.setAttribute('aria-label', 'Jouw kaarten');
   E.hand.classList.toggle('many', hand.length > 4);
   E.hand.classList.toggle('lots', hand.length > 8);
 }

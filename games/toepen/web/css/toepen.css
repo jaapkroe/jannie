@@ -677,6 +677,11 @@ body {
   filter: brightness(0.6) saturate(0.7);
 }
 
+/* Out of the round: your cards stay in sight, grey, until it ends. */
+.tp-hand.out .card {
+  filter: grayscale(0.8) brightness(0.6);
+}
+
 /* ---------- overlays ---------- */
 
 .tp-summary .dialog,
