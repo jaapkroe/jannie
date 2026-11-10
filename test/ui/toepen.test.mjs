@@ -154,6 +154,15 @@ test('variant and manual follow the options', () => {
   const part = (id, title) => Object.fromEntries(tabs.find(t => t.id === id).parts)[title];
   assert.deepEqual(part('extra', 'Vuile was'), ['Aan deze tafel speel je zonder vuile was.']);
   assert.match(part('extra', 'Armoede')[0], /14 strafpunten/);
+  // Who is on armoede leads; without the rule only voorhand is named.
+  assert.ok(part('extra', 'Armoede').some(p => /^Wie op armoede staat, komt uit\. .*de eerste na de gever/.test(p)));
+  assert.ok(part('extra', 'Armoede').some(p => /^Wie niet op armoede staat, zegt vóór de eerste kaart om de beurt of die meegaat, te beginnen links van wie uitkomt\./.test(p)));
+  assert.match(part('regels', 'Een potje')[0], /komt uit, tenzij iemand anders op armoede staat\.$/);
+  assert.match(part('begrippen', 'Voorhand')[0], /tenzij iemand anders op armoede staat\.$/);
+  const poorOff = manual({ armoede: false });
+  const offPart = (id, title) => Object.fromEntries(poorOff.find(t => t.id === id).parts)[title];
+  assert.match(offPart('regels', 'Een potje')[0], /De speler links van de gever komt uit\.$/);
+  assert.equal(offPart('begrippen', 'Voorhand')[0], 'Wie links van de gever zit. Die komt het eerst uit.');
   assert.match(part('extra', 'Anti-lijntoep')[0], /hoogstens twee keer/);
   assert.deepEqual(part('extra', 'Boer: een punt eraf'), ['Aan deze tafel levert de boer niets op.']);
   assert.match(part('regels', 'Eruit en winnen')[0], /^Wie 15 strafpunten/);

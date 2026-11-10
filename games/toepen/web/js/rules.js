@@ -279,7 +279,7 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
         'Toepen speel je met 32 kaarten: 7, 8, 9, 10, boer, vrouw, heer en aas in vier kleuren. Er is geen troef.',
         'De volgorde is anders dan je gewend bent. Van laag naar hoog: boer, vrouw, heer, aas, 7, 8, 9, 10. De 10 is dus de hoogste kaart, de boer de laagste.']],
       ['Een potje', [
-        'Iedereen krijgt vier kaarten. De speler links van de gever komt uit.',
+        `Iedereen krijgt vier kaarten. De speler links van de gever komt uit${on('armoede') ? ', tenzij iemand anders op armoede staat' : ''}.`,
         'Je moet bekennen: de kleur spelen die gevraagd is. Kun je dat niet, dan gooi je een andere kaart bij; die kan de slag niet winnen.',
         'De hoogste kaart van de gevraagde kleur wint de slag, en wie de slag haalt, komt weer uit.',
         'Alleen de laatste slag telt: wie de vierde slag haalt, wint het potje. Alle anderen die nog meedoen, krijgen de inzet als strafpunten. De inzet begint op 1.']],
@@ -310,7 +310,8 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
         ...choice('was')]],
       ['Armoede', !on('armoede') ? [off('armoede')] : [
         `Staat iemand op ${limit - 1} strafpunten (nog één en die ligt eruit), dan heet dat armoede. Het potje begint dan meteen met inzet 2.`,
-        'Wie niet op armoede staat, zegt na het delen of die meegaat. Passen kost dan één strafpunt.',
+        'Wie op armoede staat, komt uit. Staan er meer spelers op armoede, dan komt de eerste na de gever uit.',
+        'Wie niet op armoede staat, zegt vóór de eerste kaart om de beurt of die meegaat, te beginnen links van wie uitkomt. Passen kost dan één strafpunt.',
         'Op armoede kun je zelf niet toepen, en ga je vanzelf mee met elke toep: passen zou je eruit zetten.', ...choice('armoede')]],
       ['Koningsspel', !on('koning') ? [off('koningsspel')] : [
         'Staat iedereen die nog meedoet op armoede, dan volgt het koningsspel: iedereen krijgt elf kaarten en legt er om de beurt drie dicht weg; je speelt met acht.',
@@ -370,7 +371,7 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
       ['Slag', ['Eén kaart van iedereen die nog meedoet; de hoogste van de gevraagde kleur wint.']],
       ['Strafpunten', ['Wat je oploopt als je een potje verliest, past of verkeerd controleert. Wie er het minst heeft, ligt er het laatst uit.']],
       ['Toepen', ['Kloppen: de inzet een punt omhoog, voordat je je kaart speelt.']],
-      ['Voorhand', ['Wie links van de gever zit en het eerst uitkomt.']],
+      ['Voorhand', [`Wie links van de gever zit. Die komt het eerst uit${on('armoede') ? ', tenzij iemand anders op armoede staat' : ''}.`]],
       ['Vuile was', ['Drie plaatjes en een 7, of vier plaatjes (een witte was): die mag je inleveren voor nieuwe kaarten.']],
       ['Wegleggen', ['In het koningsspel de kaarten die je te veel hebt dicht voor je neerleggen; die doen niet meer mee.']],
     ] },

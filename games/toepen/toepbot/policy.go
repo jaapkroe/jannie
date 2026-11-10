@@ -121,7 +121,7 @@ func playout(v *toepen.View, w *world, first cards.Card) cards.Seat {
 	t := v.Current
 	t.Cards = append(make([]cards.Played, 0, n), t.Cards...)
 	if len(t.Cards) == 0 && v.Phase != toepen.PhasePlay && len(v.Tricks) == 0 {
-		t.Leader = v.Voorhand // before the first card
+		t.Leader = v.FirstLeader // before the first card
 	}
 	next := func() cards.Seat {
 		s := t.Leader

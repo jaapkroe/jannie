@@ -168,8 +168,8 @@ func (p *play) shownTrick() *toepen.Trick {
 		return &tr
 	}
 	tr := p.d.Current()
-	if len(tr.Cards) == 0 && len(p.d.Tricks()) == 0 && p.d.Phase() != toepen.PhasePlay {
-		tr.Leader = p.d.Voorhand() // armoede: nobody has led yet
+	if len(tr.Cards) == 0 && len(p.d.Tricks()) == 0 {
+		tr.Leader = p.d.FirstLeader() // before the first card: who leads it
 	}
 	if tr.Cards == nil {
 		tr.Cards = []cards.Played{}
