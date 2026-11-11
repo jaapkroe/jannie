@@ -151,7 +151,20 @@ The `Containerfile`'s stages:
   with `-trimpath -ldflags "-s -w -X main.version=$GIT_SHA"`, with a link
   `/out/<game>/server` to it; two main packages of one name stop the
   build. Last, with `ARG GAME`, it refuses a `GAME` that names no server,
-  an empty one included, which would copy them all.
+  an empty one included, which would copy them all. The test step and the
+  build step keep Go's build cache in a cache mount (`jannie-go-build`),
+  which podman holds on the host between builds, under
+  `/var/tmp/buildah-cache-<uid>/` (under `$TMPDIR` when that is set), and
+  which is no part of an image. A change so compiles and tests only the
+  packages it reaches: `go test` prints `(cached)` for a package whose test
+  binary and flags are those of a run that passed, as it does for
+  `make test`. A change to one game's bots reruns the tests of that bot
+  package and of the game's server, and no others; a change to `platform/`,
+  or to klaverjas's rules, which `platform/server` imports, reruns nearly
+  all. Without the directory the next build compiles and tests everything
+  again, and removing it is the way to make every test run: `--no-cache`
+  skips podman's layers and leaves the mount. The binaries are byte for
+  byte the same either way.
 - `server` (`FROM scratch`, `USER 65532:65532`), with `ARG GAME`: copies
   `/out/<game>/` to `/`, so the image holds the game's binary, `/<game>` as
   the unit's `HealthCmd` runs it, and the link `/server`, which the

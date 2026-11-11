@@ -35,12 +35,18 @@ COPY cmd/ cmd/
 COPY --exclude=**/web --exclude=**/*.md --exclude=**/*.mk platform/ platform/
 COPY --exclude=**/web --exclude=**/*.md --exclude=**/*.mk --exclude=**/*.mjs games/ games/
 COPY --exclude=**/web --exclude=**/*.md --exclude=**/*.mk --exclude=**/*.mjs --exclude=**/.git extra/ extra/
-RUN go vet ./... && go test -short ./...
+# Go's build cache is a cache mount, which podman keeps on the host between
+# builds and outside the image. A change so compiles and tests the packages it
+# reaches and no others: go test prints "(cached)" for a package whose code and
+# flags are those of a run that passed.
+RUN --mount=type=cache,id=jannie-go-build,target=/root/.cache/go-build \
+    go vet ./... && go test -short ./...
 ARG GIT_SHA=dev
 # Every game's server, /out/<game>/<game> from its main package, cmd/<game> or
 # <folder>/cmd/<game> (not any other command of a folder), with /out/<game>/server,
 # a link to it, for the ENTRYPOINT.
-RUN mains=$(for m in cmd/*; do [ ! -d "$m" ] || echo "./$m"; done; \
+RUN --mount=type=cache,id=jannie-go-build,target=/root/.cache/go-build \
+    mains=$(for m in cmd/*; do [ ! -d "$m" ] || echo "./$m"; done; \
       for d in games/* extra/*; do [ ! -d "$d/cmd/${d##*/}" ] || echo "./$d/cmd/${d##*/}"; done) && \
     twice=$(for m in $mains; do echo "${m##*/}"; done | sort | uniq -d) && \
     { [ -z "$twice" ] || { echo "two servers named" $twice >&2; exit 1; }; } && \
