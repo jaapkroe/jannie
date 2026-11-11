@@ -221,13 +221,19 @@ func (fakeBrain) Auction(v game.View) int {
 
 func (fakeBrain) Discard(v game.View) [2]game.Card { return [2]game.Card{v.Hand[0], v.Hand[1]} }
 
-// newTestServer returns a server at a very fast pace behind httptest.
+// newTestServer returns a server at a very fast pace behind httptest. Every
+// test builds its own and starts with t.Parallel(): the package's tests
+// share no state and mostly wait, so they run together.
 func newTestServer(t *testing.T, tweak ...func(*Server)) (*Server, *httptest.Server, *fakeAI) {
 	t.Helper()
 	ai := &fakeAI{}
 	s, ts := newTestServerWith(t, ai, tweak...)
 	return s, ts, ai
 }
+
+// quick is a tweak for a match that bots or one learner play to its end
+// with no deadline on the clock: a fifth of newTestServer's pauses.
+func quick(s *Server) { s.scale = 0.001 }
 
 // newTestServerWith is newTestServer with another AI.
 func newTestServerWith(t *testing.T, ai AI, tweak ...func(*Server)) (*Server, *httptest.Server) {

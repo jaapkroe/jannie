@@ -18,6 +18,7 @@ import (
 // The pong timeout is generous, so a loaded machine (the image build runs
 // this test) does not close the quiet browser.
 func TestPingOnlyWhenQuiet(t *testing.T) {
+	t.Parallel()
 	s, ts := newTestServerWith(t, &fakeAI{}, func(s *Server) {
 		s.pingEvery, s.pingTimeout = 400*time.Millisecond, time.Second
 	})

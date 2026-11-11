@@ -409,6 +409,7 @@ func (w *wireStats) report(tb testing.TB, title string) {
 // hands (a lesson: lessonLength), per kind of message and per key of the
 // state.
 func TestPerfWire(t *testing.T) {
+	t.Parallel()
 	if !*perfWire {
 		t.Skip("-args -perf.wire lists the messages of a match")
 	}

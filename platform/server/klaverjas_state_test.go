@@ -51,8 +51,12 @@ func field(t *testing.T, raw json.RawMessage, key string) json.RawMessage {
 }
 
 func TestStateKeys(t *testing.T) {
+	t.Parallel()
 	for _, players := range []int{4, 3, 2} {
-		t.Run(fmt.Sprint(players), func(t *testing.T) { testStateKeys(t, players) })
+		t.Run(fmt.Sprint(players), func(t *testing.T) {
+			t.Parallel()
+			testStateKeys(t, players)
+		})
 	}
 }
 
@@ -207,8 +211,12 @@ func checkPhaseValues(t *testing.T, key string, m *msg) {
 
 // TestEventShapes checks the fields of each event kind.
 func TestEventShapes(t *testing.T) {
+	t.Parallel()
 	for _, players := range []int{4, 3} {
-		t.Run(fmt.Sprint(players), func(t *testing.T) { testEventShapes(t, players) })
+		t.Run(fmt.Sprint(players), func(t *testing.T) {
+			t.Parallel()
+			testEventShapes(t, players)
+		})
 	}
 }
 

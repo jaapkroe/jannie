@@ -39,6 +39,7 @@ func waitCall(c *tclient, seat int, want *callState) {
 }
 
 func TestCall(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
@@ -133,6 +134,7 @@ func TestCall(t *testing.T) {
 }
 
 func TestCallStartsGameWithCalls(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
@@ -154,6 +156,7 @@ func TestCallStartsGameWithCalls(t *testing.T) {
 }
 
 func TestCallLimit(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)

@@ -247,6 +247,7 @@ func phases(cs []*tclient) []string {
 }
 
 func TestQuickPlayToGameOver(t *testing.T) {
+	t.Parallel()
 	for _, players := range []int{4, 3, 2} {
 		_, ts, _ := newTestServer(t)
 		rng := rand.New(rand.NewPCG(1, uint64(players)))
@@ -301,69 +302,74 @@ func fakeName(id string) string {
 }
 
 func TestBotsToGameOver(t *testing.T) {
-	s, _, _ := newTestServer(t)
+	t.Parallel()
 	for _, tc := range []struct {
 		players int
 		mode    game.TrumpMode
 	}{{4, game.Utrechts}, {4, game.Gedraaid}, {3, game.Utrechts}, {2, game.Utrechts}, {2, game.Gedraaid}} {
 		mode := fmt.Sprintf("%d players %s", tc.players, tc.mode)
-		r := newRoom(s, "TEST")
-		r.alwaysOn = true
-		r.opts.Players = tc.players
-		r.opts.Hands = 8
-		r.opts.TrumpMode = tc.mode
-		r.opts.Rules = game.Rotterdams
-		s.mu.Lock()
-		s.rooms[r.code] = r
-		s.mu.Unlock()
-		go r.loop()
-		done := make(chan []int, 1)
-		r.post(func() {
-			r.fillSeats()
-			r.startMatch()
-		})
-		go func() {
-			for {
-				time.Sleep(5 * time.Millisecond)
-				ok := r.post(func() {
-					if r.phase == phaseGameOver {
-						select {
-						case done <- slices.Clone(r.total):
-						default:
+		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
+			s, _, _ := newTestServer(t, quick)
+			r := newRoom(s, "TEST")
+			r.alwaysOn = true
+			r.opts.Players = tc.players
+			r.opts.Hands = 8
+			r.opts.TrumpMode = tc.mode
+			r.opts.Rules = game.Rotterdams
+			s.mu.Lock()
+			s.rooms[r.code] = r
+			s.mu.Unlock()
+			go r.loop()
+			done := make(chan []int, 1)
+			r.post(func() {
+				r.fillSeats()
+				r.startMatch()
+			})
+			go func() {
+				for {
+					time.Sleep(5 * time.Millisecond)
+					ok := r.post(func() {
+						if r.phase == phaseGameOver {
+							select {
+							case done <- slices.Clone(r.total):
+							default:
+							}
+						}
+					})
+					if !ok {
+						return
+					}
+				}
+			}()
+			select {
+			case total := <-done:
+				sum := make([]int, game.Scorers(tc.players))
+				var rows int
+				call(r, func() {
+					rows = len(r.scores)
+					for _, row := range r.scores {
+						for k, g := range row.Gains {
+							sum[k] += g
 						}
 					}
 				})
-				if !ok {
-					return
+				if rows != 8 {
+					t.Errorf("%s: %d hands scored, want 8", mode, rows)
 				}
-			}
-		}()
-		select {
-		case total := <-done:
-			sum := make([]int, game.Scorers(tc.players))
-			var rows int
-			call(r, func() {
-				rows = len(r.scores)
-				for _, row := range r.scores {
-					for k, g := range row.Gains {
-						sum[k] += g
-					}
+				if !slices.Equal(sum, total) {
+					t.Errorf("%s: total %v, rows add up to %v", mode, total, sum)
 				}
-			})
-			if rows != 8 {
-				t.Errorf("%s: %d hands scored, want 8", mode, rows)
+			case <-time.After(60 * time.Second):
+				t.Fatalf("%s: the bots did not finish", mode)
 			}
-			if !slices.Equal(sum, total) {
-				t.Errorf("%s: total %v, rows add up to %v", mode, total, sum)
-			}
-		case <-time.After(60 * time.Second):
-			t.Fatalf("%s: the bots did not finish", mode)
-		}
-		call(r, func() { r.close("test") })
+			call(r, func() { r.close("test") })
+		})
 	}
 }
 
 func TestHumansOverWebsocket(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name   string
 		humans int
@@ -377,6 +383,7 @@ func TestHumansOverWebsocket(t *testing.T) {
 		{"two-players-gedraaid", 2, map[string]any{"players": 2, "hands": 4, "trumpMode": "gedraaid"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			_, ts, _ := newTestServer(t)
 			rng := rand.New(rand.NewPCG(3, uint64(tc.humans)))
 			host := dial(t, ts)
@@ -411,6 +418,7 @@ func TestHumansOverWebsocket(t *testing.T) {
 }
 
 func TestPauseWithoutHumans(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Piet", map[string]any{"hands": 4}, false, true)
@@ -444,6 +452,7 @@ func TestPauseWithoutHumans(t *testing.T) {
 }
 
 func TestReconnectMidGame(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	a := dial(t, ts)
 	a.create("Anna", map[string]any{"hands": 4}, false, false)
@@ -489,6 +498,7 @@ func sameCards(a, b []game.Card) bool {
 }
 
 func TestIllegalPlayRejected(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	rng := rand.New(rand.NewPCG(7, 7))
 	c := dial(t, ts)
@@ -538,6 +548,7 @@ func TestIllegalPlayRejected(t *testing.T) {
 // TestTipsOption: tips are on by default in training and off in any other
 // game, also when asked for there. A bad value is refused in the lobby.
 func TestTipsOption(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	for _, tc := range []struct {
 		opts     map[string]any
@@ -577,6 +588,7 @@ func TestTipsOption(t *testing.T) {
 // no tip after a trick and no line of Juf Jannie as coach in the chat, while
 // the reasoning of the decision awaited is answered.
 func TestTrainingWithoutTips(t *testing.T) {
+	t.Parallel()
 	_, ts, ai := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Speler", map[string]any{"hands": 4, "tips": false}, true, true)
@@ -605,6 +617,7 @@ func TestTrainingWithoutTips(t *testing.T) {
 }
 
 func TestTrainingHintsAndTips(t *testing.T) {
+	t.Parallel()
 	_, ts, ai := newTestServer(t)
 	rng := rand.New(rand.NewPCG(9, 9))
 	c := dial(t, ts)
@@ -669,6 +682,7 @@ func TestTrainingHintsAndTips(t *testing.T) {
 // TestBotDecidesOncePerTurn: however often drive runs, a bot decides each
 // turn once (a strong bot's search costs real CPU time).
 func TestBotDecidesOncePerTurn(t *testing.T) {
+	t.Parallel()
 	ai := newCountAI(true)
 	s, _ := newTestServerWith(t, ai)
 	r := newRoom(s, "ONCE")
@@ -729,6 +743,7 @@ func TestBotDecidesOncePerTurn(t *testing.T) {
 // TestRejoinSpamDecidesOnce: a player who keeps rejoining from two windows,
 // or keeps leaving and joining again, does not make the bots think again.
 func TestRejoinSpamDecidesOnce(t *testing.T) {
+	t.Parallel()
 	ai := newCountAI(false)
 	_, ts := newTestServerWith(t, ai, func(s *Server) { s.scale = 0.1 }) // a bot turn: about 90 ms
 	a := dial(t, ts)
@@ -736,6 +751,7 @@ func TestRejoinSpamDecidesOnce(t *testing.T) {
 	d := dial(t, ts) // stays at the table all along
 	d.join(a.code, "Dirk", "")
 	a.send(map[string]any{"t": "start"})
+	a.waitEvent("deal") // a join that took Anna's seat first would refuse the start
 	rng := rand.New(rand.NewPCG(8, 8))
 	acted := map[*tclient]int{}
 	// play lets a window holding a seat make its own decisions, so the bots
@@ -819,6 +835,7 @@ func toHandEnd(t *testing.T) (*Server, *tclient, *tclient) {
 // TestHostDropsAtHandEnd: the host's connection goes while the others are
 // ready: the next hand starts and the host role still moves on.
 func TestHostDropsAtHandEnd(t *testing.T) {
+	t.Parallel()
 	_, h, g := toHandEnd(t)
 	h.conn.CloseNow()
 	g.waitEvent("away")
@@ -834,6 +851,7 @@ func TestHostDropsAtHandEnd(t *testing.T) {
 // TestLeaveAtHandEnd: a player leaving the hand summary counts like one
 // dropping out: when everyone left is ready, the next hand starts.
 func TestLeaveAtHandEnd(t *testing.T) {
+	t.Parallel()
 	_, h, g := toHandEnd(t)
 	h.send(map[string]any{"t": "leave"})
 	g.waitEvent("leave")
@@ -845,6 +863,7 @@ func TestLeaveAtHandEnd(t *testing.T) {
 // TestRematchByNewHost: a non-host's rematch hands the role over first when
 // the host has been gone longer than the grace period.
 func TestRematchByNewHost(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	h := dial(t, ts)
 	h.create("Host", map[string]any{"hands": 4}, false, false)
@@ -875,6 +894,7 @@ func TestRematchByNewHost(t *testing.T) {
 // at the start leaves, the bots placed in the lobby stay, a late friend
 // joins in the free seat, and the next match starts from the lobby.
 func TestBackToLobby(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	h := dial(t, ts)
 	h.create("Host", map[string]any{"hands": 4, "rules": "rotterdams"}, false, false)
@@ -941,6 +961,7 @@ func placeBots(h *tclient, seats ...int) {
 // TestBotReplyContext: a bot answering a chat line learns whether it is the
 // speaker's partner and, while tricks are played, whether its team plays.
 func TestBotReplyContext(t *testing.T) {
+	t.Parallel()
 	ai := &replyAI{}
 	s, ts := newTestServerWith(t, ai)
 	h := dial(t, ts)
@@ -1019,6 +1040,7 @@ func (a *replyAI) Chat(id string, ev ChatEvent, rng *rand.Rand) string {
 // TestTrainingSummaryWaits: in training the hand summary has no countdown;
 // the learner goes on with ready, also after coming back.
 func TestTrainingSummaryWaits(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Leerling", map[string]any{"hands": 4}, true, true)
@@ -1055,6 +1077,7 @@ func TestTrainingSummaryWaits(t *testing.T) {
 // TestSoloSummaryWaits: one person with bots outside training: the summary
 // has no countdown either and waits for ready.
 func TestSoloSummaryWaits(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Piet", map[string]any{"hands": 4}, false, true)
@@ -1079,6 +1102,7 @@ func TestSoloSummaryWaits(t *testing.T) {
 // summary counts down; once that person leaves it waits for ready, and a
 // joiner in their place brings the countdown back.
 func TestSummaryCountdownWithOthers(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	h := dial(t, ts)
 	h.create("Host", map[string]any{"hands": 4}, false, false)
@@ -1122,6 +1146,7 @@ func (a *longTipAI) ExplainTrick(t game.Trick, trump game.Suit, names [4]string)
 // table until its tip is read: nextAt says until when, tipRead ends it at
 // once, and a late tipRead leaves the summary alone.
 func TestTrainingLastTip(t *testing.T) {
+	t.Parallel()
 	s, ts := newTestServerWith(t, &longTipAI{})
 	c := dial(t, ts)
 	c.create("Leerling", map[string]any{"hands": 4}, true, true)
@@ -1178,6 +1203,7 @@ func TestTrainingLastTip(t *testing.T) {
 
 // TestReadTime: the last trick waits longer for a longer tip, within limits.
 func TestReadTime(t *testing.T) {
+	t.Parallel()
 	if d := readTime([4]string{}); d != 0 {
 		t.Errorf("no tips: %v", d)
 	}
@@ -1192,6 +1218,7 @@ func TestReadTime(t *testing.T) {
 // TestTrainingMissedHint: a learner who plays another card than the hint
 // hears with the trick which card was advised, and why.
 func TestTrainingMissedHint(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Leerling", map[string]any{"hands": 4}, true, true)
@@ -1238,6 +1265,7 @@ func TestTrainingMissedHint(t *testing.T) {
 // otherwise, than the hint hears with the first trick what Juf Jannie
 // advised, and why; the next trick says it no more.
 func TestTrainingMissedChoice(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		mode, phase, want string
 	}{
@@ -1246,6 +1274,7 @@ func TestTrainingMissedChoice(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.mode, func(t *testing.T) {
+			t.Parallel()
 			_, ts, _ := newTestServer(t)
 			c := dial(t, ts)
 			c.create("Leerling", map[string]any{"hands": 24, "trumpMode": tc.mode}, true, true)
@@ -1300,6 +1329,7 @@ func TestTrainingMissedChoice(t *testing.T) {
 }
 
 func TestMissedText(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEXT")
 	r.seats[2] = r.newBot(fakePersonas[5]) // Juf Jannie
@@ -1345,6 +1375,7 @@ func TestMissedText(t *testing.T) {
 // back by joining under the same name, once it has been empty a while; the
 // old token is then refused.
 func TestReclaimSeatByName(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.002 }) // 3 min → 360 ms
 	a := dial(t, ts)
 	a.create("Anna", map[string]any{"hands": 4}, false, false)

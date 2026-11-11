@@ -246,7 +246,8 @@ func checkHintSignals(t *testing.T, ai *fakeAI, hands int, want bool) {
 // can be ignored, and she praises the learner's first trick and a hand won.
 // The table plays without signals.
 func TestLessonBasis(t *testing.T) {
-	_, ts, ai := newTestServer(t)
+	t.Parallel()
+	_, ts, ai := newTestServer(t, quick)
 	c := dial(t, ts)
 	run := playLessonMatch(t, c, planBasis, func(st seenStep) {
 		switch {
@@ -369,7 +370,8 @@ func TestLessonBasis(t *testing.T) {
 // first hand go as in vrij spelen, with their tip. The table plays without
 // signals.
 func TestLessonRoem(t *testing.T) {
-	_, ts, ai := newTestServer(t)
+	t.Parallel()
+	_, ts, ai := newTestServer(t, quick)
 	c := dial(t, ts)
 	run := playLessonMatch(t, c, planRoem, nil)
 	checkLesson(t, c, run, planRoem)
@@ -428,7 +430,8 @@ func TestLessonRoem(t *testing.T) {
 // chances for the learner and the first three signals of the bots are pointed
 // out. There is no intro, and roem is not mentioned.
 func TestLessonSeinen(t *testing.T) {
-	_, ts, ai := newTestServer(t)
+	t.Parallel()
+	_, ts, ai := newTestServer(t, quick)
 	c := dial(t, ts)
 	run := playLessonMatch(t, c, planSeinen, nil)
 	checkLesson(t, c, run, planSeinen)
@@ -475,6 +478,7 @@ func TestLessonSeinen(t *testing.T) {
 // every hand of the length asked for; there is no step, no counter, and the
 // chat has the table's signals from the start.
 func TestVrijSpelen(t *testing.T) {
+	t.Parallel()
 	_, ts, ai := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Leerling", map[string]any{"hands": 4, "seed": lessonSeed}, true, true)
@@ -500,9 +504,11 @@ func TestVrijSpelen(t *testing.T) {
 // the same seed the learner sees and reads the same again, and the step
 // numbers go on, so a late tap of the match before cannot skip a step.
 func TestLessonRematch(t *testing.T) {
+	t.Parallel()
 	for _, plan := range []string{planBasis, planRoem, planSeinen} {
 		t.Run(plan, func(t *testing.T) {
-			_, ts, _ := newTestServer(t)
+			t.Parallel()
+			_, ts, _ := newTestServer(t, quick)
 			c := dial(t, ts)
 			one := playLessonMatch(t, c, plan, nil)
 			c.send(map[string]any{"t": "rematch"})
@@ -531,6 +537,7 @@ func TestLessonRematch(t *testing.T) {
 // lesson is skipped at create and refused in the lobby, and an older client's
 // option lessons is ignored.
 func TestLessonOpts(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	none := map[string]any{"aas": false, "hoogLaag": false, "kleintjeBoer": false, "boerOverBoer": false}
 	boer := map[string]any{"aas": false, "hoogLaag": false, "kleintjeBoer": false, "boerOverBoer": true}
@@ -606,9 +613,11 @@ func TestLessonOpts(t *testing.T) {
 // TestLessonsWithoutTips: every lesson with tips off. It has no hint on a
 // turn and no explanation after a trick, and no step names a tip.
 func TestLessonsWithoutTips(t *testing.T) {
+	t.Parallel()
 	for _, plan := range []string{planBasis, planRoem, planSeinen} {
 		t.Run(plan, func(t *testing.T) {
-			_, ts, ai := newTestServer(t)
+			t.Parallel()
+			_, ts, ai := newTestServer(t, quick)
 			c := dial(t, ts)
 			c.create("Leerling", map[string]any{"lesson": plan, "tips": false, "seed": lessonSeed}, true, true)
 			run := readLessons(t, c, func() bool { return c.phase() == phaseGameOver }, nil)
@@ -644,6 +653,7 @@ func situation(text string) string {
 
 // TestLessonResync: a rejoin in the middle of a lesson shows the same step.
 func TestLessonResync(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Leerling", map[string]any{"lesson": "basis"}, true, true)
@@ -674,6 +684,7 @@ func TestLessonResync(t *testing.T) {
 // gone (the learner's card ended the turn's lesson) is no tip read: the
 // last trick of the hand still waits for its tip.
 func TestLateLessonTap(t *testing.T) {
+	t.Parallel()
 	r := lessonRoom(t)
 	r.phase = phasePlay
 	r.lessonN = 7 // steps 1 to 7 were shown; none is on screen now
@@ -689,6 +700,7 @@ func TestLateLessonTap(t *testing.T) {
 // TestLessonsOnlyInTraining: the option means nothing outside training, and
 // vrij spelen has no steps.
 func TestLessonsOnlyInTraining(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Speler", map[string]any{"lesson": "basis"}, false, true)
@@ -708,6 +720,7 @@ func TestLessonsOnlyInTraining(t *testing.T) {
 // TestPlayLesson: which cards may be played, for the situations a
 // beginner meets first; the others are left to the rule above the hand.
 func TestPlayLesson(t *testing.T) {
+	t.Parallel()
 	// Hearts are trump; the learner is seat 0, Juf Jannie seat 2.
 	view := func(hand, legal, trick string, leader game.Seat) game.View {
 		v := game.View{Players: 4, Seat: 0, Trump: game.Hearts, TrumpKnown: true, Hand: game.MustParseCards(hand), Legal: game.MustParseCards(legal)}
@@ -768,6 +781,7 @@ func lessonRoomOn(s *Server) *room {
 // TestSignalStep: Juf Jannie explains a signal by a bot: her own with
 // what follows for the learner, an opponent's as it is.
 func TestSignalStep(t *testing.T) {
+	t.Parallel()
 	r := lessonRoom(t)
 	opp := r.displayName(1)
 	for _, c := range []struct {
@@ -803,6 +817,7 @@ func (a *signalAI) TrickSignals(game.View) []Signal { return a.signals }
 // A false one uses up no show, so a later signal is pointed out instead. An
 // opponent's signal says how the table reads the card, true or not.
 func TestFalseSignal(t *testing.T) {
+	t.Parallel()
 	ai := &signalAI{}
 	s, _ := newTestServerWith(t, ai)
 	type given struct {
@@ -848,6 +863,7 @@ func TestFalseSignal(t *testing.T) {
 // it would say and what Juf Jannie does with it, and whether the tip is
 // another card.
 func TestChanceStep(t *testing.T) {
+	t.Parallel()
 	as, tc := game.Card{Rank: game.Ace, Suit: game.Spades}, game.Card{Rank: game.Ten, Suit: game.Clubs}
 	for _, c := range []struct {
 		sig    Signal
@@ -880,6 +896,7 @@ func (a *chanceAI) SignalChance(v game.View, prefer game.Card) (Signal, bool) {
 // TestChanceWithoutTips: a chance to signal mentions the tip only when there
 // is one.
 func TestChanceWithoutTips(t *testing.T) {
+	t.Parallel()
 	for _, tips := range []bool{true, false} {
 		s, _ := newTestServerWith(t, &chanceAI{})
 		r := lessonRoomOn(s)
@@ -902,6 +919,7 @@ func TestChanceWithoutTips(t *testing.T) {
 // TestIntroWithoutTips: with tips off the intro promises none; with tips on
 // its last step says what they are.
 func TestIntroWithoutTips(t *testing.T) {
+	t.Parallel()
 	r := lessonRoom(t)
 	steps := r.introSteps()
 	if last := steps[len(steps)-1]; last.Spot != "chat" || !strings.Contains(last.Text, "geef ik je een tip") || !strings.HasSuffix(last.Text, "teruglezen in de chat.") {
@@ -924,6 +942,7 @@ func TestIntroWithoutTips(t *testing.T) {
 // three, once it has introduced roem; the lesson on signals and vrij spelen
 // say nothing.
 func TestRoemByLesson(t *testing.T) {
+	t.Parallel()
 	roem := game.Trick{Winner: 1, Roem: []game.RoemItem{{Points: 20}}, Cards: []game.Played{
 		{Seat: 0, Card: game.Card{Rank: game.Nine, Suit: game.Spades}}, {Seat: 1, Card: game.Card{Rank: game.Ten, Suit: game.Spades}},
 		{Seat: 2, Card: game.Card{Rank: game.Jack, Suit: game.Spades}}, {Seat: 3, Card: game.Card{Rank: game.Seven, Suit: game.Hearts}},
@@ -986,6 +1005,7 @@ func playedOut(t *testing.T, r *room, won bool) {
 // TestLastStep: the last trick says who gets its points; when the side that
 // won it went nat, that the others get them all.
 func TestLastStep(t *testing.T) {
+	t.Parallel()
 	const opening = "Dit was de laatste slag: die levert 10 punten extra op. "
 	check := func(r *room, winner game.Seat, want string) {
 		t.Helper()
@@ -1019,6 +1039,7 @@ func TestLastStep(t *testing.T) {
 // other step. Vrij spelen has neither. The first hand of the basic game has
 // the score instead, with the compliment in it.
 func TestPraiseAndClosing(t *testing.T) {
+	t.Parallel()
 	closing := map[string]string{
 		planBasis:  "Dit was de les over het basisspel. In de volgende les leer je roem en troeven tellen: die kies je bij Oefenen.",
 		planRoem:   "Dit was de les over roem en tellen. In de volgende les leer je seinen: die kies je bij Oefenen.",
@@ -1088,6 +1109,7 @@ func TestPraiseAndClosing(t *testing.T) {
 // TestTrumpsLeft: the trump counter runs in the counting hand of the lesson on
 // roem only.
 func TestTrumpsLeft(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		lesson string
 		hand   int
@@ -1118,6 +1140,7 @@ func TestTrumpsLeft(t *testing.T) {
 // TestGreeting: Juf Jannie's greeting is left out only in the lesson on the
 // basic game, where she introduces herself at once.
 func TestGreeting(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	for _, plan := range []string{"", planBasis, planRoem, planSeinen} {
 		juf := 0
@@ -1141,6 +1164,7 @@ func TestGreeting(t *testing.T) {
 // training table with them has none, whatever it agreed: nothing in a view.
 // Elsewhere the agreements stand: the people at the table may play them.
 func TestNoSignalsMakkelijk(t *testing.T) {
+	t.Parallel()
 	r := lessonRoom(t)
 	r.opts.Lesson, r.opts.AI = "", "makkelijk"
 	if got := r.signals(); got != (game.Signals{}) {
@@ -1161,6 +1185,7 @@ func TestNoSignalsMakkelijk(t *testing.T) {
 
 // TestSignalSteps: the introduction names each agreement of the table.
 func TestSignalSteps(t *testing.T) {
+	t.Parallel()
 	r := lessonRoom(t)
 	steps := r.signalSteps()
 	if len(steps) != 4 || !strings.Contains(steps[0].Text, "spreken we er drie af") || !strings.HasPrefix(steps[1].Text, "Met de aas seinen: ") ||
@@ -1179,6 +1204,7 @@ func TestSignalSteps(t *testing.T) {
 // puts nothing there: Juf Jannie tells them herself, or there are none. With
 // two or three players signals play no part.
 func TestSignalChat(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	lines := func(set func(r *room)) []string {
 		r := newRoom(s, "SEIN")
@@ -1239,6 +1265,7 @@ func TestSignalChat(t *testing.T) {
 // TestRoemParts: the roem of a trick by the cards it is made of, as
 // game.TrickRoem finds it.
 func TestRoemParts(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		cards string
 		want  []string
@@ -1271,6 +1298,7 @@ func TestRoemParts(t *testing.T) {
 
 // TestScoreStep: the score of the first hand, with roem, pit and nat.
 func TestScoreStep(t *testing.T) {
+	t.Parallel()
 	r := lessonRoom(t)
 	d := r.deal
 	if err := d.ChooseTrump(d.Turn(), game.Hearts); err != nil {
@@ -1305,6 +1333,7 @@ func TestScoreStep(t *testing.T) {
 // TestSharedSteps: the step lists every room shares stay unnumbered when a
 // room starts them, so one room's numbers never show up in another's.
 func TestSharedSteps(t *testing.T) {
+	t.Parallel()
 	r := lessonRoom(t)
 	r.lessonN = 40
 	for _, steps := range [][]lessonStep{pointsSteps, roemSteps} {

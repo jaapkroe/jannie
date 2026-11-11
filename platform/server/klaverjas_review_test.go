@@ -90,8 +90,10 @@ func (a *gradeAI) wantReview(i game.Seat) reviewState {
 // gets the review of their own decisions, and nobody else's, only at game
 // over.
 func TestReviewAtGameOver(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"utrechts", "gedraaid"} {
 		t.Run(mode, func(t *testing.T) {
+			t.Parallel()
 			ai := newGradeAI(false)
 			_, ts := newTestServerWith(t, ai)
 			host := dial(t, ts)
@@ -224,6 +226,7 @@ func distinct(cards []game.Card) int {
 // TestReviewPending: grades still out at game over show as pending, and
 // the review follows when the last one is in.
 func TestReviewPending(t *testing.T) {
+	t.Parallel()
 	ai := newGradeAI(true)
 	_, ts := newTestServerWith(t, ai)
 	c := dial(t, ts)
@@ -240,6 +243,7 @@ func TestReviewPending(t *testing.T) {
 }
 
 func TestRoemAdded(t *testing.T) {
+	t.Parallel()
 	view := func(trump game.Suit, table, legal string) *game.View {
 		v := &game.View{Trump: trump, Legal: game.MustParseCards(legal)}
 		for k, c := range game.MustParseCards(table) {
@@ -270,6 +274,7 @@ func TestRoemAdded(t *testing.T) {
 // TestReviewTrick: roem a human's card gave counts once the opponents take
 // the trick, and not when their own team does.
 func TestReviewTrick(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEST")
 	r.seats[1] = newHuman("A")
@@ -292,6 +297,7 @@ func TestReviewTrick(t *testing.T) {
 
 // TestReviewJSON: a review without moments lists none, as [] on the wire.
 func TestReviewJSON(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEST")
 	r.seats[0] = newHuman("A")
@@ -315,6 +321,7 @@ func TestReviewJSON(t *testing.T) {
 // while the player was away, or in which their connection dropped, is not
 // timed.
 func TestReviewSpeed(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEST")
 	r.seats[0] = newHuman("A")
@@ -358,6 +365,7 @@ func TestReviewSpeed(t *testing.T) {
 // TestReviewReset: a new match starts every human's review afresh; a grade
 // of the old match that comes in late goes to the old review.
 func TestReviewReset(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEST")
 	r.seats[0] = newHuman("A")
@@ -400,6 +408,7 @@ func TestReviewReset(t *testing.T) {
 // TestReviewOnlyLuckPending: a player without graded choices gets no
 // review, even while the luck of their last hand is still being measured.
 func TestReviewOnlyLuckPending(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEST")
 	r.seats[0] = newHuman("A")
@@ -418,6 +427,7 @@ func TestReviewOnlyLuckPending(t *testing.T) {
 // TestNoReviewAtSmallTables: the review grades with the search of the
 // hints, which plays four players; a table of three or two has none.
 func TestNoReviewAtSmallTables(t *testing.T) {
+	t.Parallel()
 	for _, players := range []int{3, 2} {
 		ai := newGradeAI(false)
 		_, ts := newTestServerWith(t, ai)
@@ -455,6 +465,7 @@ func (a *failAI) Grade(v game.View, c Choice) Grade {
 // its trick and choice); one whose search failed or panicked does not,
 // though the review counts it as before.
 func TestReviewPerHand(t *testing.T) {
+	t.Parallel()
 	ai := &failAI{gradeAI: newGradeAI(false)}
 	_, ts := newTestServerWith(t, ai)
 	c := dial(t, ts)
@@ -528,6 +539,7 @@ func TestReviewPerHand(t *testing.T) {
 // gain has only its trick and the choice. Another hand, or a player
 // without a review, has none: [] on the wire.
 func TestGradedOrder(t *testing.T) {
+	t.Parallel()
 	rv := &review{}
 	clubs, hearts, no := game.Clubs, game.Hearts, false
 	cards := game.MustParseCards("7S AS")
@@ -557,6 +569,7 @@ func TestGradedOrder(t *testing.T) {
 // after sends it again. The hand in play, one not dealt yet or the lobby
 // has none, and a table of three no review at all.
 func TestHandReview(t *testing.T) {
+	t.Parallel()
 	ai := newGradeAI(true)
 	_, ts := newTestServerWith(t, ai)
 	c := dial(t, ts)
@@ -620,6 +633,7 @@ func TestHandReview(t *testing.T) {
 // TestHandReviewAfterReconnect: grades of the watched hand that came in
 // while the player was away reach them when they are back.
 func TestHandReviewAfterReconnect(t *testing.T) {
+	t.Parallel()
 	ai := newGradeAI(true)
 	s, ts := newTestServerWith(t, ai)
 	c := dial(t, ts)
@@ -660,6 +674,7 @@ func TestHandReviewAfterReconnect(t *testing.T) {
 // TestHandReviewWithoutReview: a player without a review (no decision of
 // theirs graded yet) gets the replay with no choices.
 func TestHandReviewWithoutReview(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEST")
 	defer r.stop()
