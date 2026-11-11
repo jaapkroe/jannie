@@ -15,6 +15,7 @@ import (
 
 // TestParseAct: every kind of decision reads back from its token.
 func TestParseAct(t *testing.T) {
+	t.Parallel()
 	card := func(s string) game.Card { return game.MustParseCards(s)[0] }
 	for _, tc := range []struct {
 		seat game.Seat
@@ -47,6 +48,7 @@ func TestParseAct(t *testing.T) {
 // in the whole match; the match is that hand alone. Outside the expert
 // mode the option does not hold.
 func TestExpertFrom(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	whole := newRoom(s, "TEST")
 	defer whole.stop()
@@ -101,6 +103,7 @@ func TestExpertFrom(t *testing.T) {
 // decision cannot be asked about. They comment on their own card; the
 // game log has the match and the comment, about the expert's own seat.
 func TestExpertMatch(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	srv, ts, ai := newTestServer(t, func(s *Server) { s.games = newGameLog(dir, s.log) })
 	c := dial(t, ts)
@@ -207,6 +210,7 @@ func TestExpertMatch(t *testing.T) {
 // with the same seed, the same seat dealing. A seat outside 0–3, or in
 // another game, puts the creator at seat 0.
 func TestExpertSeat(t *testing.T) {
+	t.Parallel()
 	srv, ts, _ := newTestServer(t)
 	whole := newRoom(srv, "TEST")
 	defer whole.stop()
@@ -257,6 +261,7 @@ func TestExpertSeat(t *testing.T) {
 // decision, but on its turn the one awaited now: in gedraaid, voorhand who
 // passed and must now choose trump once everyone passed.
 func TestWhyAwaited(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEST")
 	defer r.stop()
@@ -328,6 +333,7 @@ func (a *gateAI) Explain(v game.View) Explanation {
 // rooms, as each takes every core, and a room that asks again meanwhile
 // gets limiet.
 func TestWhyOneAtATime(t *testing.T) {
+	t.Parallel()
 	ai := &gateAI{gate: make(chan struct{})}
 	s, _ := newTestServerWith(t, ai)
 	c := newClient(s, nil, "1.2.3.4", "test")
@@ -370,6 +376,7 @@ func TestWhyOneAtATime(t *testing.T) {
 // TestWhyInTraining: in training the player asks the reasoning of their
 // own decision and comments on it while the match runs, as the expert does.
 func TestWhyInTraining(t *testing.T) {
+	t.Parallel()
 	_, ts, ai := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Leerling", map[string]any{"hands": 4}, true, true)
@@ -392,6 +399,7 @@ func TestWhyInTraining(t *testing.T) {
 // with by now: in the lesson on signals none before Juf Jannie introduced
 // them, in the other lessons none at all.
 func TestMatchViewSignals(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	r := newRoom(s, "TEST")
 	defer r.stop()
@@ -414,6 +422,7 @@ func TestMatchViewSignals(t *testing.T) {
 // is answered, also in its last hand and with tips off, as the reasoning
 // sheet asks it then.
 func TestWhyAwaitedInLesson(t *testing.T) {
+	t.Parallel()
 	for _, tips := range []bool{true, false} {
 		s, _, ai := newTestServer(t)
 		r := lessonRoomOn(s)

@@ -12,6 +12,7 @@ import (
 )
 
 func TestMessageTooBig(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.send(map[string]any{"t": "chat", "text": strings.Repeat("x", maxMessageBytes)})
@@ -29,6 +30,7 @@ func TestMessageTooBig(t *testing.T) {
 }
 
 func TestMessageRate(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.msgRate = 20 })
 	c := dial(t, ts)
 	// The server may close the connection as soon as the 21st ping arrives, so
@@ -71,6 +73,7 @@ func TestMessageRate(t *testing.T) {
 }
 
 func TestBadMessages(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	ctx := context.Background()
@@ -93,6 +96,7 @@ func TestBadMessages(t *testing.T) {
 }
 
 func TestPerIPLimits(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.maxPerIP, s.createMax = 4, 3 })
 	for range s.maxPerIP {
 		dialIP(t, ts, "192.0.2.1")
@@ -118,6 +122,7 @@ func TestPerIPLimits(t *testing.T) {
 // four, a new round while the old tables still count, and the sockets of
 // phones that dropped out.
 func TestClubOnOneAddress(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t)
 	const ip = "192.0.2.30"
 	tab := dialIP(t, ts, ip)
@@ -144,6 +149,7 @@ func TestClubOnOneAddress(t *testing.T) {
 }
 
 func TestMaxRooms(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) {
 		s.cfg.MaxRooms = 2
 		s.evictAfter = time.Hour
@@ -180,6 +186,7 @@ func TestMaxRooms(t *testing.T) {
 }
 
 func TestLiveRoomsPerAddress(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.liveMax = 2 })
 	c := dialIP(t, ts, "192.0.2.20")
 	c.create("Piet", nil, false, false)
@@ -200,6 +207,7 @@ func TestLiveRoomsPerAddress(t *testing.T) {
 }
 
 func TestJoinRate(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.joinRate, s.joinBurst = 1, 3 })
 	x := dial(t, ts)
 	for range 3 {
@@ -218,6 +226,7 @@ func TestJoinRate(t *testing.T) {
 // TestFailedJoinsBlock: an address that keeps failing to join (guessing
 // codes) is refused for a while; a seat token still works.
 func TestFailedJoinsBlock(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) {
 		s.joinFailMax = 3
 		s.joinBlock = 300 * time.Millisecond
@@ -270,6 +279,7 @@ func TestFailedJoinsBlock(t *testing.T) {
 }
 
 func TestOriginCheck(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.cfg.AllowedOrigins = []string{"*.kroes.dev"} })
 	url := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws"
 	try := func(origin string) error {
@@ -293,6 +303,7 @@ func TestOriginCheck(t *testing.T) {
 }
 
 func TestShutdown(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Piet", map[string]any{}, false, true)
@@ -323,6 +334,7 @@ func TestShutdown(t *testing.T) {
 }
 
 func TestJanitor(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) {
 		s.idleTimeout = 100 * time.Millisecond
 		s.overTimeout = 100 * time.Millisecond
@@ -365,6 +377,7 @@ func TestJanitor(t *testing.T) {
 // a game everyone left go after the short timeout; a running game someone
 // may return to stays.
 func TestJanitorAbandoned(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) {
 		s.idleTimeout = time.Hour
 		s.overTimeout = time.Hour

@@ -319,6 +319,7 @@ func playToy(t *testing.T, h, g *servertest.Client) (toyState, map[string]int) {
 
 // TestToyGame plays a match of the toy game: two humans and a bot.
 func TestToyGame(t *testing.T) {
+	t.Parallel()
 	srv := servertest.Start(t, toy{})
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 3, "rounds": 3, "hands": 8, "seed": 7}, false)
@@ -359,6 +360,7 @@ func sum(xs []int) (n int) {
 // TestToyMessages: the table's messages and options around the toy game,
 // and the errors of its own.
 func TestToyMessages(t *testing.T) {
+	t.Parallel()
 	srv := servertest.Start(t, toy{})
 	h := srv.Dial()
 	// Training is klaverjas's: the ordinary game; bad values are skipped.
@@ -426,16 +428,19 @@ func TestToyMessages(t *testing.T) {
 // at a table that is not fixed; "mis" is an Opening the table must partly
 // leave out; anything else an ordinary room. Its Play also asks for coach
 // lines and messages to one seat.
-type toyTable struct{ toy }
-
-var toyOpens atomic.Int32 // calls of toyTable.Open
+type toyTable struct {
+	toy
+	opens *atomic.Int32 // calls of Open, when a test counts them
+}
 
 // toyLocked is the toy's text for a joiner of a fixed table, with the
 // number of rounds: Open sees the options create set.
 const toyLocked = "Dit is een oefentafel van %d rondes; daar kun je niet aan meedoen."
 
-func (toyTable) Open(m server.Msg, o server.GameOptions) server.Opening {
-	toyOpens.Add(1)
+func (g toyTable) Open(m server.Msg, o server.GameOptions) server.Opening {
+	if g.opens != nil {
+		g.opens.Add(1)
+	}
 	var c struct{ Tafel string }
 	json.Unmarshal(m.Raw, &c)
 	locked := fmt.Sprintf(toyLocked, o.(*toyOpts).Rounds)
@@ -534,8 +539,9 @@ func wantBots(t *testing.T, what string, s toyState) {
 // else joins, it never goes back to the lobby, a rematch keeps its bots,
 // and its own player gets back in by the seat token and by name.
 func TestToyOpener(t *testing.T) {
-	srv := servertest.Start(t, toyTable{})
-	opens := toyOpens.Load()
+	t.Parallel()
+	var opens atomic.Int32
+	srv := servertest.Start(t, toyTable{opens: &opens})
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 3, "rounds": 1}, false, map[string]any{"tafel": "oefen"})
 	if h.Seat != 1 {
@@ -626,7 +632,7 @@ func TestToyOpener(t *testing.T) {
 	if e := srv.Dial().TryJoin(h.Code, "Kees", ""); e.T != "error" || e.ErrMsg() != locked {
 		t.Errorf("a seat its player left: %s", e.Raw)
 	}
-	if got := toyOpens.Load() - opens; got != 1 {
+	if got := opens.Load(); got != 1 {
 		t.Errorf("Open called %d times", got)
 	}
 }
@@ -634,6 +640,7 @@ func TestToyOpener(t *testing.T) {
 // TestToyLockedLobby: a fixed table with a lobby refuses every command
 // that changes the table, but not the other options.
 func TestToyLockedLobby(t *testing.T) {
+	t.Parallel()
 	srv := servertest.Start(t, toyTable{})
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 3, "rounds": 2}, false, map[string]any{"tafel": "vast"})
@@ -682,6 +689,7 @@ func TestToyLockedLobby(t *testing.T) {
 // leaves out what of an Opening it cannot do (the creator then at seat
 // 0).
 func TestToyOpening(t *testing.T) {
+	t.Parallel()
 	srv := servertest.Start(t, toyTable{})
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 3}, false)
@@ -732,6 +740,7 @@ func TestToyOpening(t *testing.T) {
 // marked coach, and stay so in the chat log; none goes in a human's name or
 // for a seat off the table, and other lines have no coach key.
 func TestToyCoachChat(t *testing.T) {
+	t.Parallel()
 	srv := servertest.Start(t, toyTable{})
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 3, "rounds": 1}, false, map[string]any{"tafel": "oefen"})
@@ -783,6 +792,7 @@ func TestToyCoachChat(t *testing.T) {
 // to a bot, an empty seat, a seat off the table or a human who dropped out
 // it does not go, nor a message with a type of the table's or none.
 func TestToySend(t *testing.T) {
+	t.Parallel()
 	srv := servertest.Start(t, toyTable{})
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 3}, false)
@@ -829,6 +839,7 @@ func TestToySend(t *testing.T) {
 // TestToySingleSize: a game of one table size says so when asked for
 // another.
 func TestToySingleSize(t *testing.T) {
+	t.Parallel()
 	srv := servertest.Start(t, toyThree{})
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 2}, false) // skipped
@@ -928,6 +939,7 @@ func waitSys(t *testing.T, c *servertest.Client, text string) {
 // TestToyAfterGameOver: Later, Background and Think call back after game
 // over, which ends nothing for them; a rematch or the lobby does.
 func TestToyAfterGameOver(t *testing.T) {
+	t.Parallel()
 	g := newToyLate()
 	srv := servertest.Start(t, g)
 	h := srv.Dial()
@@ -996,6 +1008,7 @@ func TestToyAfterGameOver(t *testing.T) {
 // goroutine, holds through game over and turns false once the match is
 // replaced (by a new match, a rematch or the lobby) or the room closes.
 func TestToyCurrent(t *testing.T) {
+	t.Parallel()
 	g := newToyLate()
 	srv := servertest.Start(t, g)
 	h := srv.Dial()
@@ -1059,6 +1072,7 @@ func TestToyCurrent(t *testing.T) {
 // TestToyCleanText: server.CleanText cleans a game's own text line by line
 // as the table cleans chat, at most limit characters in all.
 func TestToyCleanText(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		in    string
 		limit int

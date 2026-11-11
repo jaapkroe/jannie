@@ -156,6 +156,7 @@ func hasLine(c *tclient, text string) bool {
 // yes lets the substitute play, until the player returns. A later drop-out
 // asks again.
 func TestDropOutAsks(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 }) // askAfter: 100 ms
 	cs := startTable(t, ts, "Anna", "Bert")
 	a, b := cs[0], cs[1]
@@ -225,6 +226,7 @@ func TestDropOutAsks(t *testing.T) {
 // a player who dropped out in the auction, and the substitute bids for
 // them once the other agreed.
 func TestDropOutAsksThreePlayers(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	a := dial(t, ts)
 	a.create("Anna", map[string]any{"players": 3, "hands": 4}, false, false)
@@ -247,6 +249,7 @@ func TestDropOutAsksThreePlayers(t *testing.T) {
 // plays; on its turn the other is asked at once. A no waits, a yes (a
 // changed vote) gives the seat to a persona, and a joiner may take it.
 func TestLeftSeatAsks(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	cs := startTable(t, ts, "Anna", "Bert")
 	a, b := cs[0], cs[1]
@@ -305,6 +308,7 @@ func TestLeftSeatAsks(t *testing.T) {
 // TestJoinerTakesLeftSeat: a joiner takes the seat the game waits for,
 // which ends the question; the player who left can come back the same way.
 func TestJoinerTakesLeftSeat(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	cs := startTable(t, ts, "Anna", "Bert", "Cor")
 	a, b, c := cs[0], cs[1], cs[2]
@@ -503,6 +507,7 @@ func (q *quiz) tookOver() {
 // someone who goes takes their answer along, someone who comes in must
 // answer too, and Anna's return ends the question.
 func TestVoters(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name string
 		run  func(q *quiz)
@@ -606,6 +611,7 @@ func TestVoters(t *testing.T) {
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			tc.run(newQuiz(t, 0.05)) // askAfter: 500 ms
 		})
 	}
@@ -617,6 +623,7 @@ func TestVoters(t *testing.T) {
 // been gone askAfter, which the pause does not reset
 // (docs/server.md#pauses).
 func TestOnlyAIPauses(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.05 }) // askAfter: 500 ms
 	cs := startTable(t, ts, "Anna", "Bert")
 	a, b := cs[0], cs[1]
@@ -696,8 +703,10 @@ func TestOnlyAIPauses(t *testing.T) {
 // TestSoloWaits: in training and in a game with one human there is nobody
 // to ask; the game waits for the player, whatever how long.
 func TestSoloWaits(t *testing.T) {
+	t.Parallel()
 	for _, training := range []bool{false, true} {
 		t.Run(map[bool]string{false: "solo", true: "training"}[training], func(t *testing.T) {
+			t.Parallel()
 			s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 			c := dial(t, ts)
 			c.create("Piet", map[string]any{"hands": 4}, training, true)
@@ -726,6 +735,7 @@ func TestSoloWaits(t *testing.T) {
 // TestVoteErrors: an answer without a question for that seat is refused,
 // also one before the question opens and one to another question.
 func TestVoteErrors(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.05 }) // askAfter: 500 ms
 	h := dial(t, ts)
 	h.create("Anna", map[string]any{"hands": 4}, false, false)
@@ -770,6 +780,7 @@ func TestVoteErrors(t *testing.T) {
 // TestLeaveAtHandEndAsks: a seat left during the hand summary does not
 // hold the summary up, and its first turn in the next hand asks at once.
 func TestLeaveAtHandEndAsks(t *testing.T) {
+	t.Parallel()
 	_, h, g := toHandEnd(t)
 	h.send(map[string]any{"t": "leave"})
 	if p := g.waitSeat("leave", h.seat).state.Players[h.seat]; !p.Left || p.Name != "Host" {
@@ -789,6 +800,7 @@ func TestLeaveAtHandEndAsks(t *testing.T) {
 // TestLeftSeatAfterGameOver: at game over a joiner may take a seat its
 // player left; the lobby frees it, and a rematch fills it with a bot.
 func TestLeftSeatAfterGameOver(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	cs := startTable(t, ts, "Host", "Gast")
 	h, g := cs[0], cs[1]
@@ -840,6 +852,7 @@ func TestLeftSeatAfterGameOver(t *testing.T) {
 // TestReclaimEndsQuestion: a seat taken back by name on another device
 // ends the question about it.
 func TestReclaimEndsQuestion(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.002 }) // askAfter 20 ms, reclaim 360 ms
 	cs := startTable(t, ts, "Anna", "Bob")
 	a, b := cs[0], cs[1]
@@ -864,6 +877,7 @@ func TestReclaimEndsQuestion(t *testing.T) {
 // gone; in the rematch that player is waited for and asked about again,
 // so nobody plays for them in the new match on the old consent.
 func TestRematchAsksAgain(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 }) // askAfter: 100 ms
 	cs := startTable(t, ts, "Bert", "Anna")
 	b, a := cs[0], cs[1]
@@ -900,6 +914,7 @@ func TestRematchAsksAgain(t *testing.T) {
 // away once she has left (the question changed under it). A vote without
 // left answers the question about the seat as it stands.
 func TestVoteAnswersOneQuestion(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	cs := startTable(t, ts, "Anna", "Bert")
 	a, b := cs[0], cs[1]
@@ -931,7 +946,9 @@ func TestVoteAnswersOneQuestion(t *testing.T) {
 // TestAskAfterFromLater: askAfter counts from the later of the turn
 // opening and the drop-out.
 func TestAskAfterFromLater(t *testing.T) {
+	t.Parallel()
 	t.Run("gone before the turn", func(t *testing.T) {
+		t.Parallel()
 		_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.02 }) // askAfter: 200 ms
 		cs := startTable(t, ts, "Anna", "Bert")
 		a, b := cs[0], cs[1]
@@ -951,6 +968,7 @@ func TestAskAfterFromLater(t *testing.T) {
 		}
 	})
 	t.Run("gone late in the turn", func(t *testing.T) {
+		t.Parallel()
 		_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.02 })
 		cs := startTable(t, ts, "Anna", "Bert")
 		a, b := cs[0], cs[1]
@@ -968,6 +986,7 @@ func TestAskAfterFromLater(t *testing.T) {
 // TestNoQuestionInPause: the deal is a pause (turn -1): a seat left as the
 // next hand's voorhand is asked about only once its turn opens.
 func TestNoQuestionInPause(t *testing.T) {
+	t.Parallel()
 	s, h, g := toHandEnd(t)
 	// The next voorhand is two seats after this hand's dealer; play on
 	// until that is one of the two people.
@@ -1003,6 +1022,7 @@ func TestNoQuestionInPause(t *testing.T) {
 // TestHostNotLeftSeat: the host role goes to a human who is gone rather
 // than to a seat its player left.
 func TestHostNotLeftSeat(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t)
 	cs := startTable(t, ts, "Anna", "Bert", "Cor")
 	a, b, c := cs[0], cs[1], cs[2]
@@ -1027,6 +1047,7 @@ func TestHostNotLeftSeat(t *testing.T) {
 // takeover on, as at the start of a turn, not at once because the turn
 // opened long ago.
 func TestAIThinksFromTakeover(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.1 }) // think time: 90 ms (at least about 23 ms)
 	cs := startTable(t, ts, "Anna", "Bert")
 	a, b := cs[0], cs[1]

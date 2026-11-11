@@ -13,6 +13,7 @@ var mainOptsKeys = []string{"players", "hands", "trumpMode", "rules", "ai", "tem
 // toepen. Its option keys are ignored and a table of five refused; its
 // messages are unknown, in the lobby and in a hand.
 func TestKlaverjasKnowsNoOtherGame(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.send(map[string]any{"t": "create", "name": "Jaap",
@@ -54,6 +55,7 @@ func TestKlaverjasKnowsNoOtherGame(t *testing.T) {
 // A full table of klaverjas says so as it always did: the text counts the
 // game's largest table, four.
 func TestKlaverjasFullTable(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Jaap", nil, false, false)
@@ -71,6 +73,7 @@ func TestKlaverjasFullTable(t *testing.T) {
 // games: the lesson on signals says "Aan deze tafel spreken we er drie af".
 // The texts about a full table of any game spell out up to eight.
 func TestNumberWords(t *testing.T) {
+	t.Parallel()
 	for n, want := range map[int]string{0: "0", 1: "1", 2: "twee", 4: "vier", 5: "5", 8: "8"} {
 		if got := numberNL(n); got != want {
 			t.Errorf("numberNL(%d) = %q, want %q", n, got, want)

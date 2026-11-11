@@ -28,6 +28,7 @@ import (
 // player asks no reasoning and gives no feedback about one decision; mark
 // is an unknown message.
 func TestGameLog(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	srv, ts := newTestServerWith(t, newGradeAI(false), func(s *Server) {
 		s.games = startGameLog(dir, s.log, func() time.Time { return time.Date(2026, 10, 25, 12, 0, 0, 0, time.UTC) })
@@ -148,6 +149,7 @@ func remarshal(t *testing.T, from map[string]any, to any) {
 // TestSeedDeals: the same seed deals the same cards, first dealer and
 // turned suit included; without a fixed seed every match draws its own.
 func TestSeedDeals(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t)
 	deal := func(seed int) (uint64, dealtCards, game.Seat, game.Suit) {
 		r := newRoom(s, "TEST")
@@ -182,6 +184,7 @@ func TestSeedDeals(t *testing.T) {
 // in no message at all, and the chat names it then; a rematch draws a new
 // one and keeps it as well (docs/server.md#the-seed).
 func TestSeedAtEnd(t *testing.T) {
+	t.Parallel()
 	srv, ts, _ := newTestServer(t)
 	host := dial(t, ts)
 	host.keep = true
@@ -248,6 +251,7 @@ func checkSeedAtEnd(t *testing.T, c *tclient, n int, seed uint64) {
 // TestSeedOption: a seed is a number from 1 to 999999999; null or 0 means a
 // new seed per match.
 func TestSeedOption(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		raw  string
 		want int
@@ -272,6 +276,7 @@ func TestSeedOption(t *testing.T) {
 // TestGameLogClosed: writes after close are dropped, and a nil log takes
 // any write.
 func TestGameLogClosed(t *testing.T) {
+	t.Parallel()
 	g := newGameLog(t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	g.write(logEnd{T: "end"})
 	g.close()
@@ -285,6 +290,7 @@ func TestGameLogClosed(t *testing.T) {
 // TestGameLogRetention: the writer keeps the current month and the eleven
 // before it, at its start and as time goes on; other files stay.
 func TestGameLogRetention(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	for _, name := range []string{"games-2025-09.jsonl", "games-2025-10.jsonl", "games-2025-11.jsonl", "games-2026-10.jsonl", "games-x.jsonl", "notes.txt"} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte("{}\n"), 0o644); err != nil {

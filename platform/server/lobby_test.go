@@ -28,6 +28,7 @@ func botSeats(s *state) []int {
 }
 
 func TestCreateDefaults(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.create("  Piet\u0007  ", nil, false, false)
@@ -60,6 +61,7 @@ func TestCreateDefaults(t *testing.T) {
 // they stay empty in the lobby until someone sits there or the host puts a
 // bot there, and bots fill the rest at the start.
 func TestPlayersSetsTheTable(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	for _, players := range []int{2, 3, 4} {
 		c := dial(t, ts)
@@ -89,6 +91,7 @@ func TestPlayersSetsTheTable(t *testing.T) {
 }
 
 func TestOptsChangesPlayers(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
@@ -152,6 +155,7 @@ func TestOptsChangesPlayers(t *testing.T) {
 }
 
 func TestLobbyCommands(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
@@ -210,6 +214,7 @@ func TestLobbyCommands(t *testing.T) {
 }
 
 func TestJoinErrors(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", map[string]any{"players": 2}, false, false)
@@ -246,6 +251,7 @@ func TestJoinErrors(t *testing.T) {
 // message for the host only), at most once per refusedGap per room. Back
 // in the lobby with every seat taken, nobody is invited to join.
 func TestRefusedJoin(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	h := dial(t, ts)
 	h.create("Host", map[string]any{"players": 2, "hands": 4}, false, false)
@@ -314,6 +320,7 @@ func TestRefusedJoin(t *testing.T) {
 }
 
 func TestLeaveAndTakeOver(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", map[string]any{"hands": 4}, false, false)
@@ -355,6 +362,7 @@ func TestLeaveAndTakeOver(t *testing.T) {
 }
 
 func TestHostHandover(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
@@ -401,6 +409,7 @@ func TestHostHandover(t *testing.T) {
 // first, Bert 20 s later; at Anna's 30 s Bert does not get it, so Anna,
 // back first, can start.
 func TestHostStaysWhileNobodyConnected(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t, func(s *Server) { s.scale = 1 })
 	r := newRoom(s, "HOST")
 	a, b := newClient(s, nil, "10.0.0.1", ""), newClient(s, nil, "10.0.0.2", "")
@@ -428,6 +437,7 @@ func TestHostStaysWhileNobodyConnected(t *testing.T) {
 // first: he gets it when Bert's grace is up, with no host command of his
 // own (the client shows him none).
 func TestHostAfterLeave(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.02 }) // grace 600 ms
 	a := dial(t, ts)
 	a.create("Anna", nil, false, false)
@@ -456,6 +466,7 @@ func TestHostAfterLeave(t *testing.T) {
 }
 
 func TestChat(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
@@ -500,6 +511,7 @@ func TestChat(t *testing.T) {
 }
 
 func TestBotChatLimits(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t, func(s *Server) { s.scale = 1 })
 	r := newRoom(s, "CHAT")
 	r.seats[1] = r.newBot(fakePersonas[1])
@@ -534,6 +546,7 @@ func TestBotChatLimits(t *testing.T) {
 }
 
 func TestBotsGreetAndReply(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t)
 	c := dial(t, ts)
 	c.create("Piet", map[string]any{}, false, true)
@@ -553,6 +566,7 @@ func TestBotsGreetAndReply(t *testing.T) {
 }
 
 func TestHealth(t *testing.T) {
+	t.Parallel()
 	_, ts, _ := newTestServer(t, func(s *Server) { s.cfg.Version = "abc123" })
 	c := dial(t, ts)
 	c.create("Piet", nil, false, false)
@@ -586,6 +600,7 @@ func TestHealth(t *testing.T) {
 // person at the table, the games a restart would end (make playing): not a
 // lobby, not a finished match, not a match its only person left.
 func TestHealthPlaying(t *testing.T) {
+	t.Parallel()
 	s, ts, _ := newTestServer(t)
 	playing := func() float64 {
 		t.Helper()
@@ -629,6 +644,7 @@ func TestHealthPlaying(t *testing.T) {
 // TestPongVersion: a pong names the server's version, so that a page sees
 // when another server has taken over (docs/frontend.md#connection).
 func TestPongVersion(t *testing.T) {
+	t.Parallel()
 	s := New(Config{Game: Klaverjas(&fakeAI{}), Version: "abc123", Logger: slog.New(slog.NewTextHandler(io.Discard, nil))})
 	ts := httptest.NewServer(s.Handler())
 	t.Cleanup(func() {
@@ -645,6 +661,7 @@ func TestPongVersion(t *testing.T) {
 }
 
 func TestCleanName(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{
 		"  Piet  ":                    "Piet",
 		"":                            "Speler",
@@ -714,6 +731,7 @@ func TestCleanName(t *testing.T) {
 }
 
 func TestCleanChat(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]string{
 		"  hallo\n\tdaar  ":                 "hallo daar",
 		"\u200b\u200b\u200b":                "",
@@ -737,6 +755,7 @@ func TestCleanChat(t *testing.T) {
 // TestBotChatNoRepeats: a bot does not say one of its latest lines for an
 // event again (numbers aside), and stays silent rather than repeat itself.
 func TestBotChatNoRepeats(t *testing.T) {
+	t.Parallel()
 	s, _, _ := newTestServer(t, func(s *Server) { s.scale = 1 })
 	r := newRoom(s, "ECHO")
 	t.Cleanup(r.stop) // lines are posted to a room loop that does not run

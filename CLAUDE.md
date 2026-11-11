@@ -118,6 +118,9 @@ scripts/go test -run '^TestIdentity$' ./games/klaverjas/bot -args -identity.out=
 decision (a speed-up) leaves the file byte for byte the same, so run it
 before and after and compare. `make test`'s JS part runs `test/*.test.mjs`,
 `test/ui/*.test.mjs` and every game's `<folder>/test/*.test.mjs`.
+`platform/server`'s tests run in parallel: each builds its own server
+(`newTestServer`, `servertest.Start`) and starts with `t.Parallel()`. A new
+test there does the same and keeps nothing in a package-level variable.
 `scripts/deploy-test` puts every game's units through
 podman's quadlet generator and checks how `make deploy` labels, tags and
 refuses builds and what it rebuilds and restarts, with stubs for podman and
