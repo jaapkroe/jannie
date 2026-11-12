@@ -1,4 +1,4 @@
-/* Playing cards (web/js/cards.js). Contract: docs/frontend.md#shared-modules.
+/* Playing cards (web/js/cards.js). Design: docs/frontend.md#shared-modules.
  *
  * Size: set --card-w on any ancestor (or on the card); height is 1.4 × width.
  * Without it, .card-sm/.card-md/.card-lg pick a default width.
