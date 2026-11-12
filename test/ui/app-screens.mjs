@@ -10,7 +10,8 @@
 // run: we are voorhand, choose hearts and lead the king, and the first
 // trick has roem.
 import {
-  args, connect, openPage, VIEWPORTS, press, type, shot, checkOverflow, waitFor, sleep, playLegal, addressProxy, ownAddress, holdHook, countdownPatch,
+  args, VIEWPORTS, press, type, snap, has, closeModal, waitFor, sleep, playLegal, addressProxy, countdownPatch,
+  scenario, perViewport, finish,
 } from './app-lib.mjs';
 
 const A = args();
@@ -26,19 +27,6 @@ const names = A.only ? A.only.split(',') : Object.keys(VIEWPORTS);
 const SEED = '69610';
 
 const isNarrow = P => P.vp.width < 600;
-const has = (P, sel) => P.page.evaluate(s => !!document.querySelector(s), sel);
-
-async function snap(P, label) {
-  await sleep(120);
-  await shot(P, label);
-  await checkOverflow(P, label);
-  console.log(`  ${P.name}: ${label}`);
-}
-
-async function closeModal(P) {
-  await P.page.keyboard.press('Escape');
-  await sleep(320);
-}
 
 // Presses what may lie under its scroller's edge or a sheet's foot while
 // still inside the viewport, where press sees no reason to scroll.
@@ -114,23 +102,6 @@ async function home(P) {
   await P.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
   await waitFor(P, () => document.querySelector('#btn-quick'), { label: 'home' });
   await type(P, '#name', 'Piet');
-}
-
-// Runs one scenario in its own page; each scenario starts from a fresh
-// browser context so leftovers of a previous game never interfere.
-async function scenario(browser, name, fn) {
-  const P = await openPage(browser, VIEWPORTS[name], name, A.dpr);
-  await ownAddress(P, BASE);
-  await P.page.evaluateOnNewDocument(holdHook);
-  try {
-    await fn(P);
-  } catch (e) {
-    await shot(P, 'zz-failure').catch(() => {});
-    P.errors.push(`[${name}] ${e.message || e}`);
-  } finally {
-    await P.ctx.close().catch(() => {});
-  }
-  return P.errors;
 }
 
 // Home, new game, lobby, a full short game with all overlays.
@@ -289,28 +260,10 @@ async function trainingFlow(P) {
   await snap(P, '16-training');
 }
 
-async function run(name) {
-  const browser = await connect(A.cdp);
+const errors = await perViewport(A.cdp, names, async (browser, name) => {
   const errors = [];
-  try {
-    for (const flow of [mainFlow, bidFlow, trainingFlow]) errors.push(...(await scenario(browser, name, flow)));
-  } finally {
-    await browser.disconnect();
-  }
+  for (const flow of [mainFlow, bidFlow, trainingFlow]) errors.push(...(await scenario(browser, name, BASE, flow, { dpr: A.dpr })));
   return errors;
-}
-
-// Sequential by default: headless Chromium in its container has little shared memory.
-const parallel = Math.max(1, Number(process.argv[process.argv.indexOf('--parallel') + 1]) || 1);
-const errors = [];
-for (let i = 0; i < names.length; i += parallel) {
-  const batch = await Promise.all(names.slice(i, i + parallel).map(run));
-  errors.push(...batch.flat());
-}
+});
 proxy.close();
-if (errors.length) {
-  console.error('FAILED:\n' + errors.join('\n'));
-  process.exit(1);
-}
-console.log(`ok: ${names.length} viewports, screenshots in test/ui/out/`);
-process.exit(0); // the proxy may still hold keep-alive connections
+finish(errors, `ok: ${names.length} viewports, screenshots in test/ui/out/`);

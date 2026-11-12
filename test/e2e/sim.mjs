@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Plays full klaverjas games over the websocket protocol (docs/protocol.md,
 // games/klaverjas/README.md#protocol) and checks invariants on every update.
-// No dependencies: Node's global WebSocket. See README.md in this directory.
+// No dependencies: Node's global WebSocket, and lib.mjs for what the games'
+// scripts share. See README.md in this directory.
 //
 //   node test/e2e/sim.mjs --url ws://127.0.0.1:18200/ws --players 3 --humans 2 --trump gedraaid \
 //     --rules rotterdams --ai sterk --hands 4 [--training] [--reconnect] [--games 3]
@@ -10,6 +11,7 @@
 // Exits 0 when every game finished with all invariants intact, 1 otherwise.
 
 import { parseArgs } from 'node:util';
+import { wsURL, SEED_LINE } from './lib.mjs';
 
 const USAGE = `usage: sim.mjs [URL] [--url ws://HOST:PORT/ws] [--players 2-4] [--humans 1-players] [--trump utrechts|gedraaid]
        [--rules amsterdams|rotterdams] [--ai makkelijk|normaal|sterk] [--hands 4|8|...|24]
@@ -32,9 +34,6 @@ const LATE_VOTE = 'Die vraag staat niet (meer) open.';
 // The server's answer to a hand asked to look back at, at a table of three
 // or two (games/klaverjas/README.md#client--server).
 const ALONE_FOUR = "Terugkijken kan alleen met z'n vieren.";
-// The table's line at game over with the seed of the match, which no
-// message names before (docs/server.md#the-seed).
-const SEED_LINE = /^De seed van dit spel was (\d+)\.$/;
 
 let args;
 try {
@@ -68,16 +67,8 @@ if (opt.help) {
   process.exit(0);
 }
 
-// The websocket URL: --url, or a positional http(s)/ws(s) URL; /ws is added
-// to a bare host.
-function wsURL(raw) {
-  const u = new URL(raw || 'ws://127.0.0.1:18200/ws');
-  if (u.protocol === 'http:') u.protocol = 'ws:';
-  if (u.protocol === 'https:') u.protocol = 'wss:';
-  if (u.pathname === '/' || u.pathname === '') u.pathname = '/ws';
-  return u.toString();
-}
-const URL_WS = wsURL(opt.url || args.positionals[0]);
+// The websocket URL: --url, or a positional http(s)/ws(s) URL.
+const URL_WS = wsURL(opt.url || args.positionals[0] || 'ws://127.0.0.1:18200/ws');
 
 function oneOf(name, value, allowed, dflt) {
   const v = value ?? dflt;

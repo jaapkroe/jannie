@@ -10,7 +10,12 @@ checked; the first broken invariant stops that game with a message saying
 who saw what, where.
 
 The simulations need Node 22 or later (they use the built-in `WebSocket`)
-and nothing else.
+and nothing else. What they share is in `lib.mjs`: a seat's connection
+(`Seat`), seating a table of people (`seatTable`), and the wait for game
+over with its watch for a game that stalls (`untilOver`). Toepen's
+simulation extends `Seat` with its own checks and choices, and a later
+game's does the same; `sim.mjs`, the oldest, has its own player and loop
+and takes only the URL and the seed's line from it.
 
 ## Running it
 
