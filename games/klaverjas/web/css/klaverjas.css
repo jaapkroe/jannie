@@ -37,12 +37,6 @@
   color: #ff7a85;
 }
 
-.zij {
-  --team: var(--zij);
-  --team-hi: var(--zij-hi);
-  --team-lo: var(--zij-lo);
-}
-
 .tag {
   display: inline-block;
   padding: 1px 6px;
@@ -65,19 +59,7 @@
   color: var(--gold-ink);
 }
 
-/* ---------- home ---------- */
-
-#btn-train .icon {
-  color: var(--zij-hi);
-  background: rgba(239, 111, 90, 0.18);
-}
-
 /* ---------- lobby ---------- */
-
-.ls-bottom { bottom: 0; left: 50%; translate: -50% 0; }
-.ls-top { top: 0; left: 50%; translate: -50% 0; }
-.ls-left { left: 0; top: 50%; translate: 0 -50%; }
-.ls-right { right: 0; top: 50%; translate: 0 -50%; }
 
 .pname-sep {
   flex: none;
@@ -771,17 +753,6 @@
 .seat-bottom .bubble::after {
   bottom: -5px;
   left: 16px;
-}
-
-.bubble-go {
-  background: linear-gradient(180deg, #ffdb7a, #f2b632);
-  color: var(--gold-ink);
-  font-weight: 900;
-}
-
-.bubble-pass {
-  background: #e6e0d2;
-  color: #57524a;
 }
 
 /* centre: trick, stage, effects */
@@ -1489,47 +1460,9 @@
   visibility: hidden;
 }
 
+/* The coach bubble (app.css) stands on the player's row. */
 .coach {
-  position: absolute;
-  z-index: 16;
-  left: 50%;
   bottom: calc(100% + 4px);
-  translate: -50% 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  width: min(calc(100% - 20px), 540px);
-  padding: 9px 8px 9px 12px;
-  border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 251, 238, 0.97), rgba(250, 238, 206, 0.97));
-  color: #2b2210;
-  font-size: 13.5px;
-  line-height: 1.35;
-  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.8), 0 10px 26px rgba(0, 0, 0, 0.45);
-  animation: kj-rise 0.3s var(--ease);
-}
-
-.coach.is-tip {
-  box-shadow: 0 0 0 2px rgba(43, 179, 163, 0.85), 0 10px 26px rgba(0, 0, 0, 0.45);
-}
-
-.coach-ico {
-  font-size: 20px;
-  line-height: 1.1;
-}
-
-.coach-body {
-  flex: 1;
-  min-width: 0;
-  padding-top: 1px;
-}
-
-.coach-lbl {
-  color: #8a5a00;
-}
-
-.coach.is-tip .coach-lbl {
-  color: #0f6b60;
 }
 
 /* "Lees verder" / "Minder" under a clamped text (short landscape, see
@@ -1560,106 +1493,25 @@
   inset: -15px;
 }
 
-/* A lesson step's link to a section of the manual. */
 .coach-man {
-  position: relative;
-  display: flex;
-  width: fit-content;
-  align-items: center;
-  gap: 5px;
   margin: 5px 0 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: #8a5a00;
-  font-size: 12.5px;
-  font-weight: 900;
-  line-height: 1.5;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.coach-man .icon {
-  width: 15px;
-  height: 15px;
-  flex: none;
 }
 
 /* A larger target around the short link, but not over the text above it
    (a tap there reads the step). */
 .coach-man::before {
-  content: "";
-  position: absolute;
   inset: -3px -8px -10px;
 }
 
-.coach-x {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  flex: none;
-  margin: -4px -2px -4px 0;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.06);
-  color: #5a4a28;
-}
-
-/* A 44 px target around the small round button. */
-.coach-x::before {
-  content: "";
-  position: absolute;
-  inset: -7px;
-}
-
-.coach-x .icon {
-  width: 16px;
-  height: 16px;
-}
-
-/* Training, the last trick of a hand: the summary waits until the
-   explanation is read, or the ring has run out. */
+/* The button under a hand's last trick in training: the summary waits
+   until the explanation is read, or the ring has run out. */
 .coach-go {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
   margin: 7px 0 1px;
-  padding: 3px 12px 3px 4px;
-  border: 0;
-  border-radius: 999px;
-  background: #0f6b60;
-  color: #fff;
-  font: inherit;
-  font-weight: 800;
 }
 
 /* A 44 px target around the small button. */
 .coach-go::before {
-  content: "";
-  position: absolute;
   inset: -8px -4px;
-}
-
-.coach-go .ring-cd {
-  width: 20px;
-  height: 20px;
-}
-
-.coach-go .ring-bg {
-  stroke: rgba(255, 255, 255, 0.3);
-}
-
-.coach-go .ring-fg {
-  stroke: #fff;
-}
-
-/* A lesson step waits for Verder without a timer: no ring. */
-.coach-go.no-ring {
-  padding-left: 12px;
 }
 
 /* Trump and bid hints are shown inside the panel (.panel-hint), which
@@ -1670,8 +1522,8 @@
 
 /* Training with lessons: the part of the screen the step is about
    (table.js spotlight). An outline is drawn on the main thread, so its
-   pulse holds each of kj-spot's 15 values and is not redrawn at every
-   frame. */
+   pulse holds each of kj-spot's 15 values (app.css) and is not redrawn at
+   every frame. */
 .spot:not(.trick, .hand, .card),
 .trick.spot::before {
   outline: 3px solid var(--gold);
@@ -1710,26 +1562,6 @@
   height: calc(var(--trick-w) * 2.8);
   border-radius: 22px;
   pointer-events: none;
-}
-
-/* From 3 to 8 px and from full gold to 35% as ease-in-out goes, in 15
-   values: 0.6 px apart at most. */
-@keyframes kj-spot {
-  0% { outline-color: rgba(242, 193, 78, 1); outline-offset: 3px; }
-  6.67% { outline-color: rgba(242, 193, 78, 0.99); outline-offset: 3.05px; }
-  13.33% { outline-color: rgba(242, 193, 78, 0.97); outline-offset: 3.2px; }
-  20% { outline-color: rgba(242, 193, 78, 0.94); outline-offset: 3.47px; }
-  26.67% { outline-color: rgba(242, 193, 78, 0.89); outline-offset: 3.85px; }
-  33.33% { outline-color: rgba(242, 193, 78, 0.83); outline-offset: 4.33px; }
-  40% { outline-color: rgba(242, 193, 78, 0.75); outline-offset: 4.89px; }
-  46.67% { outline-color: rgba(242, 193, 78, 0.68); outline-offset: 5.5px; }
-  53.33% { outline-color: rgba(242, 193, 78, 0.6); outline-offset: 6.11px; }
-  60% { outline-color: rgba(242, 193, 78, 0.52); outline-offset: 6.67px; }
-  66.67% { outline-color: rgba(242, 193, 78, 0.46); outline-offset: 7.15px; }
-  73.33% { outline-color: rgba(242, 193, 78, 0.41); outline-offset: 7.53px; }
-  80% { outline-color: rgba(242, 193, 78, 0.38); outline-offset: 7.8px; }
-  86.67% { outline-color: rgba(242, 193, 78, 0.36); outline-offset: 7.95px; }
-  93.33%, 100% { outline-color: rgba(242, 193, 78, 0.35); outline-offset: 8px; }
 }
 
 .panel-hint {
@@ -3234,12 +3066,6 @@
   .m-over.with-review .over-last {
     display: none;
   }
-}
-
-/* ---------- chat ---------- */
-
-.msg-name.zij {
-  color: var(--zij-hi);
 }
 
 /* ---------- responsive table ---------- */

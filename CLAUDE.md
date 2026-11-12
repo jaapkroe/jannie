@@ -191,8 +191,9 @@ node toepen-screens.mjs --url http://127.0.0.1:18400 [--only phone,desktop] [--d
 check and the check's flags): at every screenshot it compares the computed
 style and box of every element with those under the stylesheets the site's
 `index.html` linked at `--base` (default `main`), and exits 1 on a
-difference. Run it for a change to the stylesheets that must not change
-what is on screen:
+difference. A game of the overlay has its own stylesheets at that revision
+of the overlay's repository, so name one both repositories have. Run it for
+a change to the stylesheets that must not change what is on screen:
 
 ```sh
 cd test/ui
