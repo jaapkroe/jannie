@@ -234,7 +234,6 @@ export function chartBox({empty, title})  // → the element with set(spec): a <
 export const COLORS;                 // the eight categorical slots, in their fixed order
 export function chart(spec, width)   // → the chart's element (legend, svg, tooltip); null before the first round
 export function swatch(color)        // → a small mark in color beside a name (.chart-sw)
-export function gridStep(range)      // the grid's step: 1, 2 or 5 times a power of ten, at most five steps
 // spec: {names, colors?, pts, ends?, out?, limit?, rings?, ringLabel?, tips, label}
 //   names: the lines, in the legend's order; colors: per line a CSS colour (default COLORS in order);
 //   pts[i][k]: line k's score after i rounds (pts[0] before the first); ends[k]: the last i line k
