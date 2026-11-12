@@ -141,7 +141,7 @@ function smallHeadline(r, w, s) {
 // The side a scorer played on in a finished hand r (see sideOf): its team
 // with four players, itself with two, with three 0 for the soloist
 // (r.trumpBy) and 1 for the other two.
-export function rowSide(s, r, k) {
+function rowSide(s, r, k) {
   const n = seatCount(s);
   return n === 3 ? (k === r.trumpBy ? 0 : 1) : k;
 }

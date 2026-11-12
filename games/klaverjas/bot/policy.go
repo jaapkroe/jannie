@@ -304,9 +304,6 @@ func (m *mover) partnerHigh(s game.Suit) (game.Card, bool) {
 	return game.Card{}, false
 }
 
-// smallCards is the 7, 8 and 9 of suit s: the cards of kleintje boer.
-func smallCards(s game.Suit) cardSet { return 0b111 << (uint(s) * 8) }
-
 // smallSignalCard returns the lowest side 7, 8 or 9 to lead as kleintje boer.
 func (m *mover) smallSignalCard() (game.Card, bool) {
 	trump := m.t.trump

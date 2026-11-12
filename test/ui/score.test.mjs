@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  course, points, matchWinner, streaks, runs, passes, startStake, defaultGain, validRound, standings, namesError, cleanName, cleanCode, chartSpec, LIJN,
+  course, points, matchWinner, streaks, runs, startStake, defaultGain, validRound, standings, namesError, cleanName, cleanCode, chartSpec, LIJN,
 } from '../../games/toepen/web/js/scorecalc.js';
 
 // A round of n players: w won, gains as given, who went away.
@@ -38,7 +38,6 @@ test('lijntoepers: going away rounds in a row', () => {
   assert.deepEqual(streaks(s).map(r => r[1]), [1, 2, 3, 0, 1]);
   assert.deepEqual(streaks(s).map(r => r[2]), [0, 0, 0, 1, 2]);
   assert.deepEqual(runs(s), [0, 1, 2]);
-  assert.deepEqual(passes(s), [0, 4, 2]);
   assert.ok(runs(s)[2] >= LIJN);
 });
 

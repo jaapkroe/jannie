@@ -249,16 +249,6 @@ func (c *client) readLoop(ctx context.Context) {
 	}
 }
 
-// isClosed reports whether the connection is closing.
-func (c *client) isClosed() bool {
-	select {
-	case <-c.quit:
-		return true
-	default:
-		return false
-	}
-}
-
 // tokenBucket is a simple rate limiter: max tokens, refilled at rate/s.
 type tokenBucket struct {
 	tokens, max, rate float64

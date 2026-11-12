@@ -5,9 +5,9 @@
 // test/ui/toepen.test.mjs.
 
 // The order within a suit, low to high: boer, vrouw, heer, aas, 7, 8, 9, 10.
-export const STRENGTH = { J: 0, Q: 1, K: 2, A: 3, 7: 4, 8: 5, 9: 6, T: 7 };
+const STRENGTH = { J: 0, Q: 1, K: 2, A: 3, 7: 4, 8: 5, 9: 6, T: 7 };
 export const strength = code => STRENGTH[code?.[0]] ?? -1;
-export const isPlaatje = code => strength(code) >= 0 && strength(code) < 4;
+const isPlaatje = code => strength(code) >= 0 && strength(code) < 4;
 
 // A witte was is four pictures (boer, vrouw, heer, aas), a vuile was three
 // and a 7; '' for neither.

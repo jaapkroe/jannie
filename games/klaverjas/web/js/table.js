@@ -1958,7 +1958,7 @@ export function openLastTrick() {
 
 // Reads what the badge shows: during the trump banner the table already
 // shows the new trump, while app.s follows once the banner is done.
-export function openTrumpInfo() {
+function openTrumpInfo() {
   const s = app.view || app.s;
   if (!s) return;
   sound.play('click');
@@ -2399,7 +2399,7 @@ function openReview() {
 // before the player's card of a moment {hand, trick} (at the deal for a
 // trump choice or bid). A step is the number of cards played: at 4 × n
 // trick n lies complete.
-export function openReplay(s, { hands, moment = null, owner = 'review' }) {
+function openReplay(s, { hands, moment = null, owner = 'review' }) {
   if (!hands?.length) return null;
   sound.play('click');
   const seats = [0, 1, 2, 3].map(k => (s.you + k) % 4);

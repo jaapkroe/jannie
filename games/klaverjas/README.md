@@ -1259,7 +1259,7 @@ scorerOf(s, seat), myScorer(s), scorerName(s, k), scorerOrder(s)  // the scores 
 ROEM_NAMES, roemTotal(roem), roemText(roem)  // roem by name, in points, in words ("driekaart (20), stuk (20)")
 variantText(opts)                       // "Utrechts/Amsterdams", "Met z'n drieën, Rotterdams"
 handHeadline(r, w, s)                   // the hand summary's headline from the viewer's side: {t, sub, cls}
-rowSide(s, r, k), rowMarks(s, r, k)     // the side scorer k played on in finished hand r; what its column shows: {nat, pit, roem}
+rowMarks(s, r, k)                       // what scorer k's column shows for finished hand r: {nat, pit, roem}
 playedBy(s, r)                          // who played hand r: "jij", "Wij"/"Zij" (4), else the player's name
 chartSpec(s)                            // the Scorebord's chart (docs/frontend.md#the-score-chart); null before the first hand
 reviewVerdict, luckText, pointsText, momentWhere, strongLine, missedLine, fineLine, handSum, outcomeLine,
