@@ -388,7 +388,10 @@ export function countdownRing() {
       const left = Math.max(0, Math.min(60000, nextAt - Date.now()));
       a?.cancel();
       fg.style.strokeDashoffset = '0';
-      if (left > 0 && fg.animate) a = fg.animate([{ strokeDashoffset: 0 }, { strokeDashoffset: C }], { duration: left, fill: 'forwards' });
+      // In 160 steps, half a pixel each on a ring of 30 px: the stroke
+      // restyles and repaints on the main thread at every step
+      // (docs/frontend.md#motion-and-glows).
+      if (left > 0 && fg.animate) a = fg.animate([{ strokeDashoffset: 0 }, { strokeDashoffset: C }], { duration: left, fill: 'forwards', easing: 'steps(160)' });
     },
   };
 }
