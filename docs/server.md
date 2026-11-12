@@ -83,6 +83,9 @@ which bots sit where, whether the match starts at once and whether the
 table is fixed ("Rooms without a lobby" below). A game without it gets
 ordinary rooms.
 
+A `Play` that implements `Speeder` may play on faster while nobody at the
+table has a decision left to wait for ("Pacing" below).
+
 ### Table options
 
 The options every game has (`TableOpts`), JSON keys on the wire; the
@@ -102,7 +105,7 @@ same seed and options give the same cards, whatever the players do.
 
 `*Table` is the game's handle on its room: reads (`Code`, `Opts`,
 `Options`, `Players`, `Deals`, `MatchID`, `DisplayName`,
-`BotPlays`, `HumanCount`, `InHand`, `Pending`, `PauseEnds`, `Pace`,
+`BotPlays`, `HumanCount`, `Present`, `InHand`, `Pending`, `PauseEnds`, `Pace`,
 `Logger`, `Shared`, `Current`) and the moves of the table (`SetPhase`,
 `SetHand`, `Pause`, `EndPause`, `OpenTurn`, `Emit`, `Later`, `Think` for a
 question everyone answers at once, `Background` for an analysis off the
@@ -537,6 +540,16 @@ The hand summary also ends as soon as every human still connected is
 the Game API says how long its summary waits (`Table.Summary`); klaverjas's
 waits for `ready` when one person is at the table
 ([games/klaverjas/README.md, "Pauses"](../games/klaverjas/README.md#pauses)).
+
+A game on the Game API may play on faster (`Speeder`): the table divides
+the game's delays by the `Speed()` of the match, asked whenever a delay
+starts (a pause, the summary, a bot's think time, `Table.Later`), so a
+change holds from the next delay on and a delay that runs keeps its
+length. Only the game's own pace goes faster: the delays about people
+(the takeover question's 10 s, the host's 30 s) and the gaps of bot chat
+keep theirs. Toepen plays the rest of a match out ten times as fast once
+only AI players are left and everyone at the table chose it
+([games/toepen/README.md, "Only AI players left"](../games/toepen/README.md#only-ai-players-left)).
 
 ## Limits
 

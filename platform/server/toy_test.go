@@ -1141,3 +1141,79 @@ func TestToyCleanText(t *testing.T) {
 		t.Errorf("schrijf: %q", got.Text)
 	}
 }
+
+// toyFast is the toy game played four times as fast in its even rounds
+// (server.Speeder). It keeps how the table timed the first pause and the
+// first summary of every round.
+type toyFast struct {
+	toy
+	timed chan toyTimed
+}
+
+// toyTimed is a pause or summary as the table timed it: how long it lasts
+// from now, and the unscaled delay the game asked for.
+type toyTimed struct {
+	round       int
+	summary     bool
+	lasts, pace time.Duration
+}
+
+func (g toyFast) New(t *server.Table) server.Play { return &toyFastPlay{toyPlay: &toyPlay{t: t}, g: g} }
+
+type toyFastPlay struct {
+	*toyPlay
+	g    toyFast
+	seen [2]int // the round whose pause, summary is kept
+}
+
+func (p *toyFastPlay) Speed() float64 {
+	if p.round%2 == 0 {
+		return 4
+	}
+	return 1
+}
+
+// State also keeps the pause or summary the update shows: the table has
+// just timed it.
+func (p *toyFastPlay) State(i cards.Seat) any {
+	sh, pace := p.t.Shared(i), p.t.Pace()
+	switch {
+	case p.t.Pending() == stepShow && p.seen[0] != p.round:
+		p.seen[0] = p.round
+		p.g.timed <- toyTimed{round: p.round, lasts: time.Until(p.t.PauseEnds()), pace: pace.Trick}
+	case sh.Phase == "handEnd" && sh.NextAt != 0 && p.seen[1] != p.round:
+		p.seen[1] = p.round
+		p.g.timed <- toyTimed{round: p.round, summary: true, lasts: time.Until(time.UnixMilli(sh.NextAt)), pace: pace.Summary}
+	}
+	return p.toyPlay.State(i)
+}
+
+// TestToySpeed: the table divides the pauses and summaries of a game that
+// plays on faster (server.Speeder) by its speed, from the next one it
+// times on; at speed 1 they are the tempo's.
+func TestToySpeed(t *testing.T) {
+	t.Parallel()
+	g := toyFast{timed: make(chan toyTimed, 8)}
+	srv := servertest.Start(t, g)
+	h := srv.Dial()
+	h.Create("Jaap", map[string]any{"rounds": 2}, true)
+	playToy(t, h, nil)
+	if len(g.timed) != 4 {
+		t.Fatalf("%d pauses and summaries timed, want 4", len(g.timed))
+	}
+	for range 4 {
+		x := <-g.timed
+		want := time.Duration(float64(x.pace) * servertest.Scale)
+		least := want / 2
+		if x.round == 2 {
+			// A quarter is under 2 ms here, so only its upper bound,
+			// far below the tempo's, is checked.
+			want, least = want/4, 0
+		}
+		// Timed just before: a little less than want, never half. A
+		// summary's end is in whole milliseconds.
+		if x.lasts > want+time.Millisecond || x.lasts < least {
+			t.Errorf("round %d, summary %v: lasts %v, want %v", x.round, x.summary, x.lasts, want)
+		}
+	}
+}

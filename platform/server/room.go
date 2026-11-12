@@ -218,9 +218,25 @@ func (r *room) later(d time.Duration, f func()) {
 	time.AfterFunc(max(d, 0), func() { r.post(f) })
 }
 
-// scaled applies the server's time scale (-fast) to a game delay.
+// scaled applies the server's time scale (-fast) to a delay.
 func (r *room) scaled(d time.Duration) time.Duration {
 	return time.Duration(float64(d) * r.srv.scale)
+}
+
+// paced is a delay of the game as it runs now: scaled, and divided by the
+// speed of a game that plays on faster (Speeder). The delays about people
+// (askAfter, hostGrace) are scaled only.
+func (r *room) paced(d time.Duration) time.Duration {
+	d = r.scaled(d)
+	if r.x == nil {
+		return d
+	}
+	if sp, ok := r.x.p.(Speeder); ok {
+		if f := sp.Speed(); f > 1 {
+			d = time.Duration(float64(d) / f)
+		}
+	}
+	return d
 }
 
 // players is the number of seats at the table.

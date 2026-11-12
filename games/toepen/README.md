@@ -218,6 +218,50 @@ toepen's bios; it does not import klaverjas's packages. Room phases:
   `t` (toep), `o` (overtoep), `a1`/`a0` (went along or passed) or a card;
   then `end` (`total`: the points, `winner`: the seat).
 
+## Only AI players left
+
+A match goes on until one player is left, so the people at the table may
+all be out while AI players play on. From then on everyone at the table
+has a choice (`aionly.go`):
+
+- **When.** The match is not over and a bot plays every seat still in it:
+  an AI player, or the AI that took a person's seat with the table's
+  consent
+  ([docs/server.md, "Takeover consent"](../../docs/server.md#takeover-consent)).
+  A seat the game waits for (its player dropped out or left, no AI yet) is
+  a person's. The state has `aiOnly` from the summary of the round the
+  last person went out in, through the summary of the last round. In the
+  summary of the last round it is there only when no person was dealt
+  into that round, so the last round of a person (one person against one
+  AI player, say) never shows the choice.
+- **Versnellen** (`fast`) and **Toekijken** (`watch`): message
+  `aiOnly` `{choice}`. A choice holds for the match and may be changed;
+  another word gets `ongeldig` ("Kies versnellen of toekijken."), a
+  choice while a person still plays is ignored. The AI players play the
+  rest out fast (`aiOnly.fast`) while everyone at the table and connected
+  chose `fast`, at least one: who left or dropped out does not count, and
+  back at the table their kept choice counts again (a choice is the
+  seat's: someone who joins in a left seat starts with it and may change
+  it). One person who keeps watching, or has not
+  chosen, keeps the table's tempo; someone alone with AI players decides
+  alone.
+- **Fast** is ten times the table's tempo (`fastSpeed`), through
+  `server.Speeder`
+  ([docs/server.md, "Pacing"](../../docs/server.md#pacing)): the think
+  times of the bots, the pauses of a round, the time for a was and the
+  round summary. Every card is still shown, and the match ends on the
+  normal game over. A change of the choices holds from the next delay on;
+  a pause that runs finishes at its old pace.
+- **Nieuw spel** is the site's, with no message of its own and no
+  question in between: it sends the table's `leave` and then `create`
+  with the room's options (without the seed), the player's name and
+  `start`: a new table with AI players and the same rules, at once, also
+  when more people sat at the old table (they keep their own choice
+  there). The match left behind goes on for those still at the table;
+  once every person has left, the room is removed after 5 min
+  ([docs/server.md, "Rooms and codes"](../../docs/server.md#rooms-and-codes))
+  and the game log has its `close` and no `end`.
+
 ## Protocol
 
 Client → server, besides the table's messages of
@@ -226,8 +270,10 @@ Client → server, besides the table's messages of
 `call`, `rtc`, `rematch`, `lobby`, `leave`, `ping`): `play` `{card}`,
 `discard` `{cards}` (the koningsspel: exactly `lay` cards), `toep`,
 `overtoep` (asked about a toep), `answer` `{play}` (true: go
-along), `was` `{play}` (true: claim), `check` `{play}` (true: check) and `why`
-(the expert's question, [Redenering van de AI](#redenering-van-de-ai)). Klaverjas's messages (`trump`,
+along), `was` `{play}` (true: claim), `check` `{play}` (true: check), `why`
+(the expert's question, [Redenering van de AI](#redenering-van-de-ai)) and
+`aiOnly` `{choice}` (`fast` or `watch`,
+[Only AI players left](#only-ai-players-left)). Klaverjas's messages (`trump`,
 `bid`, `handReview`, `tipRead`, `feedback`, …) are unknown here ("Dat bericht
 ken ik niet."), so the shell's feedback form is not offered on this site. Errors as
 [docs/protocol.md, "Error codes"](../../docs/protocol.md#error-codes) (`niet-jouw-beurt`, `ongeldig` with the engine's Dutch text).
@@ -257,10 +303,12 @@ turn to play), `canToep`, `trick` (`{leader, cards, winner}`; the trick
 just taken until `collect`; before the first card `leader` is who will
 lead), `lastTrick`, `tricks` (taken this round), `rounds` (the score
 sheet: `{hand, dealer, winner, stake, tricks, boer, koning, gains, points,
-out}`, `gains` -1 for the boer) and `courses` (at game over, else empty:
+out}`, `gains` -1 for the boer), `courses` (at game over, else empty:
 per round of `rounds`, what everyone saw happen in it, in order, as the
 events below: `claims`, `wasDone`, `armoede`, `discard`, `toep`,
-`answer`, `play`, `trick`).
+`answer`, `play`, `trick`) and `aiOnly` (null while a person still plays;
+else `{choice, fast}`: per seat `""`, `fast` or `watch`, and whether the
+rest is played out fast, [Only AI players left](#only-ai-players-left)).
 
 Events: `deal` `{handNo, dealer, koning}`; `discard` `{seat, n}`; `claims` `{seats}`; `check`
 `{seat, claimant, check}`; `wasDone` `{claimant, checker, kind, cards,
@@ -391,6 +439,17 @@ sterk decision takes about 4 ms.
   bots' rules of thumb), *Begrippen* and *Bediening*, which ends with
   *Privacy*: what the game log keeps of a game and for how long
   ([docs/server.md, "Game log"](../../docs/server.md#game-log)).
+- Only AI players left ([Only AI players left](#only-ai-players-left)):
+  in the panel of the takeover question (which goes first when both are
+  open) *Alleen AI-spelers spelen nog.* with three buttons, each one tap:
+  *Toekijken*, *Versnellen* and *Nieuw spel*; your own choice of the first
+  two has the gold ring. After your *Versnellen* with others still to
+  choose: *Versnellen: wacht op Kees.*; played out fast: *De AI-spelers
+  spelen versneld uit.*, and the summary of a round is not shown (it would
+  be gone before it is read). There is no button to the home page: the
+  menu's *Spel verlaten* is the way there, as always. Sound is as always
+  too: the shell already hurries sounds and animations when updates queue
+  up.
 - Expert mode: the robot in the top bar and the sheet *Redenering van de
   AI* ([Redenering van de AI](#redenering-van-de-ai)).
 - **The overview of a round** (`openCourse`, from `R.courseView`): at

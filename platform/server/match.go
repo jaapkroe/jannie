@@ -73,10 +73,10 @@ func (r *room) startMatch() {
 	r.greet()
 }
 
-// pause starts a pause of d (scaled) that ends with runPending.
+// pause starts a pause of d (paced) that ends with runPending.
 func (r *room) pause(s step, d time.Duration) {
 	r.pending = s
-	r.pendingAt = time.Now().Add(r.scaled(d))
+	r.pendingAt = time.Now().Add(r.paced(d))
 }
 
 // openTurn marks the start of a turn: think time for bots and the hint
@@ -103,7 +103,7 @@ func (r *room) thinkTime(i cards.Seat) time.Duration {
 	if r.gp.single() {
 		f *= 0.6
 	}
-	return r.scaled(time.Duration(float64(r.pace().think) * f))
+	return r.paced(time.Duration(float64(r.pace().think) * f))
 }
 
 // drive schedules whatever happens next: the end of a pause, a bot's move,

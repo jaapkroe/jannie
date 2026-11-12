@@ -37,6 +37,9 @@ type play struct {
 	told       int           // the settled claims of the round told the table (wasDone)
 	stockTold  bool          // the table was told the stock ran out for a vuile was
 	poorAt     int           // the round whose armoede was announced
+
+	// Per seat: fast or watch, chosen once only AI players play on (aionly.go).
+	choice map[cards.Seat]string
 }
 
 // Room phases of toepen, besides the table's (lobby, handEnd, gameOver).
@@ -289,6 +292,8 @@ type toepMsg struct {
 	Card  string   `json:"card"`
 	Cards []string `json:"cards"`
 	Play  *bool    `json:"play"`
+	// aiOnly: fast or watch.
+	Choice string `json:"choice"`
 }
 
 func (p *play) Move(i cards.Seat, m server.Msg) error {
@@ -317,6 +322,8 @@ func (p *play) Move(i cards.Seat, m server.Msg) error {
 		a = action{kind: actOvertoep}
 	case "why":
 		return p.askWhy(i)
+	case "aiOnly":
+		return p.choose(i, msg.Choice)
 	case "answer", "was", "check":
 		if msg.Play == nil {
 			return errors.New(map[string]string{

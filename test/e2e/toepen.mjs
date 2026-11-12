@@ -21,7 +21,7 @@ const PHASES = new Set(['lobby', ...IN_HAND, 'handEnd', 'gameOver']);
 const KEYS = ['code', 'phase', 'opts', 'you', 'host', 'players', 'turn', 'takeover', 'nextAt', 'winner', 'handNo',
   'dealer', 'voorhand', 'stake', 'toeper', 'armoedeToep', 'koning', 'size', 'wasRound', 'canRaise', 'mustStay', 'passCost', 'open', 'lay', 'laid', 'points',
   'status', 'armoede', 'washed', 'answered', 'claims', 'canClaim', 'claimant', 'asking', 'checks', 'stock', 'hand',
-  'canToep', 'trick', 'lastTrick', 'tricks', 'rounds', 'courses'];
+  'canToep', 'trick', 'lastTrick', 'tricks', 'rounds', 'courses', 'aiOnly'];
 const OPTS = ['players', 'ai', 'tempo', 'seed', 'limit', 'was', 'armoede', 'koning', 'boer', 'lijntoep', 'bluf'];
 
 const { values: o, positionals } = parseArgs({

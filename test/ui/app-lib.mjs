@@ -42,6 +42,7 @@ export function args() {
     url: get('url', 'http://127.0.0.1:18300'),
     cdp: get('cdp', 'http://127.0.0.1:9301'),
     only: get('only', ''),
+    flows: get('flows', ''),
     dpr: Number(get('dpr', 0)),
     has: name => a.includes('--' + name),
   };
@@ -203,10 +204,14 @@ export async function pressEl(P, el) {
 // true for, that update still delivered; kjHeld() says whether they are
 // held; kjRelease() delivers them, up to the update a new kjHoldWhen is
 // true for. kjPatch(m) may change a message before the app gets it, and
-// returns true when it did.
+// returns true when it did. kjSend(m) sends a message of the script's own
+// over the app's socket (from kjHoldWhen: an answer that reaches the
+// server before it plays on behind the hold), and what the app sends is
+// kept in kjSent once the script made that an array.
 export function holdHook() {
   const held = [];
   let hold = false;
+  let sock = null;
   const deliver = (f, e) => {
     const m = (window.kjHoldWhen || window.kjPatch) && JSON.parse(e.data);
     if (m && window.kjPatch?.(m)) e = new MessageEvent('message', { data: JSON.stringify(m) });
@@ -215,11 +220,17 @@ export function holdHook() {
   };
   window.kjHeld = () => hold;
   window.kjRelease = () => { hold = false; while (held.length && !hold) deliver(...held.shift()); };
+  window.kjSend = m => sock?.send(JSON.stringify(m));
   window.WebSocket = class extends window.WebSocket {
     set onmessage(f) {
+      sock = this;
       super.onmessage = f && (e => { if (hold) held.push([f, e]); else deliver(f, e); });
     }
     get onmessage() { return super.onmessage; }
+    send(data) {
+      if (typeof data === 'string') window.kjSent?.push(JSON.parse(data));
+      super.send(data);
+    }
   };
 }
 
