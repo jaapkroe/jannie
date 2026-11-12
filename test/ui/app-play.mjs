@@ -3,7 +3,7 @@
 // is over. Then checks the score sheet and totals, and that the chat names
 // the seed at game over and not at the start (shots chat-start, game-over).
 //
-//   cd test/ui && node app-play.mjs [--url http://127.0.0.1:18100] [--cdp URL] [--only phone,desktop] [--gedraaid] [--multi] [--training]
+//   cd test/ui && node app-play.mjs [--url http://127.0.0.1:18300] [--cdp URL] [--only phone,desktop] [--gedraaid] [--multi] [--training]
 //     [--players 2|3|4]
 //
 // Phone uses touch with two taps per card; desktop uses single mouse clicks.

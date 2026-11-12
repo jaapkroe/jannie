@@ -1,9 +1,9 @@
 // One game's site as the browser sees it: the union of platform/web and
 // the web/ of the game's folder (docs/frontend.md#one-site-per-game), for
-// the static servers of the tests (mock/server.mjs, manual-app.mjs,
-// sound-render.mjs, ...). The two trees must not share a path;
-// test/sites.test.mjs checks that. Also the games themselves, the folders
-// the shared tests go through, and what those tests need to know of each.
+// the static servers of the tests (manual-app.mjs, sound-render.mjs, ...).
+// The two trees must not share a path; test/sites.test.mjs checks that.
+// Also the games themselves, the folders the shared tests go through, and
+// what those tests need to know of each.
 import fs from 'node:fs';
 import module from 'node:module';
 import path from 'node:path';
