@@ -170,9 +170,11 @@ summary by hand the countdown a table of more people has
 (`countdownPatch`).
 
 `app-screens.mjs`, `app-play.mjs`, `app-checks.mjs` and `app-perf.mjs` are
-klaverjas's. `app-lib.mjs`, their shared helpers, is also used by
-`toepen-screens.mjs`, `css-same.mjs` and `og-image.mjs`. The unit tests
-in `test/ui` need no browser: `app-icons.test.mjs` checks every site's
+klaverjas's. `app-lib.mjs` has the helpers every game's browser script
+shares (pages and viewports, presses and waits, `holdHook`, screenshots,
+a script's flows per viewport) and `site.mjs` a static server of one
+game's site; a new script uses them and keeps only its own flows. The
+unit tests in `test/ui` need no browser: `app-icons.test.mjs` checks every site's
 icons and link preview, `app-util.test.mjs` tests the shell's `util.js`,
 `cards-unit.test.mjs` its `cards.js`, `klaverjas.test.mjs` klaverjas's
 `rules.js`, `toepen.test.mjs` toepen's and `score.test.mjs` toepen's
@@ -202,9 +204,12 @@ node css-same.mjs --base main toepen-screens.mjs --url http://127.0.0.1:18400
 node css-same.mjs --base main --waits app-checks.mjs --only lessons   # also at every condition waitFor sees
 ```
 
-Other scripts start their own Chromium: `manual-shot.mjs` (18120, 9321),
-`manual-app.mjs` (18121, 9321), `sound-render.mjs` (9331); `cards-shot.mjs`
-needs `scripts/chrome 9311` and a static server on 18110.
+Other scripts serve the site themselves and start their own Chromium
+when none listens on their port (`ownBrowser` in `app-lib.mjs`):
+`manual-shot.mjs` (`HTTP_PORT` 18120, `CDP_PORT` 9321), `manual-app.mjs`
+(`HTTP_PORT` 18121, `CDP_PORT` 9321) and `sound-render.mjs`
+(`CHROME_PORT` 9331); `cards-shot.mjs` needs `scripts/chrome 9311` and a
+static server on 18110.
 
 - **In a git worktree**, link the main checkout's packages
   (`ln -s <main checkout>/test/ui/node_modules test/ui/node_modules`;

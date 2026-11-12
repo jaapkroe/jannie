@@ -1,8 +1,11 @@
-// Shared helpers for the app browser checks (app-screens.mjs, app-play.mjs,
-// app-checks.mjs, toepen-screens.mjs; css-same.mjs uses its hooks): connect
-// to scripts/chrome, give every page an address of its own, open isolated
-// pages per viewport, collect errors, tap like a finger or click like a
-// mouse, and save screenshots.
+// Shared helpers for the browser checks of every game (app-screens.mjs,
+// app-play.mjs, app-checks.mjs, toepen-screens.mjs, the manual's and the
+// sound's scripts; css-same.mjs uses its hooks): connect to scripts/chrome,
+// give every page an address of its own, open isolated pages per viewport,
+// collect errors, tap like a finger or click like a mouse, hold the
+// server's messages, save screenshots, and run a script's flows per
+// viewport.
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
@@ -10,7 +13,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
 
-export const OUT = path.join(path.dirname(fileURLToPath(import.meta.url)), 'out');
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+export const OUT = path.join(HERE, 'out');
 
 // Where a tool that rides along with a check (css-same.mjs) hooks in, each a
 // list of async functions: page(P) for every new page before it loads
@@ -98,6 +102,31 @@ export async function connect(cdp) {
   const res = await fetch(cdp + '/json/version');
   const { webSocketDebuggerUrl } = await res.json();
   return puppeteer.connect({ browserWSEndpoint: webSocketDebuggerUrl, defaultViewport: null, protocolTimeout: 120000 });
+}
+
+// For a script with a Chromium of its own: connects to the one on CDP
+// port, after starting scripts/chrome there when none listens (one that
+// listens is never replaced). stop() disconnects, and stops a Chromium
+// started here; one that was started and did not come up is stopped too.
+export async function ownBrowser(port) {
+  const cdp = `http://127.0.0.1:${port}`;
+  const listens = () => fetch(cdp + '/json/version').then(r => r.ok, () => false);
+  const halt = () => { try { execFileSync('podman', ['stop', `kj-chrome-${port}`], { stdio: 'ignore' }); } catch { /* gone */ } };
+  const started = !(await listens());
+  if (started) {
+    execFileSync(path.join(HERE, '../../scripts/chrome'), [String(port)], { stdio: ['ignore', 2, 2] });
+    for (let i = 0; i < 100 && !(await listens()); i++) await sleep(200);
+  }
+  let browser;
+  try { browser = await connect(cdp); } catch (e) {
+    if (started) halt();
+    throw new Error(`no Chromium on port ${port}: ${e.message || e}`);
+  }
+  const stop = async () => {
+    await browser.disconnect().catch(() => {});
+    if (started) halt();
+  };
+  return { browser, stop };
 }
 
 // Isolated page (own storage) with error collection.
@@ -188,10 +217,18 @@ export function holdHook() {
   window.kjRelease = () => { hold = false; while (held.length && !hold) deliver(...held.shift()); };
   window.WebSocket = class extends window.WebSocket {
     set onmessage(f) {
-      super.onmessage = e => { if (hold) held.push([f, e]); else deliver(f, e); };
+      super.onmessage = f && (e => { if (hold) held.push([f, e]); else deliver(f, e); });
     }
+    get onmessage() { return super.onmessage; }
   };
 }
+
+// With holdHook, from the script: holdEvent holds the server's messages
+// from the update with an event of this type, held says whether they are
+// held, and release delivers them.
+export const holdEvent = (P, type) => P.page.evaluate(t => { window.kjHoldWhen = (s, m) => m.ev?.type === t; }, type);
+export const held = P => P.page.evaluate(() => !!window.kjHeld?.());
+export const release = P => P.page.evaluate(() => window.kjRelease?.());
 
 // For page.evaluate, with holdHook: the hand summary's countdown, which the
 // server leaves out for one person at the table, set by hand to the 12 s a
@@ -225,6 +262,42 @@ export async function shot(P, label) {
       await sleep(400);
     }
   }
+}
+
+// A screenshot with the overflow check, said on the console.
+export async function snap(P, label) {
+  await sleep(120);
+  await shot(P, label);
+  await checkOverflow(P, label);
+  console.log(`  ${P.name}: ${label}`);
+}
+
+// Whether the page has an element for the selector, and whether it is drawn.
+export const has = (P, sel) => P.page.evaluate(s => !!document.querySelector(s), sel);
+export const shown = (P, sel) => P.page.evaluate(s => !!document.querySelector(s)?.getClientRects().length, sel);
+
+// Closes the open dialog.
+export async function closeModal(P) {
+  await P.page.keyboard.press('Escape');
+  await sleep(320);
+}
+
+// For page.evaluate: the elements under the one for sel that reach past
+// its right edge (at most five, as tag.class), but for those in a box that
+// scrolls sideways on its own.
+export function wideIn(sel) {
+  const root = document.querySelector(sel);
+  const edge = root.getBoundingClientRect().right;
+  const inScroller = el => {
+    for (let p = el.parentElement; p && p !== root; p = p.parentElement) {
+      if (['auto', 'scroll'].includes(getComputedStyle(p).overflowX)) return true;
+    }
+    return false;
+  };
+  const wide = [...root.querySelectorAll('*')]
+    .filter(el => !inScroller(el) && el.getBoundingClientRect().right > edge + 1)
+    .map(el => `${el.tagName.toLowerCase()}.${el.className}`.slice(0, 60));
+  return [...new Set(wide)].slice(0, 5);
 }
 
 // Fails when the document scrolls sideways or an element sticks out.
@@ -300,4 +373,55 @@ export async function playLegal(P, prefer = '') {
     }
   }
   return code;
+}
+
+// One flow of a screens script on a page of its own: the viewport of this
+// name, an address of its own, init and holdHook in the page before the
+// app. Returns the page's errors, with a failure of fn among them and a
+// screenshot of it.
+export async function scenario(browser, name, base, fn, { label = name, dpr = 0, init } = {}) {
+  const P = await openPage(browser, VIEWPORTS[name], label, dpr);
+  await ownAddress(P, base);
+  if (init) await P.page.evaluateOnNewDocument(init);
+  await P.page.evaluateOnNewDocument(holdHook);
+  try {
+    await fn(P);
+  } catch (e) {
+    await shot(P, 'zz-failure').catch(() => {});
+    P.errors.push(`[${label}] ${e.message || e}`);
+  } finally {
+    await P.ctx.close().catch(() => {});
+  }
+  return P.errors;
+}
+
+// The end of a screens script: each(browser, name), which gives the errors
+// of one viewport, for every name on a connection of its own, one at a
+// time or `--parallel N` at once (headless Chromium in its container has
+// little shared memory). Returns the errors.
+export async function perViewport(cdp, names, each) {
+  const run = async name => {
+    const browser = await connect(cdp);
+    try {
+      return await each(browser, name);
+    } finally {
+      await browser.disconnect();
+    }
+  };
+  const parallel = Math.max(1, Number(process.argv[process.argv.indexOf('--parallel') + 1]) || 1);
+  const errors = [];
+  for (let i = 0; i < names.length; i += parallel) {
+    errors.push(...(await Promise.all(names.slice(i, i + parallel).map(run))).flat());
+  }
+  return errors;
+}
+
+// Exits: 1 with the errors, or 0 after the line ok.
+export function finish(errors, ok) {
+  if (errors.length) {
+    console.error('FAILED:\n' + errors.join('\n'));
+    process.exit(1);
+  }
+  console.log(ok);
+  process.exit(0); // an address proxy may still hold keep-alive connections
 }

@@ -13,10 +13,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
-import http from 'node:http';
-import puppeteer from 'puppeteer-core';
-import { args } from './app-lib.mjs';
-import { facts, siteDir, siteFile } from './site.mjs';
+import { args, connect } from './app-lib.mjs';
+import { facts, siteDir, serveSite } from './site.mjs';
 
 const a = args();
 const argv = process.argv.slice(2);
@@ -30,22 +28,10 @@ const { scene } = await facts(site);
 if (!scene) throw new Error(`og-image: no scene for site ${site} (the scene of its test/facts.mjs)`);
 
 // The site's files, unless --url names a server.
-let server = null;
-if (!argv.includes('--url')) {
-  server = http.createServer((req, res) => {
-    const p = new URL(req.url, 'http://x').pathname;
-    const file = siteFile(site, p === '/' ? '/index.html' : p);
-    if (!file) { res.writeHead(404); return res.end(); }
-    const type = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.svg': 'image/svg+xml' }[path.extname(file)];
-    res.writeHead(200, type ? { 'content-type': type } : {});
-    res.end(fs.readFileSync(file));
-  });
-  await new Promise(r => server.listen(0, '127.0.0.1', r));
-  a.url = `http://127.0.0.1:${server.address().port}`;
-}
+const server = argv.includes('--url') ? null : await serveSite(site);
+if (server) a.url = server.url;
 
-const { webSocketDebuggerUrl } = await (await fetch(`${a.cdp}/json/version`)).json();
-const browser = await puppeteer.connect({ browserWSEndpoint: webSocketDebuggerUrl });
+const browser = await connect(a.cdp);
 const ctx = await browser.createBrowserContext();
 const page = await ctx.newPage();
 try {

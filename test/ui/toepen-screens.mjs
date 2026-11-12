@@ -11,9 +11,10 @@
 // depends on the cards; those shots are taken when that happens. With -fast
 // the time for a vuile was, a full trick and a round's summary last a
 // fraction of a second: the page holds the server's next messages back for
-// those shots.
+// those shots (holdHook in app-lib.mjs).
 import {
-  args, connect, openPage, VIEWPORTS, press, pressEl, type, shot, checkOverflow, waitFor, sleep, addressProxy, ownAddress,
+  args, VIEWPORTS, press, pressEl, type, snap, has, shown, closeModal, waitFor, sleep, addressProxy,
+  holdEvent, release, scenario, perViewport, finish,
 } from './app-lib.mjs';
 
 const A = args();
@@ -21,57 +22,11 @@ const proxy = await addressProxy(A.url);
 const BASE = proxy.url;
 const names = A.only ? A.only.split(',') : Object.keys(VIEWPORTS);
 
-const has = (P, sel) => P.page.evaluate(s => !!document.querySelector(s), sel);
-const shown = (P, sel) => P.page.evaluate(s => !!document.querySelector(s)?.getClientRects().length, sel);
-
-// Wraps the page's WebSocket: once a message matches window.__holdOn (a
-// regular expression), the ones after it wait until window.__release(),
-// which hands them on until one matches again. The last state handed on
-// is window.__s.
-function holdHook() {
-  const Native = window.WebSocket;
-  window.WebSocket = class extends Native {
-    set onmessage(fn) {
-      const take = e => {
-        if (window.__held) { window.__held.push(() => take(e)); return; }
-        fn(e);
-        try {
-          const m = JSON.parse(e.data);
-          if (m.t === 'update' && m.s) window.__s = m.s;
-        } catch { /* not JSON */ }
-        if (window.__holdOn && new RegExp(window.__holdOn).test(e.data)) {
-          window.__holdOn = '';
-          window.__held = [];
-        }
-      };
-      super.onmessage = fn && take;
-    }
-    get onmessage() { return super.onmessage; }
-  };
-  window.__release = () => {
-    const q = window.__held || [];
-    window.__held = null;
-    while (q.length && !window.__held) q.shift()();
-    if (window.__held) window.__held.unshift(...q);
-  };
-}
-const holdOn = (P, re) => P.page.evaluate(s => { window.__holdOn = s; }, re.source);
-const release = P => P.page.evaluate(() => window.__release());
-// The time for a vuile was begins, a card is played, a round ends.
-const WAS = /^(?=.*"phase":"was")(?=.*"nextAt":[1-9])/;
-const PLAYED = /"type":"play"/;
-const HAND_END = /"type":"handEnd"/;
-
-async function snap(P, label) {
-  await sleep(120);
-  await shot(P, label);
-  await checkOverflow(P, label);
-  console.log(`  ${P.name}: ${label}`);
-}
-
-async function closeModal(P) {
-  await P.page.keyboard.press('Escape');
-  await sleep(320);
+// In the page before the app: expert mode (the reasoning of the AI shows
+// in the top bar), and the last state handed on kept as window.kjState.
+function init() {
+  localStorage.setItem('kj.expert', '1');
+  window.kjPatch = m => { if (m.t === 'update') window.kjState = m.s; };
 }
 
 async function home(P) {
@@ -164,10 +119,10 @@ const state = P => P.page.evaluate(() => {
     summary: !!document.querySelector('.tp-summary.open .btn-go:not(:disabled)'),
     // Asked about a toep: how many others stay in for sure (not asked any
     // more), and how many are still asked after you.
-    sure: (s => (s?.status || []).filter((st, k) => st === 'in' && k !== s.you && !(s.asking || []).includes(k)).length)(window.__s),
-    after: Math.max(0, (window.__s?.asking?.length ?? 1) - 1),
-    you: window.__s?.you ?? -1,
-    cards: window.__s?.hand?.length ?? 0,
+    sure: (s => (s?.status || []).filter((st, k) => st === 'in' && k !== s.you && !(s.asking || []).includes(k)).length)(window.kjState),
+    after: Math.max(0, (window.kjState?.asking?.length ?? 1) - 1),
+    you: window.kjState?.you ?? -1,
+    cards: window.kjState?.hand?.length ?? 0,
   };
 });
 
@@ -199,7 +154,7 @@ async function playUntil(P, stop, { timeout = 240000, toep = false, pass = false
       // burst.
       const goesOn = st.sure >= 2 || st.sure >= 1 && st.after >= 1;
       if (pass && goesOn && st.cards > 0 && st.labels.includes('Passen')) {
-        await P.page.evaluate(you => { window.__holdOn = `"type":"answer","seat":${you},"stay":false`; }, st.you);
+        await P.page.evaluate(you => { window.kjHoldWhen = (s, m) => m.ev?.type === 'answer' && m.ev.seat === you && m.ev.stay === false; }, st.you);
         await act(P, 'Passen');
       } else {
         await act(P, 'Meegaan');
@@ -221,24 +176,6 @@ async function playUntil(P, stop, { timeout = 240000, toep = false, pass = false
   throw new Error(`[${P.name}] timeout playing until ${stop}`);
 }
 
-// Runs one scenario in its own page, each in a fresh browser context.
-async function scenario(browser, name, fn) {
-  const P = await openPage(browser, VIEWPORTS[name], `toepen-${name}`, A.dpr);
-  await ownAddress(P, BASE);
-  // Expert mode: the reasoning of the AI shows in the top bar.
-  await P.page.evaluateOnNewDocument(() => localStorage.setItem('kj.expert', '1'));
-  await P.page.evaluateOnNewDocument(holdHook);
-  try {
-    await fn(P);
-  } catch (e) {
-    await shot(P, 'zz-failure').catch(() => {});
-    P.errors.push(`[${P.name}] ${e.message || e}`);
-  } finally {
-    await P.ctx.close().catch(() => {});
-  }
-  return P.errors;
-}
-
 // Home, new game, lobby, the table with its questions and overlays, the
 // summary of a round.
 async function mainFlow(P) {
@@ -258,7 +195,8 @@ async function mainFlow(P) {
   await newGame(P, { players: '4', tempo: 'Snel' }, '02-new-game');
   await sleep(300);
   await snap(P, '03-lobby');
-  await holdOn(P, WAS);
+  // The time for a vuile was begins.
+  await P.page.evaluate(() => { window.kjHoldWhen = s => s.phase === 'was' && s.nextAt > 0; });
   await press(P, '#btn-start:not(:disabled)');
 
   // The time for a vuile was: every hand starts with it.
@@ -282,14 +220,14 @@ async function mainFlow(P) {
   await closeModal(P);
 
   // Your card, and the next ones until the trick has two or more.
-  await holdOn(P, PLAYED);
+  await holdEvent(P, 'play');
   await playCard(P);
   for (let k = 0; ; k++) {
-    await waitFor(P, () => Array.isArray(window.__held), { label: 'a card played' });
+    await waitFor(P, () => window.kjHeld(), { label: 'a card played' });
     await sleep(700); // its flight
     if (await P.page.evaluate(() => document.querySelectorAll('.tp-trick .card').length >= 2)) break;
     if (k >= 6) throw new Error(`[${P.name}] no trick with two cards`);
-    await holdOn(P, PLAYED);
+    await holdEvent(P, 'play');
     await release(P);
   }
   await snap(P, '09-trick');
@@ -324,7 +262,7 @@ async function mainFlow(P) {
   await snap(P, '13-chat');
   if (await has(P, 'body.chat-open')) await closeModal(P);
 
-  await holdOn(P, HAND_END);
+  await holdEvent(P, 'handEnd');
   await playUntil(P, '.tp-summary.open', { ready: false, shots });
   await sleep(1200);
   await snap(P, '14-summary');
@@ -410,28 +348,12 @@ async function scoreFlow(P) {
   await snap(P, '24-score-names');
 }
 
-async function run(name) {
-  const browser = await connect(A.cdp);
+const errors = await perViewport(A.cdp, names, async (browser, name) => {
   const errors = [];
-  try {
-    for (const flow of [mainFlow, passFlow, overFlow, scoreFlow]) errors.push(...(await scenario(browser, name, flow)));
-  } finally {
-    await browser.disconnect();
+  for (const flow of [mainFlow, passFlow, overFlow, scoreFlow]) {
+    errors.push(...(await scenario(browser, name, BASE, flow, { label: `toepen-${name}`, dpr: A.dpr, init })));
   }
   return errors;
-}
-
-// Sequential by default: headless Chromium in its container has little shared memory.
-const parallel = Math.max(1, Number(process.argv[process.argv.indexOf('--parallel') + 1]) || 1);
-const errors = [];
-for (let i = 0; i < names.length; i += parallel) {
-  const batch = await Promise.all(names.slice(i, i + parallel).map(run));
-  errors.push(...batch.flat());
-}
+});
 proxy.close();
-if (errors.length) {
-  console.error('FAILED:\n' + errors.join('\n'));
-  process.exit(1);
-}
-console.log(`ok: ${names.length} viewports, screenshots in test/ui/out/toepen-*`);
-process.exit(0); // the proxy may still hold keep-alive connections
+finish(errors, `ok: ${names.length} viewports, screenshots in test/ui/out/toepen-*`);

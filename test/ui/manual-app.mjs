@@ -8,19 +8,14 @@
 // Serves klaverjas's site (platform/web and games/klaverjas/web) on 127.0.0.1:18121 (no game server needed) and
 // starts scripts/chrome 9321 unless a browser already listens there.
 // Env: CDP_PORT (9321), HTTP_PORT (18121). OUTDIR defaults to test/ui/out/manual-app.
-import puppeteer from 'puppeteer-core';
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
 import { mkdirSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { join, normalize, extname } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { siteFile } from './site.mjs';
+import { ownBrowser, wideIn } from './app-lib.mjs';
+import { serveSite } from './site.mjs';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const out = process.argv[2] || join(repo, 'test/ui/out/manual-app');
-const cdpPort = process.env.CDP_PORT || '9321';
-const httpPort = Number(process.env.HTTP_PORT || 18121);
 const VIEWPORTS = [
   { width: 320, height: 568, isMobile: true, hasTouch: true },
   { width: 360, height: 640, isMobile: true, hasTouch: true },
@@ -30,47 +25,11 @@ const VIEWPORTS = [
 ];
 mkdirSync(out, { recursive: true });
 
-const TYPES = { '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.html': 'text/html' };
-
-const server = createServer(async (req, res) => {
-  let path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  if (path === '/' || /^\/[A-Za-z]{4}$/.test(path)) path = '/index.html';
-  const file = siteFile('klaverjas', path); // klaverjas's site: platform/web and games/klaverjas/web
-  if (!file) {
-    res.writeHead(404).end();
-    return;
-  }
-  try {
-    const body = await readFile(file);
-    res.writeHead(200, { 'content-type': `${TYPES[extname(file)] || 'application/octet-stream'}; charset=utf-8` });
-    res.end(body);
-  } catch {
-    res.writeHead(404).end();
-  }
-});
-await new Promise((ok) => server.listen(httpPort, '127.0.0.1', ok));
-
-async function cdpEndpoint() {
-  const r = await fetch(`http://127.0.0.1:${cdpPort}/json/version`);
-  return (await r.json()).webSocketDebuggerUrl;
-}
-
-let startedChrome = false;
-let endpoint;
-try {
-  endpoint = await cdpEndpoint();
-} catch {
-  execFileSync(join(repo, 'scripts/chrome'), [cdpPort], { stdio: 'inherit' });
-  startedChrome = true;
-  for (let i = 0; i < 50 && !endpoint; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-    endpoint = await cdpEndpoint().catch(() => undefined);
-  }
-}
+const server = await serveSite('klaverjas', Number(process.env.HTTP_PORT || 18121));
+const { browser, stop } = await ownBrowser(process.env.CDP_PORT || '9321');
 
 const problems = [];
 const notes = [];
-const browser = await puppeteer.connect({ browserWSEndpoint: endpoint });
 const page = await browser.newPage();
 page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 page.on('console', (m) => {
@@ -81,7 +40,7 @@ page.on('console', (m) => {
 try {
   for (const vp of VIEWPORTS) {
     await page.setViewport({ ...vp, deviceScaleFactor: 1 });
-    await page.goto(`http://127.0.0.1:${httpPort}/`, { waitUntil: 'networkidle0' });
+    await page.goto(`${server.url}/`, { waitUntil: 'networkidle0' });
     await page.waitForSelector('#btn-help', { visible: true, timeout: 5000 });
     await page.click('#btn-help');
     await page.waitForSelector('.man', { visible: true, timeout: 5000 });
@@ -95,15 +54,6 @@ try {
       const facts = await page.evaluate(() => {
         const man = document.querySelector('.man');
         const box = man.getBoundingClientRect();
-        const inScroller = (el) => {
-          for (let p = el.parentElement; p && p !== man; p = p.parentElement) {
-            if (['auto', 'scroll'].includes(getComputedStyle(p).overflowX)) return true;
-          }
-          return false;
-        };
-        const wide = [...man.querySelectorAll('*')]
-          .filter((el) => !inScroller(el) && el.getBoundingClientRect().right > box.right + 1)
-          .map((el) => `${el.tagName.toLowerCase()}.${el.className}`.slice(0, 60));
         // A table may scroll inside its own box as a last resort, but nobody
         // expects that: every table has to fit the panel as it is.
         const tables = [...man.querySelectorAll('.man-tablewrap')]
@@ -115,7 +65,6 @@ try {
         return {
           pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
           manWidth: Math.round(box.width),
-          wide: [...new Set(wide)].slice(0, 5),
           tables,
           blankCards: cards.filter((c) => c.getBoundingClientRect().width < 10 || !c.querySelector('svg')).length,
           cards: cards.length,
@@ -124,6 +73,7 @@ try {
           hasToc: !!man.querySelector('.man-toc'),
         };
       });
+      facts.wide = await page.evaluate(wideIn, '.man');
       const tag = `${id}@${vp.width}`;
       notes.push(`${tag}: panel ${facts.manWidth}px, ${facts.cards} cards, scroll box ${facts.scroller}`);
       if (facts.pageOverflow > 0) problems.push(`${tag}: page scrolls sideways by ${facts.pageOverflow}px`);
@@ -152,9 +102,8 @@ try {
   }
 } finally {
   await page.close();
-  await browser.disconnect();
   server.close();
-  if (startedChrome) execFileSync('podman', ['stop', `kj-chrome-${cdpPort}`], { stdio: 'ignore' });
+  await stop();
 }
 
 console.log(notes.join('\n'));
