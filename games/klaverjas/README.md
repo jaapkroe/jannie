@@ -236,350 +236,45 @@ are those of any game at a table of four.
 
 `games/klaverjas/game`, the rules engine. The seats and the 32-card deck
 (`Seat`, `Card` and what a card is made of) are `platform/cards`'s, shared
-with toepen; this package re-exports them, so the names below stay valid.
+with toepen; this package re-exports them. Its exported names, with what
+each does, are in the package's doc comments
+(`scripts/go doc -all ./games/klaverjas/game`). The design behind them:
 
-```go
-type Suit uint8   // Clubs, Diamonds, Hearts, Spades  (wire "C","D","H","S")
-type Rank uint8   // Seven, Eight, Nine, Ten, Jack, Queen, King, Ace (natural/sequence order)
-type Card struct{ Rank Rank; Suit Suit }
-func (c Card) String() string            // "JH"
-func ParseCard(s string) (Card, error)
-func (s Suit) String() string            // "H"
-func ParseSuit(s string) (Suit, error)
-func (c Card) MarshalJSON / UnmarshalJSON // as the string code; same for Suit
-func NewDeck() []Card                    // 32 cards, ordered
-func SuitNameNL(s Suit) string           // "harten"; also CardNameNL(c) "harten boer"
-
-type Seat int                            // 0..3; func (s Seat) Next() Seat; Partner(); Team() int (four players)
-type Rules uint8                         // Amsterdams, Rotterdams  (JSON "amsterdams"/"rotterdams")
-type TrumpMode uint8                     // Utrechts, Gedraaid      (JSON "utrechts"/"gedraaid")
-
-func Points(c Card, trump Suit) int
-func Beats(a, b Card, led, trump Suit) bool          // a beats b in a trick with this led suit
-type Played struct{ Seat Seat; Card Card }            // JSON {"seat":2,"card":"JH"}
-type Trick struct {
-    Leader Seat
-    Cards  []Played
-    Winner Seat      // valid when len(Cards)==4, else -1
-    Points int       // card points (+10 if last trick) when complete
-    Roem   []RoemItem
-}
-func (t Trick) Led() (Suit, bool)
-func (t Trick) CurrentWinner(trump Suit) (Seat, bool)  // who is winning so far
-type RoemItem struct{ Kind string; Points int }       // JSON {"kind":"stuk","points":20}
-func TrickRoem(cards []Card, trump Suit) []RoemItem
-
-// Legal cards for `seat` holding `hand`, given the current (incomplete) trick
-// (four players: the partner is the seat opposite; a Deal knows every table).
-func LegalMoves(hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) []Card
-// Short Dutch explanation of the constraint, shown above the hand on your turn:
-// "Je komt uit: speel wat je wilt", "Bekennen: speel ♦", "Troef gevraagd: overtroeven",
-// "Je moet troeven", "Je moet overtroeven", "Je maat heeft de slag: vrije keuze",
-// "Je kunt niet bekennen en hebt geen troef: vrije keuze", ...
-func ExplainConstraint(hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) string
-// Why a specific card is illegal (Dutch), "" if legal: "Je moet bekennen (♦).", ...
-func ExplainIllegal(card Card, hand []Card, trick Trick, seat Seat, trump Suit, rules Rules) string
-
-// Display order: suits alternate colour, trump (if known) first; within a suit low→high
-// by the order that applies (trump order for trump).
-func SortHand(hand []Card, trump Suit, trumpKnown bool) []Card
-
-type Phase string // "auction", "discard" (three players), "trump", "bid", "play", "done"
-
-// One hand ("potje") for 2, 3 or 4 players: a pure state machine. No timing,
-// no randomness inside.
-type Deal struct { /* unexported fields */ }
-func NewDeal(dealer Seat, hands [4][]Card, mode TrumpMode, rules Rules, turned Suit) *Deal  // four players
-func NewDealFor(players int, dealer Seat, hands [4][]Card, talon []Card, mode TrumpMode, rules Rules, turned Suit) *Deal
-func Shuffle(rng *rand.Rand) [4][]Card   // math/rand/v2, deal 3-2-3
-func ShuffleFor(players int, rng *rand.Rand) (hands [4][]Card, talon []Card) // the rules: 3-2-3; 3, talon, 4, 3; 16 each (piles)
-func (d *Deal) Phase() Phase
-func (d *Deal) Turn() Seat               // whose action is awaited; -1 if done
-func (d *Deal) ChooseTrump(seat Seat, s Suit) error   // utrechts, forced after all passed (not the turned suit), or the soloist
-func (d *Deal) Bid(seat Seat, play bool) error        // gedraaid
-func (d *Deal) Auction(seat Seat, bid int) error      // three players: bid (MinNextBid()..MaxBid, steps of BidStep) or 0 to pass
-func (d *Deal) Discard(seat Seat, cards []Card) error // three players: the soloist lays two cards away
-func (d *Deal) Play(seat Seat, c Card) error          // validates the rules (partner per table)
-func (d *Deal) Hand(seat Seat) []Card                 // the cards seat can play: with two players its face-up ones
-func (d *Deal) Trump() (Suit, bool)
-func (d *Deal) TrumpBy() Seat            // -1 before trump is known
-func (d *Deal) PlayingTeam() int         // side of the trump maker (Side), -1 before trump is known
-func (d *Deal) Forced() bool             // gedraaid: all passed, voorhand must choose; three players: nobody bid
-func (d *Deal) Players() int
-func (d *Deal) Side(seat Seat) int       // team with four; with three 0 = soloist, 1 = the other two; with two the seat
-func (d *Deal) Partner(seat Seat) Seat   // opposite with four; with three the other opponent of the soloist; else NoSeat
-func (d *Deal) Contract() (Seat, int)    // three players: highest bid and bidder (the soloist once the auction is over)
-func (d *Deal) MinNextBid() int
-func (d *Deal) Talon() []Card            // three players: the two cards of the talon
-func (d *Deal) Discards() []Card         // three players: what the soloist laid away (after phase discard)
-func (d *Deal) Piles(seat Seat) [8]Pile  // two players: {N, Up, Card} per pile
-func (d *Deal) OpenRoem(seat Seat) []RoemItem // two players: roem of the face-up cards once trump is known
-func (d *Deal) Constraint() string       // ExplainConstraint for the seat on turn
-func (d *Deal) Turned() Suit
-func (d *Deal) Bids() [4]int             // -1 none yet, 0 pass, 1 play
-func (d *Deal) Current() Trick           // trick in progress (may be complete until next Play)
-func (d *Deal) Tricks() []Trick          // completed tricks, in order
-func (d *Deal) Result() HandResult       // valid when Phase()=="done"
-func (d *Deal) View(seat Seat) View      // everything `seat` may know
-
-type HandResult struct {
-    Players int; PlayingTeam int; TrumpBy Seat; Trump Suit; Dealer Seat
-    Points [2]int; Roem [2]int            // per side, raw, before nat
-    Score  [2]int                         // per side
-    Nat bool; Pit bool; PitTeam int       // PitTeam -1 if none
-    Bid int; Discards [2]Card             // three players
-    Gains [4]int                          // per scorer (Scorers): what goes on the score sheet
-}
-func Scorers(players int) int             // 2 teams with four players, else one per player
-func ScorerOf(seat Seat, players int) int
-func ScoreSolo(bid int, points, roem [2]int) (score [2]int, nat bool) // three players
-func SetRoem(cards []Card, trump Suit) []RoemItem // roem in up to eight open cards (two players)
-type Pile struct{ N int; Up bool; Card Card }     // JSON {"n":2,"card":"JH"|null}
-
-type View struct {
-    Players int; Seat Seat; Hand []Card; Dealer Seat; Voorhand Seat
-    Mode TrumpMode; Rules Rules; Phase Phase; Turn Seat   // Turn: NoSeat when done
-    Trump Suit; TrumpKnown bool; TrumpBy Seat; PlayingTeam int; Partner Seat
-    Turned Suit; Bids [4]int; Forced bool
-    Bid int; Bidder Seat; Talon, Discards []Card   // three players (talon and discards: the soloist only)
-    Piles [2][8]Pile; OpenRoem [2][]RoemItem       // two players
-    Current Trick; Tricks []Trick          // full history of this hand (bots may remember)
-    Legal []Card                           // when it is Seat's turn in phase play
-    HandNo, HandsTotal int; MatchScore []int    // zero from Deal.View; the server fills them
-}
-```
-
-Semantics and additions (implemented in `games/klaverjas/game`):
-
-- `View.Current` is the trick the next card goes into: once a trick is complete
-  it is already the next, empty trick led by the winner (the completed one is the
-  last of `View.Tricks`); when done it is the last trick. `Deal.Current()` keeps
-  the complete trick until the next `Play` (for display). `LegalMoves` and friends
-  treat a complete trick as empty (next card leads).
-- `Deal.Tricks()` includes a completed trick that is still `Current()`.
-- `HandResult.Roem` includes the `PitBonus` (100); `Deal.HandRoem()` does not.
-- Errors (Dutch texts, safe to show): `ErrWrongPhase`, `ErrNotYourTurn`,
-  `ErrBadSuit`, `ErrTurnedSuit`, `ErrNotInHand`, `ErrIllegal`, `ErrBadBid`
-  (wrapped with the lowest bid allowed), `ErrBadDiscard`; `Play` returns
-  `*IllegalError{Card, Reason}` (Reason = `ExplainIllegal` text,
-  `errors.Is(err, ErrIllegal)`).
-- Constants/names: `NumSuits`, `NumRanks`, `NoSeat` (-1), `PhaseTrump/Bid/Play/Done`,
-  `RoemDrie/Vier/Stuk/VierGelijk/VierBoeren`, `PitBonus`, `LastTrickBonus`;
-  `Suit.Symbol()` "♥", `Suit.Red()`, `Rank.NameNL()` "boer", `Rank.Letter()` "B",
-  `CardShortNL(c)` "♥B", `RoemItem.NameNL()` "stuk"/"driekaart"/"vier gelijke",
-  `Rules.NameNL()`/`TrumpMode.NameNL()`, `ParseRules`, `ParseTrumpMode`,
-  `Seat.Valid()`, `Card.Valid()`, `Card.Index()`/`CardFromIndex` (0..31),
-  `MustParseCards("JH 9H")` (tests); all these types also implement
-  `encoding.TextMarshaler`.
-- Rules helpers: `Order(c, trump)` (0..7 within suit), `TrumpOrder(r)`,
-  `PlainOrder(r)`, `CardPoints(cards, trump)`, `ScoreHand(playingTeam, points,
-  roem) (score, nat)`, `Trick.Complete()`, `Trick.Next()` (seat to play),
-  `Trick.WinningCard(trump)`, `Trick.RoemTotal()`; `Trick` marshals empty
-  `cards`/`roem` as `[]`.
-- Fast paths for simulation (no allocations): `AppendLegalMoves(dst, hand, trick,
-  seat, trump, rules)`, `IsLegal(card, hand, trick, seat, trump, rules)`,
-  `AppendTrickRoem(dst, cards, trump)`, `RoemPoints(cards, trump)`,
-  `RoemAdded(cards, c, trump)` (the roem card c adds to at most three cards:
-  `RoemPoints` with c less without);
-  on card sets as bitmasks (`uint32`, bit `Card.Index` per card):
-  `LegalReply(hand, lead, leader, seat, trump, rules)` (`LegalMoves` for the
-  second card of a trick that leader led with lead), `d.HandMask(seat)` (as
-  `d.AppendHand`) and `d.LegalMask()` (as `d.AppendLegal`; 0 outside phase
-  play);
-  `Deal` holds no slices or maps, so `*dst = *src` (or `d.Clone()`) is a full
-  independent copy; `d.AppendLegal(dst)`/`d.Legal()` for the seat on turn,
-  `d.AppendHand(dst, seat)`, `d.HandLen(seat)`, `d.TrickCount()`.
-  `Resume(v View, hands [4][]Card) (*Deal, error)` rebuilds a deal in phase play
-  from a view plus every seat's remaining cards (e.g. sampled hidden hands);
-  with three players `v.Discards` must hold the (sampled) discards, with two
-  `hands[s]` holds only seat s's face-down cards, pile by pile.
-  `ResumeInto(d *Deal, v *View, hands) error` is `Resume` into an existing
-  Deal, which it overwrites (after an error d is unusable), so a search
-  reuses one Deal per worker; `NewDeal`/`NewDealFor` are small enough to be
-  inlined, so a deal that does not outlive its caller stays off the heap.
-- A Deal holds every seat's cards at the places they were dealt (16 places
-  per seat) with masks for played and face-up cards, so copying it stays a
-  full copy for every table size. It also keeps each seat's playable cards
-  as a mask (with the place of each), and the current trick's winning card
-  and highest trump as cards are played, so the rules need no loop over the
+- Errors carry Dutch texts that are safe to show; `Play` returns
+  `*IllegalError{Card, Reason}`, whose reason is `ExplainIllegal`'s text.
+- A `Deal` holds no slices or maps, so `*dst = *src` (or `d.Clone()`) is a
+  full independent copy, for every table size: every seat's cards sit at
+  the places they were dealt (16 places per seat), with masks for played
+  and face-up cards. It also keeps each seat's playable cards as a mask
+  (with the place of each), and the current trick's winning card and
+  highest trump as cards are played, so the rules need no loop over the
   hand, and `Play` judges only a card that neither leads nor follows a side
   suit led (those are always allowed). Its tricks are compact (seats as
   int8, roem as indexes), so a Deal is about 700 bytes: every playout
   starts from a copy.
-- Deal accessors for the server: `Dealer()`, `Voorhand()`, `Mode()`, `Rules()`,
-  `TricksWon() [2]int`, `HandPoints() [2]int` (incl. last trick),
-  `HandRoem() [2]int`.
+- The paths a simulation uses allocate nothing: the `Append…` functions
+  fill the caller's slice, and card sets also come as bitmasks (`uint32`,
+  bit `Card.Index` per card: `HandMask`, `LegalMask`, `LegalReply`).
+  `NewDeal`/`NewDealFor` are small enough to be inlined, so a deal that
+  does not outlive its caller stays off the heap.
+- `Resume` rebuilds a deal in phase play from a view plus every seat's
+  remaining cards (sampled hidden hands, say); `ResumeInto` does so into an
+  existing Deal, so a search reuses one Deal per worker.
+- `View.Current` is the trick the next card goes into: once a trick is
+  complete it is already the next, empty trick led by the winner.
+  `Deal.Current()` keeps the complete trick until the next `Play` (for
+  display).
 
-Tests in `games/klaverjas/game` are table-driven and exhaustive for: legal moves in
-both rule sets (all branches above), trick winner, roem (each kind, combos,
-stuk+sequence, four of a kind, no false positives), scoring (normal, nat, tie =
-nat, pit, pit by defenders), deal state machine (both trump modes, forced
-choice, turn order, last-trick bonus, 162 total); for three and two players
-the auction, discards, piles, open roem, random deals against the reference
-rules, and Resume. The random deals also check the bitmask fast paths
-(`HandMask` for every seat, `LegalMask`, `LegalReply`) against the
-reference, and `ResumeInto` against `Resume`; `RoemAdded` is checked
-against `RoemPoints` for every set of up to three cards, every card added
-and every trump. Benchmarks: `BenchmarkPlayout` (a hand of random legal
-cards played out on a copy of a Deal), `BenchmarkLegalMoves`,
-`BenchmarkRoemPoints`.
+The tests are table-driven and exhaustive for the rules of both rule sets,
+roem and scoring, and play random deals of every table size against
+reference rules, which also checks the bitmask paths and `ResumeInto`
+against `Resume`.
 
 ### Package bot
 
-`games/klaverjas/bot`, the bots, the hints and the review.
-
-```go
-type Level int  // Makkelijk, Normaal, Sterk; String() "normaal"
-func ParseLevel(s string) (Level, error)    // "makkelijk"|"normaal"|"sterk"; error → Normaal
-type Persona struct {
-    ID, Name, Emoji, Color, Bio string   // Name without "(AI)"; Bio is Dutch, one line
-    Aggression float64  // 0..1: willingness to play/choose trump on weaker hands, to go for pit
-    Chattiness float64  // 0..1: chance of commenting on events
-    Speed      float64  // multiplier on think time (0.6 fast .. 1.4 slow)
-}
-func Roster() []Persona                       // 8 personas (Bots)
-func ByID(id string) (Persona, bool)
-
-type Player interface {
-    ChooseTrump(v game.View) game.Suit       // utrechts, forced (must not return v.Turned when v.Forced), or the soloist
-    Bid(v game.View) bool                    // gedraaid: play on v.Turned?
-    Auction(v game.View) int                 // three players: a bid of at least v.MinNextBid(), or 0 to pass
-    Discard(v game.View) [2]game.Card        // three players: two cards of v.Hand to lay away
-    Play(v game.View) game.Card              // must be in v.Legal
-}
-func New(p Persona, lvl Level, seed uint64) Player
-
-// Advice for the training hints, Dutch text. Trump and bid advice is the
-// sterk choice. A play hint gives the reason of what chose its card, so
-// the two cannot drift apart (why.go):
-//   - The normaal policy returns with each card the rule that chose it
-//     (decide: rule). The hint is that card with the rule's reason, and
-//     what the rule's own costs weighed: the cheaper or richer card it
-//     kept in hand and why ("Met ♠H zou je de tegenstanders 50 roem
-//     geven", "♠A is de hoogste schoppen en kan zelf nog een slag halen"),
-//     and for a lead the roem that decided it ("met ♠8 kunnen de
-//     tegenstanders in deze slag roem maken: ♠7, ♠9 en ♠10 zijn nog in het
-//     spel").
-//   - Unless the sterk card is better by at least max(5 points, 2 paired
-//     SE): then the hint is that card, with how much more it brings than
-//     the rule's card and in which part of the value mainly. The search
-//     keeps per card, from the same playouts, the points and the roem in
-//     the card's own trick and in the later tricks (ours minus theirs)
-//     in the playouts where the hand is made, all of that under nat where
-//     it goes nat, and the pit bonus; they sum to the value ("Speel ♠V:
-//     volgens de berekening levert dat gemiddeld 9 punten meer op dan ♠8,
-//     vooral in de roem van deze slag"). A gain in nat without more or
-//     less nat is in what the hands that go nat are worth ("vooral doordat
-//     alle punten en roem naar jullie gaan als de tegenstanders nat gaan
-//     (100%)"). Then what the playouts of the two cards do differently in
-//     the same deals (diff.go: the search keeps per deal which of the
-//     player's cards their team wins, who wins the last trick and the roem
-//     in the card's own trick): the difference that brings the most, when
-//     it is at least 2 points, a quarter of what the card brings more in
-//     points and roem before nat and pit, and two paired SE, and its
-//     shares as written go the same way ("Je ♣10 gaat in 100% van de verdelingen naar de tegenstanders als je
-//     ♣9 speelt, en in 51% als je ♣10 speelt.", "Jullie halen de laatste
-//     slag in …", "De tegenstanders maken roem in deze slag in 30% van de
-//     verdelingen als je ♥10 speelt, en in 5% als je ♥A speelt."). The two
-//     cards compared count together, one played now and the other later;
-//     the one named must gain clearly and the other lose at most 2 points.
-//   - What the card signals at the table (Seinen) is added: true, or a
-//     warning when the partner would read something untrue.
-// Every play hint opens with "Speel ♠V: ". The search values every option
-// by the points it brings alone: the bots' appetite for pit (Aggression)
-// plays no part.
-type Advice struct {
-    Card *game.Card; Suit *game.Suit; Play *bool
-    Text string     // e.g. "Speel ♥A: je maat heeft de slag nog niet en de aas is hoog."
-}
-func Advise(v game.View) Advice
-// Dutch explanation of a finished trick for training tips:
-// "Fatima (AI) wint de slag met ♥B, de hoogste troef. 25 punten, roem: stuk (20)."
-func ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
-// The signals (Seinen) in the last completed trick of v at a table of four, as
-// the table reads them (true or not), for the lessons: Kind
-// "kleintjeBoer", "boerOverBoer" (a lead), "aas" or "hoogLaag" (a low
-// discard); Means the card it says Seat holds (the trump boer, the 10, the
-// highest card left in the suit). SignalChance: a signal the player of v
-// can give truthfully with a legal card on their turn, prefer first.
-type Signal struct{ Seat game.Seat; Card game.Card; Kind string; Means game.Card }
-func TrickSignals(v game.View) []Signal
-func SignalChance(v game.View, prefer game.Card) (Signal, bool)
-
-// The review of a player's decisions (Spelanalyse, on the server and on screen). GradeChoice runs the
-// search of Advise on the same view (same seed), so it agrees with the hint.
-// Points are expected score differences between the teams, as in the hints:
-// the player's team's score minus the opponents' at the end of the hand
-// (nat and pit included), averaged over the sampled deals (400 for a card,
-// 320 for a trump choice or bid), each played out by the normaal policy.
-type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool } // exactly one set
-type Grade struct {
-    Stake   float64 // best minus worst option; 0 without a choice (one legal card)
-    Lost    float64 // the hint's option minus the choice when that is at least
-                    // max(5, 2 paired SE), the hint's tolerance; else 0
-    Gain    float64 // a strong move: the choice is the hint's option, the normaal
-                    // choice differs and is worse by at least max(10, 2 paired SE); else 0
-    Better  Choice  // the hint's option, when Lost > 0
-    Obvious Choice  // the normaal option, when Gain > 0
-    Text    string  // the hint for Better (Lost > 0) or for the choice (Gain > 0)
-    Nat     float64 // a bid to play: the estimated chance of going nat
-    Played, Other Outcome // the choice and Better or Obvious, when Lost or Gain is set:
-                    // Lost = Other.Us−Other.Them − (Played.Us−Played.Them), Gain the reverse
-}
-// What an option leads to, averaged over the sampled deals: the final score
-// of the player's team and of the opponents, and the chance that the one or
-// the other plays and goes nat.
-type Outcome struct{ Us, Them, NatUs, NatThem float64 }
-func GradeChoice(v game.View, c Choice) Grade
-// The expert mode's reasoning for one decision of v.Seat (on its turn, a
-// table of four; else, or should the search fail, empty). It searches as
-// Advise (same view, same seed, the same 400 or 320 deals, points alone),
-// so it agrees with the hint and the review.
-type Explanation struct {
-    Normaal  Choice   // the normaal choice (the rule-based card, bestTrumpNormal, the bid threshold at aggression 0.5)
-    Rule     string   // a card: the hint text of the rule that chose it ("Speel ♠A: …"); else ""
-    Sterk    Choice   // sterk's pick from this search at average aggression (sterkPick, the bid without bias)
-    SterkWhy string   // a card: why Sterk is not a card the search values most (sterkChoose: a false signal
-                      // short of its gain, or the normaal card kept as close enough or above the honest one); else ""
-    Hint     Choice   // the hint (Advise)
-    HintText string
-    HintWhy  string   // a card: why the hint keeps the normaal card while sterk plays another; else ""
-    Worlds   int      // deals per option; 0 with one legal card (no search)
-    Options  []Option // the legal cards (in v.Legal order), the allowed suits, or spelen then passen
-}
-type Option struct {
-    Choice
-    Value float64   // expected score difference, as in Grade
-    SE    float64   // paired standard error of its difference with the best option; 0 for the best
-    Outcome
-    Parts []float64 // a card: points in its trick, in later tricks, roem in its trick, in later tricks,
-                    // all that under nat when the hand goes nat, and the pit bonus (searchWhy's parts);
-                    // they sum to Value less what was scored before it
-    Why   string    // a card below the best: why the best brings more, as a hint's search reason
-                    // ("♣8: volgens de berekening levert dat …", then "Dat verschil is kleiner dan twee
-                    // keer de standaardfout en kan toeval zijn." when it is, then the difference in
-                    // the playouts); "… en … zijn volgens de berekening even goed: …" under half a
-                    // point; else ""
-}
-func Explain(v game.View) Explanation
-// What the cards dealt to v.Seat are worth to its team against an average
-// hand in the same seat: the mean score difference when the hand is played
-// from the deal by the normaal policy (bids and trump choice included) over
-// 320 sampled deals of the other cards, minus the same over 20000 random
-// deals (computed once per trump mode and rules). v is the view at the deal.
-func HandLuck(v game.View) float64
-
-// Personality chat. Returns "" for silence; the server rate-limits on top.
-type ChatEvent struct {
-    Kind string   // "greet","trump","pass","play","wonTrick","roem","nat","natOpp","pit","handWon",
-                  // "handLost","gameWon","gameLost","partnerGood","reply"
-    Mine bool     // about the bot itself / its team; "reply": the bot is the speaker's partner
-    Text string   // for "reply": the human chat line being answered
-    Points int    // roem/points involved
-    InHand, Playing bool // "reply": tricks are being played; the bot's team made trump
-}
-func Chat(p Persona, ev ChatEvent, rng *rand.Rand) string
-```
+`games/klaverjas/bot`, the bots, the hints and the review. Its exported
+names are in the package's doc comments
+(`scripts/go doc -all ./games/klaverjas/bot`); the design follows.
 
 #### Strength levels
 
@@ -681,39 +376,8 @@ The table sees klaverjas's bots and analysis through the interface `AI` of
 package `server`; `cmd/klaverjas/ai.go` adapts package `bot` to it, and
 `server.Klaverjas(ai)` makes the game
 ([docs/server.md, "Config and New"](../../docs/server.md#config-and-new)).
-
-```go
-type Persona struct{ ID, Name, Emoji, Color, Bio string; Chattiness, Speed float64 }
-type Brain interface {
-    ChooseTrump(v game.View) game.Suit
-    Bid(v game.View) bool
-    Auction(v game.View) int            // three players
-    Discard(v game.View) [2]game.Card   // three players
-    Play(v game.View) game.Card
-}
-type Advice struct{ Card *game.Card; Suit *game.Suit; Play *bool; Text string }
-type Choice struct{ Card *game.Card; Suit *game.Suit; Play *bool }                   // as bot.Choice
-type Grade struct{ Stake, Lost, Gain float64; Better, Obvious Choice; Text string; Nat float64; Played, Other Outcome } // as bot.Grade
-type Outcome struct{ Us, Them, NatUs, NatThem float64 }            // as bot.Outcome
-type Explanation struct{ Normaal Choice; Rule string; Sterk Choice; SterkWhy string; Hint Choice; HintText, HintWhy string; Worlds int; Options []Option } // as bot.Explanation
-type Option struct{ Choice; Value, SE float64; Outcome; Parts []float64; Why string }
-type ChatEvent struct{ Kind string; Mine bool; Text string; Points int; InHand, Playing bool } // as bot.ChatEvent
-type Signal struct{ Seat game.Seat; Card game.Card; Kind string; Means game.Card }           // as bot.Signal
-type AI interface {
-    Personas() []Persona
-    NewBrain(personaID, level string, seed uint64) Brain   // level "makkelijk"|"normaal"|"sterk";
-                                                           // personaID "" = neutral substitute for a human who
-                                                           // dropped out, once the others agreed (docs/server.md, "Takeover consent")
-    Advise(v game.View) Advice
-    Grade(v game.View, c Choice) Grade    // the review (Spelanalyse on the server)
-    HandLuck(v game.View) float64
-    Explain(v game.View) Explanation      // the expert's why (Protocol)
-    ExplainTrick(t game.Trick, trump game.Suit, names [4]string) string
-    TrickSignals(v game.View) []Signal                    // the lessons (Lessons)
-    SignalChance(v game.View, prefer game.Card) (Signal, bool)
-    Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
-}
-```
+The interface's methods are in its doc comment
+(`platform/server/klaverjas_ai.go`).
 
 ## Bots
 
@@ -1249,39 +913,20 @@ after the shell's `app.css` and before `cards.css`, so a card's state there
 
 ### rules.js
 
-```js
-// games/klaverjas/web/js/rules.js — klaverjas's helpers without the DOM (it imports util.js and cards.js); s is the state
-POS, posOf(s, seat)                     // the places 'bottom' (you), 'left', 'top', 'right' at a table of 2, 3 or 4
-sideOf(s, seat), mySide(s)              // the side in this hand: the team (4), the seat (2), the soloist 0 and the others 1 (3);
-                                        //   -1 in the auction
-isWij(s, seat), teamCls(s, seat), teamName(s, side)  // ours or not; 'wij' or 'zij'; "Wij", "Zij", "Jij" or a name
-scorerOf(s, seat), myScorer(s), scorerName(s, k), scorerOrder(s)  // the scores of a match: per team with four, else per player
-ROEM_NAMES, roemTotal(roem), roemText(roem)  // roem by name, in points, in words ("driekaart (20), stuk (20)")
-variantText(opts)                       // "Utrechts/Amsterdams", "Met z'n drieën, Rotterdams"
-handHeadline(r, w, s)                   // the hand summary's headline from the viewer's side: {t, sub, cls}
-rowSide(s, r, k), rowMarks(s, r, k)     // the side scorer k played on in finished hand r; what its column shows: {nat, pit, roem}
-playedBy(s, r)                          // who played hand r: "jij", "Wij"/"Zij" (4), else the player's name
-chartSpec(s)                            // the Scorebord's chart (docs/frontend.md#the-score-chart); null before the first hand
-reviewVerdict, luckText, pointsText, momentWhere, strongLine, missedLine, fineLine, handSum, outcomeLine,
-  timeText, reviewHistory               // the lines of the Spelanalyse (below)
-MANUAL_SECTIONS                         // manual.js's SECTIONS, for before manual.js is loaded
-```
+Klaverjas's helpers without the DOM (the module imports the shell's
+`util.js` and `cards.js`): the places at a table of 2, 3 or 4, sides and
+scorers, roem in words, the hand summary's headline, the score chart's
+spec, the lines of the Spelanalyse (below) and the manual's section
+titles. Each export has its comment in the module.
 
 Node tests: `test/ui/klaverjas.test.mjs`, which loads the shell's modules
 as the site does (`siteImports` in `test/ui/site.mjs`).
 
 ### manual.js
 
-```js
-// games/klaverjas/web/js/manual.js — the in-game handleiding (Dutch content + renderer)
-export const SECTIONS = [ {id:'bediening',title:'Bediening'}, {id:'regels',title:'Spelregels'},
-  {id:'twee-drie',title:'Met 2 of 3'}, {id:'punten',title:'Kaartwaarden'}, {id:'roem',title:'Roem'},
-  {id:'seinen',title:'Seinen'}, {id:'tips',title:'Tips'}, {id:'jannie',title:'Juf Jannie'},
-  {id:'woorden',title:'Woordenlijst'} ];
-export function renderManual(sectionId, opts = {}) // → HTMLElement with that section's content (uses cards.js for illustrations);
-                                                  // opts.icon(name) (util.icon) puts the buttons' pictograms in the Bediening chips
-// Styles for the manual content are the last section of css/klaverjas.css (classes prefixed man-).
-```
+The in-game handleiding: its Dutch content and `renderManual`, which
+builds a section with `cards.js` for the illustrations. Its styles are the
+last section of `css/klaverjas.css` (classes `man-…`).
 
 `table.js` imports it when the manual is first opened (`openManual`). A
 lesson step's link takes its section's title from `MANUAL_SECTIONS` in

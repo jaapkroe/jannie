@@ -1,8 +1,8 @@
 // Focused regression checks for the table, overlays and connection handling,
 // against the real server from source with -fast pacing:
 //
-//   GAME=klaverjas scripts/dev-server 18300 -fast && scripts/chrome 9303
-//   cd test/ui && node app-checks.mjs --url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303 [--only coach,lost]
+//   GAME=klaverjas scripts/dev-server 18300 -fast && scripts/chrome 9301
+//   cd test/ui && node app-checks.mjs [--url http://127.0.0.1:18300] [--cdp http://127.0.0.1:9301] [--only coach,lost]
 //
 // Each check runs in fresh browser contexts, each with an address of its own
 // (addressProxy in app-lib.mjs), so the server's per-address limits do not

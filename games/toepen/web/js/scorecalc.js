@@ -29,9 +29,6 @@ export function course(sheet) {
 
 export const points = sheet => course(sheet).at(-1);
 
-// Players still in after the course so far (fewer points than the limit).
-export const inGame = (pts, limit) => pts.map(p => p < limit);
-
 // The winner of the match: the one player left under the limit, once the
 // others are out; -1 while two or more still play. Should a round put
 // everyone out, the fewest points win.
@@ -74,13 +71,6 @@ export function runs(sheet) {
       if (before[i][k] < sheet.limit) break; // played round i to the end
     }
   }
-  return out;
-}
-
-// How often each player went away, in all.
-export function passes(sheet) {
-  const out = zeros(sheet?.names?.length || 0);
-  for (const r of rounds(sheet)) r.passed?.forEach((p, k) => { if (p) out[k]++; });
   return out;
 }
 

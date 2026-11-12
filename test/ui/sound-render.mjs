@@ -8,21 +8,16 @@
 
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import http from 'node:http';
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { siteFile } from './site.mjs';
-import puppeteer from 'puppeteer-core';
+import { ownBrowser } from './app-lib.mjs';
+import { serveSite } from './site.mjs';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const WEB = path.join(ROOT, 'web');
 const CDP_PORT = Number(process.env.CHROME_PORT || 9331);
 
 // Upper bound on how long each sound may ring (seconds).
 const MAX_LENGTH = {
-  card: 0.15, deal: 0.1, shuffle: 0.85, trick: 0.4, trickWon: 0.75, roem: 0.9,
+  card: 0.15, knock: 0.3, deal: 0.1, shuffle: 0.85, trick: 0.4, trickWon: 0.75, roem: 0.9,
   trump: 1.4, turn: 0.6, chat: 0.2, nat: 1.4, pit: 1.4, handWon: 1.2,
   handLost: 1.1, win: 1.6, lose: 1.15, click: 0.06, error: 0.35, join: 0.6,
 };
@@ -32,66 +27,17 @@ const NAMES = Object.keys(MAX_LENGTH);
 const CSP = "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; " +
   "object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 
-let server, browser, page, startedChrome = false;
+let server, chrome, page;
 const pageProblems = [];
 
-async function cdpReachable() {
-  try {
-    const res = await fetch(`http://127.0.0.1:${CDP_PORT}/json/version`);
-    return res.ok ? (await res.json()).webSocketDebuggerUrl : null;
-  } catch {
-    return null;
-  }
-}
-
-async function ensureChrome() {
-  let ws = await cdpReachable();
-  if (ws) return ws;
-  execFileSync(path.join(ROOT, 'scripts/chrome'), [String(CDP_PORT)], { stdio: 'ignore' });
-  startedChrome = true;
-  for (let i = 0; i < 100 && !ws; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-    ws = await cdpReachable();
-  }
-  if (!ws) throw new Error(`Chromium did not come up on port ${CDP_PORT}`);
-  return ws;
-}
-
-// Tiny static server for web/*.js plus an empty test page.
-function startServer() {
-  return new Promise((resolve) => {
-    const srv = http.createServer(async (req, res) => {
-      const url = new URL(req.url, 'http://x');
-      if (url.pathname === '/') {
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': CSP });
-        res.end('<!doctype html><meta charset="utf-8"><title>sound</title>');
-        return;
-      }
-      const file = siteFile('klaverjas', url.pathname);
-      if (!file?.endsWith('.js')) {
-        res.writeHead(404).end();
-        return;
-      }
-      try {
-        const body = await readFile(file);
-        res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
-        res.end(body);
-      } catch {
-        res.writeHead(404).end();
-      }
-    });
-    srv.listen(0, '127.0.0.1', () => resolve(srv));
-  });
-}
-
 before(async () => {
-  server = await startServer();
-  const ws = await ensureChrome();
-  browser = await puppeteer.connect({ browserWSEndpoint: ws });
-  page = await browser.newPage();
+  // Klaverjas's site, with an empty test page under the policy.
+  server = await serveSite('klaverjas', 0, { '/': '<!doctype html><meta charset="utf-8"><title>sound</title>' }, { 'content-security-policy': CSP });
+  chrome = await ownBrowser(CDP_PORT);
+  page = await chrome.browser.newPage();
   page.on('pageerror', (e) => pageProblems.push(e.message));
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warn') pageProblems.push(m.text()); });
-  await page.goto(`http://127.0.0.1:${server.address().port}/`);
+  await page.goto(`${server.url}/`);
   await page.evaluate(async () => {
     window.sound = (await import('/js/sound.js')).sound;
   });
@@ -99,11 +45,8 @@ before(async () => {
 
 after(async () => {
   await page?.close().catch(() => {});
-  await browser?.disconnect().catch(() => {});
   server?.close();
-  if (startedChrome) {
-    try { execFileSync('podman', ['stop', `kj-chrome-${CDP_PORT}`], { stdio: 'ignore' }); } catch { /* gone */ }
-  }
+  await chrome?.stop();
 });
 
 // Renders `names` (all at once, or `spacing` s apart) and measures the mix.

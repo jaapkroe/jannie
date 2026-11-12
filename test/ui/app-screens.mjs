@@ -2,14 +2,16 @@
 // screenshots to test/ui/out/. Fails on console errors, uncaught exceptions,
 // failed requests or horizontal overflow.
 //
-//   node test/ui/mock/server.mjs --rig &      (or the real server: --url)
+//   GAME=klaverjas scripts/dev-server 18300 -fast
 //   scripts/chrome 9301
-//   cd test/ui && node app-screens.mjs [--url http://127.0.0.1:18100] [--only phone,desktop] [--parallel 2] [--dpr 2]
+//   cd test/ui && node app-screens.mjs [--url http://127.0.0.1:18300] [--only phone,desktop] [--parallel 2] [--dpr 2]
 //
-// The rigged mock (or a lucky deal on the real server) makes the first trick
-// contain roem; on the real server the roem shot is taken when roem happens.
+// The first game has a seed (SEED), so its first hand is the same on every
+// run: we are voorhand, choose hearts and lead the king, and the first
+// trick has roem.
 import {
-  args, connect, openPage, VIEWPORTS, press, type, shot, checkOverflow, waitFor, sleep, playLegal, addressProxy, ownAddress,
+  args, VIEWPORTS, press, type, snap, has, closeModal, waitFor, sleep, playLegal, addressProxy, countdownPatch,
+  scenario, perViewport, finish,
 } from './app-lib.mjs';
 
 const A = args();
@@ -17,19 +19,22 @@ const proxy = await addressProxy(A.url);
 const BASE = proxy.url;
 const names = A.only ? A.only.split(',') : Object.keys(VIEWPORTS);
 
+// The first game's seed (docs/server.md#the-seed). With four players its
+// first hand has seat 3 as the dealer, so we are voorhand, and the hearts
+// K 10 9 8 7 with us, the jack, the ace and the queen one each with the
+// others: with hearts trump the king led draws all three, and J Q K A are
+// a vierkaart with stuk, 70 roem.
+const SEED = '69610';
+
 const isNarrow = P => P.vp.width < 600;
-const has = (P, sel) => P.page.evaluate(s => !!document.querySelector(s), sel);
 
-async function snap(P, label) {
-  await sleep(120);
-  await shot(P, label);
-  await checkOverflow(P, label);
-  console.log(`  ${P.name}: ${label}`);
-}
-
-async function closeModal(P) {
-  await P.page.keyboard.press('Escape');
-  await sleep(320);
+// Presses what may lie under its scroller's edge or a sheet's foot while
+// still inside the viewport, where press sees no reason to scroll.
+async function pressRow(P, sel) {
+  const el = await P.page.waitForSelector(sel);
+  await el.evaluate(e => e.scrollIntoView({ block: 'center', inline: 'center' }));
+  await sleep(150);
+  await press(P, sel);
 }
 
 async function openTool(P, tool, menuIndex) {
@@ -46,16 +51,10 @@ async function openTool(P, tool, menuIndex) {
 }
 
 // Plays (trump, bid, cards, ready) until `stop` matches in the DOM.
-async function playUntil(P, stop, { timeout = 180000, ready = true, roemShot = null } = {}) {
+async function playUntil(P, stop, { timeout = 180000, ready = true } = {}) {
   const t0 = Date.now();
   while (Date.now() - t0 < timeout) {
     if (await has(P, stop)) return;
-    if (roemShot && !roemShot.done && (await has(P, '.roem-burst'))) {
-      roemShot.done = true;
-      await sleep(400);
-      await snap(P, '07-roem');
-      continue;
-    }
     const st = await P.page.evaluate(() => ({
       trump: !!document.querySelector('.panel-trump .suit-btn:not(:disabled)'),
       bid: !!document.querySelector('.panel-bid .btn-go:not(:disabled)'),
@@ -71,7 +70,7 @@ async function playUntil(P, stop, { timeout = 180000, ready = true, roemShot = n
   throw new Error(`[${P.name}] timeout playing until ${stop}`);
 }
 
-async function newGame(P, { players = 4, hands = 4, tempo = 'snel', trumpMode = '' } = {}, label = '') {
+async function newGame(P, { players = 4, hands = 4, tempo = 'snel', trumpMode = '', seed = '' } = {}, label = '') {
   await press(P, '#btn-new');
   await waitFor(P, () => document.querySelector('.m-new.open'), { label: 'new game sheet' });
   const pickOpt = async (row, value) => {
@@ -94,6 +93,7 @@ async function newGame(P, { players = 4, hands = 4, tempo = 'snel', trumpMode = 
   await pickOpt(2, String(hands));
   if (trumpMode) await pickOpt(3, trumpMode);
   await pickOpt(6, tempo[0].toUpperCase() + tempo.slice(1));
+  if (seed) await type(P, '.m-new .seed-field', seed);
   await press(P, '#btn-create');
   await waitFor(P, () => document.body.dataset.screen === 'lobby' && document.querySelector('.code-big span'), { label: 'lobby' });
 }
@@ -102,22 +102,6 @@ async function home(P) {
   await P.page.goto(BASE + '/', { waitUntil: 'networkidle0' });
   await waitFor(P, () => document.querySelector('#btn-quick'), { label: 'home' });
   await type(P, '#name', 'Piet');
-}
-
-// Runs one scenario in its own page; each scenario starts from a fresh
-// browser context so leftovers of a previous game never interfere.
-async function scenario(browser, name, fn) {
-  const P = await openPage(browser, VIEWPORTS[name], name, A.dpr);
-  await ownAddress(P, BASE);
-  try {
-    await fn(P);
-  } catch (e) {
-    await shot(P, 'zz-failure').catch(() => {});
-    P.errors.push(`[${name}] ${e.message || e}`);
-  } finally {
-    await P.ctx.close().catch(() => {});
-  }
-  return P.errors;
 }
 
 // Home, new game, lobby, a full short game with all overlays.
@@ -137,28 +121,40 @@ async function mainFlow(P) {
   await type(P, '#name', 'Piet');
 
   // New game sheet → lobby → start.
-  await newGame(P, { hands: 4, tempo: 'snel' }, '02-new-game');
+  await newGame(P, { hands: 4, tempo: 'snel', seed: SEED }, '02-new-game');
   await sleep(300);
   await snap(P, '03-lobby');
   await press(P, '#btn-start:not(:disabled)');
 
-  // Trump choice: at once on the rigged mock; on the real server when we are voorhand.
-  await playUntil(P, '.panel-trump .suit-btn:not(:disabled)');
+  // The seed's first hand: we are voorhand, so the trump choice comes at once.
+  await waitFor(P, () => document.querySelector('.panel-trump .suit-btn:not(:disabled)'), { label: 'the trump choice' });
   await sleep(400);
   await snap(P, '04-trump');
-  await press(P, (await has(P, '.suit-btn[aria-label^="harten"]:not(:disabled)')) ? '.suit-btn[aria-label^="harten"]' : '.suit-btn:not(:disabled)');
+  await press(P, '.suit-btn[aria-label^="harten"]');
   await waitFor(P, () => document.querySelector('.hand.my-turn .card.legal'), { label: 'my turn' });
   await sleep(300);
   await snap(P, '05-my-turn');
-  await playLegal(P, (await has(P, '.hand .card.legal[data-card="KH"]')) ? 'KH' : '');
-  await waitFor(P, () => document.querySelectorAll('.trick .slot .card').length >= 2, { label: 'mid trick' });
+  // The server's messages are held twice (holdHook), so these two shots do
+  // not depend on its pace: at the trick's second card, and at its end.
+  await P.page.evaluate(() => { window.kjHoldWhen = s => s.trick?.cards.length === 2; });
+  if ((await playLegal(P, 'KH')) !== 'KH') throw new Error('the seed dealt no king of hearts to lead');
+  await waitFor(P, () => window.kjHeld() && document.querySelectorAll('.trick .slot .card').length === 2, { label: 'mid trick' });
   await snap(P, '06-mid-trick');
+  await P.page.evaluate(() => {
+    window.kjHoldWhen = (s, m) => m.ev?.type === 'trick';
+    window.kjRelease();
+  });
+  await waitFor(P, () => document.querySelector('.roem-burst'), { label: 'the roem of the first trick' });
+  await sleep(400);
+  await snap(P, '07-roem');
+  await P.page.evaluate(() => window.kjRelease());
 
-  const roemShot = { done: false };
-  await playUntil(P, '.m-summary.open', { ready: false, roemShot });
-  if (!roemShot.done) console.log(`  ${P.name}: no roem in this hand`);
+  // The summary with its countdown ring, as at a table of more people.
+  await P.page.evaluate(countdownPatch);
+  await playUntil(P, '.m-summary.open', { ready: false });
   await sleep(1500);
   await snap(P, '08-summary');
+  await P.page.evaluate(() => { window.kjPatch = null; });
 
   await openTool(P, 'last', 1);
   await waitFor(P, () => document.querySelector('.m-last.open'), { label: 'last trick' });
@@ -200,18 +196,18 @@ async function mainFlow(P) {
   await waitFor(P, () => document.querySelector('.m-over .review-line:not([hidden]):not(:disabled)'), { label: 'review line' });
   await snap(P, '14-game-over');
 
-  await press(P, '.m-over .review-line');
+  await pressRow(P, '.m-over .review-line');
   await waitFor(P, () => document.querySelector('.m-review.open'), { label: 'review' });
   await sleep(300);
   await snap(P, '14b-review');
   await page.evaluate(() => document.querySelector('.m-review .dlg-body').scrollTo(0, 1e6));
   await sleep(300);
   await snap(P, '14b-review-end');
-  await press(P, '.m-review .rv-moment:not(:disabled)');
+  await pressRow(P, '.m-review .rv-moment:not(:disabled)');
   await waitFor(P, () => document.querySelector('.m-replay.open .rp-moment.now'), { label: 'replay at the moment' });
   await sleep(300);
   await snap(P, '14c-replay-moment');
-  await press(P, '.m-replay .rp-tn:last-child');
+  await pressRow(P, '.m-replay .rp-tn:last-child');
   await waitFor(P, () => /Uitslag/.test(document.querySelector('.m-replay .rp-stand')?.textContent), { label: 'replay at the end of the hand' });
   await snap(P, '14d-replay-end');
 
@@ -219,16 +215,18 @@ async function mainFlow(P) {
   // replay (handReview).
   await closeModal(P);
   await closeModal(P);
-  await press(P, '.m-over .btn-row .btn:first-child');
+  await pressRow(P, '.m-over .btn-row .btn:first-child');
   await waitFor(P, () => document.querySelector('.m-score.open tr.tap'), { label: 'score sheet' });
-  await press(P, '.m-score tr.tap');
+  await pressRow(P, '.m-score tr.tap');
   await waitFor(P, () => document.querySelector('.m-score .review .mt'), { label: 'the last potje' });
-  await press(P, '.m-score .review .mt');
+  await pressRow(P, '.m-score .review .mt');
   await waitFor(P, () => document.querySelector('.m-last.open .last-replay'), { label: 'a trick of the last potje' });
   await sleep(300);
   await snap(P, '14e-trick');
-  await press(P, '.m-last.open .last-replay');
-  await waitFor(P, () => document.querySelector('.m-replay.open .rp-sum') && document.querySelector('.m-replay.open .rp-choices .rp-moment'), { label: 'the last potje in the replay' });
+  await pressRow(P, '.m-last.open .last-replay');
+  // The hand's line; the replay lists a choice only from the player's first
+  // one on, and a forced card is none.
+  await waitFor(P, () => document.querySelector('.m-replay.open .rp-sum'), { label: 'the last potje in the replay' });
   await sleep(300);
   await snap(P, '14f-replay-hand');
 }
@@ -250,17 +248,11 @@ async function trainingFlow(P) {
   await waitFor(P, () => document.querySelector('.m-train.open'), { label: 'training sheet' });
   // A tap while the sheet still slides in can miss the switch.
   await waitFor(P, () => !document.querySelector('.m-train').getAnimations({ subtree: true }).some(a => a.effect.getComputedTiming().endTime < Infinity), { label: 'training sheet in place' });
-  // The sheet scrolls under its foot, still inside the viewport.
-  const pressRow = async sel => {
-    await P.page.$eval(sel, e => e.scrollIntoView({ block: 'center' }));
-    await sleep(150);
-    await press(P, sel);
-  };
-  await pressRow('#train-lesson-vrij');
+  await pressRow(P, '#train-lesson-vrij');
   await waitFor(P, () => document.querySelector('#train-lesson-vrij[aria-checked="true"]'), { label: 'Vrij spelen chosen' });
-  await pressRow('.train-opts > summary');
+  await pressRow(P, '.train-opts > summary');
   await waitFor(P, () => document.querySelector('.train-opts').open, { label: 'Spelopties open' });
-  await pressRow('#train-open');
+  await pressRow(P, '#train-open');
   await waitFor(P, () => document.querySelector('#train-open:checked'), { label: 'open cards switched on' });
   await press(P, '#btn-train-go');
   await playUntil(P, '.hand.my-turn .card.hint', { timeout: 60000 });
@@ -268,28 +260,10 @@ async function trainingFlow(P) {
   await snap(P, '16-training');
 }
 
-async function run(name) {
-  const browser = await connect(A.cdp);
+const errors = await perViewport(A.cdp, names, async (browser, name) => {
   const errors = [];
-  try {
-    for (const flow of [mainFlow, bidFlow, trainingFlow]) errors.push(...(await scenario(browser, name, flow)));
-  } finally {
-    await browser.disconnect();
-  }
+  for (const flow of [mainFlow, bidFlow, trainingFlow]) errors.push(...(await scenario(browser, name, BASE, flow, { dpr: A.dpr })));
   return errors;
-}
-
-// Sequential by default: headless Chromium in its container has little shared memory.
-const parallel = Math.max(1, Number(process.argv[process.argv.indexOf('--parallel') + 1]) || 1);
-const errors = [];
-for (let i = 0; i < names.length; i += parallel) {
-  const batch = await Promise.all(names.slice(i, i + parallel).map(run));
-  errors.push(...batch.flat());
-}
+});
 proxy.close();
-if (errors.length) {
-  console.error('FAILED:\n' + errors.join('\n'));
-  process.exit(1);
-}
-console.log(`ok: ${names.length} viewports, screenshots in test/ui/out/`);
-process.exit(0); // the proxy may still hold keep-alive connections
+finish(errors, `ok: ${names.length} viewports, screenshots in test/ui/out/`);

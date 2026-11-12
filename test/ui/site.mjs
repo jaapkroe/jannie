@@ -1,10 +1,11 @@
 // One game's site as the browser sees it: the union of platform/web and
 // the web/ of the game's folder (docs/frontend.md#one-site-per-game), for
-// the static servers of the tests (mock/server.mjs, manual-app.mjs,
-// sound-render.mjs, ...). The two trees must not share a path;
-// test/sites.test.mjs checks that. Also the games themselves, the folders
-// the shared tests go through, and what those tests need to know of each.
+// the static servers of the tests (manual-app.mjs, sound-render.mjs, ...).
+// The two trees must not share a path; test/sites.test.mjs checks that.
+// Also the games themselves, the folders the shared tests go through, and
+// what those tests need to know of each.
 import fs from 'node:fs';
+import http from 'node:http';
 import module from 'node:module';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -52,6 +53,37 @@ export function siteFile(game, p) {
     if (f.startsWith(root + path.sep) && fs.statSync(f, { throwIfNoEntry: false })?.isFile()) return f;
   }
   return null;
+}
+
+const TYPES = {
+  '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.svg': 'image/svg+xml',
+  '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png',
+};
+
+// A static server of game's site on 127.0.0.1, for a test that needs no
+// game server: / is the site's index.html, and pages maps a path to HTML
+// of the test's own, sent with headers. Port 0 is any free port; the
+// server's url says which.
+export async function serveSite(game, port = 0, pages = {}, headers = {}) {
+  const server = http.createServer((req, res) => {
+    const p = new URL(req.url, 'http://x').pathname;
+    if (pages[p] !== undefined) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', ...headers });
+      res.end(pages[p]);
+      return;
+    }
+    const file = siteFile(game, p === '/' ? '/index.html' : p);
+    if (!file) {
+      res.writeHead(404).end();
+      return;
+    }
+    const type = TYPES[path.extname(file)] || 'application/octet-stream';
+    res.writeHead(200, { 'content-type': type === 'image/png' ? type : `${type}; charset=utf-8` });
+    res.end(fs.readFileSync(file));
+  });
+  await new Promise(ok => server.listen(port, '127.0.0.1', ok));
+  server.url = `http://127.0.0.1:${server.address().port}`;
+  return server;
 }
 
 // Makes node resolve a relative import in a module of a game's web/ as

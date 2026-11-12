@@ -52,7 +52,10 @@ through ([deployment.md, "Reverse proxy"](deployment.md#reverse-proxy)).
 Every site links the shell's two stylesheets and one of its own:
 `app.css` (the tokens, layout, home, lobby, table chrome, seats, overlays
 and chat), `cards.css` (the card faces, with `cards.js`) and the game's,
-with its table and overlays. The order in each `index.html`:
+with its table and overlays. `app.css` also has what the games with
+lessons share: Juf Jannie's coach bubble (`.coach…`; the game places it
+and spaces its link and button) and the pulse of a lesson's spot
+(`kj-spot`). The order in each `index.html`:
 
 - klaverjas: `app.css`, `klaverjas.css`, `cards.css`. `klaverjas.css`
   comes before `cards.css`, so a card's state there (`.card.selected`,
@@ -157,52 +160,47 @@ export const lobby;         // seats(miniTable) → its seat slots; slot(s, seat
 
 ## Shared modules
 
-```js
-// platform/web/js/cards.js — card faces and backs (with platform/web/css/cards.css)
-export const SUITS = { C:{name:'klaveren',symbol:'♣',color:'black'}, D:{name:'ruiten',symbol:'♦',color:'red'},
-                       H:{name:'harten',symbol:'♥',color:'red'}, S:{name:'schoppen',symbol:'♠',color:'black'} };
-export const RANKS = { '2':'2','3':'3','4':'4','5':'5','6':'6','7':'7','8':'8','9':'9',
-                       'T':'10','J':'B','Q':'V','K':'H','A':'A' };  // face letters, low to high
-export function cardName(code)            // "harten boer", "schoppen 2"
-export function cardShort(code)           // "♥B"
-export function createCard(code, opts={}) // → HTMLElement .card; opts: {size:'sm'|'md'|'lg'} (default md);
-                                          //   dataset.card = code; aria-label = cardName
-export function createBack(opts={})       // → HTMLElement .card.back
-// The 32-card games deal 7 to A; a 52-card game also 2 to 6, with index glyphs in the style of the
-//   others (none wider than the 10's) and the standard pips. A golden hash in
-//   test/ui/cards-unit.test.mjs keeps the markup of the 32 faces 7 to A and of the backs as it was.
-// Card size scales with the CSS custom property --card-w on any ancestor (height = 1.4 × width).
-// Four-colour deck when an ancestor has class .four-color (♣ green, ♦ blue/orange). In the
-//   two-colour deck the courts of ♣ and ♦ wear those inks on a garment (tunic, bodice, doublet
-//   and beret), so the courts of every suit look different; the spade (needle point over low,
-//   wide lobes, broad foot) and the club (three wide-set round lobes, slim stem) stay apart
-//   as small or distant blurs.
-// Extras: parseCard(code) → {rank,suit}|null; suitIcon(suit, {colored}) → <svg.suit-icon> (1em);
-//   createBack({size, color:'blue'|'red'}). State classes: .legal .selected (lifted) .disabled
-//   .hint (pulsing glow) .winner (gold ring) .selectable (hover/press only); they use the
-//   individual `translate`/`scale` properties, so layout may use `transform`. Every face, at any
-//   size, shows its picture (pips, ace medallion, court figure) and the index (rank over suit) in
-//   the top-left and, turned, the bottom-right corner; the boer's B has a square-cornered stem.
-//   Below 60, 40 and 30 px wide the index grows to 1.25, 1.4 and 1.6 times its regular size and
-//   the picture shrinks to keep clear of it. --card-index-max on an ancestor caps that growth
-//   where cards overlap at their corners or show only a strip (the trick: 1, the regular index).
-//   The scale a face shows is --_index on its .card-svg, a registered <number> that an
-//   animation may tween (a flight from a hand to the trick does).
+The shell's modules a game builds on. What each exports and how to call
+it is in the comments of the module (`platform/web/js/`); this is their
+design.
 
-// platform/web/js/sound.js — synthesised with WebAudio, no audio files
-export const sound = {
-  unlock(),            // call on the first user gesture (also self-armed on any gesture); Promise, never rejects
-  play(name),          // 'card','knock','deal','shuffle','trick','trickWon','roem','trump','turn','chat',
-                       // 'nat','pit','handWon','handLost','win','lose','click','error','join'
-  setMuted(bool), isMuted(), setVolume(0..1), getVolume()   // persisted in localStorage kj.sound
-  setCall(bool),       // call.js holds the iOS audio session ('play-and-record', else 'ambient')
-};
-// The context sleeps (suspend) 30 s after the last sound, or 0.4 s after muting, so the device can
-//   stop its audio output; the next play() wakes it without a gesture, a tap or a key does not.
-//   It does not fall asleep while call.js holds the session (setCall(true) until setCall(false)),
-//   which keeps the audio output busy anyway; one already asleep wakes at the next sound.
-//   setCall(false) starts the wait again.
-```
+**`cards.js`** (with `css/cards.css`) builds card faces and backs as
+inline SVG. The 32-card games deal 7 to A; a 52-card game also 2 to 6,
+with index glyphs in the style of the others (none wider than the 10's)
+and the standard pips. A golden hash in `test/ui/cards-unit.test.mjs`
+keeps the markup of the 32 faces 7 to A and of the backs as it was. Card
+size scales with the CSS custom property `--card-w` on any ancestor
+(height = 1.4 × width). Every face, at any size, shows its picture (pips,
+ace medallion, court figure) and the index (rank over suit) in the
+top-left and, turned, the bottom-right corner; the boer's B has a
+square-cornered stem. Below 60, 40 and 30 px wide the index grows to 1.25,
+1.4 and 1.6 times its regular size and the picture shrinks to keep clear
+of it. `--card-index-max` on an ancestor caps that growth where cards
+overlap at their corners or show only a strip (the trick: 1, the regular
+index). The scale a face shows is `--_index` on its `.card-svg`, a
+registered `<number>` that an animation may tween (a flight from a hand to
+the trick does).
+
+The deck has four colours when an ancestor has class `.four-color` (♣
+green, ♦ blue/orange). In the two-colour deck the courts of ♣ and ♦ wear
+those inks on a garment (tunic, bodice, doublet and beret), so the courts
+of every suit look different; the spade (needle point over low, wide
+lobes, broad foot) and the club (three wide-set round lobes, slim stem)
+stay apart as small or distant blurs. A card's state is a class: `.legal`,
+`.selected` (lifted), `.disabled`, `.hint` (pulsing glow), `.winner` (gold
+ring), `.selectable` (hover and press only). They use the individual
+`translate`/`scale` properties, so layout may use `transform`.
+
+**`sound.js`** synthesises every sound with WebAudio, without audio
+files: `card`, `knock`, `deal`, `shuffle`, `trick`, `trickWon`, `roem`,
+`trump`, `turn`, `chat`, `nat`, `pit`, `handWon`, `handLost`, `win`,
+`lose`, `click`, `error`, `join`. The first user gesture unlocks it; mute
+and volume are kept in localStorage (`kj.sound`). The context sleeps 30 s
+after the last sound, or 0.4 s after muting, so the device can stop its
+audio output; the next sound wakes it without a gesture, a tap or a key
+does not. It does not fall asleep while `call.js` holds the audio session
+(on iOS 'play-and-record', else 'ambient'), which keeps the audio output
+busy anyway.
 
 The palette serves every game: `roem`, `nat` and `pit` are klaverjas's,
 `knock` (a toep) toepen's.
@@ -216,33 +214,13 @@ its pure module (klaverjas's `chartSpec` in `rules.js`, toepen's in
 `rules.js` and, for Score bijhouden, `scorecalc.js`; unit tests check
 them).
 
-```js
-// platform/web/js/util.js — loaded with the page
-export function chartBox({empty, title})  // → the element with set(spec): a <div class="chart-box">, or with a title
-                                     //   a <div class="chart-sec"> holding an <h3 class="chart-h"> and the box. set
-                                     //   draws the chart of spec at the box's width, again when that width
-                                     //   changes (the focus, if in the chart, stays in the new one), and
-                                     //   imports chart.js for the first box; a spec equal to the one drawn is not
-                                     //   drawn again, so an overlay may set it on every update. An overlay that
-                                     //   rebuilds on every update keeps the element in the page and replaces the
-                                     //   parts around it: taking it out drops the tooltip and the focus. Without
-                                     //   a spec the box shows empty (in .chart-empty), or the element hides when
-                                     //   empty is ''; while chart.js loads the box keeps a chart's room
-                                     //   (.loading), and if it cannot be loaded the element hides.
-// platform/web/js/chart.js — imported when first needed: by the first box with a spec, or by a module loaded on
-//   demand that uses its colours (toepen's score.js)
-export const COLORS;                 // the eight categorical slots, in their fixed order
-export function chart(spec, width)   // → the chart's element (legend, svg, tooltip); null before the first round
-export function swatch(color)        // → a small mark in color beside a name (.chart-sw)
-export function gridStep(range)      // the grid's step: 1, 2 or 5 times a power of ten, at most five steps
-// spec: {names, colors?, pts, ends?, out?, limit?, rings?, ringLabel?, tips, label}
-//   names: the lines, in the legend's order; colors: per line a CSS colour (default COLORS in order);
-//   pts[i][k]: line k's score after i rounds (pts[0] before the first); ends[k]: the last i line k
-//   reaches (a player out of the match); out[k]: greyed in the legend; limit {value, label}: a dashed
-//   line; rings[k]: the rounds that get an open ring, named in the legend by ringLabel; tips[i]: the
-//   tooltip at round i, {title, rows: [{k, note, value, out}]}, rows in its order; label: the svg's
-//   aria-label. Plain data, so the box compares it as JSON.
-```
+The spec is plain data: the lines' names and colours, every line's score
+after each round, a limit, the rounds that get a ring and the tooltip per
+round (the fields are in the comment above `chart` in `chart.js`).
+`chartBox` in `util.js` makes the box that draws it at its width, and
+again when that width changes; it compares a spec with the one drawn as
+JSON, so an overlay may set it on every update, and imports `chart.js`
+for the first box that gets one.
 
 What it shows: a line per player or side, a dot at each line's end, the
 names at the line ends for up to four lines (pushed apart where they
@@ -382,7 +360,7 @@ after an AI played for you (a decision for your seat you did not send),
 you get "Een AI-speler speelde even voor je". *Spel verlaten?* says
 mid-game "De anderen beslissen samen of een AI-speler je plaats inneemt."
 ("Je verlaat de tafel." with nobody else to ask). `app-checks.mjs --only
-takeover` plays it through, also on the mock.
+takeover` plays it through.
 
 ### Back button
 

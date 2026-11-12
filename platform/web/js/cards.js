@@ -1,11 +1,12 @@
 // Playing cards: faces and backs as inline SVG built through the DOM.
-// Contract: docs/frontend.md#shared-modules; styles live in web/css/cards.css.
+// Design: docs/frontend.md#shared-modules; styles live in web/css/cards.css.
 //
-// Beyond the contract:
+//   createCard(code, opts) → the face of code ("JH") as an element .card; opts.size 'sm', 'md'
+//                           (default) or 'lg'; its aria-label is cardName(code)
+//   createBack(opts)      → a back, .card.back; opts.size, opts.color 'blue' (default) or 'red'
 //   parseCard(code)       → {rank, suit}, or null for anything that is not a card code
 //   suitIcon(suit, opts)  → <svg class="suit-icon"> for UI badges (trump indicator, buttons);
 //                           inherits currentColor; opts.colored uses the deck inks (see cards.css)
-//   createBack(opts)      → opts.color 'blue' (default) or 'red'
 // Faces carry data-card, data-rank and data-suit; state classes are listed in cards.css.
 
 export const SUITS = Object.freeze({

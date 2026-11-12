@@ -37,10 +37,6 @@ type Option struct {
 	Best   bool // what sterk chooses
 }
 
-// explainWorlds is the deals sampled for an explanation: as many as sterk
-// samples for a decision, more for laying away.
-const explainWorlds = 240
-
 // Explain works out the reasoning for v.Seat's decision now, as sterk of
 // average boldness decides it, with the rule of thumb of normaal. seed
 // makes the sampled deals repeatable.

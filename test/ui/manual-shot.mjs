@@ -4,24 +4,19 @@
 //
 //   cd test/ui && node manual-shot.mjs [OUTDIR]
 //
-// Serves the repo root itself on 127.0.0.1:18120 and starts scripts/chrome 9321
+// Serves klaverjas's site on 127.0.0.1:18120 and starts scripts/chrome 9321
 // unless a browser already listens there (then it is left running).
 // Env: CDP_PORT (9321), HTTP_PORT (18120), DSF (device scale factor, 1),
 //      SECTIONS (comma list, default all), FOUR=1 (four-colour deck).
 // Writes OUTDIR/manual-<section>-<width>-<nn>.png; OUTDIR defaults to test/ui/out/manual.
-import puppeteer from 'puppeteer-core';
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
 import { mkdirSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
-import { join, normalize, extname } from 'node:path';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { siteFile } from './site.mjs';
+import { ownBrowser, wideIn } from './app-lib.mjs';
+import { serveSite } from './site.mjs';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const out = process.argv[2] || join(repo, 'test/ui/out/manual');
-const cdpPort = process.env.CDP_PORT || '9321';
-const httpPort = Number(process.env.HTTP_PORT || 18120);
 const dsf = Number(process.env.DSF || 1);
 const four = process.env.FOUR === '1';
 const VIEWPORTS = [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 1440, height: 900 }];
@@ -71,59 +66,20 @@ const HARNESS = `<!doctype html>
 </script>
 </head><body></body></html>`;
 
-const TYPES = { '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.html': 'text/html' };
-
-const server = createServer(async (req, res) => {
-  const path = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-  if (path === '/__manual.html') {
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(HARNESS);
-    return;
-  }
-  const file = siteFile('klaverjas', path); // the manual is klaverjas's
-  if (!file) {
-    res.writeHead(404).end();
-    return;
-  }
-  try {
-    const body = await readFile(file);
-    res.writeHead(200, { 'content-type': `${TYPES[extname(file)] || 'application/octet-stream'}; charset=utf-8` });
-    res.end(body);
-  } catch {
-    res.writeHead(404).end();
-  }
-});
-await new Promise((ok) => server.listen(httpPort, '127.0.0.1', ok));
-
-async function cdpEndpoint() {
-  const r = await fetch(`http://127.0.0.1:${cdpPort}/json/version`);
-  return (await r.json()).webSocketDebuggerUrl;
-}
-
-let startedChrome = false;
-let endpoint;
-try {
-  endpoint = await cdpEndpoint();
-} catch {
-  execFileSync(join(repo, 'scripts/chrome'), [cdpPort], { stdio: 'inherit' });
-  startedChrome = true;
-  for (let i = 0; i < 50 && !endpoint; i++) {
-    await new Promise((r) => setTimeout(r, 200));
-    endpoint = await cdpEndpoint().catch(() => undefined);
-  }
-}
+// The manual is klaverjas's.
+const server = await serveSite('klaverjas', Number(process.env.HTTP_PORT || 18120), { '/__manual.html': HARNESS });
+const { browser, stop } = await ownBrowser(process.env.CDP_PORT || '9321');
 
 const problems = [];
 const notes = [];
 let shots = 0;
-const browser = await puppeteer.connect({ browserWSEndpoint: endpoint });
 const page = await browser.newPage();
 page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
 page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 page.on('requestfailed', (r) => problems.push(`requestfailed: ${r.url()}`));
 
 try {
-  await page.goto(`http://127.0.0.1:${httpPort}/__manual.html?s=bediening`, { waitUntil: 'networkidle0' });
+  await page.goto(`${server.url}/__manual.html?s=bediening`, { waitUntil: 'networkidle0' });
   const ids = process.env.SECTIONS
     ? process.env.SECTIONS.split(',')
     : await page.evaluate(async () => (await import('/js/manual.js')).SECTIONS.map((s) => s.id));
@@ -131,26 +87,13 @@ try {
   for (const vp of VIEWPORTS) {
     await page.setViewport({ ...vp, deviceScaleFactor: dsf });
     for (const id of ids) {
-      await page.goto(`http://127.0.0.1:${httpPort}/__manual.html?s=${id}${four ? '&four=1' : ''}`, { waitUntil: 'networkidle0' });
+      await page.goto(`${server.url}/__manual.html?s=${id}${four ? '&four=1' : ''}`, { waitUntil: 'networkidle0' });
       await page.waitForSelector('body[data-ready="1"]', { timeout: 5000 });
       const facts = await page.evaluate(() => {
         const man = document.querySelector('.man');
-        const box = man.getBoundingClientRect();
-        // Overflow is fine inside a box that scrolls on its own (quick links); tables
-        // have such a box too, but are checked separately: they must fit as they are.
-        const inScroller = (el) => {
-          for (let p = el.parentElement; p && p !== man; p = p.parentElement) {
-            if (['auto', 'scroll'].includes(getComputedStyle(p).overflowX)) return true;
-          }
-          return false;
-        };
-        const wide = [...man.querySelectorAll('*')]
-          .filter((el) => !inScroller(el) && el.getBoundingClientRect().right > box.right + 1)
-          .map((el) => `${el.tagName.toLowerCase()}.${el.className}`.slice(0, 60));
         const cards = [...man.querySelectorAll('.card')];
         return {
           pageOverflow: document.documentElement.scrollWidth - window.innerWidth,
-          wide: [...new Set(wide)].slice(0, 5),
           tableScroll: [...man.querySelectorAll('.man-tablewrap')].filter((t) => t.scrollWidth > t.clientWidth + 1).length,
           cards: cards.length,
           blankCards: cards.filter((c) => c.getBoundingClientRect().width < 10 || !c.querySelector('svg')).length,
@@ -160,6 +103,9 @@ try {
           height: document.documentElement.scrollHeight,
         };
       });
+      // Overflow is fine inside a box that scrolls on its own (quick links); tables
+      // have such a box too, but are checked separately: they must fit as they are.
+      facts.wide = await page.evaluate(wideIn, '.man');
       const tag = `${id}@${vp.width}`;
       notes.push(`${tag}: ${facts.cards} cards (${facts.cardWidth}px), height ${facts.height}px`);
       if (facts.pageOverflow > 0) problems.push(`${tag}: page scrolls sideways by ${facts.pageOverflow}px`);
@@ -178,9 +124,8 @@ try {
   }
 } finally {
   await page.close();
-  await browser.disconnect();
   server.close();
-  if (startedChrome) execFileSync('podman', ['stop', `kj-chrome-${cdpPort}`], { stdio: 'ignore' });
+  await stop();
 }
 
 console.log(notes.join('\n'));

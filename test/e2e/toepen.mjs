@@ -3,13 +3,15 @@
 // (games/toepen/README.md#protocol) against a toepen server and checks
 // invariants on every update, then keeps a score sheet with watchers
 // (games/toepen/README.md#score-bijhouden). No dependencies: Node's global
-// WebSocket. The toepen site's `make e2e`.
+// WebSocket, and lib.mjs for what the games' scripts share. The toepen
+// site's `make e2e`.
 //
 //   node test/e2e/toepen.mjs http://127.0.0.1:18096          # the standard suite
 //   node test/e2e/toepen.mjs --url ws://127.0.0.1:18096/ws --players 5 --humans 2 --ai sterk --limit 15 [--no-was] [--no-armoede] [--no-koning] [--no-boer] [--lijntoep]
 //
 // Exits 0 when every match finished with all invariants intact, 1 otherwise.
 import { parseArgs } from 'node:util';
+import { wsURL, SEED_LINE, rng, pick, Seat, seatTable, untilOver } from './lib.mjs';
 
 const STALL_MS = 30000;
 const IN_HAND = new Set(['discard', 'was', 'check', 'toep', 'play']);
@@ -21,9 +23,6 @@ const KEYS = ['code', 'phase', 'opts', 'you', 'host', 'players', 'turn', 'takeov
   'status', 'armoede', 'washed', 'answered', 'claims', 'canClaim', 'claimant', 'asking', 'checks', 'stock', 'hand',
   'canToep', 'trick', 'lastTrick', 'tricks', 'rounds', 'courses'];
 const OPTS = ['players', 'ai', 'tempo', 'seed', 'limit', 'was', 'armoede', 'koning', 'boer', 'lijntoep', 'bluf'];
-// The table's line at game over with the seed of the match, which no
-// message names before (docs/server.md#the-seed).
-const SEED_LINE = /^De seed van dit spel was (\d+)\.$/;
 
 const { values: o, positionals } = parseArgs({
   allowPositionals: true,
@@ -34,14 +33,6 @@ const { values: o, positionals } = parseArgs({
     verbose: { type: 'boolean' },
   },
 });
-
-function wsURL(raw) {
-  const u = new URL(raw);
-  if (u.protocol === 'http:') u.protocol = 'ws:';
-  if (u.protocol === 'https:') u.protocol = 'wss:';
-  if (u.pathname === '/' || u.pathname === '') u.pathname = '/ws';
-  return u.toString();
-}
 
 const url = wsURL(o.url || positionals[0] || 'http://127.0.0.1:18096');
 const suite = o.players || o.humans || o.url ? [{
@@ -62,27 +53,10 @@ const wasKind = hand => {
   return hand.length === 4 && (pics === 4 || pics === 3 && hand.some(c => c[0] === '7'));
 };
 
-const rng = (() => { let x = 0x2545f491; return () => ((x = (x * 1103515245 + 12345) >>> 0) / 2 ** 32); })();
-const pick = a => a[Math.floor(rng() * a.length)];
-
 // A simulated person at the table.
-class Player {
-  constructor(name, game, errors) {
-    Object.assign(this, { name, game, errors, s: null, seat: -1, code: '', acted: '', wasIn: '', prev: null });
-    this.raws = []; // every message as it came, for the seed
-    this.overAt = -1; // the index in raws of the first update at game over
-    this.seed = 0; // the seed named at game over
-    this.ws = new WebSocket(url);
-    this.open = new Promise((ok, fail) => { this.ws.onopen = ok; this.ws.onerror = fail; });
-    this.ws.onmessage = e => { this.raws.push(e.data); this.onMessage(JSON.parse(e.data)); };
-    this.waiters = [];
-  }
-  send(m) { this.ws.send(JSON.stringify(m)); }
-  fail(msg) { this.errors.push(`${this.game} ${this.name}: ${msg}`); }
-  until(pred) {
-    if (this.s && pred(this.s)) return Promise.resolve(this.s);
-    return new Promise(ok => this.waiters.push({ pred, ok }));
-  }
+class Player extends Seat {
+  wasIn = '';
+  prev = null;
   onMessage(m) {
     if (m.t === 'joined') { this.seat = m.seat; this.code = m.code; return; }
     if (m.t === 'error') {
@@ -100,7 +74,7 @@ class Player {
     this.check(s);
     this.prev = this.s;
     this.s = s;
-    this.waiters = this.waiters.filter(w => (w.pred(s) ? (w.ok(s), false) : true));
+    this.answer(s);
     this.act(s);
   }
   check(s) {
@@ -173,17 +147,6 @@ class Player {
       if (row.tricks && last?.winner !== row.winner) this.fail(`round ${row.hand} won by ${row.winner}, its last trick by ${last?.winner}`);
     });
   }
-  // seedNamed: the line with the seed (text) follows gameOver, and no
-  // message before game over named that number; a seed under 10000 might
-  // be a count, so it is not looked for.
-  seedNamed(text) {
-    const seed = Number(SEED_LINE.exec(text)[1]);
-    if (this.s?.phase !== 'gameOver') this.fail(`the seed named in phase ${this.s?.phase}`);
-    const num = new RegExp(`(^|[^0-9])${seed}([^0-9]|$)`);
-    const at = this.raws.findIndex(r => num.test(r));
-    if (seed >= 10000 && at < this.overAt) this.fail(`seed ${seed} in a message before game over: ${this.raws[at].slice(0, 200)}`);
-    this.seed = seed;
-  }
   // A random decision when the state awaits one of this player.
   act(s) {
     const me = s.you;
@@ -214,7 +177,6 @@ class Player {
     else if (s.phase === 'play' && s.canToep && rng() < 0.15) this.send({ t: 'toep' });
     else if (s.phase === 'play') this.send({ t: 'play', card: pick(s.legal) });
   }
-  close() { try { this.ws.close(); } catch { /* gone */ } }
 }
 
 async function play(cfg, n) {
@@ -222,38 +184,11 @@ async function play(cfg, n) {
   const game = `match ${n} (${cfg.humans} of ${cfg.players}, ai ${cfg.ai}, tot ${cfg.limit}${rules ? `, ${rules}` : ''})`;
   const errors = [];
   const t0 = Date.now();
-  const host = new Player('Host', game, errors);
-  await host.open;
   const opts = { players: cfg.players, ai: cfg.ai, tempo: cfg.tempo, limit: cfg.limit, was: cfg.was, armoede: cfg.armoede,
     koning: cfg.koning, boer: cfg.boer, lijntoep: cfg.lijntoep, bluf: cfg.bluf };
-  host.send({ t: 'create', name: 'Host', opts, start: cfg.humans === 1 });
-  const people = [host];
-  if (cfg.humans > 1) {
-    await host.until(s => s.phase === 'lobby' && host.code);
-    for (let k = 1; k < cfg.humans; k++) {
-      const p = new Player(`Gast${k}`, game, errors);
-      await p.open;
-      p.send({ t: 'join', code: host.code, name: `Gast${k}` });
-      await p.until(s => s.phase === 'lobby');
-      people.push(p);
-    }
-    await host.until(s => s.players.filter(x => x && !x.bot).length === cfg.humans);
-    host.send({ t: 'start' });
-  }
-  let last = Date.now();
-  let lastKey = '';
-  await new Promise((ok, fail) => {
-    const tick = setInterval(() => {
-      const s = host.s;
-      const key = s ? `${s.handNo}/${s.phase}/${s.turn}/${s.tricks}/${JSON.stringify(s.trick?.cards)}/${s.wasRound}/${s.checks.length}/${s.stake}` : '';
-      if (key !== lastKey) { lastKey = key; last = Date.now(); }
-      if (s?.phase === 'gameOver') { clearInterval(tick); ok(); }
-      else if (Date.now() - last > STALL_MS) { clearInterval(tick); fail(new Error(`stalled in ${key}`)); }
-    }, 100);
-  }).catch(e => errors.push(`${game}: ${e.message}`));
-  // Right after gameOver everyone gets the line with the seed.
-  for (const t1 = Date.now(); people.some(p => !p.seed) && Date.now() - t1 < 5000;) await new Promise(ok => setTimeout(ok, 20));
-  for (const p of people) if (!p.seed) p.fail('no line with the seed after game over');
+  const people = await seatTable(name => new Player(url, name, game, errors), cfg.humans, opts);
+  const host = people[0];
+  await untilOver(people, s => `${s.handNo}/${s.phase}/${s.turn}/${s.tricks}/${JSON.stringify(s.trick?.cards)}/${s.wasRound}/${s.checks.length}/${s.stake}`, STALL_MS);
   const s = host.s;
   for (const p of people) p.close();
   const secs = ((Date.now() - t0) / 1000).toFixed(1);

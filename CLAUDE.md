@@ -8,9 +8,17 @@ the layout; `docs/` and `games/<game>/README.md` are the design.
 - Code, comments and docs in English; every string a player sees is Dutch
   (server error messages included). Match the surrounding code's style and
   comment density: short, plain comments in full sentences.
-- The docs are the contract. A change to behaviour, an exported Go
-  identifier, the protocol or a rule updates the doc that describes it in
-  the same commit.
+- The docs are the design, and the contract for behaviour: what the table
+  and a game do, the rules, the protocol, the options, and the decisions
+  behind them. A change to any of those updates the doc that describes it
+  in the same commit.
+- Names are documented in the code, once: an exported identifier by its
+  doc comment, a module's export by the comment above it, a test by the
+  comment above it (what it proves, its sizes). The docs do not list a
+  package's API, a module's exports or what each test proves; a doc names
+  an identifier only where the design needs it, and points to the package
+  or file for the rest. A new exported name or test gets its comment, not
+  a line in a doc.
 - Code cites a doc by its path and a section by its heading anchor:
   `docs/<file>.md#<anchor>` or `games/<game>/README.md#<anchor>`
   (`extra/<game>/README.md#<anchor>` in the overlay;
@@ -138,39 +146,42 @@ systemd.
 
 ## Browser checks (puppeteer)
 
+Every game's browser checks run against its server from source with
+`-fast`; there is no mock server. Klaverjas's:
+
 ```sh
 (cd test/ui && npm ci)                     # puppeteer-core and ws, once
+GAME=klaverjas scripts/dev-server 18300 -fast
 scripts/chrome 9301                        # headless Chromium, CDP on 9301; podman stop kj-chrome-9301
-node test/ui/mock/server.mjs --rig &       # klaverjas mock on 18100: four players, no lesson steps
 cd test/ui
 node app-screens.mjs [--only iphone,desktop] [--dpr 2]   # every screen at six sizes, into test/ui/out/
 node app-perf.mjs                          # main-thread work and chat keystrokes on two emulated phones
+node app-play.mjs [--gedraaid | --multi | --training | --players 2|3]   # full games by tapping
+node app-checks.mjs [--only lessons,call]  # 34 checks, about 15 minutes for all
 node og-image.mjs --site klaverjas         # rewrites the site's web/og.png (--out FILE elsewhere)
 ```
 
-The scripts default to the mock's 18100 and Chromium's 9301; `--url` and
-`--cdp` choose others. Lessons, tables of two and three and `app-checks.mjs`
-need the real server with `-fast`:
+The scripts default to that server's 18300 and Chromium's 9301; `--url` and
+`--cdp` choose others. `app-screens.mjs` gives its first game a seed, so the
+first hand, with roem in its first trick, is the same on every run; it and
+`app-perf.mjs` hold the server's messages where a shot or a measurement
+needs a state to stay (`holdHook` in `app-lib.mjs`), and give the hand
+summary by hand the countdown a table of more people has
+(`countdownPatch`).
 
-```sh
-GAME=klaverjas scripts/dev-server 18300 -fast && scripts/chrome 9303
-cd test/ui
-U='--url http://127.0.0.1:18300 --cdp http://127.0.0.1:9303'
-node app-play.mjs $U [--gedraaid | --multi | --training | --players 2|3]   # full games by tapping
-node app-checks.mjs $U [--only lessons,call]   # 34 checks, about 15 minutes for all
-```
-
-`app-screens.mjs`, `app-play.mjs`, `app-checks.mjs`, `app-perf.mjs` and the
-mock are klaverjas's. `app-lib.mjs`, their shared helpers, is also used by
-`toepen-screens.mjs`, `css-same.mjs` and `og-image.mjs`. The unit tests
-in `test/ui` need no browser: `app-icons.test.mjs` checks every site's
+`app-screens.mjs`, `app-play.mjs`, `app-checks.mjs` and `app-perf.mjs` are
+klaverjas's. `app-lib.mjs` has the helpers every game's browser script
+shares (pages and viewports, presses and waits, `holdHook`, screenshots,
+a script's flows per viewport) and `site.mjs` a static server of one
+game's site; a new script uses them and keeps only its own flows. The
+unit tests in `test/ui` need no browser: `app-icons.test.mjs` checks every site's
 icons and link preview, `app-util.test.mjs` tests the shell's `util.js`,
 `cards-unit.test.mjs` its `cards.js`, `klaverjas.test.mjs` klaverjas's
 `rules.js`, `toepen.test.mjs` toepen's and `score.test.mjs` toepen's
 `scorecalc.js`.
 
-Toepen has no mock: `toepen-screens.mjs` drives its site through every
-screen at six sizes against the server from source, into `test/ui/out/`:
+`toepen-screens.mjs` drives toepen's site through every screen at six
+sizes, into `test/ui/out/`:
 
 ```sh
 GAME=toepen scripts/dev-server 18400 -fast && scripts/chrome 9301
@@ -182,26 +193,26 @@ node toepen-screens.mjs --url http://127.0.0.1:18400 [--only phone,desktop] [--d
 check and the check's flags): at every screenshot it compares the computed
 style and box of every element with those under the stylesheets the site's
 `index.html` linked at `--base` (default `main`), and exits 1 on a
-difference. Run it for a change to the stylesheets that must not change
-what is on screen:
+difference. A game of the overlay has its own stylesheets at that revision
+of the overlay's repository, so name one both repositories have. Run it for
+a change to the stylesheets that must not change what is on screen:
 
 ```sh
 cd test/ui
-node css-same.mjs --base main app-screens.mjs          # with the mock and Chromium as above
+node css-same.mjs --base main app-screens.mjs          # with the server and Chromium as above
 node css-same.mjs --base main toepen-screens.mjs --url http://127.0.0.1:18400
-node css-same.mjs --base main --waits app-checks.mjs --only lessons $U   # also at every condition waitFor sees
+node css-same.mjs --base main --waits app-checks.mjs --only lessons   # also at every condition waitFor sees
 ```
 
-Other scripts start their own Chromium: `manual-shot.mjs` (18120, 9321),
-`manual-app.mjs` (18121, 9321), `sound-render.mjs` (9331); `cards-shot.mjs`
-needs `scripts/chrome 9311` and a static server on 18110.
+Other scripts serve the site themselves and start their own Chromium
+when none listens on their port (`ownBrowser` in `app-lib.mjs`):
+`manual-shot.mjs` (`HTTP_PORT` 18120, `CDP_PORT` 9321), `manual-app.mjs`
+(`HTTP_PORT` 18121, `CDP_PORT` 9321) and `sound-render.mjs`
+(`CHROME_PORT` 9331); `cards-shot.mjs` needs `scripts/chrome 9311` and a
+static server on 18110.
 
-- **Known flaky**: `app-screens.mjs` fails on and off at the review steps
-  after game over (score sheet, last potje, replay), most often on narrow
-  phones, and on main too. Run the same command on main before calling such
-  a failure a regression.
 - **In a git worktree**, link the main checkout's packages
   (`ln -s <main checkout>/test/ui/node_modules test/ui/node_modules`;
   `.gitignore`'s `node_modules` ignores the link) and start
-  `scripts/dev-server` and the mock from the worktree, so they serve its
-  sources. `scripts/chrome` serves nothing and may run from anywhere.
+  `scripts/dev-server` from the worktree, so it serves its sources.
+  `scripts/chrome` serves nothing and may run from anywhere.

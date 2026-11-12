@@ -179,7 +179,7 @@ game's folder.
    simulation ([deployment.md, "Settings"](deployment.md#settings)).
 7. **End-to-end:** the simulation `E2E_SIM` names, a path from the
    repository's root such as `games/G/test/e2e.mjs`, which plays full
-   games over the websocket
+   games over the websocket on the shared `test/e2e/lib.mjs`
    ([test/e2e/README.md](../test/e2e/README.md)).
 8. **Tests:** `make test` (`scripts/deploy-test` checks the settings, the
    units, the main package and `web/`), `make e2e GAME=G`, the UI checks

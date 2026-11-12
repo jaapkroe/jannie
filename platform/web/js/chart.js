@@ -33,7 +33,7 @@ const text = str => document.createTextNode(str);
 
 // The grid's step: 1, 2 or 5 times a power of ten, at most five steps
 // over the range.
-export function gridStep(range) {
+function gridStep(range) {
   for (let p = 1; ; p *= 10) {
     for (const m of [1, 2, 5]) if (range / (m * p) <= 5) return m * p;
   }

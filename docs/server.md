@@ -27,21 +27,11 @@ The messages on the wire are in [protocol.md](protocol.md).
 
 ### Config and New
 
-```go
-type Config struct {
-    Game Game           // the game the server plays: Klaverjas(ai), or another (required)
-    Fast bool           // scale all delays by 0.05 (tests)
-    MaxRooms int        // default 1500
-    AllowedOrigins []string // websocket Origin patterns besides same-host
-    Version  string     // reported by /api/health {ok, version, rooms, players, playing} and in every pong
-    Logger   *slog.Logger // nil: slog.Default()
-    GameLog  string     // directory of the game log ("Game log" below); "" keeps none
-}
-func Klaverjas(ai AI) Game                // the built-in game, on the code of this package
-func New(cfg Config) *Server
-func (s *Server) Handler() http.Handler   // /ws, /api/health
-func (s *Server) Shutdown(ctx context.Context)
-```
+`New(Config)` makes the server of one game (`Config.Game`:
+`Klaverjas(ai)`, or another game); its `Handler` serves `/ws` and
+`/api/health`. `Config`'s fields are in its doc comment (`server.go`):
+`Fast` scales every delay by 0.05 (tests), `MaxRooms` defaults to 1500,
+`GameLog` is the directory of the game log ("Game log" below).
 
 `Klaverjas(ai)` takes klaverjas's bots and analysis through the interface
 `AI` ([games/klaverjas/README.md, "The AI seam"](../games/klaverjas/README.md#the-ai-seam)).
@@ -65,44 +55,11 @@ seam (`games.go`), so its wire format and behaviour are exactly those of
 [games/klaverjas/README.md](../games/klaverjas/README.md); nothing of
 another game reaches it.
 
-```go
-type Game interface {
-    Name() string
-    Seats() (min, max, def int)             // at most 8
-    Personas() []Persona                    // the game's bios; at least max − 1
-    NewOptions() GameOptions                // the game's own options, at their defaults
-    NewBrain(personaID, level string, seed uint64) any
-    Chat(personaID string, ev ChatEvent, rng *rand.Rand) string
-    New(t *Table) Play                      // one match at table t
-}
-type Opener interface {                     // optional: rooms of the game's own kind
-    Open(m Msg, o GameOptions) Opening      // once, on create, after the options are set
-}
-type Opening struct {                       // the zero Opening: an ordinary room
-    Seat   Seat                             // the creator's seat
-    Bots   []string                         // a persona ID per seat ("" none), kept on rematch
-    Start  bool                             // the match at once, as create's start
-    Locked string                           // not "": a fixed table; joiners get vol with this text
-}
-type GameOptions interface {
-    Set(fields map[string]json.RawMessage, lenient bool) error // the game's keys; Dutch errors
-    Wire(TableOpts) any                     // the state's opts and the game log's: table's and game's
-}
-type TableOpts struct{ Players int; AI, Tempo string; Seed int }   // what every game has (below)
-type Play interface {
-    Start(); Next()                         // deal the first hand; the next one, or Table.GameOver
-    Turn() Seat                             // the seat that decides, also for another seat's cards
-    HandLen(i Seat) int; Single() bool
-    State(i Seat) any                       // Table.Shared(i) embedded, and the game's own keys
-    Move(i Seat, m Msg) error               // a human's message: ErrUnknownMsg, ErrIgnore,
-                                            // NotYourTurn(err) or ErrPaused, or ongeldig
-    Decision(i Seat, brain any) (think func() any, safe any) // a bot's, off the room goroutine
-    Apply(i Seat, a any) error
-    Resume(s Step)                          // after the game's pause s
-    Variant() string                        // for the server log
-}
-type Shared struct{ Code, Phase string; Opts any; You, Host int; Roster; Players; Turn int; Takeover; NextAt int64 }
-```
+A game implements `Game` (its name, seat range, personas, options, the
+bots' brains and chat) and, per match, `Play`: dealing, whose turn it is,
+the state per seat, a human's move, a bot's decision and what follows a
+pause. The methods, and what the table asks of each, are in the doc
+comments of `api.go`.
 
 `Seat` is the seat of `platform/cards` (`games/klaverjas/game` re-exports
 it as `game.Seat`, the same type), as are the cards a game deals
@@ -242,24 +199,6 @@ wire codes and Dutch names; it imports nothing of the module
 ([games/klaverjas/README.md, "Package game"](../games/klaverjas/README.md#package-game)),
 and toepen uses them as they are. A 52-card game brings its own `Card` and
 `Rank`, and shares `Seat` and `Suit`.
-
-```go
-type Seat int                    // clockwise from 0; const NoSeat Seat = -1, nobody
-func (s Seat) ValidFor(players int) bool   // 0 <= s < players
-func (s Seat) Next() Seat; Partner() Seat; Team() int; Valid() bool   // a table of four only
-type Suit uint8                  // Clubs, Diamonds, Hearts, Spades (wire "C","D","H","S"); NumSuits
-type Rank uint8                  // Seven … Ace in natural order (wire "7","8","9","T","J","Q","K","A"); NumRanks
-type Card struct{ Rank Rank; Suit Suit }   // wire "JH"; JSON and text as that code
-type Played struct{ Seat Seat; Card Card } // JSON {"seat":2,"card":"JH"}
-func ParseCard(s string) (Card, error)     // "JH", case-insensitive, "10H" too
-func ParseSuit(s string) (Suit, error)     // "H", case-insensitive
-func MustParseCards(s string) []Card       // space-separated codes; panics; for tests and fixed tables
-func NewDeck() []Card                      // the 32 cards by suit, then rank
-func (c Card) Index() int; CardFromIndex(i int) Card; (c Card) Valid() bool   // 0..31, suit-major
-func (s Suit) Symbol() string; Red() bool  // "♥"; ruiten and harten
-func (r Rank) NameNL() string; Letter() string             // "boer", "B"
-func SuitNameNL(s Suit) string; CardNameNL(c Card) string; CardShortNL(c Card) string // "harten", "harten boer", "♥B"
-```
 
 ### Benchmarks
 

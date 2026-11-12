@@ -245,7 +245,7 @@ function openMenu() {
 // Mid-game the seat stays empty until someone joins in it, or until the
 // others agree that an AI takes it (docs/server.md#takeover-consent);
 // alone with bots there is nobody to ask.
-export function confirmLeave() {
+function confirmLeave() {
   const s = app.s;
   const running = s && s.phase !== 'lobby' && s.phase !== 'gameOver';
   const others = s && s.players.some((p, seat) => p && !p.bot && !p.left && seat !== s.you);
@@ -300,7 +300,7 @@ export function applyPrefs() {
   document.body.classList.toggle('reduced', !!prefs.reduced);
 }
 
-export function openSettings() {
+function openSettings() {
   sound.play('click');
   const name = h('input', { type: 'text', class: 'field', maxLength: 20, value: store.get('name', ''), placeholder: 'Je naam', autocomplete: 'nickname', enterKeyHint: 'done' });
   name.addEventListener('change', () => {
@@ -542,9 +542,9 @@ function sendChat(text) {
 
 const chatVisible = () => chatOpen || (wideMQ.matches && document.body.classList.contains('in-room'));
 
-export function toggleChat() { setChat(!chatOpen); }
+function toggleChat() { setChat(!chatOpen); }
 
-export function setChat(open) {
+function setChat(open) {
   if (open && wideMQ.matches && document.body.classList.contains('in-room')) {
     C.input.focus();
     return;
