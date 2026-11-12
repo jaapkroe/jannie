@@ -456,7 +456,9 @@ animaties* (`body.reduced`) these glows, and the lesson spot, are steady.
 A countdown ring's stroke is drawn on the main thread, so it empties in
 160 steps (half a pixel each at most), not at every frame: a summary of
 12 s redraws it 13 times a second. It stops once it is hidden or its
-dialog is gone. On a phone
+dialog is gone. A lesson spot's outline is drawn there too: its pulse of
+1.1 s holds 15 values (0.6 px apart at most, slower near both ends), which
+redraws it 13 times a second. On a phone
 (up to 600 × 932 px) the manual is an opaque sheet over all but a strip of
 the top bar: the pulses and glows, the home logo and the waiting dots under
 it hold still while it is open (not a lesson spot in the top bar). The
