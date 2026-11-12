@@ -35,7 +35,7 @@ export function args() {
     return i < 0 ? def : a[i + 1];
   };
   return {
-    url: get('url', 'http://127.0.0.1:18100'),
+    url: get('url', 'http://127.0.0.1:18300'),
     cdp: get('cdp', 'http://127.0.0.1:9301'),
     only: get('only', ''),
     dpr: Number(get('dpr', 0)),
@@ -166,6 +166,43 @@ export async function pressEl(P, el) {
   });
   if (P.touch) await P.page.touchscreen.tap(pt.x, pt.y);
   else await P.page.mouse.click(pt.x, pt.y);
+}
+
+// For page.evaluateOnNewDocument, before the app: a hold on the server's
+// messages, so a state stays on screen whatever the server's pace.
+// kjHoldWhen(s, m) holds them from the first update (m, its state s) it is
+// true for, that update still delivered; kjHeld() says whether they are
+// held; kjRelease() delivers them, up to the update a new kjHoldWhen is
+// true for. kjPatch(m) may change a message before the app gets it, and
+// returns true when it did.
+export function holdHook() {
+  const held = [];
+  let hold = false;
+  const deliver = (f, e) => {
+    const m = (window.kjHoldWhen || window.kjPatch) && JSON.parse(e.data);
+    if (m && window.kjPatch?.(m)) e = new MessageEvent('message', { data: JSON.stringify(m) });
+    f(e);
+    if (m?.t === 'update' && window.kjHoldWhen?.(m.s, m)) { hold = true; window.kjHoldWhen = null; }
+  };
+  window.kjHeld = () => hold;
+  window.kjRelease = () => { hold = false; while (held.length && !hold) deliver(...held.shift()); };
+  window.WebSocket = class extends window.WebSocket {
+    set onmessage(f) {
+      super.onmessage = e => { if (hold) held.push([f, e]); else deliver(f, e); };
+    }
+  };
+}
+
+// For page.evaluate, with holdHook: the hand summary's countdown, which the
+// server leaves out for one person at the table, set by hand to the 12 s a
+// table of more people has at tempo normaal. kjPatch = null ends it.
+export function countdownPatch() {
+  let at = 0;
+  window.kjPatch = m => {
+    if (m.t !== 'update' || m.s.phase !== 'handEnd' || m.s.nextAt) return false;
+    m.s.nextAt = at ||= Date.now() + 12000;
+    return true;
+  };
 }
 
 export async function type(P, selector, text) {

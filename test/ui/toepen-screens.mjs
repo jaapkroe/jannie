@@ -6,7 +6,7 @@
 //   GAME=toepen scripts/dev-server 18400 -fast && scripts/chrome 9301
 //   cd test/ui && node toepen-screens.mjs --url http://127.0.0.1:18400 [--cdp http://127.0.0.1:9301] [--only phone,desktop] [--dpr 2]
 //
-// Toepen has no mock: the server from source deals and its bots play, so
+// The server from source deals and its bots play, so
 // whether a bot's vuile was asks to be checked or a toep to be answered
 // depends on the cards; those shots are taken when that happens. With -fast
 // the time for a vuile was, a full trick and a round's summary last a

@@ -357,7 +357,7 @@ after an AI played for you (a decision for your seat you did not send),
 you get "Een AI-speler speelde even voor je". *Spel verlaten?* says
 mid-game "De anderen beslissen samen of een AI-speler je plaats inneemt."
 ("Je verlaat de tafel." with nobody else to ask). `app-checks.mjs --only
-takeover` plays it through, also on the mock.
+takeover` plays it through.
 
 ### Back button
 

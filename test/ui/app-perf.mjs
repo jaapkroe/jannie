@@ -4,9 +4,9 @@
 // CPU 4× slower) and oldiphone (375×667, DPR 2, 6× slower); the CPU is
 // slowed only while measuring.
 //
-//   node test/ui/mock/server.mjs --rig &      (or the real server: --url)
+//   GAME=klaverjas scripts/dev-server 18300 -fast
 //   scripts/chrome 9301
-//   cd test/ui && node app-perf.mjs [--url http://127.0.0.1:18100] [--profile fairphone] [--only turn,keys] [--secs 3] [--json]
+//   cd test/ui && node app-perf.mjs [--url http://127.0.0.1:18300] [--profile fairphone] [--only turn,keys] [--secs 3] [--json]
 //
 // Per scenario: busy ms/s (the main thread's TaskDuration), style recalcs
 // and layouts per second, script ms/s, the animations running at the end,
@@ -14,9 +14,10 @@
 // for a phone keyboard's IME) over the keys that took 16 ms or more, the
 // least Event Timing reports, with how many did. Headless Chromium draws at
 // 60 Hz without a GPU: compare runs with each other (counts are steadier
-// than milliseconds), not with a phone. On the real server, alone at the
-// table, the hand summary has no countdown.
-import { args, connect, openPage, press, waitFor, sleep, playLegal, addressProxy, ownAddress } from './app-lib.mjs';
+// than milliseconds), not with a phone. Alone at the table the server's
+// hand summary has no countdown: the summary scenario gives it the one of a
+// table of more people by hand (countdownPatch).
+import { args, connect, openPage, press, waitFor, sleep, playLegal, addressProxy, ownAddress, holdHook, countdownPatch } from './app-lib.mjs';
 
 const A = args();
 const opt = (name, def) => { const i = process.argv.indexOf('--' + name); return i < 0 ? def : process.argv[i + 1]; };
@@ -34,9 +35,8 @@ const browser = await connect(A.cdp);
 const rows = [];
 const errors = [];
 
-// In the page before the app: Event Timing entries, and kjHoldWhen(s),
-// which holds the server's messages from the first update it is true for,
-// so the game stays in that state until kjRelease().
+// In the page before the app, with holdHook: the settings and Event Timing
+// entries.
 function init() {
   try {
     localStorage.setItem('kj.prefs', JSON.stringify({ tap: 'one' }));
@@ -48,21 +48,6 @@ function init() {
   }).observe({ type: 'event', durationThreshold: 16 });
   window.kjCount = { keydown: 0, compositionupdate: 0 };
   for (const name of Object.keys(window.kjCount)) addEventListener(name, () => window.kjCount[name]++, true);
-  const held = [];
-  let hold = false;
-  window.kjHeld = () => hold;
-  window.kjRelease = () => { hold = false; for (const [f, e] of held.splice(0)) f(e); };
-  window.WebSocket = class extends window.WebSocket {
-    set onmessage(f) {
-      super.onmessage = e => {
-        if (hold) { held.push([f, e]); return; }
-        f(e);
-        if (!window.kjHoldWhen) return;
-        const m = JSON.parse(e.data);
-        if (m.t === 'update' && window.kjHoldWhen(m.s)) { hold = true; window.kjHoldWhen = null; }
-      };
-    }
-  };
 }
 
 async function page(name) {
@@ -70,6 +55,7 @@ async function page(name) {
   const P = await openPage(browser, prof.vp, name);
   await ownAddress(P, BASE);
   await P.page.evaluateOnNewDocument(init);
+  await P.page.evaluateOnNewDocument(holdHook);
   P.cdp = await P.page.createCDPSession();
   await P.cdp.send('Performance.enable');
   P.prof = prof;
@@ -163,7 +149,7 @@ async function game(name) {
   await sleep(1500);
   if (want('turn')) await measure(P, 'turn');
   if (want('spot')) {
-    // A lesson's spot on a seat's name. Lessons need the real server, so the class is set by hand.
+    // A lesson's spot on a seat's name. A quick game is no lesson, so the class is set by hand.
     await P.page.evaluate(() => document.querySelector('.seat-id').classList.add('spot'));
     await sleep(500);
     await measure(P, 'spot');
@@ -203,6 +189,7 @@ async function game(name) {
     await P.page.evaluate(() => window.kjRelease());
   }
   if (want('summary') || want('next')) {
+    await P.page.evaluate(countdownPatch);
     await playUntil(P, () => !!document.querySelector('.m-summary.open'));
     await sleep(1000);
     if (want('summary')) await measure(P, 'summary');
@@ -212,7 +199,7 @@ async function game(name) {
     await waitFor(P, () => window.kjHeld(), { label: 'next hand' });
     await sleep(2000);
     if (want('next')) await measure(P, 'next');
-    await P.page.evaluate(() => window.kjRelease());
+    await P.page.evaluate(() => { window.kjPatch = null; window.kjRelease(); });
   }
   await P.ctx.close();
   errors.push(...P.errors);
