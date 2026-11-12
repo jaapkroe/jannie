@@ -1,6 +1,7 @@
 /* The shell's styles, shared by every site: tokens, layout, home, lobby, table
-   chrome, seats, overlays, chat. Cards: cards.css. Each site adds a
-   stylesheet of its own (css/ in the game's web/). */
+   chrome, seats, overlays, chat, and the coach bubble of a game with
+   lessons. Cards: cards.css. Each site adds a stylesheet of its own (css/
+   in the game's web/). */
 
 :root {
   color-scheme: dark;
@@ -402,6 +403,12 @@ body[data-screen="game"] #game {
   --team-lo: var(--wij-lo);
 }
 
+.zij {
+  --team: var(--zij);
+  --team-hi: var(--zij-hi);
+  --team-lo: var(--zij-lo);
+}
+
 .dots i {
   display: inline-block;
   width: 5px;
@@ -639,6 +646,11 @@ body[data-screen="game"] #game {
 #btn-new .icon {
   color: var(--wij-hi);
   background: rgba(43, 179, 163, 0.18);
+}
+
+#btn-train .icon {
+  color: var(--zij-hi);
+  background: rgba(239, 111, 90, 0.18);
 }
 
 .btn-tile b {
@@ -982,6 +994,12 @@ body.busy::after {
   display: flex;
   justify-content: center;
 }
+
+/* The four places of a table of partners, opposite each other. */
+.ls-bottom { bottom: 0; left: 50%; translate: -50% 0; }
+.ls-top { top: 0; left: 50%; translate: -50% 0; }
+.ls-left { left: 0; top: 50%; translate: 0 -50%; }
+.ls-right { right: 0; top: 50%; translate: 0 -50%; }
 
 .ls-main {
   display: flex;
@@ -1649,6 +1667,18 @@ body.busy::after {
   height: 12px;
   background: inherit;
   rotate: 45deg;
+}
+
+/* A bid, and a pass. */
+.bubble-go {
+  background: linear-gradient(180deg, #ffdb7a, #f2b632);
+  color: var(--gold-ink);
+  font-weight: 900;
+}
+
+.bubble-pass {
+  background: #e6e0d2;
+  color: #57524a;
 }
 
 /* flying cards */
@@ -2630,6 +2660,10 @@ body.chat-open .chat-scrim {
   color: var(--wij-hi);
 }
 
+.msg-name.zij {
+  color: var(--zij-hi);
+}
+
 /* Juf Jannie in training: her lessons and the explanation of every trick. */
 .msg.coach-msg {
   background: rgba(43, 179, 163, 0.13);
@@ -2716,6 +2750,147 @@ body.chat-open .chat-scrim {
   body.in-room .modal.passive {
     right: 340px;
   }
+}
+
+/* ---------- lessons ---------- */
+
+/* Juf Jannie's coach bubble at the table (a game's table.js): a lesson
+   step, a tip or the explanation of a trick. The game places it (bottom),
+   spaces its link and its button (margin) and sizes their targets
+   (inset). */
+.coach {
+  position: absolute;
+  z-index: 16;
+  left: 50%;
+  translate: -50% 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: min(calc(100% - 20px), 540px);
+  padding: 9px 8px 9px 12px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 251, 238, 0.97), rgba(250, 238, 206, 0.97));
+  color: #2b2210;
+  font-size: 13.5px;
+  line-height: 1.35;
+  box-shadow: 0 0 0 2px rgba(242, 193, 78, 0.8), 0 10px 26px rgba(0, 0, 0, 0.45);
+  animation: kj-rise 0.3s var(--ease);
+}
+
+.coach.is-tip {
+  box-shadow: 0 0 0 2px rgba(43, 179, 163, 0.85), 0 10px 26px rgba(0, 0, 0, 0.45);
+}
+
+.coach-ico {
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.coach-body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.coach-lbl {
+  color: #8a5a00;
+}
+
+.coach.is-tip .coach-lbl {
+  color: #0f6b60;
+}
+
+/* A lesson step's link to a section of the manual. */
+.coach-man {
+  position: relative;
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8a5a00;
+  font-size: 12.5px;
+  font-weight: 900;
+  line-height: 1.5;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.coach-man .icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+/* A larger target around the short link, and around the small button
+   below. */
+.coach-man::before,
+.coach-go::before {
+  content: "";
+  position: absolute;
+}
+
+.coach-x {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  margin: -4px -2px -4px 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.06);
+  color: #5a4a28;
+}
+
+/* A 44 px target around the small round button. */
+.coach-x::before {
+  content: "";
+  position: absolute;
+  inset: -7px;
+}
+
+.coach-x .icon {
+  width: 16px;
+  height: 16px;
+}
+
+/* Verder: the game waits until the step or the explanation is read, or
+   the ring has run out. */
+.coach-go {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px 3px 4px;
+  border: 0;
+  border-radius: 999px;
+  background: #0f6b60;
+  color: #fff;
+  font: inherit;
+  font-weight: 800;
+}
+
+.coach-go .ring-cd {
+  width: 20px;
+  height: 20px;
+}
+
+.coach-go .ring-bg {
+  stroke: rgba(255, 255, 255, 0.3);
+}
+
+.coach-go .ring-fg {
+  stroke: #fff;
+}
+
+/* A step waits for Verder without a timer: no ring. */
+.coach-go.no-ring {
+  padding-left: 12px;
 }
 
 /* ---------- responsive table ---------- */
@@ -2853,6 +3028,27 @@ body.chat-open .chat-scrim {
     transform: none;
     opacity: 1;
   }
+}
+
+/* The pulse of a lesson's spot, the outline a game draws round the part
+   of the screen a step is about: from 3 to 8 px and from full gold to 35%
+   as ease-in-out goes, in 15 values: 0.6 px apart at most. */
+@keyframes kj-spot {
+  0% { outline-color: rgba(242, 193, 78, 1); outline-offset: 3px; }
+  6.67% { outline-color: rgba(242, 193, 78, 0.99); outline-offset: 3.05px; }
+  13.33% { outline-color: rgba(242, 193, 78, 0.97); outline-offset: 3.2px; }
+  20% { outline-color: rgba(242, 193, 78, 0.94); outline-offset: 3.47px; }
+  26.67% { outline-color: rgba(242, 193, 78, 0.89); outline-offset: 3.85px; }
+  33.33% { outline-color: rgba(242, 193, 78, 0.83); outline-offset: 4.33px; }
+  40% { outline-color: rgba(242, 193, 78, 0.75); outline-offset: 4.89px; }
+  46.67% { outline-color: rgba(242, 193, 78, 0.68); outline-offset: 5.5px; }
+  53.33% { outline-color: rgba(242, 193, 78, 0.6); outline-offset: 6.11px; }
+  60% { outline-color: rgba(242, 193, 78, 0.52); outline-offset: 6.67px; }
+  66.67% { outline-color: rgba(242, 193, 78, 0.46); outline-offset: 7.15px; }
+  73.33% { outline-color: rgba(242, 193, 78, 0.41); outline-offset: 7.53px; }
+  80% { outline-color: rgba(242, 193, 78, 0.38); outline-offset: 7.8px; }
+  86.67% { outline-color: rgba(242, 193, 78, 0.36); outline-offset: 7.95px; }
+  93.33%, 100% { outline-color: rgba(242, 193, 78, 0.35); outline-offset: 8px; }
 }
 
 @keyframes kj-spin {

@@ -226,8 +226,8 @@ finds the games by their folders, so a game is added in its folder alone
   ([frontend.md, "Stylesheets"](frontend.md#stylesheets)). The shell still
   has a little of klaverjas alone: in `panels.js` `setLastEnabled` (its
   *Laatste slag* tool); in `util.js` its first
-  manual tab as the default of `prefs.tab`; and in `app.css` two kinds of
-  leftovers, kept on purpose:
+  manual tab as the default of `prefs.tab`. And `app.css` has, kept on
+  purpose:
   - Klaverjas-only alternatives inside the `:is()` lists of four shell
     rules: `.rule:not(.mine)` and `.rv-text` in the two four-colour suit
     colours of text, `.seat-id.spot` and `.rule.spot` where the manual
@@ -235,11 +235,16 @@ finds the games by their folders, so a game is added in its folder alone
     video ring. In all but the last a klaverjas alternative is the most
     specific of its list, so taking it out would lower the specificity of
     the shell's alternatives.
-  - The team colours are split: `--wij`, `--zij`, `.wij` and
-    `.msg-name.wij` are in `app.css` (toepen's lobby marks your own seat
-    `wij`), `.zij` and `.msg-name.zij` in `klaverjas.css`. They go with
-    `rules.js`'s `teamCls` and the game module's `chatCls` hook, which
-    gives a chat sender a side's colour.
+  - What a game of two partnerships uses, which toepen does not: the
+    other side's colour (`.zij`, `.msg-name.zij`; `.wij` is toepen's too,
+    its lobby marks your own seat with it), the four places of the lobby's
+    table (`.ls-bottom`, `.ls-top`, `.ls-left`, `.ls-right`) and the
+    bubbles of a bid and a pass (`.bubble-go`, `.bubble-pass`). The team
+    colours go with `rules.js`'s `teamCls` and the game module's `chatCls`
+    hook, which gives a chat sender a side's colour.
+  - What a game with lessons uses: the coach bubble (`.coach…`), the pulse
+    of a lesson's spot (`kj-spot`) and the icon of the home page's training
+    button (`#btn-train .icon`).
 - **The extras.** Hints, lessons, the review after a match and the expert
   mode are klaverjas's; toepen has a reasoning sheet of its own for the
   expert alone with bots

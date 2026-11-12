@@ -52,7 +52,10 @@ through ([deployment.md, "Reverse proxy"](deployment.md#reverse-proxy)).
 Every site links the shell's two stylesheets and one of its own:
 `app.css` (the tokens, layout, home, lobby, table chrome, seats, overlays
 and chat), `cards.css` (the card faces, with `cards.js`) and the game's,
-with its table and overlays. The order in each `index.html`:
+with its table and overlays. `app.css` also has what the games with
+lessons share: Juf Jannie's coach bubble (`.coach…`; the game places it
+and spaces its link and button) and the pulse of a lesson's spot
+(`kj-spot`). The order in each `index.html`:
 
 - klaverjas: `app.css`, `klaverjas.css`, `cards.css`. `klaverjas.css`
   comes before `cards.css`, so a card's state there (`.card.selected`,

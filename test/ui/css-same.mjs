@@ -20,9 +20,10 @@
 //   cd test/ui && node css-same.mjs --base main app-screens.mjs --url ... --cdp ...
 //   node css-same.mjs --base main --waits app-checks.mjs --only lessons --url ... --cdp ...
 //
-// --base REV   the revision of this repository to compare with (default main),
-//              with games/<game>/web and platform/web; a game of the overlay,
-//              extra/, has nothing there to compare with.
+// --base REV   the revision to compare with (default main), with the game's
+//              web/ and platform/web. A game of the overlay, extra/, has its
+//              own files at REV of the overlay's repository, so name a
+//              revision both repositories have (a branch of that name).
 // --waits      compare also at every condition waitFor sees come true
 //              (app-checks.mjs takes screenshots only on failure).
 // --report F   write every difference as JSON to F.
@@ -33,7 +34,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { hooks } from './app-lib.mjs';
-import { GAMES, siteDir, siteFile } from './site.mjs';
+import { GAMES, gameDir, siteDir, siteFile } from './site.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -54,16 +55,21 @@ const sheets = html => [...html.matchAll(/<link rel="stylesheet" href="([^"]+)">
 // at BASE with their text then.
 const SITES = GAMES.map(game => {
   const now = sheets(fs.readFileSync(path.join(siteDir(game), 'index.html'), 'utf8'));
+  // The game's web/ at BASE: in this repository, or in the overlay's.
+  const overlay = path.relative(ROOT, gameDir(game)).split(path.sep)[0] === 'extra';
+  const own = overlay
+    ? ['-C', 'extra', 'show', `${BASE}:${game}/web`]
+    : ['show', `${BASE}:games/${game}/web`];
   let html;
   try {
-    html = git('show', `${BASE}:games/${game}/web/index.html`);
+    html = git(...own.slice(0, -1), own.at(-1) + '/index.html');
   } catch {
-    return { game, now: now.join(' '), then: null, custom: [] }; // a site new since BASE
+    return { game, overlay, now: now.join(' '), then: null, custom: [] }; // a site new since BASE
   }
   const then = sheets(html).map(href => {
-    for (const dir of [`games/${game}/web`, 'platform/web']) {
+    for (const tree of [own, ['show', `${BASE}:platform/web`]]) {
       try {
-        return { href, text: git('show', `${BASE}:${dir}${href}`) };
+        return { href, text: git(...tree.slice(0, -1), tree.at(-1) + href) };
       } catch { /* not in this tree */ }
     }
     throw new Error(`${href} of ${game} is not at ${BASE}`);
@@ -221,7 +227,7 @@ async function compare(P, label) {
     const now = await P.page.evaluate(() => [...document.querySelectorAll('link[rel="stylesheet"]')].map(l => l.getAttribute('href')).join(' '));
     const site = SITES.find(s => s.now === now);
     if (!site) throw new Error(`no game's index.html links ${now}`);
-    if (!site.then) throw new Error(`${site.game} has no site at ${BASE}`);
+    if (!site.then) throw new Error(`${site.game} has no site at ${BASE}${site.overlay ? " of the overlay's repository" : ''}`);
     const r = await P.page.evaluate(compareInPage, site.then.map(s => s.text), site.custom);
     if (!r.applied) throw new Error(`the sheets of ${BASE} did not apply (the CSP?)`);
     states++;
