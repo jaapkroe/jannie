@@ -71,8 +71,8 @@ globalThis.document = {
   createDocumentFragment: () => new Fragment(),
 };
 
-// cards.js is replaced by a stub so this test depends only on the
-// docs/frontend.md#shared-modules contract.
+// cards.js is replaced by a stub, so this test depends only on the names
+// it exports (docs/frontend.md#shared-modules).
 const STUB = `
 export const SUITS = { C:{name:'klaveren',symbol:'♣',color:'black'}, D:{name:'ruiten',symbol:'♦',color:'red'},
   H:{name:'harten',symbol:'♥',color:'red'}, S:{name:'schoppen',symbol:'♠',color:'black'} };

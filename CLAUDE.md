@@ -8,9 +8,17 @@ the layout; `docs/` and `games/<game>/README.md` are the design.
 - Code, comments and docs in English; every string a player sees is Dutch
   (server error messages included). Match the surrounding code's style and
   comment density: short, plain comments in full sentences.
-- The docs are the contract. A change to behaviour, an exported Go
-  identifier, the protocol or a rule updates the doc that describes it in
-  the same commit.
+- The docs are the design, and the contract for behaviour: what the table
+  and a game do, the rules, the protocol, the options, and the decisions
+  behind them. A change to any of those updates the doc that describes it
+  in the same commit.
+- Names are documented in the code, once: an exported identifier by its
+  doc comment, a module's export by the comment above it, a test by the
+  comment above it (what it proves, its sizes). The docs do not list a
+  package's API, a module's exports or what each test proves; a doc names
+  an identifier only where the design needs it, and points to the package
+  or file for the rest. A new exported name or test gets its comment, not
+  a line in a doc.
 - Code cites a doc by its path and a section by its heading anchor:
   `docs/<file>.md#<anchor>` or `games/<game>/README.md#<anchor>`
   (`extra/<game>/README.md#<anchor>` in the overlay;

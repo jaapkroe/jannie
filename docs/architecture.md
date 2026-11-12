@@ -6,11 +6,12 @@ and interface, built from shared code. Klaverjas
 (`klaverjas.kroes.dev`) and toepen (`toepen.kroes.dev`) are live; others
 could follow ([adding-a-game.md, "Order"](adding-a-game.md#order)).
 
-The docs are the contract between the parts of the system. Code that
-deviates from them must update them in the same change. The Go API sections
-in particular list the exported identifiers and semantics that other
-packages use: names may gain helpers, but changing what is listed means
-updating that section.
+The docs are the design, and the contract for behaviour between the parts
+of the system: what the table and a game do, the rules, the protocol and
+the decisions behind them. Code that deviates from them must update them in
+the same change. Names are documented in the code: an exported identifier
+by its doc comment, a test by the comment above it. The docs explain what a
+package is for and how its parts fit, and do not list its API or its tests.
 
 - `docs/` holds the platform: this file; [server.md](server.md), the table
   every game is played at; [protocol.md](protocol.md), the table's part of
