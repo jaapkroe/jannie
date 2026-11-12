@@ -262,8 +262,8 @@ events below: `claims`, `wasDone`, `armoede`, `discard`, `toep`,
 `answer`, `play`, `trick`).
 
 Events: `deal` `{handNo, dealer, koning}`; `discard` `{seat, n}`; `claims` `{seats}`; `check`
-`{seat, claimant, check}`; `wasDone` `{claimant, checker, kind, cards,
-genuine, washed, shown}`; `toep` `{seat, stake, over}` (over: an
+`{seat, claimant, check}`; `wasDone` `{claimant, checker, kind, cards
+(in the order of the hand), genuine, washed, shown}`; `toep` `{seat, stake, over}` (over: an
 overtoep); `answer` `{seat, stay, points, auto}` (points: what the pass
 cost; auto: went along unasked);
 `armoede` `{seats, stake}`; `play` `{seat, card}`; `trick` `{winner,
