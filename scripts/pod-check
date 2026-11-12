@@ -5,9 +5,10 @@
 # (og:image for SITE, the image itself), the manifest's name, the versions of
 # the page and of the server (those of WEB and SERVER, the revisions of the
 # images the pod should run, when given), that the CSP allows the websocket of
-# SITE and of no other site, and that every kind of path carries each security
+# SITE and of no other site, that every kind of path carries each security
 # header exactly once (a location with an add_header of its own would drop them
-# all; see deploy/nginx.conf).
+# all; see deploy/nginx.conf), and what a browser may keep: the stylesheets and
+# scripts under the page's /v/<hash>/ for good, images and the manifest a day.
 #   scripts/pod-check ADDR SITE TITLE [WEB SERVER]   the settings of the game's <game>.mk, e.g.
 #   scripts/pod-check 127.0.0.1:8093 klaverjas.kroes.dev Klaverjas
 # `make check [GAME=<game>]` runs it with them and the revisions of the game's
@@ -70,7 +71,15 @@ expect "the manifest's name" "$title" \
 expect "websocket from the page's own origin" 101 "$(upgrade "$base")"
 expect "websocket from another site" 403 "$(upgrade https://example.com)"
 
-for path in / /KQXB /js/main.js /favicon.svg /api/health /bestaat-niet; do
+# The page links its stylesheets and scripts under one /v/<hash>/, the hash
+# of those files at the image build (deploy/nginx.conf).
+assets=$(curl -s --max-time 5 "$base/" | sed -n 's|.*<script type="module" src="/v/\([^/"]*\)/js/main.js"></script>.*|\1|p')
+expect "stylesheets and scripts the page links outside /v/$assets/" 0 \
+  "$(curl -s --max-time 5 "$base/" | grep -e 'rel="stylesheet"' -e 'rel="modulepreload"' -e '<script ' \
+    | grep -vc "=\"/v/$assets/\(css\|js\)/")"
+expect "/v/$assets/js/main.js" '200 application/javascript; charset=utf-8' "$(typed "/v/$assets/js/main.js")"
+
+for path in / /KQXB /js/main.js "/v/$assets/js/main.js" /favicon.svg /api/health /bestaat-niet; do
   headers=$(curl -s -D - -o /dev/null --max-time 5 "$base$path" | tr -d '\r')
   for h in Content-Security-Policy Strict-Transport-Security X-Content-Type-Options \
            Referrer-Policy Permissions-Policy Cross-Origin-Opener-Policy; do
@@ -87,8 +96,15 @@ expect "Permissions-Policy lets the page call" "camera=(self) microphone=(self)"
   "$(curl -s -D - -o /dev/null --max-time 5 "$base/" | tr -d '\r' | sed -n 's/^[Pp]ermissions-[Pp]olicy: //p' \
     | grep -o '\(camera\|microphone\)=([^)]*)' | sort | tr '\n' ' ' | sed 's/ $//')"
 cache() { curl -s -D - -o /dev/null --max-time 5 "$base$1" | tr -d '\r' | sed -n 's/^[Cc]ache-[Cc]ontrol: //p'; }
+expect "Cache-Control on /" no-cache "$(cache /)"
 expect "Cache-Control on /js/main.js" no-cache "$(cache /js/main.js)"
+expect "Cache-Control on /v/$assets/js/main.js" "public, max-age=31536000, immutable" "$(cache "/v/$assets/js/main.js")"
+expect "Cache-Control on /v/$assets/css/app.css" "public, max-age=31536000, immutable" "$(cache "/v/$assets/css/app.css")"
+# Another version is the same file, not kept: a page from before a deploy asks for it.
+expect "Cache-Control on /v/0/js/main.js" no-cache "$(cache /v/0/js/main.js)"
+expect "Cache-Control on /v/$assets/js/bestaat-niet.js" no-cache "$(cache "/v/$assets/js/bestaat-niet.js")"
 expect "Cache-Control on /favicon.svg" "public, max-age=86400" "$(cache /favicon.svg)"
+expect "Cache-Control on /manifest.webmanifest" "public, max-age=86400" "$(cache /manifest.webmanifest)"
 expect "Cache-Control on /bestaat-niet.png" no-cache "$(cache /bestaat-niet.png)"
 
 if [ "$failed" -gt 0 ]; then

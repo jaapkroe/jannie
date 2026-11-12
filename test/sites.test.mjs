@@ -7,6 +7,9 @@
 //     the site must let through at once, and
 //     every module main.js imports statically is preloaded, and every one
 //     they import when first needed is on the site, with what it imports;
+//   - the page links its stylesheets under /css/ and its modules under
+//     /js/, and no module imports by an absolute path: the image build puts
+//     them on a versioned path (docs/deployment.md#caching);
 //   - the shell reaches the game only through main.js importing ./game.js;
 //   - nothing a player sees names another game.
 //   node --test test/sites.test.mjs
@@ -65,6 +68,16 @@ for (const game of GAMES) {
     const preload = attr(/<link rel="modulepreload" href="\/([^"]+)">/g);
     const scripts = attr(/<script type="module" src="\/([^"]+)"><\/script>/g);
     assert.deepEqual(scripts, ['js/main.js'], 'one module script: the shell\'s main.js');
+    // The image build puts the /css/ and /js/ links under /v/<hash>/, where
+    // a browser keeps the files (docs/deployment.md#caching). A module
+    // imported by an absolute path would be outside it.
+    for (const p of css) assert.match(p, /^css\//, `${p}: a stylesheet is under /css/`);
+    for (const p of preload) assert.match(p, /^js\//, `${p}: a module is under /js/`);
+    for (const d of [dir, SHARED]) {
+      for (const f of treeFiles(path.join(d, 'js'))) {
+        assert.doesNotMatch(read(path.join(d, 'js', f)), /(?:\bfrom\s+|\bimport\s*\(\s*|^\s*import\s+)['"`]\//m, `${f} imports by an absolute path`);
+      }
+    }
     // Every module reached by static imports from main.js is preloaded.
     const seen = new Set();
     const walk = p => {
