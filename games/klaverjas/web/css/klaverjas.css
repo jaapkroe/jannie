@@ -1669,12 +1669,14 @@
 }
 
 /* Training with lessons: the part of the screen the step is about
-   (table.js spotlight). */
+   (table.js spotlight). An outline is drawn on the main thread, so its
+   pulse holds each of kj-spot's 15 values and is not redrawn at every
+   frame. */
 .spot:not(.trick, .hand, .card),
 .trick.spot::before {
   outline: 3px solid var(--gold);
   outline-offset: 4px;
-  animation: kj-spot 1.1s ease-in-out infinite alternate;
+  animation: kj-spot 1.1s step-end infinite alternate;
 }
 
 .seat-id.spot,
@@ -1710,16 +1712,24 @@
   pointer-events: none;
 }
 
+/* From 3 to 8 px and from full gold to 35% as ease-in-out goes, in 15
+   values: 0.6 px apart at most. */
 @keyframes kj-spot {
-  from {
-    outline-color: rgba(242, 193, 78, 1);
-    outline-offset: 3px;
-  }
-
-  to {
-    outline-color: rgba(242, 193, 78, 0.35);
-    outline-offset: 8px;
-  }
+  0% { outline-color: rgba(242, 193, 78, 1); outline-offset: 3px; }
+  6.67% { outline-color: rgba(242, 193, 78, 0.99); outline-offset: 3.05px; }
+  13.33% { outline-color: rgba(242, 193, 78, 0.97); outline-offset: 3.2px; }
+  20% { outline-color: rgba(242, 193, 78, 0.94); outline-offset: 3.47px; }
+  26.67% { outline-color: rgba(242, 193, 78, 0.89); outline-offset: 3.85px; }
+  33.33% { outline-color: rgba(242, 193, 78, 0.83); outline-offset: 4.33px; }
+  40% { outline-color: rgba(242, 193, 78, 0.75); outline-offset: 4.89px; }
+  46.67% { outline-color: rgba(242, 193, 78, 0.68); outline-offset: 5.5px; }
+  53.33% { outline-color: rgba(242, 193, 78, 0.6); outline-offset: 6.11px; }
+  60% { outline-color: rgba(242, 193, 78, 0.52); outline-offset: 6.67px; }
+  66.67% { outline-color: rgba(242, 193, 78, 0.46); outline-offset: 7.15px; }
+  73.33% { outline-color: rgba(242, 193, 78, 0.41); outline-offset: 7.53px; }
+  80% { outline-color: rgba(242, 193, 78, 0.38); outline-offset: 7.8px; }
+  86.67% { outline-color: rgba(242, 193, 78, 0.36); outline-offset: 7.95px; }
+  93.33%, 100% { outline-color: rgba(242, 193, 78, 0.35); outline-offset: 8px; }
 }
 
 .panel-hint {

@@ -25,7 +25,7 @@ const PROFILES = {
   fairphone: { vp: { width: 412, height: 915, deviceScaleFactor: 2.625, isMobile: true, hasTouch: true }, cpu: 4 },
   oldiphone: { vp: { width: 375, height: 667, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, cpu: 6 },
 };
-const SCENARIOS = ['home', 'turn', 'manual', 'keys', 'ime', 'botturn', 'summary', 'next', 'advice'];
+const SCENARIOS = ['home', 'turn', 'spot', 'manual', 'keys', 'ime', 'botturn', 'summary', 'next', 'advice'];
 const want = name => !A.only || A.only.split(',').includes(name);
 const TEXT = 'Mooi gespeeld partner, en door'; // 30 characters
 const proxy = await addressProxy(A.url);
@@ -162,6 +162,13 @@ async function game(name) {
   await playUntil(P, myTurn);
   await sleep(1500);
   if (want('turn')) await measure(P, 'turn');
+  if (want('spot')) {
+    // A lesson's spot on a seat's name. Lessons need the real server, so the class is set by hand.
+    await P.page.evaluate(() => document.querySelector('.seat-id').classList.add('spot'));
+    await sleep(500);
+    await measure(P, 'spot');
+    await P.page.evaluate(() => document.querySelector('.seat-id').classList.remove('spot'));
+  }
   if (want('manual')) {
     await press(P, '.topbar .tb-menu');
     await press(P, '.m-menu .dlg-body > .menu-item:nth-child(3)');
