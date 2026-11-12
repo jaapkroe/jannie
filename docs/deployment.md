@@ -177,11 +177,15 @@ The `Containerfile`'s stages:
   refuses an empty or odd `GAME`, a `GAME_DIR` that is not its folder, a
   `SUPPORT_URL` that is not an `https://` URL (with more than `https://`)
   without quotes, spaces, `<` or `>`, and any path in both `platform/web`
-  and the folder's `web/`; renders `@SITE@`, `@TITLE@` and
-  `@VERB@` into `nginx.conf` (checked with `nginx -t`) and `@SITE@`,
+  and the folder's `web/`; takes the hash of the site's stylesheets and
+  scripts (every file under a `css/` or `js/`, names and contents) and of
+  `deploy/nginx.conf`, 16 hex digits; renders `@SITE@`, `@TITLE@`, `@VERB@` and that hash, `@ASSETS@`,
+  into `nginx.conf` (checked with `nginx -t`) and `@SITE@`,
   `@VERSION@` and `@SUPPORT_URL@` into the game's `index.html` (`og:image`,
-  the version, and `<meta name="support">`, empty without a link); `web`
-  copies the union of the two trees and that `index.html`.
+  the version, and `<meta name="support">`, empty without a link), where it
+  also puts every `/css/` and `/js/` link under `/v/<hash>/`
+  ([nginx](#nginx)); `web` copies the union of the two trees and that
+  `index.html`.
 
 The build copies `extra/`, and podman refuses to copy a directory that is
 not there: `make image-server` and `make image-web` make an empty `extra/`
@@ -208,15 +212,36 @@ server only, nosniff, Referrer-Policy,
 Permissions-Policy (camera and microphone for the page itself, for the
 call; geolocation, payment and USB for nobody), COOP, HSTS
 `max-age=31536000; includeSubDomains`), each sent
-once on every path (`scripts/pod-check`); `Cache-Control: no-cache` for
-html, js, css, json and the manifest (ETag revalidation) so a deploy is
-picked up at once, a day for images, but never for a 404, which is
+once on every path (`scripts/pod-check`); `/v/<hash>/css/…` and
+`/v/<hash>/js/…` → the file at `/css/…` or `/js/…`, whatever the hash;
+`Cache-Control` ([Caching](#caching)); a 404 is
 `text/html` whatever the path's extension; gzip; `X-Real-IP` forwarding:
 the reverse proxy's `X-Real-IP` is trusted from `127.0.0.1` only and passed
 on as the one client address (`X-Forwarded-For` is dropped); `Host` is
 passed unchanged (`$http_host`), which the websocket Origin check compares
 against. nginx runs as uid 101 on a read-only root, writing only to its
 tmpfs mounts, and logs errors only: the reverse proxy logs the requests.
+
+### Caching
+
+The page (`/` and a join link) is sent with `Cache-Control: no-cache` and
+revalidated by ETag, so browsers pick up a new frontend at the next page
+load. The page of a web image links its stylesheets and scripts under
+`/v/<hash>/`, the hash of those files and of `deploy/nginx.conf` at the
+image build, and the modules
+import each other by relative paths, so one loaded later is asked for under
+the same hash. Under the image's own hash they are sent with `public,
+max-age=31536000, immutable`: a browser that has them asks for the page and
+the websocket, and after a day again for the favicon, the manifest and the
+icon. A deploy that changes none of them (a new server, a
+new commit) keeps the hash and with it what browsers hold; one that changes
+any, or how nginx sends them, gives all of them new paths. Under any other hash nginx serves the same
+files with `no-cache`, as it does by their plain paths: a page from before
+a deploy asks for the old hash, and nothing is kept under a name that does
+not say what it holds. Images and the manifest are kept for a day; an error
+(a 404, say) is never kept, so an image added by a deploy shows up at once.
+`scripts/pod-check` checks each of these. A server from source serves
+`index.html` as it is, with the plain paths, and everything `no-cache`.
 
 ## Pods and units
 
@@ -333,9 +358,8 @@ expects the proxy to:
   more are fine: the page pings every 20 s, and the server pings a
   connection quiet for 25 s.
 - **Pass `/api/` through** unchanged: `/api/health` and the score sheets.
-- **Not cache**: the pod sets `Cache-Control` itself (no-cache with ETag
-  for html, js, css and the manifest, a day for images, never a 404); a
-  cache in the proxy would hide a deploy.
+- **Not cache**: the pod sets `Cache-Control` itself
+  ([Caching](#caching)); a cache in the proxy would hide a deploy.
 - **Not add security headers**: they come from the pod, HSTS included, and
   the proxy passes them through. With HSTS switched on in the proxy too,
   browsers get it twice.
@@ -426,8 +450,11 @@ image, and not cached), the link preview (`og:image` is
 `/api/health` (`WEB` and `SERVER`, the revisions of the game's `:current`
 images, so that the pod runs those), the websocket upgrade with the page's
 own `Origin` (`101`) and with another site's (`403`), that the CSP allows
-the websocket of `SITE` and of no other site, and the security headers,
-HSTS included, each sent exactly once on every kind of path.
+the websocket of `SITE` and of no other site, the security headers,
+HSTS included, each sent exactly once on every kind of path, and what a
+browser may keep ([Caching](#caching)): the page links its stylesheets and
+scripts under one `/v/<hash>/`, kept for good there and not under another
+hash or by their plain paths, and images and the manifest for a day.
 `scripts/pod-check ADDR SITE TITLE` checks a pod elsewhere, without the
 revisions: then the page and the server need only name a version. The
 websocket upgrade by hand:
@@ -557,11 +584,6 @@ image holds nothing else). A move to the next minor version is
 a change to the `Containerfile` (a dependency update), for every game at
 once. `scripts/go` and `scripts/dev-server` read the build image from the
 `Containerfile`, so they follow such a change.
-
-Static files are sent with `Cache-Control: no-cache` and revalidated by
-ETag, so browsers pick up a new frontend at the next page load; images are
-cached for a day (a 404 is never cached, so an image added by a deploy shows
-up at once).
 
 ## Logs
 

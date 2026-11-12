@@ -33,6 +33,14 @@ sits at the table and `chart.js` with the first score chart
 `manual.js` and `expert.js`, toepen's score sheet), so a page load never
 fetches them.
 `test/sites.test.mjs` counts it from index.html and the static imports.
+That is a first visit, or the first after a deploy that changed a
+stylesheet or script. Later visits ask for the page and the websocket: a
+web image's page links its stylesheets and scripts under `/v/<hash>/`,
+which a browser keeps
+([deployment.md, "Caching"](deployment.md#caching)). The build rewrites
+the `/css/` and `/js/` links of `index.html` for that, so the page links
+its stylesheets and scripts there and the modules import each other by
+relative paths (the same test checks both).
 Each game lists its own
 ([games/klaverjas/README.md, "Page load"](../games/klaverjas/README.md#page-load);
 [games/toepen/README.md, "The site"](../games/toepen/README.md#the-site)).
@@ -433,7 +441,8 @@ room in the address answers as at any reload: with `onbekend`, so the page
 goes home and says the game is gone. A deploy that renews
 only the site restarts nginx and keeps the server: the pages reconnect, the
 games go on, and a page keeps running the modules it has loaded. A module it
-loads later (the score chart, the call, the manual) comes from the new site
+loads later (the score chart, the call, the manual) is the browser's copy
+from the old site if it has one, and else comes from the new site
 and links to those loaded modules, so a change it makes to what it needs from
 them works only after a reload.
 

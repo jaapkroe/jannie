@@ -102,15 +102,27 @@ RUN test -n "$GAME" && test -n "$GAME_DIR" && test -n "$SITE" && test -n "$TITLE
 COPY platform/web/ /tmp/shared/
 COPY ${GAME_DIR}/web/ /tmp/game/
 COPY deploy/nginx.conf /tmp/nginx.conf.in
+# ASSETS is the hash of the site's stylesheets and scripts, names and
+# contents, and of nginx's configuration, which says how they are sent. The
+# page links them under /v/ASSETS/, where nginx lets a browser keep them for
+# good: a build with the same files gives the same paths, one with a changed
+# file new ones (deploy/nginx.conf).
 RUN both=$( { (cd /tmp/shared && find . ! -type d; cd /tmp/game && find .) | sort | uniq -d; \
               (cd /tmp/game && find . ! -type d; cd /tmp/shared && find .) | sort | uniq -d; } | sort -u) && \
     { [ -z "$both" ] || { echo "in both platform/web and $GAME_DIR/web:" $both >&2; exit 1; }; } && \
-    sed -e "s|@SITE@|${SITE}|g" -e "s|@TITLE@|${TITLE}|g" -e "s|@VERB@|${VERB}|g" /tmp/nginx.conf.in > /tmp/nginx.conf && \
+    (cd /tmp && find shared game nginx.conf.in -type f \
+       \( -path '*/css/*' -o -path '*/js/*' -o -name nginx.conf.in \) -exec sha256sum {} + > sums) && \
+    grep -q ' shared/js/main.js$' /tmp/sums && grep -q ' nginx.conf.in$' /tmp/sums && \
+    assets=$(sort /tmp/sums | sha256sum | cut -c 1-16) && [ ${#assets} -eq 16 ] && \
+    sed -e "s|@SITE@|${SITE}|g" -e "s|@TITLE@|${TITLE}|g" -e "s|@VERB@|${VERB}|g" -e "s|@ASSETS@|${assets}|g" \
+      /tmp/nginx.conf.in > /tmp/nginx.conf && \
     ! grep -q '@[A-Z_]*@' /tmp/nginx.conf && nginx -t -q -c /tmp/nginx.conf && \
     support=$(printf '%s\n' "$SUPPORT_URL" | sed -e 's/&/\&amp;/g' -e 's/[\\|&]/\\&/g') && \
     sed -e "s|@SITE@|${SITE}|g" -e "s|@VERSION@|${GIT_SHA}|g" -e "s|@SUPPORT_URL@|${support}|g" \
+        -e "s|=\"/css/|=\"/v/${assets}/css/|g" -e "s|=\"/js/|=\"/v/${assets}/js/|g" \
       /tmp/game/index.html > /tmp/index.html && \
-    ! grep -q -e @SITE@ -e @VERSION@ -e @SUPPORT_URL@ /tmp/index.html
+    ! grep -q -e @SITE@ -e @VERSION@ -e @SUPPORT_URL@ /tmp/index.html && \
+    grep -q "src=\"/v/${assets}/js/main.js\"" /tmp/index.html
 
 FROM docker.io/nginxinc/nginx-unprivileged:1.31-alpine AS web
 ARG GAME
