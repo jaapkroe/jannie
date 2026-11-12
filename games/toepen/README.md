@@ -248,7 +248,8 @@ off at the last trick), `status` (per seat: `in`, `gepast`, `betrapt`,
 `answered` (the time for a was), `claims` (once that time is over),
 `canClaim`, `claimant` (-1), `asking` (who still answers, in order),
 `checks` (the settled claims, always an array: `{claimant, checker, kind,
-cards, shown}`), `stock`, `hand` (yours, sorted; also out of a round that
+cards, shown}`, the cards sorted as `hand` is), `stock`, `hand` (yours,
+sorted; also out of a round that
 goes on, after a pass, a bluff caught with `bluf` off or a check that put
 you out, until it ends: your own cards, which nobody else gets), `legal`
 and `rule` (your
@@ -263,8 +264,9 @@ events below: `claims`, `wasDone`, `armoede`, `discard`, `toep`,
 
 Events: `deal` `{handNo, dealer, koning}`; `discard` `{seat, n}`; `claims` `{seats}`; `check`
 `{seat, claimant, check}`; `wasDone` `{claimant, checker, kind, cards,
-genuine, washed, shown}`; `toep` `{seat, stake, over}` (over: an
-overtoep); `answer` `{seat, stay, points, auto}` (points: what the pass
+genuine, washed, shown}` (cards: sorted as `hand` is); `toep` `{seat,
+stake, over}` (over: an overtoep); `answer` `{seat, stay, points, auto}`
+(points: what the pass
 cost; auto: went along unasked);
 `armoede` `{seats, stake}`; `play` `{seat, card}`; `trick` `{winner,
 last}`; `collect` `{winner}`; `handEnd` `{result}` (a score row);

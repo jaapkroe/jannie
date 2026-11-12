@@ -799,7 +799,7 @@ func TestToepenWasCheck(t *testing.T) {
 	b, _ := json.Marshal(m.Event())
 	json.Unmarshal(b, &done)
 	genuine := toepen.Was(hand) != toepen.NoWas
-	if done.Checker != 1 || done.Claimant != 0 || done.Genuine != genuine || !slices.Equal(toepen.SortHand(done.Cards), hand) {
+	if done.Checker != 1 || done.Claimant != 0 || done.Genuine != genuine || !slices.Equal(done.Cards, toepen.SortHand(hand)) {
 		t.Fatalf("wasDone %+v, hand %v", done, hand)
 	}
 	s = toepS(t, m)
@@ -810,13 +810,32 @@ func TestToepenWasCheck(t *testing.T) {
 		// Caught (rule bluf, the default): a point, and play on face up.
 		t.Errorf("bluff: points %v status %v open %v", s.Points, s.Status, s.Open)
 	}
-	if len(s.Checks) != 1 {
-		t.Errorf("checks %v", s.Checks)
+	if len(s.Checks) != 1 || !slices.Equal(s.Checks[0].Cards, hand) {
+		t.Errorf("checks %v, hand %v", s.Checks, hand)
 	}
 	if !genuine {
 		s = untilToep(t, g, "play", func(s *state) bool { return s.Phase == phasePlay })
 		if !slices.Equal(s.Open[0], hand) {
 			t.Errorf("the open hand %v, the claimed %v", s.Open[0], hand)
+		}
+	}
+}
+
+// wasDone tells the table the cards in the order of the hand, for a checked
+// was and for one shown on armoede alike, and leaves the claim's own cards
+// as they are.
+func TestWasDoneCardsOrder(t *testing.T) {
+	deal := cards.MustParseCards("JH QS KD 7C")
+	for _, c := range []toepen.Check{
+		{Claimant: 0, Checker: 1, Kind: toepen.Vuile, Cards: slices.Clone(deal)},
+		{Claimant: 0, Checker: cards.NoSeat, Kind: toepen.Vuile, Cards: slices.Clone(deal), Shown: true},
+	} {
+		ev := wasDone(c)
+		if !slices.Equal(ev.Cards, toepen.SortHand(deal)) {
+			t.Errorf("shown=%v: the cards %v, the hand's order %v", c.Shown, ev.Cards, toepen.SortHand(deal))
+		}
+		if !slices.Equal(c.Cards, deal) {
+			t.Errorf("shown=%v: the claim's cards changed: %v", c.Shown, c.Cards)
 		}
 	}
 }

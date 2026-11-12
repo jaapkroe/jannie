@@ -754,7 +754,7 @@ func (p *play) tellShown() {
 // wasDone is the event of a settled claim.
 func wasDone(c toepen.Check) evWasDone {
 	return evWasDone{Type: "wasDone", Claimant: c.Claimant, Checker: c.Checker, Kind: c.Kind,
-		Cards: nonNil(c.Cards), Genuine: c.Genuine(), Washed: c.Washed(), Shown: c.Shown}
+		Cards: nonNil(toepen.SortHand(c.Cards)), Genuine: c.Genuine(), Washed: c.Washed(), Shown: c.Shown}
 }
 
 // joinNL joins names the Dutch way: "A", "A en B", "A, B en C".

@@ -102,6 +102,10 @@ func (p *play) State(i cards.Seat) any {
 	s.Toeper, s.ArmoedeToep = int(d.Toeper()), d.ArmoedeToep()
 	s.Koning, s.Size, s.WasRound = d.Koning(), d.Size(), d.WasRound()
 	s.Checks = nonNil(d.Checks())
+	for k := range s.Checks {
+		// Shown cards lie as a hand does, here and in wasDone.
+		s.Checks[k].Cards = toepen.SortHand(s.Checks[k].Cards)
+	}
 	s.Stock = d.Stock()
 	s.Tricks = len(d.Tricks())
 	for k := range cards.Seat(n) {
