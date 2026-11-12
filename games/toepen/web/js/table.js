@@ -1,8 +1,9 @@
 // The table of toepen (games/toepen/README.md#the-site) at
 // toepen.kroes.dev: the seats around the felt (two to six), the trick, the
 // stake, your cards (four, eight in the koningsspel) and the questions of
-// the round (was, check, toep), the takeover question, and the overlays of
-// the game: the round summary, game over, the standings and the manual.
+// the round (was, check, toep), the takeover question, the choice once only
+// AI players play on, and the overlays of the game: the round summary, game
+// over, the standings and the manual.
 // The shell (main.js, home.js, panels.js) does the rest; game.js ties the
 // two together. Pure parts: rules.js.
 import { app, h, clear, icon, toast, avatar, fillAvatar, playerName, wait, anim, dur, vibrate, store, chartBox } from './util.js';
@@ -251,9 +252,11 @@ function renderTrick(s) {
 
 function renderPrompt(s) {
   const q = R.prompt(s);
-  const vote = votePanel(s);
+  const choice = aiOnlyPanel(s);
+  const vote = votePanel(s) || choice;
   E.vote.hidden = !vote;
-  if (vote) E.vote.replaceChildren(...vote);
+  // The panel that is there already stays (aiOnlyPanel).
+  if (!vote || vote[0] !== E.vote.firstChild) E.vote.replaceChildren(...(vote || []));
   E.prompt.classList.toggle('mine', !!q?.actions?.length || s.turn === s.you && s.phase === 'play');
   E.textMain.textContent = q?.text || (s.phase === 'handEnd' ? 'Het potje is uit.' : s.phase === 'gameOver' ? 'Het spel is uit.' : '');
   E.textSub.textContent = q?.sub || '';
@@ -409,6 +412,44 @@ function votePanel(s) {
   return [h('b', { text: ask }), h('div', { class: 'btn-row' }, btn(true, 'Ja'), btn(false, 'Wachten'))];
 }
 
+// ---------- only AI players left ----------
+
+// Shown to everyone at the table once only AI players play on
+// (games/toepen/README.md#only-ai-players-left): have the rest played out
+// fast, which takes everyone at the table, keep watching, or leave for a
+// new game of your own at once, with the same rules against AI players.
+// An unchanged panel is the same elements again: played out fast the
+// updates come as quickly as a click lasts, and a button replaced under a
+// press gives no click and loses the focus.
+let aiOnlyShown = null;
+function aiOnlyPanel(s) {
+  const a = s.aiOnly;
+  if (!a) return aiOnlyShown = null;
+  const key = `${a.choice?.[s.you] || ''}|${R.aiOnlyText(s)}`;
+  if (aiOnlyShown?.key !== key) aiOnlyShown = { key, nodes: aiOnlyNodes(s) };
+  return aiOnlyShown.nodes;
+}
+
+function aiOnlyNodes(s) {
+  const a = s.aiOnly;
+  const tap = (cls, label, onclick, on) => h('button', {
+    class: `btn ${cls}${on ? ' on' : ''}`, type: 'button', ...(on == null ? {} : { 'aria-pressed': String(on) }),
+    onclick: () => { sound.play('click'); onclick(); },
+  }, label);
+  const again = () => {
+    const { seed, ...opts } = s.opts || {};
+    const name = s.players[s.you]?.name;
+    app.leave();
+    app.create({ opts, start: true, name });
+  };
+  const mine = a.choice?.[s.you] || '';
+  const choose = choice => () => app.send({ t: 'aiOnly', choice });
+  return [h('b', { text: R.aiOnlyText(s) }), h('div', { class: 'btn-row tp-ai-only' },
+    tap('btn-ghost', 'Toekijken', choose('watch'), mine === 'watch'),
+    tap('btn-go', 'Versnellen', choose('fast'), mine === 'fast'),
+    tap('btn-ghost', 'Nieuw spel', again))];
+}
+
 // A refusal of our vote that comes just after the question closed is no
 // mistake (as table.staleVote).
 export function staleVote(m) {
@@ -426,7 +467,8 @@ export function sync(s) {
 }
 
 function syncOverlays(s) {
-  if (s.phase === 'handEnd') showSummary(s);
+  // Played out fast, a round's summary would be gone before it is read.
+  if (s.phase === 'handEnd' && !s.aiOnly?.fast) showSummary(s);
   else if (summaryFor) { summaryFor = 0; app.toepSummary?.close(true); }
   if (s.phase === 'gameOver') showOver(s);
   else {

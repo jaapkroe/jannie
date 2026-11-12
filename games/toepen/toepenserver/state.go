@@ -54,6 +54,7 @@ type state struct {
 	Rounds      []round         `json:"rounds"`        // the score sheet
 	Courses     [][]any         `json:"courses"`       // game over: per round, what everyone saw happen (play.emit)
 	Why         *Explanation    `json:"why,omitempty"` // the reasoning you asked for your decision now (alone with bots)
+	AIOnly      *aiOnly         `json:"aiOnly"`        // only AI players play on: the choices of those at the table (aionly.go)
 }
 
 // round is one line of the score sheet: how a round ended.
@@ -94,6 +95,7 @@ func (p *play) State(i cards.Seat) any {
 		s.Winner = p.winner
 		s.Courses = nonNil(p.courses)
 	}
+	s.AIOnly = p.aiOnlyState()
 	d := p.d
 	if d == nil {
 		return s

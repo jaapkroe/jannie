@@ -139,6 +139,15 @@ type Play interface {
 	Variant() string
 }
 
+// Speeder is a Play that can play on faster, when nobody at the table
+// has a decision left to wait for: Speed is what the game's delays are
+// divided by now (1: the pace of the tempo). The table asks at every
+// pause, summary and think time it starts, so a change holds from the
+// next one on (docs/server.md#pacing).
+type Speeder interface {
+	Speed() float64
+}
+
 // Msg is a message of a player to the game: its type and the whole
 // message as it came in, to read the game's own fields from.
 type Msg struct {

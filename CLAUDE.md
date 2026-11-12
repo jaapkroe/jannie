@@ -186,7 +186,7 @@ sizes, into `test/ui/out/`:
 ```sh
 GAME=toepen scripts/dev-server 18400 -fast && scripts/chrome 9301
 cd test/ui
-node toepen-screens.mjs --url http://127.0.0.1:18400 [--only phone,desktop] [--dpr 2]
+node toepen-screens.mjs --url http://127.0.0.1:18400 [--only phone,desktop] [--flows main,pass,over,aiOnly,score] [--dpr 2]
 ```
 
 `css-same.mjs` rides along with a browser check (its own flags, then the

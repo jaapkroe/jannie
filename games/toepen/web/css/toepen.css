@@ -620,6 +620,16 @@ body {
   box-shadow: 0 0 0 3px var(--gold);
 }
 
+/* Only AI players left: three choices in one row, also on a narrow phone. */
+.tp-ai-only {
+  width: 100%;
+}
+
+.tp-ai-only > .btn {
+  flex: 1 1 auto;
+  padding: 0 10px;
+}
+
 .tp-hand {
   position: relative;
   z-index: 8;

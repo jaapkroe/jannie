@@ -76,6 +76,19 @@ export function seatStatus(s, seat) {
   return '';
 }
 
+// The line above the choice once only AI players play on (s.aiOnly): that
+// they do, who else has to choose Versnellen before the match plays on
+// fast, or that it does.
+export function aiOnlyText(s) {
+  const a = s.aiOnly;
+  if (a.fast) return 'De AI-spelers spelen versneld uit.';
+  const others = s.players.map((p, seat) => ({ p, seat }))
+    .filter(({ p, seat }) => !p.bot && p.connected && seat !== s.you && a.choice?.[seat] !== 'fast')
+    .map(({ p }) => p.name);
+  if (a.choice?.[s.you] !== 'fast' || !others.length) return 'Alleen AI-spelers spelen nog.';
+  return `Versnellen: wacht op ${joinNL(others)}.`;
+}
+
 // What the table asks of you now: a line of text, an optional line under
 // it, and the buttons ({t, play, label, sub, kind}). null outside a round.
 export function prompt(s) {
@@ -533,6 +546,8 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
         'Bovenaan staan jouw strafpunten, het potje en de inzet. Tik op je punten voor de stand van iedereen en elk potje.',
         'Na het laatste potje tik je in de tabel op een potje om terug te zien wat er gebeurde: de vuile was, armoede, wie toepte, wie meeging of paste, en elke slag. Je ziet alleen wat op tafel kwam: handen die niemand zag, blijven verborgen.',
         'Onder de drie puntjes vind je de stand, deze spelregels, de instellingen en het geluid. Met het ballonnetje open je de chat.']],
+      ['Alleen AI-spelers over', [
+        'Ligt iedereen aan tafel eruit en spelen alleen AI-spelers nog, dan kies je onder de tafel: Toekijken, Versnellen (de AI-spelers spelen het spel snel uit, zodra iedereen aan tafel dat kiest) of Nieuw spel (je verlaat de tafel en begint meteen een spel met AI-spelers en dezelfde regels).']],
       ['Score bijhouden', [
         'Speel je met echte kaarten aan een echte tafel? Met Score bijhouden op het beginscherm houdt één iemand de strafpunten bij: namen invullen, en na elk potje de inzet, 🏆 bij wie de laatste slag haalde, Weg bij wie paste, en met − en + wat er nog anders ging (de boer, een vuile was).',
         'De anderen kijken mee met de code of de link, en zien de stand, het verloop in een grafiek en elk potje. Wie twee keer of vaker achter elkaar weggaat, valt op als lijntoeper.']],

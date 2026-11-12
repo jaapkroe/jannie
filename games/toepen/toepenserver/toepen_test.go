@@ -139,7 +139,7 @@ var toepKeys = append(slices.Clone(servertest.SharedKeys),
 	"winner", "handNo", "dealer", "voorhand", "stake", "toeper", "armoedeToep", "koning", "size", "wasRound",
 	"canRaise", "mustStay", "passCost", "open", "lay", "laid", "points",
 	"status", "armoede", "washed", "answered", "claims", "canClaim", "claimant", "asking", "checks",
-	"stock", "hand", "canToep", "trick", "lastTrick", "tricks", "rounds", "courses",
+	"stock", "hand", "canToep", "trick", "lastTrick", "tricks", "rounds", "courses", "aiOnly",
 )
 
 // optsKeys are toepen's options on the wire.

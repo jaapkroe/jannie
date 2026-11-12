@@ -4,7 +4,7 @@
 // than 16 HTTP requests on load.
 //
 //   GAME=toepen scripts/dev-server 18400 -fast && scripts/chrome 9301
-//   cd test/ui && node toepen-screens.mjs --url http://127.0.0.1:18400 [--cdp http://127.0.0.1:9301] [--only phone,desktop] [--dpr 2]
+//   cd test/ui && node toepen-screens.mjs --url http://127.0.0.1:18400 [--cdp http://127.0.0.1:9301] [--only phone,desktop] [--flows main,pass,over,aiOnly,score] [--dpr 2]
 //
 // The server from source deals and its bots play, so
 // whether a bot's vuile was asks to be checked or a toep to be answered
@@ -311,6 +311,77 @@ async function overFlow(P) {
   await closeModal(P);
 }
 
+// A button of the choice once only AI players play on, by its label.
+async function choose(P, label) {
+  for (const b of await P.page.$$('.tp-ai-only .btn')) {
+    if ((await b.evaluate(e => e.textContent)) !== label) continue;
+    await pressEl(P, b);
+    return;
+  }
+  throw new Error(`[${P.name}] no choice ${label}`);
+}
+
+// Six players to 10, never toeping and going along with every toep (the
+// fastest way out), until out with AI players still in (another game when
+// the cards would not have it): the choice on the table, the server's
+// messages held from there. The script sends the choice `first` itself
+// with the first state that has the choice: the server plays on behind
+// the hold, and a tap after the shots may find its match over.
+async function untilAIOnly(P, first = '') {
+  for (let game = 1; ; game++) {
+    await home(P);
+    await newGame(P, { players: '6', tempo: 'Snel' });
+    await P.page.evaluate(choice => {
+      window.kjHoldWhen = s => {
+        if (s.aiOnly && choice) window.kjSend({ t: 'aiOnly', choice });
+        return !!s.aiOnly;
+      };
+    }, first);
+    await press(P, '#btn-start:not(:disabled)');
+    await playUntil(P, '.tp-ai-only, .m-over.open', { timeout: 420000 });
+    if (await has(P, '.tp-ai-only')) break;
+    if (game === 4) throw new Error(`[${P.name}] four games without only AI players left`);
+  }
+  await P.page.evaluate(() => { window.kjHoldWhen = s => !!s.aiOnly && s.phase !== 'handEnd'; });
+  await release(P);
+  await waitFor(P, () => !document.querySelector('.tp-summary.open') && document.querySelector('.tp-ai-only'), { label: 'the choice on the table' });
+}
+
+// Only AI players play on: the choice, what its buttons send and Nieuw
+// spel; then, in a second game, the rest played out fast to game over
+// with no summary of a round on the way.
+async function aiOnlyFlow(P) {
+  await untilAIOnly(P);
+  await sleep(600);
+  await snap(P, '17a-ai-only');
+  await P.page.evaluate(() => { window.kjSent = []; });
+  await choose(P, 'Toekijken');
+  await choose(P, 'Versnellen');
+  const sent = JSON.stringify(await P.page.evaluate(() => window.kjSent.filter(m => m.t === 'aiOnly')));
+  if (sent !== '[{"t":"aiOnly","choice":"watch"},{"t":"aiOnly","choice":"fast"}]') throw new Error(`[${P.name}] the choices sent: ${sent}`);
+  // Nieuw spel: the same table size and rules, AI players.
+  await choose(P, 'Nieuw spel');
+  await release(P);
+  await waitFor(P, () => window.kjState?.handNo === 1 && window.kjState.players.length === 6 && !window.kjState.aiOnly
+    && document.querySelector('.tp-hand .card') && !document.querySelector('.tp-ai-only'), { label: 'the new game' });
+  await sleep(600);
+  await snap(P, '17b-ai-only-new');
+  await untilAIOnly(P, 'fast');
+  await waitFor(P, () => document.querySelector('.tp-vote b')?.textContent.includes('versneld'), { label: 'played out fast' });
+  await sleep(300);
+  await snap(P, '17c-ai-only-fast');
+  await P.page.evaluate(() => {
+    window.kjSummary = false;
+    new MutationObserver(() => { window.kjSummary ||= !!document.querySelector('.tp-summary.open'); })
+      .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['class'] });
+  });
+  await release(P);
+  await waitFor(P, () => document.querySelector('.m-over.open'), { label: 'game over after the fast rounds', timeout: 120000 });
+  if (await P.page.evaluate(() => window.kjSummary)) throw new Error(`[${P.name}] the summary of a round played out fast was shown`);
+  await sleep(1200);
+  await snap(P, '17d-ai-only-over');
+}
+
 // Score bijhouden: a new sheet, two rounds, the players.
 async function scoreFlow(P) {
   await home(P);
@@ -350,7 +421,8 @@ async function scoreFlow(P) {
 
 const errors = await perViewport(A.cdp, names, async (browser, name) => {
   const errors = [];
-  for (const flow of [mainFlow, passFlow, overFlow, scoreFlow]) {
+  const flows = { main: mainFlow, pass: passFlow, over: overFlow, aiOnly: aiOnlyFlow, score: scoreFlow };
+  for (const flow of A.flows ? A.flows.split(',').map(f => flows[f]) : Object.values(flows)) {
     errors.push(...(await scenario(browser, name, BASE, flow, { label: `toepen-${name}`, dpr: A.dpr, init })));
   }
   return errors;

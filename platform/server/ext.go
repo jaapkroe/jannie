@@ -146,7 +146,7 @@ func (x *extPlay) timeSummary(from time.Time) {
 	if x.summary <= 0 {
 		return
 	}
-	r.pendingAt = from.Add(r.scaled(x.summary))
+	r.pendingAt = from.Add(r.paced(x.summary))
 	r.nextAt = r.pendingAt
 }
 
@@ -282,7 +282,8 @@ func (x *extPlay) setOpts(raw json.RawMessage) error {
 // methods run on the room goroutine only, as Play's do; a game's own
 // goroutines go through Think, Later and Background, and only the func
 // that Current returns may be called anywhere. Delays are game delays,
-// scaled by the server (Config.Fast).
+// scaled by the server (Config.Fast) and divided by the game's speed
+// (Speeder).
 type Table struct{ r *room }
 
 // Code is the room's code.
@@ -319,6 +320,12 @@ func (t *Table) BotPlays(i cards.Seat) bool { return t.r.botPlays(i) }
 
 // HumanCount is the number of humans at the table.
 func (t *Table) HumanCount() int { return t.r.humanCount() }
+
+// Present reports whether a human sits at seat i and is connected.
+func (t *Table) Present(i cards.Seat) bool {
+	st := &t.r.seats[i]
+	return st.kind == seatHuman && st.client != nil
+}
 
 // InHand reports whether a hand is being played: the phase is one of the
 // game's (SetPhase), not the lobby, the summary or game over.
@@ -416,7 +423,7 @@ func (t *Table) Emit(ev any) { t.r.emit(ev) }
 // it: f checks the game's own phase if it must.
 func (t *Table) Later(d time.Duration, f func()) {
 	r, live := t.r, t.r.x.current()
-	r.later(r.scaled(d), func() {
+	r.later(r.paced(d), func() {
 		if !live() {
 			return
 		}

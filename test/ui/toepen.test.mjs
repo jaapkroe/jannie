@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   strength, wasKind, seatAngle, onEllipse, seatStatus, prompt, roundHeadline, standings, variantText, manual, isOut, washes, yours, alone, cardLabel, whyRows,
-  courseView, chartSpec,
+  courseView, chartSpec, aiOnlyText,
 } from '../../games/toepen/web/js/rules.js';
 
 const player = name => ({ name, bot: false, connected: true });
@@ -329,4 +329,21 @@ test('the reasoning of the AI: your decision, alone, and the sheet', () => {
   const c = whyRows({ decision: 'controle', options: [{ label: 'Controleren', value: 0.7, best: true }, { label: 'Laten gaan', value: 0.3 }] });
   assert.deepEqual(c.options.map(o => o.value), ['70% kans op bluf', '30% kans dat die echt is']);
   assert.equal(whyRows({ decision: 'wegleggen', options: [{ cards: ['7C', '8C', 'JD'], value: 0.5, best: true }] }).options[0].label, '♣7 ♣8 ♦B');
+});
+
+// The line above the choice once only AI players play on: who else at the
+// table still has to choose Versnellen (a player who dropped out is not
+// waited for), and that the match plays on fast.
+test('only AI players play on: the line above the choice', () => {
+  const t = (choice, fast = false, over = {}) => table({
+    players: [player('Jaap'), player('Kees'), { ...player('Anna'), connected: false }, bot('Truus'), bot('Sjaak')],
+    aiOnly: { choice, fast }, ...over,
+  });
+  assert.equal(aiOnlyText(t(['', '', '', '', ''])), 'Alleen AI-spelers spelen nog.');
+  assert.equal(aiOnlyText(t(['', 'fast', '', '', ''])), 'Alleen AI-spelers spelen nog.');
+  assert.equal(aiOnlyText(t(['fast', '', '', '', ''])), 'Versnellen: wacht op Kees.');
+  assert.equal(aiOnlyText(t(['fast', 'watch', '', '', ''])), 'Versnellen: wacht op Kees.');
+  assert.equal(aiOnlyText(t(['fast', 'fast', '', '', ''], true)), 'De AI-spelers spelen versneld uit.');
+  const three = { players: [player('Jaap'), player('Kees'), player('Anna'), bot('Truus'), bot('Sjaak')] };
+  assert.equal(aiOnlyText(t(['fast', '', 'watch', '', ''], false, three)), 'Versnellen: wacht op Kees en Anna.');
 });
