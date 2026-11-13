@@ -157,7 +157,7 @@ cd test/ui
 node app-screens.mjs [--only iphone,desktop] [--dpr 2]   # every screen at six sizes, into test/ui/out/
 node app-perf.mjs                          # main-thread work and chat keystrokes on two emulated phones
 node app-play.mjs [--gedraaid | --multi | --training | --players 2|3]   # full games by tapping
-node app-checks.mjs [--only lessons,call]  # 34 checks, about 15 minutes for all
+node app-checks.mjs [--only lessons,call]  # 35 checks, about 15 minutes for all
 node og-image.mjs --site klaverjas         # rewrites the site's web/og.png (--out FILE elsewhere)
 ```
 

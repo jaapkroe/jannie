@@ -596,10 +596,12 @@ func TestToepenTrainingAndExpert(t *testing.T) {
 		t.Errorf("answer at a table made for training: %q", m.ErrMsg())
 	}
 	e := srv.Dial()
-	e.Create("Fatima", map[string]any{"players": 3}, false, map[string]any{"expert": true, "seat": 2})
+	// A seed keeps the creator at seat 0, where a lobby otherwise seats at
+	// random: the seat asked for counts for nothing.
+	e.Create("Fatima", map[string]any{"players": 3, "seed": 5}, false, map[string]any{"expert": true, "seat": 2})
 	var es state
 	json.Unmarshal(e.State, &es)
-	if e.Seat < 0 || e.Seat > 2 || es.Phase != "lobby" || len(es.Players) != 3 {
+	if e.Seat != 0 || es.Phase != "lobby" || len(es.Players) != 3 {
 		t.Errorf("expert: seat %d phase %s at %d", e.Seat, es.Phase, len(es.Players))
 	}
 	// The lobby is a lobby: others may join.

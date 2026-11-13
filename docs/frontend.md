@@ -648,8 +648,13 @@ keys included. Without one (a narrower window, the home screen) it is
 `openModal` with the same arguments. So the help button, the menu and a
 lesson's link to a section all end in the column on a wide screen, the last
 at its section. The tab itself, with nothing in the column yet, asks the
-game: `game.home.help.open(true)`, `true` for no click sound, as the tab
-made its own.
+game: `game.home.help.open(true)`, `true` for quiet: no click sound, as
+the tab made its own, and the game passes it on as `openManual`'s second
+argument. A quiet manual comes for the column, not at a tap: it takes the
+column's pane without choosing its tab (the tab that asked is chosen
+already; a game that writes its docked manual again leaves the chat up),
+and where the column is gone meanwhile (the room was left, or the window
+narrowed, while the manual's module loaded) it opens nothing.
 
 The tab chosen stays on the device (`kj.side`) and comes back when a room
 next shows on a wide screen: the manual is then asked from the game, once
@@ -660,8 +665,8 @@ sight: what people write counts on the unread badge, which sits on the tab
 
 When the window gets narrower than 1200 px the column goes, and the manual
 with it: the chat is the drawer again and the manual a modal, from the
-help button. Wider again, the tab chosen last comes back, and a manual
-open as a modal moves into the column. A manual in the column belongs to
+help button. Wider again, the tab chosen last comes back (a manual open
+as a modal stays one unless that tab was the manual's). A manual in the column belongs to
 its room: another room asks for its own. A game whose manual depends on
 the table writes it again when that changes (toepen's follows the lobby's
 options).

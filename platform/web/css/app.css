@@ -393,6 +393,18 @@ body[data-screen="game"] #game {
   -webkit-text-fill-color: transparent;
   -webkit-mask: var(--ss-shape) center / contain no-repeat;
   mask: var(--ss-shape) center / contain no-repeat;
+  print-color-adjust: exact;
+}
+
+/* Forced colours paint no background: there the font's own character. */
+@media (forced-colors: active) {
+  .ss {
+    display: inline;
+    background: none;
+    -webkit-text-fill-color: currentColor;
+    -webkit-mask: none;
+    mask: none;
+  }
 }
 
 .ss[data-suit="S"] { --ss-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 1C52 16 60 28 74 38C89 48 98 57 98 69c0 11-9 19-20 19-8 0-14-4-18-9 1 8 5 14 12 19H28c7-5 11-11 12-19-4 5-10 9-18 9C11 88 2 80 2 69c0-12 9-21 24-31C40 28 48 16 50 1Z'/%3E%3C/svg%3E"); }

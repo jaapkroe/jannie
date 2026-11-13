@@ -61,8 +61,9 @@ func TestCreateDefaults(t *testing.T) {
 // TestRandomSeats: a room that waits in its lobby seats its creator at a
 // random seat and each joiner at a random empty one, until the table is
 // full; a room that starts at once and a training table keep their creator
-// at seat 0. 60 rooms of four: the creator, and the first joiner, get
-// every seat at least once (a seat is missed once in ten million runs).
+// at seat 0, and so does a room made with a seed, whose cards go with the
+// seats. 60 rooms of four: the creator, and the first joiner, get every
+// seat at least once (a seat is missed once in four million runs).
 func TestRandomSeats(t *testing.T) {
 	t.Parallel()
 	_, ts, _ := newTestServer(t)
@@ -108,6 +109,14 @@ func TestRandomSeats(t *testing.T) {
 	c.create("Leerling", nil, true, false)
 	if c.seat != 0 {
 		t.Errorf("a training table that does not start: seat %d", c.seat)
+	}
+	for range 10 {
+		c := dial(t, ts)
+		c.create("Host", map[string]any{"seed": 123}, false, false)
+		if c.seat != 0 || c.s.You != 0 {
+			t.Fatalf("a lobby made with a seed: seat %d, you %d", c.seat, c.s.You)
+		}
+		c.conn.CloseNow()
 	}
 }
 

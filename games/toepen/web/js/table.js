@@ -696,14 +696,15 @@ export function openRules(tab, quiet = false, opts = null) {
     content.scrollTop = 0;
     btns.find(b => b.dataset.id === tab.id)?.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
-  rules = { m: panels.openManual({ id: 'tp-rules', title: 'Spelregels toepen', cls: 'm-manual tp-rules', body: [bar, content] }), key: JSON.stringify(o) };
+  rules = { m: panels.openManual({ id: 'tp-rules', title: 'Spelregels toepen', cls: 'm-manual tp-rules', body: [bar, content] }, quiet), key: JSON.stringify(o) };
   show(tab || lastTab);
 }
 
 // The manual in the side column stays beside the lobby, where the host
-// changes the options it describes: written again when they change.
+// changes the options it describes: written again when they change,
+// quietly, so the column keeps the tab it shows (the chat, if that is up).
 function syncRules(s) {
-  if (rules?.m.docked && s.opts && JSON.stringify(s.opts) !== rules.key) openRules(lastTab, true, s.opts);
+  if (rules?.m?.docked && s.opts && JSON.stringify(s.opts) !== rules.key) openRules(lastTab, true, s.opts);
 }
 
 // ---------- the reasoning of the AI (expert mode) ----------

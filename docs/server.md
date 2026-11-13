@@ -258,7 +258,9 @@ mensen aan tafel.").
 An ordinary room that waits in its lobby seats its creator at a random
 seat of the table, and each joiner at a random empty one; who wants
 another seat moves there. Every other room has a fixed seat for its
-creator: seat 0 after `create` with `start` (quick play) and in
+creator: seat 0 after `create` with `start` (quick play), after `create`
+with a seed (the cards go with the seats, so the same seed gives the
+creator the same hand again) and in
 klaverjas's training, the seat the player chose in its expert mode, and
 the `Seat` of a game's `Opening` that names a seat other than 0, bots,
 `Start` or `Locked`. The seat is drawn from the room's own generator, as the bots'
@@ -459,9 +461,10 @@ without a chosen seed draws a new one, named at its own end.
 
 A seed chosen in the options is the table's own choice and stays visible
 to it: `opts.seed` carries it from the lobby on (the lobby shows it), and
-a rematch deals from it again. A seed deals each seat its cards, and a
-lobby seats people at random: who wants the cards they had in another
-game with the seed sits at the seat they had there. The start line names no seed, chosen or
+a rematch deals from it again. A seed deals each seat its cards: a room
+made with a seed keeps its creator at seat 0, so the same seed gives the
+same hand again, and a joiner, who sits at random, moves to the seat they
+had if they want theirs. The start line names no seed, chosen or
 drawn, and game over names a chosen one too.
 
 Keeping the seed out of the messages takes away the easy way, not every

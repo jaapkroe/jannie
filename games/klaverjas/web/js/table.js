@@ -2019,11 +2019,11 @@ function openTrumpInfo() {
 // the column that opens it by itself.
 export function openManual(tab, quiet = false) {
   if (!quiet) sound.play('click');
-  import('./manual.js').then(m => showManual(m, tab),
+  import('./manual.js').then(m => showManual(m, tab, quiet),
     () => toast('Laden lukte niet', { sub: 'Controleer je internet en probeer het nog eens.', kind: 'error' }));
 }
 
-function showManual({ SECTIONS, renderManual }, tab) {
+function showManual({ SECTIONS, renderManual }, tab, quiet) {
   const content = h('div', { class: 'man-scroll' });
   const tabs = h('div', { class: 'tabs', role: 'tablist' });
   const btns = SECTIONS.map(sec => h('button', {
@@ -2057,7 +2057,7 @@ function showManual({ SECTIONS, renderManual }, tab) {
     btns.find(b => b.dataset.id === id)?.scrollIntoView({ block: 'nearest', inline: 'center' });
     requestAnimationFrame(edges);
   }
-  panels.openManual({ id: 'manual', title: 'Handleiding', cls: 'm-manual', body: [tabs, content] });
+  panels.openManual({ id: 'manual', title: 'Handleiding', cls: 'm-manual', body: [tabs, content] }, quiet);
   const start = tab || prefs.tab;
   show(SECTIONS.some(x => x.id === start) ? start : SECTIONS[0].id);
 }

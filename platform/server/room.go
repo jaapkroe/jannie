@@ -558,7 +558,7 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	} else {
 		r.createKlaverjas(m)
 	}
-	i := o.Seat // the expert sits where they chose; anyone else at seat 0, or where the game opens the room
+	i := o.Seat // seat 0, or where the game opens the room; the expert's choice and a lobby's random seat follow
 	if !i.ValidFor(r.players()) {
 		r.log.Error("opening on a seat off the table", "seat", int(i))
 		i = 0
@@ -567,8 +567,9 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 		i = cards.Seat(*m.Seat)
 	}
 	// An ordinary room that waits in its lobby seats its creator at random
-	// (docs/server.md#seats-and-the-lobby).
-	if !m.Start && !r.training && !r.expert && o.ordinary() {
+	// (docs/server.md#seats-and-the-lobby), but not with a chosen seed: who
+	// makes the game again with that seed gets the same cards, at seat 0.
+	if !m.Start && !r.training && !r.expert && o.ordinary() && r.opts.Seed == 0 {
 		i = r.randomSeat(func(st *seat) bool { return st.kind == seatEmpty })
 	}
 	r.seats[i] = newHuman(cleanName(m.Name))

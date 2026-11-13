@@ -539,8 +539,9 @@ export function initChat() {
       if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
       e.preventDefault();
       e.stopPropagation(); // not the table's arrow keys as well (a card in the hand)
-      pickSide(manualShown() ? 'chat' : 'manual');
-      C.tabs[manualShown() ? 'manual' : 'chat'].focus();
+      const to = manualShown() ? 'chat' : 'manual';
+      pickSide(to);
+      C.tabs[to].focus(); // the tab picked, also while its manual still loads
     },
   }, C.tabs.chat, C.tabs.manual);
   C.chat = h('div', { class: 'side-chat', id: 'side-chat' }, C.list,
@@ -662,9 +663,13 @@ const manualShown = () => !!docked && side === 'manual';
 // returns {id, body, docked, close}: body is the element that holds the
 // manual, docked is true until the column lets the manual go (a narrower
 // window, another room, close) and close() gives the column back to the
-// chat.
-export function openManual(opts) {
-  if (!sideWide()) return openModal(opts);
+// chat. quiet: the manual comes for the column by itself (the tab coming
+// back, a game writing its docked manual again), not at the player's
+// tap: it takes the column's pane without choosing its tab, and where
+// there is no column (the room was left or the window narrowed while the
+// manual loaded) nothing opens and the result is null.
+export function openManual(opts, quiet = false) {
+  if (!sideWide()) return quiet ? null : openModal(opts);
   const { id = '', cls = '', body = [] } = opts;
   if (id) byId(id)?.close(true);
   undock();
@@ -672,7 +677,8 @@ export function openManual(opts) {
   C.man.replaceChildren(...[body].flat(Infinity).filter(k => k != null && k !== false));
   const m = docked = { id, body: C.man, docked: true, close: () => { if (docked === m) { undock(); renderSide(); } } };
   asked = true;
-  pickSide('manual');
+  if (quiet) renderSide();
+  else pickSide('manual');
   return m;
 }
 
