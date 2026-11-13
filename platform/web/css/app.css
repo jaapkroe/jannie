@@ -379,10 +379,26 @@ body[data-screen="game"] #game {
   height: 55%;
 }
 
-/* Suit symbols inside running text (hints, rules). */
+/* Suit symbols inside running text (hints, rules; util.js suitify): drawn
+   from the cards' shapes (cards.js SUIT_PATHS) in the text's colour, so
+   the four are one size and weight whatever fonts the device has. The
+   character stays in the text, unseen, for copying and screen readers. */
 .ss {
-  font-weight: 900;
+  display: inline-block;
+  width: 0.8em;
+  height: 0.8em;
+  overflow: hidden;
+  vertical-align: -0.06em;
+  background: currentColor;
+  -webkit-text-fill-color: transparent;
+  -webkit-mask: var(--ss-shape) center / contain no-repeat;
+  mask: var(--ss-shape) center / contain no-repeat;
 }
+
+.ss[data-suit="S"] { --ss-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 1C52 16 60 28 74 38C89 48 98 57 98 69c0 11-9 19-20 19-8 0-14-4-18-9 1 8 5 14 12 19H28c7-5 11-11 12-19-4 5-10 9-18 9C11 88 2 80 2 69c0-12 9-21 24-31C40 28 48 16 50 1Z'/%3E%3C/svg%3E"); }
+.ss[data-suit="H"] { --ss-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 92C44 84 31 73 20 61 9 49 4 40 4 29 4 15 15 5 28 5c9 0 17 5 22 14C55 10 63 5 72 5c13 0 24 10 24 24 0 11-5 20-16 32C69 73 56 84 50 92Z'/%3E%3C/svg%3E"); }
+.ss[data-suit="D"] { --ss-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M50 2C59 19 71 34 88 50 71 66 59 81 50 98 41 81 29 66 12 50 29 34 41 19 50 2Z'/%3E%3C/svg%3E"); }
+.ss[data-suit="C"] { --ss-shape: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cpath d='M28 24a22 22 0 1 1 44 0a22 22 0 1 1-44 0ZM1 57a22 22 0 1 1 44 0a22 22 0 1 1-44 0ZM55 57a22 22 0 1 1 44 0a22 22 0 1 1-44 0ZM50 30L70 58C60 60 54 62 53.5 70C53.5 80 58 90 67 98H33C42 90 46.5 80 46.5 70 46 62 40 60 30 58Z'/%3E%3C/svg%3E"); }
 
 .ss.red {
   color: var(--suit-red);

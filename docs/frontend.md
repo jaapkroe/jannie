@@ -192,6 +192,13 @@ stay apart as small or distant blurs. A card's state is a class: `.legal`,
 ring), `.selectable` (hover and press only). They use the individual
 `translate`/`scale` properties, so layout may use `transform`.
 
+A suit symbol in running text (a hint, a rule, a chat line; `suitify` in
+`util.js` wraps it in `.ss`) is drawn from the same shapes as the cards'
+pips, as a CSS mask in the text's colour, not from a font: a device's
+fonts often take ♥ from another face than ♣, ♦ and ♠, larger or lighter,
+and so the four are one size and weight everywhere. The character stays
+in the text for copying and for screen readers.
+
 **`sound.js`** synthesises every sound with WebAudio, without audio
 files: `card`, `knock`, `deal`, `shuffle`, `trick`, `trickWon`, `roem`,
 `trump`, `turn`, `chat`, `nat`, `pit`, `handWon`, `handLost`, `win`,
