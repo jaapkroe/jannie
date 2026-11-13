@@ -65,7 +65,7 @@ func testStateKeys(t *testing.T, players int) {
 	rng := rand.New(rand.NewPCG(11, uint64(players)))
 	c := dial(t, ts)
 	c.send(map[string]any{"t": "create", "name": "Piet", "opts": map[string]any{"hands": 4, "players": players}})
-	c.waitType("joined")
+	at := c.waitType("joined").Seat
 	c.waitType("chatlog")
 	lobby := c.waitType("update")
 	if string(lobby.Ev) != "null" {
@@ -79,10 +79,10 @@ func testStateKeys(t *testing.T, players int) {
 		t.Fatalf("players has %d entries", len(seats))
 	}
 	playerKeys := []string{"name", "bot", "botId", "emoji", "color", "connected", "away", "left", "vote", "call", "cards", "ready"}
-	wantKeys(t, "player", seats[0], playerKeys)
-	for i, p := range seats[1:] {
-		if string(p) != "null" {
-			t.Errorf("seat %d is not free in the lobby: %s", i+1, p)
+	wantKeys(t, "player", seats[at], playerKeys)
+	for i, p := range seats {
+		if i != at && string(p) != "null" {
+			t.Errorf("seat %d is not free in the lobby: %s", i, p)
 		}
 	}
 	var roster []json.RawMessage

@@ -109,11 +109,10 @@ func TestToepenAIOnly(t *testing.T) {
 	srv := servertest.Start(t, New(&testAI{brain: func(string, uint64) Brain { return gateBrain{gate} }}))
 	h := srv.Dial()
 	h.Create("Jaap", aiOnlyOpts(4, 1), false)
+	h.Sit(0) // the people at seats 0 and 1, which go out first
 	g := srv.Dial()
 	g.Join(h.Code, "Kees", "")
-	if h.Seat != 0 || g.Seat != 1 {
-		t.Fatalf("seats %d and %d", h.Seat, g.Seat)
-	}
+	g.Sit(1)
 	h.Send(map[string]any{"t": "start"})
 	h.Send(map[string]any{"t": "aiOnly", "choice": choiceFast}) // too early: ignored
 	token := g.Token

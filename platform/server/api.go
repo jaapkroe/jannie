@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/rand/v2"
+	"slices"
 	"time"
 
 	"jannie/platform/cards"
@@ -57,7 +58,7 @@ type Opener interface {
 }
 
 // Opening is how a room opens (Opener); the zero Opening is an ordinary
-// room.
+// room, whose creator sits at a random seat when it waits in its lobby.
 type Opening struct {
 	// Seat is the creator's seat.
 	Seat cards.Seat
@@ -72,6 +73,12 @@ type Opening struct {
 	// back in after a lost connection (by the seat token, or by name),
 	// not after leave.
 	Locked string
+}
+
+// ordinary reports whether o is the zero Opening, a room like any other:
+// no seat, bot, start or fixed table of the game's.
+func (o Opening) ordinary() bool {
+	return o.Seat == 0 && !o.Start && o.Locked == "" && !slices.ContainsFunc(o.Bots, func(id string) bool { return id != "" })
 }
 
 // GameOptions are the game's own options of a room. The table reads the

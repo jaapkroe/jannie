@@ -223,8 +223,8 @@ of the state (skipped without the flag).
 - Code: 4 letters from `ABCDEFGHJKLMNPQRSTUVWXYZ` (no I, O), unique among live
   rooms, case-insensitive on input. Join link: `https://SITE/ABCD`
   (`https://klaverjas.kroes.dev/ABCD`).
-- Creator sits at seat 0 (or where the game's `Opening` says) and is
-  host. If the host leaves, the next human
+- The creator is host, at the seat "Seats and the lobby" below gives. If
+  the host leaves, the next human
   becomes host (a connected one first); if the host stays disconnected for
   30 s while another human is connected, the next connected human does. With
   nobody else connected the role stays, so a host who comes back first keeps
@@ -255,9 +255,20 @@ to the first free seat (a bot makes way if needed), a bot on it leaves; with
 more humans seated than the new number, error `ongeldig` ("Er zitten al 3
 mensen aan tafel.").
 
+An ordinary room that waits in its lobby seats its creator at a random
+seat of the table, and each joiner at a random empty one; who wants
+another seat moves there. Every other room has a fixed seat for its
+creator: seat 0 after `create` with `start` (quick play) and in
+klaverjas's training, the seat the player chose in its expert mode, and
+the `Seat` of a game's `Opening` that names a seat other than 0, bots,
+`Start` or `Locked`. The seat is drawn from the room's own generator, as the bots'
+faces are; the deals have their own stream ("The seed" below), which a
+seat does not touch.
+
 ## Joining
 
-- Joining a lobby: first empty seat; with none → error `vol`, whose text says
+- Joining a lobby: a random empty seat ("Seats and the lobby" above); with
+  none → error `vol`, whose text says
   what to ask the host: one bot less when bots fill a seat, else a seat more
   under *Spelers* (with as many people seated as the game allows, nothing
   can be done).
@@ -303,7 +314,8 @@ A game that implements `Opener` says how each new room opens
 (`Opening`): mostly a table of its own that starts at once and that
 nobody else joins (a training table), though a fixed table may keep its
 lobby. The zero `Opening` is an ordinary room, and so is every room of a
-game without `Opener`. The table calls `Open` once, on `create`, after
+game without `Opener`: its creator sits at a random seat when it waits in
+its lobby ("Seats and the lobby" above). The table calls `Open` once, on `create`, after
 the room's options are set, with the game's own options and the create
 message. The table's options (`players`, `ai`, `tempo`, `seed`) are not
 passed: a game that needs them, say for `Seat` or `Bots` on a table of
@@ -447,7 +459,9 @@ without a chosen seed draws a new one, named at its own end.
 
 A seed chosen in the options is the table's own choice and stays visible
 to it: `opts.seed` carries it from the lobby on (the lobby shows it), and
-a rematch deals from it again. The start line names no seed, chosen or
+a rematch deals from it again. A seed deals each seat its cards, and a
+lobby seats people at random: who wants the cards they had in another
+game with the seed sits at the seat they had there. The start line names no seed, chosen or
 drawn, and game over names a chosen one too.
 
 Keeping the seed out of the messages takes away the easy way, not every

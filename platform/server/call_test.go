@@ -43,8 +43,10 @@ func TestCall(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
+	h.sit(0)
 	g := dial(t, ts)
 	g.join(h.code, "Gast", "")
+	g.sit(1)
 	if callOf(g, 0) != nil || callOf(g, 1) != nil {
 		t.Fatal("in the call before joining it")
 	}
@@ -138,6 +140,7 @@ func TestCallStartsGameWithCalls(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
+	h.sit(0)
 	g := dial(t, ts)
 	g.join(h.code, "Gast", "")
 	h.send(map[string]any{"t": "call", "id": "hostCall01", "mic": true})

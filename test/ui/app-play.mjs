@@ -249,8 +249,8 @@ async function multi() {
     await press(G, '.invite .btn-hero');
     await waitFor(G, () => document.body.dataset.screen === 'lobby', { label: 'guest in lobby' });
     await waitFor(H, () => [...document.querySelectorAll('.lseat .ls-name')].some(e => e.textContent === 'Gast'), { label: 'host sees guest' });
-    // The guest takes the first empty seat: next to the host, as an opponent.
-    const partners = await H.page.$eval('.ls-top .ls-name', e => e.textContent === 'Gast');
+    // The guest takes a random empty seat: the host's partner, or an opponent.
+    const partners = await H.page.$$eval('.lseat.wij:not(.me) .ls-name', els => els.some(e => e.textContent === 'Gast'));
 
     // Chat both ways in the lobby: the host has the side panel, the guest a drawer with an unread badge.
     await type(H, '.chat-input', 'Hoi Gast, welkom!');

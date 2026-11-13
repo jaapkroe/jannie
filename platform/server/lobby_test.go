@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -33,8 +34,8 @@ func TestCreateDefaults(t *testing.T) {
 	c := dial(t, ts)
 	c.create("  Piet\u0007  ", nil, false, false)
 	s := c.s
-	if s.Phase != phaseLobby || s.You != 0 || s.Host != 0 || s.HandNo != 0 || s.Training {
-		t.Fatalf("state: phase %s you %d host %d hand %d", s.Phase, s.You, s.Host, s.HandNo)
+	if s.Phase != phaseLobby || s.You != c.seat || s.Host != c.seat || s.HandNo != 0 || s.Training {
+		t.Fatalf("state: phase %s you %d host %d hand %d, joined at seat %d", s.Phase, s.You, s.Host, s.HandNo, c.seat)
 	}
 	want := defaultOptions()
 	want.Tips = false // training's
@@ -44,16 +45,69 @@ func TestCreateDefaults(t *testing.T) {
 	if len(s.Roster) != len(fakePersonas) || s.Roster[0].ID != "dirk" || s.Roster[0].Bio == "" {
 		t.Errorf("roster %+v", s.Roster)
 	}
-	if p := s.Players[0]; p == nil || p.Name != "Piet" || p.Bot || !p.Connected {
+	if p := s.Players[c.seat]; p == nil || p.Name != "Piet" || p.Bot || !p.Connected {
 		t.Errorf("creator %+v", p)
 	}
-	for i := 1; i < 4; i++ {
-		if s.Players[i] != nil {
+	for i := range 4 {
+		if i != c.seat && s.Players[i] != nil {
 			t.Errorf("seat %d not empty: %+v", i, s.Players[i])
 		}
 	}
 	if len(c.code) != 4 || normCode(strings.ToLower(c.code)) != c.code || len(c.token) != 32 {
 		t.Errorf("code %q token %q", c.code, c.token)
+	}
+}
+
+// TestRandomSeats: a room that waits in its lobby seats its creator at a
+// random seat and each joiner at a random empty one, until the table is
+// full; a room that starts at once and a training table keep their creator
+// at seat 0. 60 rooms of four: the creator, and the first joiner, get
+// every seat at least once (a seat is missed once in ten million runs).
+func TestRandomSeats(t *testing.T) {
+	t.Parallel()
+	_, ts, _ := newTestServer(t)
+	var created, joined [4]int
+	for range 60 {
+		h := dial(t, ts)
+		h.create("Host", nil, false, false)
+		if h.s.You != h.seat || h.s.Host != h.seat {
+			t.Fatalf("joined at seat %d: you %d, host %d", h.seat, h.s.You, h.s.Host)
+		}
+		created[h.seat]++
+		taken := map[int]bool{h.seat: true}
+		for k := range 3 {
+			g := dial(t, ts)
+			g.join(h.code, fmt.Sprint("Gast ", k), "")
+			if taken[g.seat] || g.s.Players[g.seat] == nil || g.s.Players[g.seat].Name != fmt.Sprint("Gast ", k) {
+				t.Fatalf("guest %d at seat %d, taken %v: %+v", k, g.seat, taken, g.s.Players[g.seat])
+			}
+			if k == 0 {
+				joined[g.seat]++
+			}
+			taken[g.seat] = true
+			g.conn.CloseNow()
+		}
+		h.conn.CloseNow()
+	}
+	for i := range 4 {
+		if created[i] == 0 || joined[i] == 0 {
+			t.Errorf("seat %d: %d creators and %d first joiners in 60 rooms", i, created[i], joined[i])
+		}
+	}
+	for _, training := range []bool{false, true} {
+		for range 10 {
+			c := dial(t, ts)
+			c.create("Solo", nil, training, true)
+			if c.seat != 0 || c.s.You != 0 {
+				t.Fatalf("training %v, started at once: seat %d, you %d", training, c.seat, c.s.You)
+			}
+			c.conn.CloseNow()
+		}
+	}
+	c := dial(t, ts)
+	c.create("Leerling", nil, true, false)
+	if c.seat != 0 {
+		t.Errorf("a training table that does not start: seat %d", c.seat)
 	}
 }
 
@@ -95,17 +149,14 @@ func TestOptsChangesPlayers(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
+	h.sit(0)
 	g := dial(t, ts)
 	g.join(h.code, "Gast", "")
-	if g.seat != 1 {
-		t.Fatalf("guest at seat %d, want the first empty seat 1", g.seat)
-	}
 	h.waitEvent("join")
 	// The guest moves to seat 3, the host puts a bot at 2: going to three
 	// seats takes seat 3 away, so the guest moves to the first free seat
 	// and the bot stays.
-	g.send(map[string]any{"t": "sit", "seat": 3})
-	g.waitState("guest at 3", func(s *state) bool { return s.You == 3 })
+	g.sit(3)
 	h.send(map[string]any{"t": "bot", "seat": 2, "id": "dirk"})
 	h.waitState("bot at 2", func(s *state) bool { return s.Players[2] != nil })
 	h.send(map[string]any{"t": "opts", "opts": map[string]any{"players": 3, "hands": 8, "trumpMode": "gedraaid"}})
@@ -159,8 +210,10 @@ func TestLobbyCommands(t *testing.T) {
 	_, ts, _ := newTestServer(t)
 	h := dial(t, ts)
 	h.create("Host", nil, false, false)
+	h.sit(0)
 	g := dial(t, ts)
 	g.join(h.code, "Gast", "")
+	g.sit(1)
 	h.waitEvent("join")
 
 	for _, m := range []map[string]any{
@@ -229,8 +282,8 @@ func TestJoinErrors(t *testing.T) {
 
 	g := dial(t, ts)
 	g.join(strings.ToLower(h.code), "Gast", "") // codes are case-insensitive
-	if g.seat != 1 {
-		t.Errorf("guest at seat %d, want the free seat 1", g.seat)
+	if g.seat != 1-h.seat {
+		t.Errorf("guest at seat %d, want the free seat %d", g.seat, 1-h.seat)
 	}
 	y := dial(t, ts)
 	y.send(map[string]any{"t": "join", "code": h.code, "name": "Y"})
@@ -334,11 +387,11 @@ func TestLeaveAndTakeOver(t *testing.T) {
 	h.send(map[string]any{"t": "leave"})
 	m := g.until(5*time.Second, "leave", func(m *msg) bool { return m.T == "update" && m.evType() == "leave" })
 	s := m.state
-	if p := s.Players[0]; p == nil || p.Bot || !p.Left || p.Connected || p.Name != "Host" {
-		t.Fatalf("seat 0 after leave: %+v", p)
+	if p := s.Players[h.seat]; p == nil || p.Bot || !p.Left || p.Connected || p.Name != "Host" {
+		t.Fatalf("the host's seat after leave: %+v", p)
 	}
-	if s.Host != 1 {
-		t.Errorf("host %d, want 1", s.Host)
+	if s.Host != g.seat {
+		t.Errorf("host %d, want the guest's seat %d", s.Host, g.seat)
 	}
 	if !slices.ContainsFunc(g.chats, func(c chatMsg) bool { return c.Sys && c.Text == "Host is vertrokken." }) {
 		t.Errorf("no leave line in %+v", g.chats)
@@ -346,11 +399,11 @@ func TestLeaveAndTakeOver(t *testing.T) {
 	// The old token no longer works, but a newcomer takes over the seat.
 	n := dial(t, ts)
 	n.join(h.code, "Nieuw", h.token)
-	if n.seat != 0 {
-		t.Fatalf("newcomer at seat %d, want 0", n.seat)
+	if n.seat != h.seat {
+		t.Fatalf("newcomer at seat %d, want the seat %d the host left", n.seat, h.seat)
 	}
-	if p := n.s.Players[0]; p.Bot || p.Left || p.Name != "Nieuw" {
-		t.Errorf("seat 0 after takeover: %+v", p)
+	if p := n.s.Players[h.seat]; p.Bot || p.Left || p.Name != "Nieuw" {
+		t.Errorf("the seat after takeover: %+v", p)
 	}
 	g.waitEvent("join")
 	if !slices.ContainsFunc(g.chats, func(c chatMsg) bool { return c.Sys && c.Text == "Nieuw neemt de plaats van Host over." }) {
@@ -373,8 +426,8 @@ func TestHostHandover(t *testing.T) {
 	// A disconnected host hands over after the grace period (30 s scaled).
 	h.conn.CloseNow()
 	s := g.waitState("host handover", func(s *state) bool { return s.Host == g.seat })
-	if s.Players[0] == nil || s.Players[0].Connected {
-		t.Errorf("old host: %+v", s.Players[0])
+	if s.Players[h.seat] == nil || s.Players[h.seat].Connected {
+		t.Errorf("old host: %+v", s.Players[h.seat])
 	}
 	if !slices.ContainsFunc(g.chats, func(c chatMsg) bool { return c.Sys && c.Text == "Gast is nu de host." }) {
 		t.Errorf("no host line in %+v", g.chats)
@@ -384,9 +437,11 @@ func TestHostHandover(t *testing.T) {
 	g.send(map[string]any{"t": "leave"})
 	h2 := dial(t, ts)
 	h2.join(h.code, "Host", h.token)
-	if h2.s.Host != 0 || h2.s.Players[1] != nil {
-		t.Errorf("after rejoin: host %d, seat 1 %+v", h2.s.Host, h2.s.Players[1])
+	if h2.seat != h.seat {
+		t.Errorf("back at seat %d, want %d", h2.seat, h.seat)
 	}
+	// The leave and the join come over two connections, in either order.
+	h2.waitState("host again, the guest gone", func(s *state) bool { return s.Host == h.seat && s.Players[g.seat] == nil })
 	// The last human leaving the lobby removes the room.
 	h2.send(map[string]any{"t": "leave"})
 	x := dial(t, ts)
@@ -441,24 +496,27 @@ func TestHostAfterLeave(t *testing.T) {
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.02 }) // grace 600 ms
 	a := dial(t, ts)
 	a.create("Anna", nil, false, false)
+	a.sit(0) // the role goes to the next human by seat: Bert
 	b := dial(t, ts)
 	b.join(a.code, "Bert", "")
+	b.sit(1)
 	c := dial(t, ts)
 	c.join(a.code, "Carl", "")
+	c.sit(2)
 	r := roomOf(t, s, a.code)
 	b.conn.CloseNow()
-	a.waitSeat("away", 1)
+	a.waitSeat("away", b.seat)
 	c.conn.CloseNow()
-	a.waitSeat("away", 2)
+	a.waitSeat("away", c.seat)
 	a.send(map[string]any{"t": "leave"})
 	var host game.Seat
 	waitFor(t, "Anna gone", func() bool {
 		var kind seatKind
-		call(r, func() { kind, host = r.seats[0].kind, r.host })
+		call(r, func() { kind, host = r.seats[a.seat].kind, r.host })
 		return kind == seatEmpty
 	})
-	if host != 1 {
-		t.Fatalf("host %d after Anna left, want Bert's seat 1", host)
+	if int(host) != b.seat {
+		t.Fatalf("host %d after Anna left, want Bert's seat %d", host, b.seat)
 	}
 	c2 := dial(t, ts)
 	c2.join(a.code, "Carl", c.token)
@@ -485,7 +543,7 @@ func TestChat(t *testing.T) {
 		if cm.Sys {
 			continue
 		}
-		if cm.Seat != 0 || cm.Name != "Host" || cm.Bot || cm.TS == 0 {
+		if cm.Seat != h.seat || cm.Name != "Host" || cm.Bot || cm.TS == 0 {
 			t.Errorf("chat %+v", cm)
 		}
 		got = append(got, cm.Text)

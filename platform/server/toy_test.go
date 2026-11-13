@@ -399,8 +399,10 @@ func TestToyMessages(t *testing.T) {
 			t.Errorf("%s: %q", typ, m.ErrMsg())
 		}
 	}
+	h.Sit(0) // the first turn is seat 0's
 	g := srv.Dial()
 	g.Join(h.Code, "Kees", "")
+	g.Sit(1)
 	h.Send(map[string]any{"t": "start"})
 	m = g.WaitEvent("deal")
 	s = decodeToy(t, m)
@@ -685,21 +687,30 @@ func TestToyLockedLobby(t *testing.T) {
 	wantBots(t, "rematch", decodeToy(t, h.WaitEvent("deal")))
 }
 
-// TestToyOpening: the zero Opening is an ordinary room, and the table
-// leaves out what of an Opening it cannot do (the creator then at seat
-// 0).
+// TestToyOpening: the zero Opening is an ordinary room, its creator at a
+// seat of the lobby's choice, and the table leaves out what of an Opening
+// it cannot do (the creator then at seat 0).
 func TestToyOpening(t *testing.T) {
 	t.Parallel()
 	srv := servertest.Start(t, toyTable{})
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 3}, false)
 	s := decodeToy(t, &servertest.Msg{S: h.State})
-	if h.Seat != 0 || s.Phase != "lobby" || s.Players[1] != nil || s.Players[2] != nil {
-		t.Errorf("ordinary room: %s", h.State)
+	free := 0
+	for _, p := range s.Players {
+		if p == nil {
+			free++
+		}
+	}
+	if s.Phase != "lobby" || int(s.You) != h.Seat || s.Players[h.Seat] == nil || free != 2 {
+		t.Errorf("ordinary room, joined at seat %d: %s", h.Seat, h.State)
 	}
 	g := srv.Dial()
 	g.Join(h.Code, "Kees", "")
-	h.Send(map[string]any{"t": "bot", "seat": 2})
+	if g.Seat == h.Seat {
+		t.Errorf("joined at the creator's seat %d", g.Seat)
+	}
+	h.Send(map[string]any{"t": "bot", "seat": 3 - h.Seat - g.Seat}) // the seat left
 	h.WaitEvent("lobby")
 
 	h = srv.Dial()
@@ -796,8 +807,10 @@ func TestToySend(t *testing.T) {
 	srv := servertest.Start(t, toyTable{})
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 3}, false)
+	h.Sit(0)
 	g := srv.Dial()
 	g.Join(h.Code, "Kees", "")
+	g.Sit(1)
 	h.Send(map[string]any{"t": "stuur", "seat": 1, "text": "notitie"})
 	if m := g.WaitType("notitie"); string(m.Raw) != `{"from":0,"t":"notitie"}` {
 		t.Errorf("to Kees: %s", m.Raw)

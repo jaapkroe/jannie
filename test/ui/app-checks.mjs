@@ -1726,12 +1726,19 @@ CHECKS.setup = async browser => {
   friend?.close();
 };
 
-// The host puts a chosen bot at a lobby seat ('left', 'top', 'right'), in
-// place of the bot there (bots fill the seats not meant for people) or on
-// an empty seat; one already elsewhere at the table moves out first.
-async function seatBot(H, pos, name) {
+// The host puts a chosen bot at the seat that is 'left', 'top' or 'right'
+// of the host's own at the table, in place of the bot there (bots fill the
+// seats not meant for people) or on an empty seat; one already elsewhere
+// at the table moves out first. The lobby's picture turns to nobody, so
+// that seat is the first, second or third place clockwise from the host's.
+async function seatBot(H, side, name) {
+  const pos = await H.page.evaluate(k => {
+    const places = ['bottom', 'left', 'top', 'right'];
+    const mine = document.querySelector('.lseat.me').className.match(/ls-(bottom|left|top|right)/)[1];
+    return places[(places.indexOf(mine) + k) % 4];
+  }, ['left', 'top', 'right'].indexOf(side) + 1);
   const seatOf = () => H.page.evaluate(n => [...document.querySelectorAll('.lseat')]
-    .find(e => e.querySelector('.ls-name')?.textContent === n)?.className.match(/ls-(left|top|right)/)?.[1] || '', `${name} (AI)`);
+    .find(e => e.querySelector('.ls-name')?.textContent === n)?.className.match(/ls-(bottom|left|top|right)/)?.[1] || '', `${name} (AI)`);
   const pick = async (at, want, label) => {
     await press(H, `.ls-${at} .ls-main`);
     await waitFor(H, () => document.querySelector('.m-bots.open'), { label: 'bot picker' });
@@ -1812,7 +1819,9 @@ CHECKS.names = async browser => {
     await seatBot(P, 'left', 'Tante Truus');
     await seatBot(P, 'right', 'Kees de Visser');
     await press(P, '#btn-start:not(:disabled)');
-    await waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelector('.sp-zij .sp-names')?.textContent === 'Tante Truus (AI) & Kees de Visser (AI)', { label: 'game with both bots' });
+    // The pill names a team in seat order, and the lobby seats the host at random.
+    await waitFor(P, () => document.body.dataset.screen === 'game'
+      && ['Tante Truus (AI) & Kees de Visser (AI)', 'Kees de Visser (AI) & Tante Truus (AI)'].includes(document.querySelector('.sp-zij .sp-names')?.textContent), { label: 'game with both bots' });
     for (const [width, height] of [[1024, 768], [1440, 900], [1920, 1080]]) {
       await P.page.setViewport({ width, height });
       await sleep(300);

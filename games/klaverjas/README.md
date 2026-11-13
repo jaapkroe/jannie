@@ -995,9 +995,11 @@ and *Oost* (right). With four the teams are visible, partners opposite;
 with three the places are *Zuid*, *West* and *Oost*, the last two raised a
 little; with two *Zuid* and *Noord*. Your own seat is marked (*jij*, a
 gold ring), wherever it is, and the colours and the words *maat* and
-*tegenstander* are yours: your side is yours on every page. A tap on an
-empty place moves you there. At the table you sit at the bottom, whatever
-your place.
+*tegenstander* are yours: your side is yours on every page. The server
+seats the creator and every joiner at a random place
+([server.md, "Seats and the lobby"](../../docs/server.md#seats-and-the-lobby));
+a tap on an empty place moves you there. At the table you sit at the
+bottom, whatever your place.
 
 ### Table
 

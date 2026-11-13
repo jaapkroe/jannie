@@ -13,20 +13,29 @@ import (
 )
 
 // startTable starts a match of four hands for the named humans, the first
-// one the host, with bots on the other seats. With two humans the guest
-// sits at 2 (the host puts a bot at 1 first); with three the guests sit at
-// 1 and 2.
+// one the host at seat 0, with bots on the other seats. With two humans
+// the guest sits at 2 (the host puts a bot at 1 first); with three the
+// guests sit at 1 and 2. The lobby seats them at random, so each moves to
+// their seat as they come in.
 func startTable(t *testing.T, ts *httptest.Server, names ...string) []*tclient {
 	t.Helper()
 	h := dial(t, ts)
 	h.create(names[0], map[string]any{"hands": 4}, false, len(names) == 1)
+	if len(names) > 1 {
+		h.sit(0)
+	}
 	if len(names) == 2 {
 		placeBots(h, 1)
 	}
 	cs := []*tclient{h}
-	for _, name := range names[1:] {
+	for k, name := range names[1:] {
 		c := dial(t, ts)
 		c.join(h.code, name, "")
+		to := k + 1
+		if len(names) == 2 {
+			to = 2
+		}
+		c.sit(to)
 		cs = append(cs, c)
 	}
 	if len(names) > 1 {
@@ -230,6 +239,7 @@ func TestDropOutAsksThreePlayers(t *testing.T) {
 	_, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	a := dial(t, ts)
 	a.create("Anna", map[string]any{"players": 3, "hands": 4}, false, false)
+	a.sit(0)
 	b := dial(t, ts)
 	b.join(a.code, "Bert", "")
 	a.send(map[string]any{"t": "start"})
@@ -743,8 +753,10 @@ func TestVoteErrors(t *testing.T) {
 	if e := h.waitError(errInvalid); e.errMsg() != "Die vraag staat niet (meer) open." {
 		t.Errorf("vote in the lobby: %q", e.errMsg())
 	}
+	h.sit(0)
 	g := dial(t, ts)
 	g.join(h.code, "Bert", "")
+	g.sit(2)
 	h.send(map[string]any{"t": "start"})
 	drive(t, func() bool { return h.myTurn() }, h, g)
 	g.vote(0, true)
@@ -841,11 +853,11 @@ func TestLeftSeatAfterGameOver(t *testing.T) {
 	h.waitEvent("deal")
 	over()
 	v2.send(map[string]any{"t": "leave"})
-	h.waitSeat("leave", 2)
+	h.waitSeat("leave", v2.seat)
 	h.send(map[string]any{"t": "rematch"})
 	st = h.waitEvent("deal").state
-	if p := st.Players[2]; p == nil || !p.Bot || p.Left {
-		t.Fatalf("rematch: seat 2 %+v", p)
+	if p := st.Players[v2.seat]; p == nil || !p.Bot || p.Left {
+		t.Fatalf("rematch: seat %d %+v", v2.seat, p)
 	}
 }
 

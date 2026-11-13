@@ -566,6 +566,11 @@ func (r *room) handleCreate(c *client, m *inMsg) {
 	if r.expert && m.Seat != nil && *m.Seat >= 0 && *m.Seat < 4 {
 		i = cards.Seat(*m.Seat)
 	}
+	// An ordinary room that waits in its lobby seats its creator at random
+	// (docs/server.md#seats-and-the-lobby).
+	if !m.Start && !r.training && !r.expert && o.ordinary() {
+		i = r.randomSeat(func(st *seat) bool { return st.kind == seatEmpty })
+	}
 	r.seats[i] = newHuman(cleanName(m.Name))
 	r.setClient(i, c)
 	r.host = i
@@ -613,7 +618,7 @@ func (r *room) openBots(ids []string) {
 }
 
 // handleJoin seats c: back at its seat by token, at a seat taken back by
-// name, in a free lobby seat or in one a human left. With blocked (too
+// name, in a random free lobby seat or in one a human left. With blocked (too
 // many failed joins from this address) only the seat token still works.
 func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 	if i := r.seatOf(c); i != cards.NoSeat {
@@ -658,7 +663,7 @@ func (r *room) handleJoin(c *client, m *inMsg, blocked bool) {
 		return
 	}
 	if r.phase == phaseLobby {
-		i := r.firstSeat(func(st *seat) bool { return st.kind == seatEmpty })
+		i := r.randomSeat(func(st *seat) bool { return st.kind == seatEmpty })
 		switch {
 		case i != cards.NoSeat:
 		case r.firstSeat(func(st *seat) bool { return st.kind == seatBot }) != cards.NoSeat:
@@ -756,6 +761,22 @@ func (r *room) firstSeat(ok func(*seat) bool) cards.Seat {
 		}
 	}
 	return cards.NoSeat
+}
+
+// randomSeat returns a random one of the seats at the table that ok
+// accepts. It draws from the room's own generator, as the bots' faces do:
+// the deals have their own stream (dealRNG), which a seat never touches.
+func (r *room) randomSeat(ok func(*seat) bool) cards.Seat {
+	var free []cards.Seat
+	for i := range r.players() {
+		if ok(&r.seats[i]) {
+			free = append(free, cards.Seat(i))
+		}
+	}
+	if len(free) == 0 {
+		return cards.NoSeat
+	}
+	return free[r.rng.IntN(len(free))]
 }
 
 // reclaimable finds the seat of a human called name who has been

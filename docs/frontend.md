@@ -306,7 +306,9 @@ meedoen, maar de tafel is vol" with what to do (a bot away, *Zet Spelers
 op 3*; after game over *Spelers of regels wijzigen*). A joiner turned away with `vol` or `gestart` lands on home with
 the code back in the *Meedoen* field, so trying again is one tap.
 
-Where the picture puts a seat is the game's (`game.lobby.slot`). A game that
+The server seats everyone at a random seat
+([server.md, "Seats and the lobby"](server.md#seats-and-the-lobby)); where
+the picture puts a seat is the game's (`game.lobby.slot`). A game that
 keeps every seat at its place, whoever looks, names the places: `wind`, a
 small label over the seat, for taken and empty seats alike (klaverjas's
 *Zuid*, *West*, *Noord* and *Oost*). A game that turns the picture so the
