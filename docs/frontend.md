@@ -155,7 +155,7 @@ export const messages, queued;  // the game's own server messages: handled at on
 export const home;          // options (rows: key, label, choices, info, players?, input?, multi + value?), defaults,
                             //   quickOpts(), quickSub(), summary(o), remember(o), tiles()?, help {label, open},
                             //   egg?, footer, support, shareText(code), route(params)? (a link of its own)
-export const lobby;         // seats(miniTable) → its seat slots; slot(s, seat) → {el, cls, role, free}
+export const lobby;         // seats(miniTable) → its seat slots; slot(s, seat) → {el, cls, role, free, wind?}
 ```
 
 ## Shared modules
@@ -305,6 +305,13 @@ er nog iemand mee wil doen."). A `refused` gives the host a toast "… wil
 meedoen, maar de tafel is vol" with what to do (a bot away, *Zet Spelers
 op 3*; after game over *Spelers of regels wijzigen*). A joiner turned away with `vol` or `gestart` lands on home with
 the code back in the *Meedoen* field, so trying again is one tap.
+
+Where the picture puts a seat is the game's (`game.lobby.slot`). A game that
+keeps every seat at its place, whoever looks, names the places: `wind`, a
+small label over the seat, for taken and empty seats alike (klaverjas's
+*Zuid*, *West*, *Noord* and *Oost*). A game that turns the picture so the
+viewer sits at the bottom, as at the table, gives none (toepen). The
+viewer's own seat is marked either way (*jij*).
 
 ### Player names
 

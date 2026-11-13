@@ -4,7 +4,7 @@
 // tests read it.
 import { sound } from './sound.js';
 import { app, h, icon, store, countWord, cap } from './util.js';
-import { POS, posOf, isWij, teamCls, variantText } from './rules.js';
+import { POS, lobbyPos, WIND, isWij, teamCls, variantText } from './rules.js';
 import * as panels from './panels.js';
 import * as table from './table.js';
 import { optionsForm, numberField, soloName } from './home.js';
@@ -85,6 +85,7 @@ const OPTS = [
   { key: 'seed', label: 'Seed', input: true, choices: [],
     info: ['Leeg: elke partij krijgt nieuwe kaarten.',
       'Met een getal (1 tot 999999999) krijg je bij dezelfde spelregels dezelfde kaarten, ook bij Nog een partij. Zo speel je een partij nog eens, of dezelfde kaarten als iemand anders.',
+      'De kaarten horen bij de plaats aan tafel (Zuid, West, Noord, Oost): wie dezelfde kaarten wil, gaat op dezelfde plaats zitten.',
       'De seed van een partij staat pas aan het eind in de chat, en in de spelanalyse.'] },
 ];
 
@@ -233,7 +234,7 @@ function openExpert() {
     numberField(opts.from, v => { opts.from = v; save(); showHands(); }, { max: 24, placeholder: 'Hele spel', label: 'Potje' })));
   form.querySelector('[data-key="from"]').after(h('div', { class: 'opt-row', dataset: { key: 'seat' } },
     h('div', { class: 'opt-lbl' }, h('span', { text: 'Plaats' }), panels.infoBtn('Plaats', [
-      'Waar je aan tafel zit. In een gewoon spel zit wie het spel maakte op plaats 1; plaats 2 zit links van 1, plaats 3 tegenover 1 en plaats 4 rechts van 1.',
+      'Waar je aan tafel zit. Plaats 1 is Zuid in het tafeltje van Klaarzetten, plaats 2 West (links van 1), plaats 3 Noord (tegenover 1) en plaats 4 Oost (rechts van 1). In Snel spelen zit je op plaats 1.',
       'Met dezelfde seed krijgt elke plaats dezelfde kaarten en dezelfde gever als in dat spel.',
       'In het spellog heet plaats 1 seat 0, plaats 4 seat 3.',
     ])),
@@ -256,7 +257,9 @@ function openExpert() {
 }
 
 // The lobby's mini table: the four places of the table (POS), partners
-// opposite.
+// opposite. A seat keeps its place whoever looks (lobbyPos), named by its
+// wind direction; the colours and the words maat and tegenstander are the
+// viewer's. At the table everyone sits at the bottom (posOf).
 const lobbySeats = {};
 export const lobby = {
   seats(miniTable) {
@@ -264,9 +267,9 @@ export const lobby = {
     return Object.values(lobbySeats);
   },
   slot(s, seat) {
-    const pos = posOf(s, seat);
+    const pos = lobbyPos(s, seat);
     return {
-      el: lobbySeats[pos], cls: `ls-${pos} ${teamCls(s, seat)}`,
+      el: lobbySeats[pos], cls: `ls-${pos} ${teamCls(s, seat)}`, wind: WIND[pos],
       role: isWij(s, seat) ? 'maat' : 'tegenstander', free: isWij(s, seat) ? 'maat · vrij' : 'vrij',
     };
   },

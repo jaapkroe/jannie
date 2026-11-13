@@ -16,6 +16,11 @@ export const posOf = (s, seat) => {
   const n = seatCount(s);
   return POS_AT[n][(seat - s.you + n) % n];
 };
+// The place of a seat in the lobby's picture, which turns to nobody: seat
+// 0 at the bottom, the others clockwise from there.
+export const lobbyPos = (s, seat) => POS_AT[seatCount(s)][seat];
+// The wind direction of a place in that picture.
+export const WIND = { bottom: 'Zuid', left: 'West', top: 'Noord', right: 'Oost' };
 
 // The side a seat plays on in this hand: its team with four players,
 // itself with two, and with three the soloist (0) against the other two

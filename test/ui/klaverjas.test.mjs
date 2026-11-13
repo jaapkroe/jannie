@@ -16,7 +16,7 @@ globalThis.localStorage = {
 };
 siteImports();
 const {
-  roemText, handHeadline, posOf, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText,
+  roemText, handHeadline, posOf, lobbyPos, WIND, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText,
   reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
   MANUAL_SECTIONS, chartSpec,
 } = await import('../../games/klaverjas/web/js/rules.js');
@@ -69,6 +69,15 @@ test('seats sit around the table by its size, you at the bottom', () => {
   assert.equal(where(3, 0), 'bottom left right');
   assert.equal(where(3, 1), 'right bottom left');
   assert.equal(where(2, 1), 'top bottom');
+});
+
+// The lobby's picture turns to nobody: every seat has its place, and its
+// wind direction, whoever looks (sizes 4, 3 and 2).
+test('the lobby keeps every seat at its place, named by its wind direction', () => {
+  const where = (n, you) => Array.from({ length: n }, (_, seat) => WIND[lobbyPos(table(n, you), seat)]).join(' ');
+  for (const you of [0, 1, 2, 3]) assert.equal(where(4, you), 'Zuid West Noord Oost');
+  for (const you of [0, 1, 2]) assert.equal(where(3, you), 'Zuid West Oost');
+  for (const you of [0, 1]) assert.equal(where(2, you), 'Zuid Noord');
 });
 
 test('sides: teams of four, each for themselves with two, the soloist alone with three', () => {

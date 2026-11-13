@@ -1076,6 +1076,22 @@ body.busy::after {
   color: var(--team-hi);
 }
 
+/* The name of a place, over its seat, where the game's picture has one
+   (game.lobby.slot's wind); the button to remove a bot moves down with
+   the face. */
+.ls-wind {
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.lseat:has(.ls-wind) .ls-x {
+  top: 15px;
+}
+
 .ls-x {
   position: absolute;
   top: 0;
