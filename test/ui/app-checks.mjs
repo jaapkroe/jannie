@@ -10,6 +10,7 @@
 import { WebSocket as NodeWS } from 'ws';
 import {
   args, connect, openPage, VIEWPORTS, press, pressEl, type, shot, waitFor, sleep, playLegal, addressProxy, nextIP, ownAddress, checkOverflow,
+  MANUAL, closeManual,
 } from './app-lib.mjs';
 
 const A = args();
@@ -372,10 +373,12 @@ CHECKS.lessons = async browser => {
             manual = true;
             await shot(P, 'lesson-manual');
             await press(P, '.coach-man');
-            await waitFor(P, () => document.querySelector('.m-manual.open .tab[aria-selected="true"]')?.textContent === 'Kaartwaarden', { label: 'the manual at Kaartwaarden' });
+            // A sheet on the phone; on the desktop the side column's Handleiding.
+            await waitFor(P, sel => document.querySelector(sel)?.textContent === 'Kaartwaarden', { label: 'the manual at Kaartwaarden' }, `${MANUAL} .tab[aria-selected="true"]`);
             await sleep(500); // the sheet slides in: a tap before it stands would miss ✕
-            await press(P, '.m-manual .dlg-x');
-            await waitFor(P, () => !document.querySelector('.m-manual.open'), { label: 'the manual closed' });
+            if (vp === 'iphone') await press(P, '.m-manual .dlg-x');
+            else await closeManual(P);
+            await waitFor(P, sel => !document.querySelector(sel), { label: 'the manual closed' }, MANUAL);
             if ((await step())?.text !== now.text) throw new Error('the manual link read the step');
             await sleep(500);
           }
@@ -1871,6 +1874,72 @@ CHECKS.leave = async browser => {
     await waitFor(G, c => !localStorage.getItem('kj.token.' + c), { label: 'seat token deleted once the leave went out', timeout: 5000 }, code);
   });
   await H.ctx.close().catch(() => {});
+};
+
+// The side column on a wide screen (docs/frontend.md#the-side-column): the
+// tab Handleiding puts the manual beside the table without a modal, a
+// person's line then counts on the Chat tab's badge until that tab shows,
+// the help button keeps to the column and the arrow keys change tabs, the
+// tab chosen stays (kj.side) and comes back at the next table; under 1200 px
+// the column lets the manual go, which is a modal again, and growing back
+// takes it in again. On the home screen and on a phone it is a modal.
+CHECKS.side = async browser => {
+  const P = await page(browser, VP.desktop, 'side');
+  await run(P, async () => {
+    const st = () => P.page.evaluate(() => ({
+      tabs: [...document.querySelectorAll('.side-tab')].filter(t => t.offsetParent).map(t => `${t.firstChild.textContent}:${t.getAttribute('aria-selected')}`).join(' '),
+      chat: !!document.querySelector('.side-chat')?.offsetParent,
+      man: !!document.querySelector('.side-man')?.offsetParent,
+      modal: !!document.querySelector('#modals .m-manual.open'),
+      stored: localStorage.getItem('kj.side'),
+      badge: (b => (!b || b.hidden ? '' : b.textContent))(document.querySelector('#side-tab-chat .chat-badge')),
+    }));
+    const want = async (w, label) => {
+      const s = await st();
+      for (const k of Object.keys(w)) if (s[k] !== w[k]) throw new Error(`${label}: ${JSON.stringify(s)}`);
+    };
+    const docked = () => waitFor(P, () => document.querySelector('.chat.manual .side-man .man') && !document.querySelector('#modals .m-manual'), { label: 'the manual in the side column' });
+    await home(P);
+    await quick(P);
+    await want({ tabs: 'Chat:true Handleiding:false', chat: true, man: false, modal: false, stored: null }, 'at the table');
+    await press(P, '#side-tab-manual');
+    await docked();
+    await want({ tabs: 'Chat:false Handleiding:true', chat: false, man: true, stored: 'manual', badge: '' }, 'after the tab Handleiding');
+    // The table stays in use beside the manual.
+    const hand = await P.page.$$eval('.hand .card', els => els.length);
+    await playUntil(P, n => document.querySelectorAll('.hand .card').length < n, { label: 'a card played beside the manual' }, hand);
+    await P.page.evaluate(async () => (await import('/js/panels.js')).chatAdd({ seat: 1, name: 'Kees', text: 'Hoi!', ts: Date.now() }, true));
+    await want({ badge: '1', man: true }, 'a line while the manual shows');
+    await shot(P, 'manual');
+    await press(P, '.topbar .tb-help');
+    await sleep(500);
+    await want({ man: true, modal: false }, 'the help button on a wide screen');
+    await P.page.focus('#side-tab-manual');
+    await P.page.keyboard.press('ArrowLeft');
+    await want({ tabs: 'Chat:true Handleiding:false', chat: true, man: false, stored: 'chat', badge: '' }, 'after the arrow key to Chat');
+    if (await P.page.evaluate(() => document.activeElement?.id) !== 'side-tab-chat') throw new Error('the arrow key left the focus behind');
+    await P.page.keyboard.press('ArrowRight');
+    await want({ chat: false, man: true, stored: 'manual' }, 'after the arrow key back');
+
+    await P.page.setViewport({ ...VP.desktop, width: 1100 });
+    await sleep(300);
+    await want({ tabs: '', man: false, modal: false, stored: 'manual' }, 'under 1200 px');
+    await press(P, '.topbar .tb-help');
+    await waitFor(P, () => document.querySelector('#modals .m-manual.open .man'), { label: 'the manual as a modal under 1200 px' });
+    await P.page.setViewport(VP.desktop);
+    await docked();
+    await want({ tabs: 'Chat:false Handleiding:true', man: true }, 'wide again');
+
+    await P.page.evaluate(async () => (await import('/js/util.js')).app.leave());
+    await waitFor(P, () => document.body.dataset.screen === 'home', { label: 'home' });
+    await press(P, '#btn-help');
+    await waitFor(P, () => document.querySelector('#modals .m-manual.open .man'), { label: 'the manual as a modal on the home screen' });
+    await P.page.keyboard.press('Escape');
+    await waitFor(P, () => !document.querySelector('#modals .m-manual'), { label: 'the modal closed' });
+    await quick(P);
+    await docked();
+    await want({ tabs: 'Chat:false Handleiding:true', stored: 'manual' }, 'at the next table');
+  });
 };
 
 // Lobby: the hint fits a full table of people; a failed copy shows the link.

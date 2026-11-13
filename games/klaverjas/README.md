@@ -928,7 +928,9 @@ The in-game handleiding: its Dutch content and `renderManual`, which
 builds a section with `cards.js` for the illustrations. Its styles are the
 last section of `css/klaverjas.css` (classes `man-…`).
 
-`table.js` imports it when the manual is first opened (`openManual`). A
+`table.js` imports it when the manual is first opened (`openManual`), as
+a modal or, on a wide screen at a table, in the side column beside it
+([docs/frontend.md, "The side column"](../../docs/frontend.md#the-side-column)). A
 lesson step's link takes its section's title from `MANUAL_SECTIONS` in
 rules.js, as manual.js may not be loaded yet; `test/ui/klaverjas.test.mjs`
 keeps the two lists the same.
@@ -1174,7 +1176,7 @@ seat, `hand` the cards in the hand (their hint glow), `card` one card in
 the hand (the same glow; the hint's glow waits), `trick` a box round
 the trick, `trump` the trump badge, `score` the score pill, `rule` the
 rule above the hand, `chat` the chat button, or on wide screens the chat
-beside the table. A step with `manual` has a link under its text,
+beside the table (its tab *Chat* while the manual has the column). A step with `manual` has a link under its text,
 *Handleiding: Kaartwaarden* (the book icon and the section's title), that opens the manual
 at that section; it is a button, so tapping it reads nothing. In the
 counting hand the trump badge has the number `trumpsLeft` on its corner

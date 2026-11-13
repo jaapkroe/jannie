@@ -13,7 +13,7 @@
 // fraction of a second: the page holds the server's next messages back for
 // those shots (holdHook in app-lib.mjs).
 import {
-  args, VIEWPORTS, press, pressEl, type, snap, has, shown, closeModal, waitFor, sleep, addressProxy,
+  args, VIEWPORTS, press, pressEl, type, snap, has, shown, closeModal, MANUAL, closeManual, waitFor, sleep, addressProxy,
   holdEvent, release, scenario, perViewport, finish,
 } from './app-lib.mjs';
 
@@ -240,10 +240,11 @@ async function mainFlow(P) {
   await closeModal(P);
 
   await openTool(P, 'help', 'Spelregels toepen');
-  await waitFor(P, () => document.querySelector('.tp-rules.open .tp-man'), { label: 'rules' });
+  // A modal, or on the desktop the side column's Spelregels beside the table.
+  await waitFor(P, sel => document.querySelector(sel), { label: 'rules' }, `${MANUAL} .tp-man`);
   await sleep(300);
   await snap(P, '11-rules');
-  await closeModal(P);
+  await closeManual(P);
 
   await openTool(P, 'settings', 'Instellingen');
   await waitFor(P, () => document.querySelector('.m-settings.open'), { label: 'settings' });

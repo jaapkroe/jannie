@@ -39,6 +39,7 @@
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
   --tb-h: calc(var(--sat) + 58px);
+  --side-w: 340px; /* the column beside the table on a wide screen */
 }
 
 *,
@@ -2740,9 +2741,59 @@ body.chat-open .chat-scrim {
   color: var(--gold-ink);
 }
 
+/* ---------- the side column ---------- */
+
+/* On a wide screen in a room the chat is a column beside the table, with
+   two tabs: the chat, and the game's manual in its place (panels.js;
+   docs/frontend.md#the-side-column). Elsewhere the tabs and the manual's
+   pane are not shown: the chat is the drawer above, the manual a modal. */
+.side-tabs,
+.side-man {
+  display: none;
+}
+
+.side-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.side-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  margin-bottom: -1px;
+  padding: 0 8px;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  background: none;
+  color: var(--ink-3);
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.side-tab:hover {
+  color: var(--ink-2);
+}
+
+.side-tab[aria-selected="true"] {
+  border-bottom-color: var(--gold);
+  color: var(--ink);
+}
+
+.side-tab .chat-badge {
+  position: static;
+  box-shadow: none;
+}
+
 @media (min-width: 1200px) {
   body.in-room #app {
-    grid-template-columns: minmax(0, 1fr) 340px;
+    grid-template-columns: minmax(0, 1fr) var(--side-w);
   }
 
   body.in-room .chat {
@@ -2756,15 +2807,40 @@ body.chat-open .chat-scrim {
     padding-left: 0;
   }
 
-  body.in-room .chat-x,
+  body.in-room .chat-head,
   body.in-room .chat-scrim,
   body.in-room .tb-chat {
     display: none;
   }
 
-  /* Hand summary and game over sit over the table and leave the chat usable. */
+  body.in-room .side-tabs {
+    display: flex;
+    align-items: flex-end;
+    flex: none;
+    min-height: 58px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  body.in-room .chat.manual .side-chat {
+    display: none;
+  }
+
+  /* The manual's own tabs and its scrolling pane (.tabs, .man-scroll). */
+  body.in-room .chat.manual .side-man {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  body.in-room .side-man > .tabs {
+    padding-top: 12px;
+  }
+
+  /* Hand summary and game over sit over the table and leave the column usable. */
   body.in-room .modal.passive {
-    right: 340px;
+    right: var(--side-w);
   }
 }
 

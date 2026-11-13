@@ -11,7 +11,7 @@
 // run: we are voorhand, choose hearts and lead the king, and the first
 // trick has roem.
 import {
-  args, VIEWPORTS, press, type, snap, has, closeModal, waitFor, sleep, playLegal, addressProxy, countdownPatch,
+  args, VIEWPORTS, press, type, snap, has, closeModal, MANUAL, closeManual, waitFor, sleep, playLegal, addressProxy, countdownPatch,
   scenario, perViewport, finish,
 } from './app-lib.mjs';
 
@@ -195,10 +195,11 @@ async function mainFlow(P) {
   if (await has(P, 'body.chat-open')) await closeModal(P);
 
   await openTool(P, 'help', 2);
-  await waitFor(P, () => document.querySelector('.m-manual.open .man'), { label: 'manual' });
+  // A modal, or on the desktop the side column's Handleiding beside the table.
+  await waitFor(P, sel => document.querySelector(sel), { label: 'manual' }, `${MANUAL} .man`);
   await sleep(300);
   await snap(P, '12-manual');
-  await closeModal(P);
+  await closeManual(P);
 
   await openTool(P, 'settings', 3);
   await waitFor(P, () => document.querySelector('.m-settings.open'), { label: 'settings' });

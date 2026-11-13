@@ -432,7 +432,11 @@ sterk decision takes about 4 ms.
   first; a caught bluffer's cards lie face up at its seat (*speelt
   open*). Keys: 1–4 (1–8) play a card, T toeps or overtoeps. Sound
   `knock` for a toep.
-- The manual (*Spelregels toepen*, from the table and the home screen): the
+- The manual (*Spelregels toepen*, from the table and the home screen; on
+  a wide screen at a table in the side column, under the tab *Spelregels*,
+  [docs/frontend.md, "The side column"](../../docs/frontend.md#the-side-column),
+  where it is written again when the host changes the options in the
+  lobby): the
   shell's tabs and scrolling pane (as klaverjas's handleiding) with
   *Spelregels*, *Extra regels* (each option: at a table how it is played
   there, from the home screen what it is and its default), *Tips* (the

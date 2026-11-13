@@ -222,11 +222,13 @@ app.create = create;
 app.join = join;
 
 function screen(name) {
-  if (document.body.dataset.screen === name) return;
-  document.body.dataset.screen = name;
-  document.body.classList.toggle('in-room', name === 'lobby' || name === 'game');
-  if (name === 'game') requestAnimationFrame(() => table.relayout());
-  panels.syncHistory();
+  if (document.body.dataset.screen !== name) {
+    document.body.dataset.screen = name;
+    document.body.classList.toggle('in-room', name === 'lobby' || name === 'game');
+    if (name === 'game') requestAnimationFrame(() => table.relayout());
+    panels.syncHistory();
+  }
+  panels.syncSide(); // the column beside the table: with every update, so a new room gets its own
 }
 
 // Sends a message. A move that gets no answer within ACK_MS was written

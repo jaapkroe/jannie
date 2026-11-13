@@ -285,7 +285,8 @@ export const home = {
   remember: ({ players, hands, trumpMode, rules, ai, tempo, signals }) => ({ players, hands, trumpMode, rules, ai, tempo, signals }),
   tiles: () => [h('button', { class: 'btn btn-tile', type: 'button', id: 'btn-train', onclick: openTraining },
     icon('school'), h('b', { text: 'Oefenen' }), h('small', { text: 'Leren met tips' }))],
-  help: { label: 'Handleiding en spelregels', open: () => table.openManual() },
+  // open(quiet): quiet for the side column, which opens it without a click.
+  help: { label: 'Handleiding en spelregels', open: quiet => table.openManual(undefined, quiet === true) },
   egg: openExpert,
   footer: 'Klaverjassen zoals in het café.',
   support: 'Klaverjas is gratis en zonder reclame. Met een vrijwillige bijdrage help je de server en de ontwikkeling te betalen, zodat dat zo blijft.',
