@@ -510,11 +510,13 @@ func TestToepenLobby(t *testing.T) {
 	if o := toepOpts(t, m); len(s.Players) != 6 || o["limit"] != 15.0 || o["was"] != false || o["armoede"] != true || len(s.Roster) != 8 {
 		t.Fatalf("lobby %v", o)
 	}
+	h.Sit(0)
 	g := srv.Dial()
 	g.Join(h.Code, "Kees", "")
-	if g.Seat != 1 {
-		t.Fatalf("guest at %d", g.Seat)
+	if g.Seat < 1 || g.Seat > 5 {
+		t.Fatalf("guest at %d, want an empty seat", g.Seat)
 	}
+	g.Sit(1)
 	for _, tc := range []struct {
 		opts map[string]any
 		want string
@@ -594,7 +596,9 @@ func TestToepenTrainingAndExpert(t *testing.T) {
 		t.Errorf("answer at a table made for training: %q", m.ErrMsg())
 	}
 	e := srv.Dial()
-	e.Create("Fatima", map[string]any{"players": 3}, false, map[string]any{"expert": true, "seat": 2})
+	// A seed keeps the creator at seat 0, where a lobby otherwise seats at
+	// random: the seat asked for counts for nothing.
+	e.Create("Fatima", map[string]any{"players": 3, "seed": 5}, false, map[string]any{"expert": true, "seat": 2})
 	var es state
 	json.Unmarshal(e.State, &es)
 	if e.Seat != 0 || es.Phase != "lobby" || len(es.Players) != 3 {
@@ -632,6 +636,7 @@ func TestToepenSeats(t *testing.T) {
 	srv, _ := newToepServer(t)
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 6}, false)
+	h.Sit(0)
 	g := srv.Dial()
 	g.Join(h.Code, "Kees", "")
 	g.Send(map[string]any{"t": "sit", "seat": 5})
@@ -667,8 +672,8 @@ func TestToepenSeats(t *testing.T) {
 	}
 }
 
-// twoHumans seats Jaap and Kees at a table of two for toepen with opts and
-// starts it; it returns both clients, the host first.
+// twoHumans seats Jaap (seat 0) and Kees (seat 1) at a table of two for
+// toepen with opts and starts it; it returns both clients, the host first.
 func twoHumans(t *testing.T, srv *servertest.Server, opts map[string]any) (*servertest.Client, *servertest.Client) {
 	t.Helper()
 	h := srv.Dial()
@@ -677,6 +682,7 @@ func twoHumans(t *testing.T, srv *servertest.Server, opts map[string]any) (*serv
 		o[k] = v
 	}
 	h.Create("Jaap", o, false)
+	h.Sit(0)
 	g := srv.Dial()
 	g.Join(h.Code, "Kees", "")
 	h.Send(map[string]any{"t": "start"})
@@ -727,8 +733,12 @@ func TestToepenHandAfterPass(t *testing.T) {
 	srv, _ := newToepServer(t)
 	h := srv.Dial()
 	h.Create("Jaap", map[string]any{"players": 3, "was": false, "armoede": false, "seed": 77}, false)
+	// Everyone at the seat of their turn to come in: with this seed the
+	// first turn is not the host's, whose messages find it.
+	h.Sit(0)
 	clients := []*servertest.Client{h, srv.Dial(), srv.Dial()}
 	clients[1].Join(h.Code, "Kees", "")
+	clients[1].Sit(1)
 	clients[2].Join(h.Code, "Mia", "")
 	h.Send(map[string]any{"t": "start"})
 	bySeat := map[int]*servertest.Client{}

@@ -112,7 +112,7 @@ built from the same shell:
   toasts, motion, the on-screen keyboard, names, suits, avatars,
   whether a turn is the player's and the box of the score chart),
   `panels.js` (modals, back button, settings, bot picker, menu, feedback,
-  chat), `home.js` (home, invite, lobby), `sound.js`, `cards.js`, `call.js`
+  chat, the side column), `home.js` (home, invite, lobby), `sound.js`, `cards.js`, `call.js`
   and `chart.js` (both lazy); `platform/web/css`: `app.css`, `cards.css`.
 - the game's `web/`: `index.html`, `manifest.webmanifest`, `favicon.svg`,
   `icon-full.svg`, the PNG icons, `og.png`, and `js/game.js`, the game
@@ -153,9 +153,10 @@ export const soundSub, chatQuick, chatCls;  // settings line under Geluidseffect
 export const sync, onError, onReconnect;    // after every update; on a refusal; on a new connection (all optional)
 export const messages, queued;  // the game's own server messages: handled at once, or after the animations before them
 export const home;          // options (rows: key, label, choices, info, players?, input?, multi + value?), defaults,
-                            //   quickOpts(), quickSub(), summary(o), remember(o), tiles()?, help {label, open},
+                            //   quickOpts(), quickSub(), summary(o), remember(o), tiles()?,
+                            //   help {label, open(quiet), tab?} (the manual: "The side column"),
                             //   egg?, footer, support, shareText(code), route(params)? (a link of its own)
-export const lobby;         // seats(miniTable) → its seat slots; slot(s, seat) → {el, cls, role, free}
+export const lobby;         // seats(miniTable) → its seat slots; slot(s, seat) → {el, cls, role, free, wind?}
 ```
 
 ## Shared modules
@@ -190,6 +191,13 @@ stay apart as small or distant blurs. A card's state is a class: `.legal`,
 `.selected` (lifted), `.disabled`, `.hint` (pulsing glow), `.winner` (gold
 ring), `.selectable` (hover and press only). They use the individual
 `translate`/`scale` properties, so layout may use `transform`.
+
+A suit symbol in running text (a hint, a rule, a chat line; `suitify` in
+`util.js` wraps it in `.ss`) is drawn from the same shapes as the cards'
+pips, as a CSS mask in the text's colour, not from a font: a device's
+fonts often take ♥ from another face than ♣, ♦ and ♠, larger or lighter,
+and so the four are one size and weight everywhere. The character stays
+in the text for copying and for screen readers.
 
 **`sound.js`** synthesises every sound with WebAudio, without audio
 files: `card`, `knock`, `deal`, `shuffle`, `trick`, `trickWon`, `roem`,
@@ -305,6 +313,15 @@ er nog iemand mee wil doen."). A `refused` gives the host a toast "… wil
 meedoen, maar de tafel is vol" with what to do (a bot away, *Zet Spelers
 op 3*; after game over *Spelers of regels wijzigen*). A joiner turned away with `vol` or `gestart` lands on home with
 the code back in the *Meedoen* field, so trying again is one tap.
+
+The server seats everyone at a random seat
+([server.md, "Seats and the lobby"](server.md#seats-and-the-lobby)); where
+the picture puts a seat is the game's (`game.lobby.slot`). A game that
+keeps every seat at its place, whoever looks, names the places: `wind`, a
+small label over the seat, for taken and empty seats alike (klaverjas's
+*Zuid*, *West*, *Noord* and *Oost*). A game that turns the picture so the
+viewer sits at the bottom, as at the table, gives none (toepen). The
+viewer's own seat is marked either way (*jij*).
 
 ### Player names
 
@@ -454,7 +471,7 @@ it and they keep moving.
 
 ### Chat
 
-Drawer (side panel on wide screens), quick reactions (the game's
+Drawer (on wide screens the side column, below), quick reactions (the game's
 `chatQuick`; klaverjas: 👍 😂 😱 😭 "Mooi!" "Nat!" "Goed gespeeld!"), bot lines, system lines, unread badge (counts what
 people write; system lines and bot chatter, shown as speech bubbles, do not).
 Speech bubbles stay behind the cards of the trick and never overlap each
@@ -613,10 +630,54 @@ allows and remembers the camera as off; and, with a fake
 under `play-and-record` and that hanging up and leaving while the
 devices are asked for give `ambient` back once the tracks have stopped.
 
+### The side column
+
+From 1200 px wide, in a room (lobby and table), the chat is a column of
+340 px beside the table instead of a drawer; the hand summary and game
+over stop at its edge, so it stays in use (`--side-w` in `app.css` is the
+width of both). The column has two tabs at its top (`role="tablist"`, the
+arrow keys change tab): *Chat*, and *Handleiding*, the game's manual in the
+chat's place, with its own section tabs and scrolling pane, as a reference
+beside the cards. The second tab has the game's word for its manual
+(`game.home.help.tab`; toepen: *Spelregels*).
+
+A game opens its manual with `panels.openManual({ id, title, cls, body })`
+wherever it opened a modal for it. With a column that puts `body` in it and
+selects the tab, without a modal or a backdrop: the table stays in use,
+keys included. Without one (a narrower window, the home screen) it is
+`openModal` with the same arguments. So the help button, the menu and a
+lesson's link to a section all end in the column on a wide screen, the last
+at its section. The tab itself, with nothing in the column yet, asks the
+game: `game.home.help.open(true)`, `true` for quiet: no click sound, as
+the tab made its own, and the game passes it on as `openManual`'s second
+argument. A quiet manual comes for the column, not at a tap: it takes the
+column's pane without choosing its tab (the tab that asked is chosen
+already; a game that writes its docked manual again leaves the chat up),
+and where the column is gone meanwhile (the room was left, or the window
+narrowed, while the manual's module loaded) it opens nothing.
+
+The tab chosen stays on the device (`kj.side`) and comes back when a room
+next shows on a wide screen: the manual is then asked from the game, once
+per room, so a manual module that is loaded when first needed is loaded
+then, not with the page. While *Handleiding* shows, the chat is not in
+sight: what people write counts on the unread badge, which sits on the tab
+*Chat* and clears when that tab shows.
+
+When the window gets narrower than 1200 px the column goes, and the manual
+with it: the chat is the drawer again and the manual a modal, from the
+help button. Wider again, the tab chosen last comes back (a manual open
+as a modal stays one unless that tab was the manual's). A manual in the column belongs to
+its room: another room asks for its own. A game whose manual depends on
+the table writes it again when that changes (toepen's follows the lobby's
+options).
+
+`app-checks.mjs --only side` goes through this on klaverjas's site.
+
 ### Help
 
-The game's help in a modal (klaverjas's handleiding, toepen's rules sheet),
-plus `title` tooltips and small ⓘ explanations on UI elements.
+The game's help (klaverjas's handleiding, toepen's rules sheet): a modal,
+or on a wide screen in a room the side column's second tab (above); plus
+`title` tooltips and small ⓘ explanations on UI elements.
 
 ### Responsive layout
 

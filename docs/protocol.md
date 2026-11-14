@@ -18,8 +18,8 @@ table's messages is in [server.md](server.md).
 
 | `t` | Fields | When |
 |---|---|---|
-| `create` | `name`, `opts` (partial ok), `start` bool; a game may read more (klaverjas: `training`, `expert`, `seat`) | Home. `start:true` starts at once (quick play vs bots); you sit at seat 0, unless the game opens the room otherwise ([server.md, "Rooms without a lobby"](server.md#rooms-without-a-lobby)) |
-| `join` | `code`, `name`, `token` (optional) | Join link, code entry, reconnect |
+| `create` | `name`, `opts` (partial ok), `start` bool; a game may read more (klaverjas: `training`, `expert`, `seat`) | Home. `start:true` starts at once (quick play vs bots), with you at seat 0; without it the room waits in its lobby and you sit at a random seat, or at seat 0 when `opts` has a seed ([server.md, "Seats and the lobby"](server.md#seats-and-the-lobby)); a game may open the room otherwise ([server.md, "Rooms without a lobby"](server.md#rooms-without-a-lobby)). `joined` names the seat |
+| `join` | `code`, `name`, `token` (optional) | Join link, code entry, reconnect. A newcomer to a lobby gets a random empty seat |
 | `sit` | `seat` | Lobby: move to an empty seat |
 | `bot` | `seat`, `id` ("" = random) | Host, lobby: put a bot on an empty seat (or replace a bot) |
 | `unbot` | `seat` | Host, lobby: remove a bot |

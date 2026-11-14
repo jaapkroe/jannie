@@ -1,8 +1,9 @@
 // Overlays and side panels every game shares: the modal stack, the back
-// button, settings, the bot picker, the menu, info popovers, feedback and
-// chat. A game's own overlays (score sheet, summary, game over, rules) are
-// in its own modules; useGame gives this module the game's tools, menu
-// items and texts (its game.js).
+// button, settings, the bot picker, the menu, info popovers, feedback,
+// chat and the side column with its tabs (chat, the game's manual). A
+// game's own overlays (score sheet, summary, game over, rules) are in its
+// own modules; useGame gives this module the game's tools, menu items and
+// texts (its game.js).
 import { sound } from './sound.js';
 import { app, h, $$, icon, prefs, savePrefs, store, toast, dur, avatar, suitify } from './util.js';
 
@@ -55,6 +56,9 @@ export const isOpen = () => stack.some(m => !passive(m)) || chatOpen;
 export function closeAll() {
   for (const m of [...stack]) m.close(true);
   setChat(false);
+  undock(); // a manual in the side column is the room's: the next room asks for its own
+  asked = false;
+  renderSide();
 }
 
 document.addEventListener('keydown', e => {
@@ -521,15 +525,37 @@ export function initChat() {
   C.input = h('input', { type: 'text', class: 'field chat-input', maxLength: 200, placeholder: 'Zeg iets…', autocomplete: 'off', enterKeyHint: 'send', 'aria-label': 'Chatbericht' });
   const form = h('form', { class: 'chat-form', onsubmit: e => { e.preventDefault(); sendChat(C.input.value); } },
     C.input, h('button', { class: 'icon-btn chat-send', type: 'submit', 'aria-label': 'Versturen', title: 'Versturen' }, icon('send')));
+  // The column's tabs (the side column, below): the unread badge is on Chat.
+  const tab = (which, label) => h('button', {
+    class: 'side-tab', type: 'button', role: 'tab', id: `side-tab-${which}`, 'aria-controls': `side-${which}`,
+    onclick: () => { sound.play('click'); pickSide(which); },
+  }, h('span', { text: label }));
+  C.manualName = game.home?.help?.tab || 'Handleiding'; // the game's word for its manual
+  C.tabs = { chat: tab('chat', 'Chat'), manual: tab('manual', C.manualName) };
+  C.tabs.chat.append(h('span', { class: 'chat-badge', hidden: true }));
+  const tabs = h('div', {
+    class: 'side-tabs', role: 'tablist', 'aria-label': 'Naast de tafel',
+    onkeydown: e => {
+      if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+      e.preventDefault();
+      e.stopPropagation(); // not the table's arrow keys as well (a card in the hand)
+      const to = manualShown() ? 'chat' : 'manual';
+      pickSide(to);
+      C.tabs[to].focus(); // the tab picked, also while its manual still loads
+    },
+  }, C.tabs.chat, C.tabs.manual);
+  C.chat = h('div', { class: 'side-chat', id: 'side-chat' }, C.list,
+    h('div', { class: 'chat-quick' }, (game.chatQuick || QUICK).map(q => h('button', { class: 'quick', type: 'button', onclick: () => sendChat(q) }, q))),
+    form);
+  C.man = h('div', { class: 'side-man', id: 'side-manual' });
   C.root = h('aside', { class: 'chat', id: 'chat', 'aria-label': 'Chat' },
     h('header', { class: 'chat-head' }, h('h2', { text: 'Chat' }),
       h('button', { class: 'icon-btn chat-x', type: 'button', 'aria-label': 'Chat sluiten', title: 'Sluiten', onclick: () => setChat(false) }, icon('close'))),
-    C.list,
-    h('div', { class: 'chat-quick' }, (game.chatQuick || QUICK).map(q => h('button', { class: 'quick', type: 'button', onclick: () => sendChat(q) }, q))),
-    form);
+    tabs, C.chat, C.man);
   C.scrim = h('div', { class: 'chat-scrim', onclick: () => setChat(false) });
   document.getElementById('app').append(C.scrim, C.root);
-  wideMQ.addEventListener('change', () => { if (chatVisible()) clearUnread(); });
+  wideMQ.addEventListener('change', syncSide);
+  renderSide();
 }
 
 function sendChat(text) {
@@ -540,12 +566,13 @@ function sendChat(text) {
   C.input.value = '';
 }
 
-const chatVisible = () => chatOpen || (wideMQ.matches && document.body.classList.contains('in-room'));
+const chatVisible = () => chatOpen || (sideWide() && !manualShown());
 
 function toggleChat() { setChat(!chatOpen); }
 
 function setChat(open) {
-  if (open && wideMQ.matches && document.body.classList.contains('in-room')) {
+  if (open && sideWide()) {
+    if (manualShown()) pickSide('chat');
     C.input.focus();
     return;
   }
@@ -614,4 +641,114 @@ export function chatReset() {
   C.list.replaceChildren();
   clearUnread();
   setChat(false);
+}
+
+// ---------- the side column ----------
+
+// On a wide screen in a room the chat is a column beside the table, with
+// two tabs: Chat, and the game's manual in its place (openManual). The tab
+// chosen stays on the device (kj.side) and comes back when a room next
+// shows on a wide screen. On a narrower screen, and on the home screen,
+// there is no column: the chat is a drawer and the manual a modal
+// (docs/frontend.md#the-side-column).
+let side = store.get('side', '') === 'manual' ? 'manual' : 'chat'; // the tab chosen
+let docked = null;  // the manual in the column, as openManual returned it
+let asked = false;  // the game was asked for its manual for this column
+const sideWide = () => wideMQ.matches && inRoom();
+const manualShown = () => !!docked && side === 'manual';
+
+// Opens a game's manual: in the side column on a wide screen in a room,
+// without a modal, so the table stays in use; anywhere else as openModal
+// with the same arguments, whose result it returns. In the column it
+// returns {id, body, docked, close}: body is the element that holds the
+// manual, docked is true until the column lets the manual go (a narrower
+// window, another room, close) and close() gives the column back to the
+// chat. quiet: the manual comes for the column by itself (the tab coming
+// back, a game writing its docked manual again), not at the player's
+// tap: it takes the column's pane without choosing its tab, and where
+// there is no column (the room was left or the window narrowed while the
+// manual loaded) nothing opens and the result is null.
+export function openManual(opts, quiet = false) {
+  if (!sideWide()) return quiet ? null : openModal(opts);
+  const { id = '', cls = '', body = [] } = opts;
+  if (id) byId(id)?.close(true);
+  undock();
+  C.man.className = `side-man ${cls}`;
+  C.man.replaceChildren(...[body].flat(Infinity).filter(k => k != null && k !== false));
+  const m = docked = { id, body: C.man, docked: true, close: () => { if (docked === m) { undock(); renderSide(); } } };
+  asked = true;
+  if (quiet) renderSide();
+  else pickSide('manual');
+  return m;
+}
+
+function undock() {
+  if (!docked) return;
+  docked.docked = false;
+  docked = null;
+  C.man.replaceChildren();
+  C.man.className = 'side-man';
+}
+
+// A tab of the column is chosen: by a tap or a key, or by the manual
+// opening there. Handleiding with nothing in the column asks the game for
+// its manual (game.home.help.open, quietly: the tap made its own sound),
+// which lands in openManual.
+function pickSide(which) {
+  side = which;
+  store.set('side', which);
+  if (which === 'manual' && !docked) {
+    asked = true;
+    game.home?.help?.open?.(true);
+  }
+  renderSide();
+  if (which === 'chat' && chatVisible()) {
+    clearUnread();
+    C.list.scrollTop = C.list.scrollHeight;
+  }
+}
+
+// Brings the column in line with the screen: when a room shows and with
+// every update of it (main.js), and when the window crosses the column's
+// width. Without a column the manual in it goes (it opens as a modal from
+// there on); with one, the tab chosen last comes back, the manual asked
+// from the game once per column.
+export function syncSide() {
+  if (!C.root) return;
+  if (!sideWide()) {
+    undock();
+    asked = false;
+  } else if (side === 'manual' && !docked && !asked) {
+    asked = true;
+    game.home?.help?.open?.(true);
+  }
+  renderSide();
+  if (unread && chatVisible()) clearUnread();
+}
+
+// The tabs and panes as they are now, when that changed: the manual's
+// pane shows only on a wide screen in a room (the stylesheet hides the
+// tabs elsewhere).
+let sideKey = '';
+function renderSide() {
+  if (!C.root) return;
+  const wide = sideWide();
+  const man = wide && manualShown();
+  if (sideKey === `${wide} ${man}`) return;
+  sideKey = `${wide} ${man}`;
+  C.root.classList.toggle('manual', man);
+  C.root.setAttribute('aria-label', wide ? `Chat en ${C.manualName.toLowerCase()}` : 'Chat');
+  for (const [which, pane] of [['chat', C.chat], ['manual', C.man]]) {
+    const on = (which === 'manual') === man;
+    C.tabs[which].setAttribute('aria-selected', String(on));
+    C.tabs[which].tabIndex = on ? 0 : -1;
+    // The panes are tab panels only while the tabs show.
+    if (wide) {
+      pane.setAttribute('role', 'tabpanel');
+      pane.setAttribute('aria-labelledby', `side-tab-${which}`);
+    } else {
+      pane.removeAttribute('role');
+      pane.removeAttribute('aria-labelledby');
+    }
+  }
 }

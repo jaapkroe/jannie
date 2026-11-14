@@ -479,6 +479,7 @@ function syncOverlays(s) {
   }
   if (s.phase === 'lobby') { app.toepStand?.close(true); }
   app.toepStand?.refresh?.(s);
+  syncRules(s);
 }
 
 function showSummary(s) {
@@ -647,14 +648,18 @@ export function openStand() {
 
 // The manual: tabs for the rules, the extra rules (this table's options),
 // the terms and the controls, on the shell's tabs and scrolling pane (as
-// klaverjas's handleiding). Opens on the tab last read.
+// klaverjas's handleiding). Opens on the tab last read: a modal, or on a
+// wide screen at a table the side column's Spelregels (panels.openManual).
+// quiet: without the click, for the column that opens it by itself; opts:
+// the table's options, when the caller has newer ones than the state.
 let lastTab = 'regels';
-export function openRules(tab) {
-  sound.play('click');
+let rules = null; // the manual as last opened: {m, key}, key the options it was written for
+export function openRules(tab, quiet = false, opts = null) {
+  if (!quiet) sound.play('click');
   // At a table the extra rules say how they are played there; from the home
   // screen, what each is and its default.
   const atTable = document.body.classList.contains('in-room');
-  const o = atTable ? app.s?.opts || app.view?.opts || {} : {};
+  const o = atTable ? opts || app.s?.opts || app.view?.opts || {} : {};
   const tabsOf = R.manual(o, { touch: touch.matches, table: atTable });
   const content = h('div', { class: 'man-scroll tp-man', role: 'tabpanel' });
   const bar = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Delen van de spelregels' });
@@ -691,8 +696,15 @@ export function openRules(tab) {
     content.scrollTop = 0;
     btns.find(b => b.dataset.id === tab.id)?.scrollIntoView({ block: 'nearest', inline: 'center' });
   }
-  panels.openModal({ id: 'tp-rules', title: 'Spelregels toepen', cls: 'm-manual tp-rules', body: [bar, content] });
+  rules = { m: panels.openManual({ id: 'tp-rules', title: 'Spelregels toepen', cls: 'm-manual tp-rules', body: [bar, content] }, quiet), key: JSON.stringify(o) };
   show(tab || lastTab);
+}
+
+// The manual in the side column stays beside the lobby, where the host
+// changes the options it describes: written again when they change,
+// quietly, so the column keeps the tab it shows (the chat, if that is up).
+function syncRules(s) {
+  if (rules?.m?.docked && s.opts && JSON.stringify(s.opts) !== rules.key) openRules(lastTab, true, s.opts);
 }
 
 // ---------- the reasoning of the AI (expert mode) ----------

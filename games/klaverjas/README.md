@@ -928,7 +928,9 @@ The in-game handleiding: its Dutch content and `renderManual`, which
 builds a section with `cards.js` for the illustrations. Its styles are the
 last section of `css/klaverjas.css` (classes `man-…`).
 
-`table.js` imports it when the manual is first opened (`openManual`). A
+`table.js` imports it when the manual is first opened (`openManual`), as
+a modal or, on a wide screen at a table, in the side column beside it
+([docs/frontend.md, "The side column"](../../docs/frontend.md#the-side-column)). A
 lesson step's link takes its section's title from `MANUAL_SECTIONS` in
 rules.js, as manual.js may not be loaded yet; `test/ui/klaverjas.test.mjs`
 keeps the two lists the same.
@@ -953,8 +955,9 @@ potje tik je op een slag en dan op Dit potje terugkijken."), *Open
 kaarten*, *Potjes*, *Troef*, *Regels*, *AI-sterkte*, *Tempo*, *Seinen*,
 *Seed*, *Potje* (`from`, 1–24, empty: *Hele spel*; with a number the
 *Potjes* row hides) and *Plaats* (*1* to *4*: the seat, 0–3; ⓘ: where
-you sit; in a normal game plaats 1 is the creator's seat, plaats 2 sits
-to the left of 1, plaats 3 opposite and plaats 4 to the right; with the
+you sit; plaats 1 is *Zuid* in the lobby's mini table, plaats 2 *West*,
+to the left of 1, plaats 3 *Noord*, opposite, and plaats 4 *Oost*, to the
+right, and in Snel spelen you sit at plaats 1; with the
 same seed every plaats gets the cards and the dealer it gets in that
 game; the game log calls plaats 1 seat 0 and plaats 4 seat 3), all kept
 on the device in `kj.expert`, the seed included, and *Start expertspel*
@@ -987,8 +990,18 @@ rest those of Nieuw spel.
 
 ### Lobby
 
-The mini table shows the seats with four the teams visible; with three
-bottom, left and right, raised a little; with two opposite.
+The mini table shows the seats where they are, the same for everyone who
+looks: seat 0 at the bottom and the others clockwise, each place named by
+its wind direction, *Zuid* (seat 0, bottom), *West* (left), *Noord* (top)
+and *Oost* (right). With four the teams are visible, partners opposite;
+with three the places are *Zuid*, *West* and *Oost*, the last two raised a
+little; with two *Zuid* and *Noord*. Your own seat is marked (*jij*, a
+gold ring), wherever it is, and the colours and the words *maat* and
+*tegenstander* are yours: your side is yours on every page. The server
+seats the creator and every joiner at a random place
+([server.md, "Seats and the lobby"](../../docs/server.md#seats-and-the-lobby));
+a tap on an empty place moves you there. At the table you sit at the
+bottom, whatever your place.
 
 ### Table
 
@@ -1163,7 +1176,7 @@ seat, `hand` the cards in the hand (their hint glow), `card` one card in
 the hand (the same glow; the hint's glow waits), `trick` a box round
 the trick, `trump` the trump badge, `score` the score pill, `rule` the
 rule above the hand, `chat` the chat button, or on wide screens the chat
-beside the table. A step with `manual` has a link under its text,
+beside the table (its tab *Chat* while the manual has the column). A step with `manual` has a link under its text,
 *Handleiding: Kaartwaarden* (the book icon and the section's title), that opens the manual
 at that section; it is a button, so tapping it reads nothing. In the
 counting hand the trump badge has the number `trumpsLeft` on its corner

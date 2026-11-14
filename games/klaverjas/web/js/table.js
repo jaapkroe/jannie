@@ -739,9 +739,12 @@ function spotTarget(s, spot) {
     case 'rule': return E.rule;
     case 'card': return handEls.get(s.lesson.card) || null; // a card to signal with
     case 'chat': {
-      // On wide screens the chat is a side panel, without a button.
+      // On wide screens the chat is a side panel, without a button; while
+      // the manual has the panel, the chat is behind its tab.
       const b = E.top.querySelector('.tb-chat');
-      return b?.offsetParent ? b : document.getElementById('chat');
+      if (b?.offsetParent) return b;
+      const tab = document.getElementById('side-tab-chat');
+      return tab?.offsetParent && tab.getAttribute('aria-selected') !== 'true' ? tab : document.getElementById('chat');
     }
   }
   return null;
@@ -2011,14 +2014,16 @@ function openTrumpInfo() {
 // ---------- manual ----------
 
 // The manual (manual.js, loaded when first opened) at section tab, else at
-// the one last read.
-export function openManual(tab) {
-  sound.play('click');
-  import('./manual.js').then(m => showManual(m, tab),
+// the one last read: a modal, or on a wide screen at a table the side
+// column's Handleiding (panels.openManual). quiet: without the click, for
+// the column that opens it by itself.
+export function openManual(tab, quiet = false) {
+  if (!quiet) sound.play('click');
+  import('./manual.js').then(m => showManual(m, tab, quiet),
     () => toast('Laden lukte niet', { sub: 'Controleer je internet en probeer het nog eens.', kind: 'error' }));
 }
 
-function showManual({ SECTIONS, renderManual }, tab) {
+function showManual({ SECTIONS, renderManual }, tab, quiet) {
   const content = h('div', { class: 'man-scroll' });
   const tabs = h('div', { class: 'tabs', role: 'tablist' });
   const btns = SECTIONS.map(sec => h('button', {
@@ -2052,7 +2057,7 @@ function showManual({ SECTIONS, renderManual }, tab) {
     btns.find(b => b.dataset.id === id)?.scrollIntoView({ block: 'nearest', inline: 'center' });
     requestAnimationFrame(edges);
   }
-  openModal({ id: 'manual', title: 'Handleiding', cls: 'm-manual', body: [tabs, content] });
+  panels.openManual({ id: 'manual', title: 'Handleiding', cls: 'm-manual', body: [tabs, content] }, quiet);
   const start = tab || prefs.tab;
   show(SECTIONS.some(x => x.id === start) ? start : SECTIONS[0].id);
 }

@@ -428,9 +428,11 @@ function codeHint(s, host, free, bots) {
 
 // A seat in the lobby. Where it sits, its classes, what it is to you and
 // what a free one says come from the game (game.lobby.slot: klaverjas has
-// partners, toepen only opponents).
+// partners, toepen only opponents), and the name of the place where the
+// game's picture has one (wind: klaverjas's Zuid, West, Noord and Oost).
 function renderLobbySeat(s, seat, host) {
-  const { el, cls, role: theirs, free } = game.lobby.slot(s, seat);
+  const { el, cls, role: theirs, free, wind } = game.lobby.slot(s, seat);
+  const place = () => (wind ? h('span', { class: 'ls-wind', text: wind }) : null);
   const p = s.players[seat];
   const me = seat === s.you;
   el.hidden = false;
@@ -443,14 +445,14 @@ function renderLobbySeat(s, seat, host) {
       class: 'ls-main', type: 'button', disabled: !(host && p.bot),
       title: host && p.bot ? 'Tik om een andere AI-speler te kiezen' : p.name,
       onclick: host && p.bot ? () => panels.openBotPicker(seat, s) : null,
-    }, E.lbAv[seat] = avatar(p), playerName(p.name, { cls: 'ls-name' }), h('span', { class: 'ls-tag', text: tag })));
+    }, place(), E.lbAv[seat] = avatar(p), playerName(p.name, { cls: 'ls-name' }), h('span', { class: 'ls-tag', text: tag })));
     if (host && p.bot) kids.push(h('button', { class: 'ls-x', type: 'button', title: 'AI-speler weghalen', 'aria-label': `${p.name} weghalen`, onclick: () => { sound.play('click'); app.send({ t: 'unbot', seat }); } }, icon('close')));
   } else {
     kids.push(h('button', {
       class: 'ls-main', type: 'button',
       title: host ? 'AI-speler neerzetten of zelf hier gaan zitten' : 'Hier gaan zitten',
       onclick: () => { if (host) panels.openBotPicker(seat, s, { canSit: true }); else { sound.play('click'); app.send({ t: 'sit', seat }); } },
-    }, h('span', { class: 'avatar empty-av' }, icon('plus')), h('span', { class: 'ls-name', text: host ? 'AI-speler' : 'Hier zitten' }), h('span', { class: 'ls-tag', text: free })));
+    }, place(), h('span', { class: 'avatar empty-av' }, icon('plus')), h('span', { class: 'ls-name', text: host ? 'AI-speler' : 'Hier zitten' }), h('span', { class: 'ls-tag', text: free })));
   }
   el.replaceChildren(...kids);
 }

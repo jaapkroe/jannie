@@ -613,6 +613,17 @@ func (c *tclient) join(code, name, token string) {
 	c.waitType("update")
 }
 
+// sit moves the client to seat k of the lobby, which must be empty, and
+// waits until it is there. A room that waits in its lobby seats everyone
+// at random (docs/server.md#seats-and-the-lobby), so a test about who sits
+// where puts them there.
+func (c *tclient) sit(k int) {
+	c.t.Helper()
+	c.send(map[string]any{"t": "sit", "seat": k})
+	c.waitState(fmt.Sprintf("a move to seat %d", k), func(s *state) bool { return s.You == k })
+	c.seat = k
+}
+
 // myTurn reports whether the latest state awaits this client's action.
 func (c *tclient) myTurn() bool {
 	s := c.s

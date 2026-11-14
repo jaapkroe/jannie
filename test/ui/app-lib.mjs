@@ -293,6 +293,17 @@ export async function closeModal(P) {
   await sleep(320);
 }
 
+// The game's manual where it shows: its modal, or on a wide screen at a
+// table the side column's pane (docs/frontend.md#the-side-column).
+export const MANUAL = ':is(.m-manual.open, .chat.manual .side-man)';
+
+// Puts the manual away: its modal closed, or the side column back to Chat.
+export async function closeManual(P) {
+  if (!await shown(P, '.chat.manual .side-man')) return closeModal(P);
+  await press(P, '#side-tab-chat');
+  await waitFor(P, () => !document.querySelector('.chat.manual'), { label: 'the chat back in the side column' });
+}
+
 // For page.evaluate: the elements under the one for sel that reach past
 // its right edge (at most five, as tag.class), but for those in a box that
 // scrolls sideways on its own.

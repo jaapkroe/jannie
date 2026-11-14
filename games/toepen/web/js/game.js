@@ -144,7 +144,9 @@ export const home = {
   summary,
   // The next new game starts from what the room has.
   remember: ({ players, limit, was, armoede, koning, boer, lijntoep, bluf, ai, tempo }) => ({ players, limit, was, armoede, koning, boer, lijntoep, bluf, ai, tempo }),
-  help: { label: 'Spelregels en bediening', open: () => table.openRules() },
+  // tab: the manual's name on the side column's tab; open(quiet): quiet for
+  // the column, which opens it without a click.
+  help: { label: 'Spelregels en bediening', tab: 'Spelregels', open: quiet => table.openRules(undefined, quiet === true) },
   tiles: () => [h('button', { class: 'btn btn-tile', type: 'button', id: 'btn-score', onclick: () => openScore() },
     icon('score'), h('b', { text: 'Score bijhouden' }), h('small', { text: 'Aan een echte tafel' }))],
   // At boot on the home: a link to a score sheet opens it. The page's own

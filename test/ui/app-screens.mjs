@@ -6,11 +6,12 @@
 //   scripts/chrome 9301
 //   cd test/ui && node app-screens.mjs [--url http://127.0.0.1:18300] [--only phone,desktop] [--parallel 2] [--dpr 2]
 //
-// The first game has a seed (SEED), so its first hand is the same on every
+// The first game has a seed (SEED) and we sit at seat 0 (Zuid in the
+// lobby, which seats us at random), so its first hand is the same on every
 // run: we are voorhand, choose hearts and lead the king, and the first
 // trick has roem.
 import {
-  args, VIEWPORTS, press, type, snap, has, closeModal, waitFor, sleep, playLegal, addressProxy, countdownPatch,
+  args, VIEWPORTS, press, type, snap, has, closeModal, MANUAL, closeManual, waitFor, sleep, playLegal, addressProxy, countdownPatch,
   scenario, perViewport, finish,
 } from './app-lib.mjs';
 
@@ -20,7 +21,7 @@ const BASE = proxy.url;
 const names = A.only ? A.only.split(',') : Object.keys(VIEWPORTS);
 
 // The first game's seed (docs/server.md#the-seed). With four players its
-// first hand has seat 3 as the dealer, so we are voorhand, and the hearts
+// first hand has seat 3 as the dealer, so seat 0, ours, is voorhand, and the hearts
 // K 10 9 8 7 with us, the jack, the ace and the queen one each with the
 // others: with hearts trump the king led draws all three, and J Q K A are
 // a vierkaart with stuk, 70 roem.
@@ -104,6 +105,19 @@ async function home(P) {
   await type(P, '#name', 'Piet');
 }
 
+// The host moves to Zuid, seat 0, unless the lobby put them there: a tap
+// on the empty place, then Zelf hier gaan zitten. The lobby is back at its
+// top after, as for a host seated there at once.
+async function sitSouth(P) {
+  if (await has(P, '.ls-bottom.me')) return;
+  await pressRow(P, '.ls-bottom .ls-main');
+  await waitFor(P, () => document.querySelector('.m-bots.open .bot-item.sit'), { label: 'the bot picker' });
+  await sleep(300);
+  await press(P, '.m-bots .bot-item.sit');
+  await waitFor(P, () => document.querySelector('.ls-bottom.me') && !document.querySelector('.m-bots'), { label: 'seated at Zuid' });
+  await P.page.$eval('.lobby-main', e => e.scrollTo(0, 0));
+}
+
 // Home, new game, lobby, a full short game with all overlays.
 async function mainFlow(P) {
   const { page } = P;
@@ -122,6 +136,7 @@ async function mainFlow(P) {
 
   // New game sheet → lobby → start.
   await newGame(P, { hands: 4, tempo: 'snel', seed: SEED }, '02-new-game');
+  await sitSouth(P);
   await sleep(300);
   await snap(P, '03-lobby');
   await press(P, '#btn-start:not(:disabled)');
@@ -180,10 +195,11 @@ async function mainFlow(P) {
   if (await has(P, 'body.chat-open')) await closeModal(P);
 
   await openTool(P, 'help', 2);
-  await waitFor(P, () => document.querySelector('.m-manual.open .man'), { label: 'manual' });
+  // A modal, or on the desktop the side column's Handleiding beside the table.
+  await waitFor(P, sel => document.querySelector(sel), { label: 'manual' }, `${MANUAL} .man`);
   await sleep(300);
   await snap(P, '12-manual');
-  await closeModal(P);
+  await closeManual(P);
 
   await openTool(P, 'settings', 3);
   await waitFor(P, () => document.querySelector('.m-settings.open'), { label: 'settings' });

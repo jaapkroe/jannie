@@ -111,7 +111,7 @@ type Client struct {
 	errc chan error
 
 	Code  string          // the room, once joined
-	Seat  int             // the seat, once joined; -1 before
+	Seat  int             // the seat, as joined said or Sit moved it; -1 before
 	Token string          // the seat token
 	State json.RawMessage // the latest state
 	Seq   int             // of the latest update
@@ -310,6 +310,25 @@ func (c *Client) Join(code, name, token string) {
 	}
 	c.WaitType("chatlog")
 	c.WaitType("update")
+}
+
+// Sit moves the client to seat k of the lobby, which must be empty, and
+// waits until it is there. A room that waits in its lobby seats its
+// creator and every joiner at random
+// (docs/server.md#seats-and-the-lobby), so a test about who sits where
+// puts them there.
+func (c *Client) Sit(k int) {
+	c.t.Helper()
+	at := func(raw json.RawMessage) bool {
+		var s struct{ You *int }
+		json.Unmarshal(raw, &s)
+		return s.You != nil && *s.You == k
+	}
+	if !at(c.State) {
+		c.Send(map[string]any{"t": "sit", "seat": k})
+		c.Until(5*time.Second, fmt.Sprintf("a move to seat %d", k), func(m *Msg) bool { return m.T == "update" && at(m.S) })
+	}
+	c.Seat = k
 }
 
 // Keys are the keys of a JSON object, sorted.

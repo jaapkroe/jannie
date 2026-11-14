@@ -208,7 +208,7 @@ func TestExpertMatch(t *testing.T) {
 // TestExpertSeat: the expert sits at the seat they chose, host there, with
 // bots at the others, and holds the cards that seat holds in a normal game
 // with the same seed, the same seat dealing. A seat outside 0–3, or in
-// another game, puts the creator at seat 0.
+// another game that starts at once, puts the creator at seat 0.
 func TestExpertSeat(t *testing.T) {
 	t.Parallel()
 	srv, ts, _ := newTestServer(t)
@@ -245,7 +245,7 @@ func TestExpertSeat(t *testing.T) {
 		seat             int
 	}{{false, false, 2}, {false, true, 3}, {true, false, 4}, {true, false, -1}} {
 		c := dial(t, ts)
-		c.send(map[string]any{"t": "create", "name": "Piet", "expert": tc.expert, "training": tc.training, "seat": tc.seat, "opts": map[string]any{"hands": 4}})
+		c.send(map[string]any{"t": "create", "name": "Piet", "expert": tc.expert, "training": tc.training, "seat": tc.seat, "start": true, "opts": map[string]any{"hands": 4}})
 		m := c.until(5*time.Second, "joined", func(m *msg) bool { return m.T == "joined" || m.T == "error" })
 		if m.T != "joined" || m.Seat != 0 {
 			t.Errorf("%+v: %s at seat %d (%s)", tc, m.T, m.Seat, m.errMsg())

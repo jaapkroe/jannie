@@ -810,7 +810,7 @@ func TestRejoinSpamDecidesOnce(t *testing.T) {
 	if n1 < 2 || n-n1 < 2 {
 		t.Errorf("only %d and %d bot decisions during the spam", n1, n-n1)
 	}
-	if k := ai.seatDecisions(0); k == 0 {
+	if k := ai.seatDecisions(a.seat); k == 0 {
 		t.Errorf("no bot decision for Anna's seat during the spam (%d in all)", n)
 	}
 }
@@ -898,6 +898,7 @@ func TestBackToLobby(t *testing.T) {
 	s, ts, _ := newTestServer(t, func(s *Server) { s.scale = 0.01 })
 	h := dial(t, ts)
 	h.create("Host", map[string]any{"hands": 4, "rules": "rotterdams"}, false, false)
+	h.sit(0)
 	placeBots(h, 1, 3)
 	h.send(map[string]any{"t": "lobby"})
 	h.waitError(errInvalid)
@@ -966,6 +967,7 @@ func TestBotReplyContext(t *testing.T) {
 	s, ts := newTestServerWith(t, ai)
 	h := dial(t, ts)
 	h.create("Host", map[string]any{"hands": 4}, false, false)
+	h.sit(0)
 	placeBots(h, 1, 3)
 	g := dial(t, ts)
 	g.join(h.code, "Gast", "") // at 2, the host's partner
