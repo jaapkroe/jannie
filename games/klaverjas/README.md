@@ -951,7 +951,7 @@ on what the mode does
 ("Speel een spel opnieuw met de seed, of één potje ervan, op een plaats
 naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op de
 robot voor de redenering van de AI, en geef je commentaar. Na elk
-potje tik je op een slag en dan op Dit potje terugkijken."), *Open
+potje tik je op Dit potje terugkijken."), *Open
 kaarten*, *Potjes*, *Troef*, *Regels*, *AI-sterkte*, *Tempo*, *Seinen*,
 *Seed*, *Potje* (`from`, 1–24, empty: *Hele spel*; with a number the
 *Potjes* row hides) and *Plaats* (*1* to *4*: the seat, 0–3; ⓘ: where
@@ -1007,13 +1007,18 @@ bottom, whatever your place.
 
 You at the bottom with your hand as a fan; partner on top, opponents
 left/right with card backs and names; dealer chip; turn glow; trump indicator;
-score bar *Wij – Zij* with names (with three or two players one part per
+score pill *Wij – Zij* with names (with three or two players one part per
 player: *Jij* and the others' faces, emoji or initial as on their seats);
-potje n/16; buttons for chat (with unread
-badge), score sheet, last trick, help, settings, sound (a toggle:
-`aria-pressed` while the sound is on, tooltip "Geluid aan" / "Geluid uit",
-icon to match; on phones it is in the ⋯ menu); in an expert game and in training, first
-of them, a robot for the reasoning of the AI ([Expert](#expert)). The trump badge's details show
+potje n/16 (not in a bar of 420 px or narrower while it holds a call
+button: the pill needs the room, and the hand summary has the number);
+the call buttons
+([docs/frontend.md, "Calling"](../../docs/frontend.md#calling)); buttons
+for the last trick (under 600 px wide beside the hand), chat (with unread
+badge), help and settings (under 600 px wide in the ⋯ menu, with
+*Scorebord*); in an
+expert game and in training, first
+of them, a robot for the reasoning of the AI ([Expert](#expert)). There
+is no sound button: the sound goes on and off in the settings. The trump badge's details show
 what the badge shows, also during the trump banner. Whatever the order of
 play, every card in the trick keeps one corner index in view, also under a
 winner scaled up with its ring: the top and left cards their top-left one,
@@ -1024,13 +1029,31 @@ the trick and the hands). A card flying from a hand to the trick takes
 off with that hand's index and grows or shrinks it to the trick's on the
 way.
 
+The score pill shows the hand in play, not the match: per scorer the
+tricks taken and the points so far, card points plus roem ("Wij · 3
+slagen" and the number; under 600 px wide the label, "3 slagen" on a line
+of its own, and the number; `handNow` in rules.js). Its tooltip has both,
+with the roem, and what a tap does: "Dit potje: Wij 3 slagen, 45 punten
+(20 roem) · Zij 1 slag, 12 punten. Tik voor het scorebord: alle potjes en
+de stand." (`handNowTitle`). With three players every part is zeros until
+the soloist is known; after that the two who play together both show what
+they have together. The pill is the button to the score sheet
+([Score sheet](#score-sheet)); the top bar has no other. The match's
+stand is there and in the hand summary.
+
 Playing: on fine pointers one click plays a legal card; on touch the first tap
 lifts the card and a second tap (or swipe up) plays it (setting: one tap /
 two taps); the prompt then says so ("Tik nog eens om ♠A te spelen"), and the
 only legal card plays on the first tap. A tap beside the hand (the felt, a
 seat, the trick; not a button) puts a lifted card down again, as does
-lifting another card. Illegal cards are dimmed; tapping one
-shows `ExplainIllegal`-style text (the client may derive it from `rule`); a
+lifting another card. With no card lifted, the prompt on the player's
+turn is the state's `rule` ("Troef gevraagd: overtroeven"), or "Jouw
+beurt: speel een kaart" with *Uitleg van de regels* off
+([docs/frontend.md, "Settings"](../../docs/frontend.md#settings); at a
+table of lessons the rule shows whatever that setting, as a step may
+point at it). Illegal cards are dimmed; tapping one
+shows `ExplainIllegal`-style text (the client may derive it from `rule`),
+whatever that setting; a
 tap during a pause (`turn` -1) says to wait. Keyboard: ←/→ select, Enter
 plays; the trump/bid panel, the takeover question and the hand summary
 focus their main button on fine pointers, and dialogs keep Tab inside.
@@ -1065,7 +1088,8 @@ complete.
 
 When the connection opens again ([docs/frontend.md, "Connection"](../../docs/frontend.md#connection)),
 the expert's question is asked again (at once when the sheet is open), and
-a hand asked with `handReview` is asked again while its trick view is open.
+a hand asked with `handReview` is asked again while the view with its
+button is open (the hand summary, the score sheet).
 
 ### Game over
 
@@ -1082,6 +1106,8 @@ waits so every move can be followed; `prefers-reduced-motion` shortens all.
 
 ### Score sheet
 
+*Scorebord*: a tap on the score pill opens it ([Table](#table)), as do
+the ⋯ menu's *Scorebord* under 600 px wide and the button at game over.
 Per hand: trump suit, who played (marker; with three
 players the bid too), points+roem per team (with three or two players a
 column per player, the gains; roem under the soloist only, as the other
@@ -1113,7 +1139,7 @@ made it *Gehaald!*, went nat *Nat!*; they made it *Zij halen het*, went nat
 players the sides are *Jij* and the other's name ("Opa Dirk (AI) haalt
 het"); with three the headline names the soloist, the bid and what it made
 ("Kees speelde alleen voor 100 en haalde 110. Jullie delen de rest."), the
-table has a column per player (faces as in the score bar; points and roem
+table has a column per player (faces as in the score pill; points and roem
 of the two who played together, marked "samen"; then each one's gains and
 stand) and a line shows the discards and their points. The
 whole summary fits without scrolling: on phones (< 600 px wide) the tricks
@@ -1123,22 +1149,22 @@ the score; the ready chips show only with another person at the table
 (who left no longer counts), and alone at the table there is no
 countdown ring either (`nextAt` 0).
 
-The review per hand starts from a trick: at a table of four
-the trick view (from the summary's tiles, or the score sheet's last
-potje) has under the cross and its line *Dit potje terugkijken*
-(history icon) while that hand is finished: in `handEnd` the hand of
-`handNo`, during the next hand and at game over the score sheet's last
-row (`prevHand`'s hand). *Laatste slag* has the same button in `handEnd`
-and `gameOver`, for the hand just played. A tap sends `handReview` with
-that hand (the hand of the tricks shown) and shows *Laden…* on the
+The review per hand starts where a finished hand's tricks are shown: at
+a table of four *Dit potje terugkijken* (history icon) stands on the hand
+summary, above *Volgend potje* (the hand of `handNo`), and in the score
+sheet's view of the last potje, under its tricks (`prevHand`'s hand,
+during the next hand and at game over). The view of one trick and
+*Laatste slag* have no such button (in short landscape they put the cross
+beside its line). A tap sends `handReview` with
+that hand and shows *Laden…* on the
 button, disabled, until the answer (an error gives the button back; a
 reconnect asks again, [Connection](#connection)); the answer opens
-the replay of that hand (owner 'hand', [Terugkijken](#terugkijken)) just before the
-player's card in the tapped trick (*Laatste slag*: trick 8). In short landscape the trick view
-puts the cross beside its line and the button, so the button is in view
-without scrolling (640 × 360, 844 × 390). The summary itself gets no
-button: it must fit without scrolling. Tables of three or two have none
-either, like the Spelanalyse: the engine analyses four players, and the
+the replay of that hand (owner 'hand', [Terugkijken](#terugkijken)) before
+its first card. The summary still fits without scrolling: on a short
+phone (under 600 px wide and at most 640 px high) and in short landscape
+(at most 520 px high) the button stands beside *Volgend potje*, with the
+label *Terugkijken*. Tables of three or two have no such button, like
+the Spelanalyse: the engine analyses four players, and the
 replay is built for four seats.
 
 ### Training
@@ -1158,7 +1184,10 @@ landscape the bubble sits in the top-left corner and never covers the left
 seat (who plays after you): a long text shows the lines that fit and *Lees
 verder* (then *Minder*); the tip of a hand's last trick shows in full, as
 nobody plays after it. Every tip is also a line of Juf Jannie in the chat
-(`coach`: tinted, no sound, no speech bubble at her seat).
+(`coach`: tinted, no sound, no speech bubble at her seat). These lines
+always show; what the AI players say besides is off at a training table
+until the player switches it on (Instellingen, *Chat van AI-spelers*;
+[docs/frontend.md, "Chat"](../../docs/frontend.md#chat)).
 
 ### Lessons on screen
 
@@ -1175,7 +1204,8 @@ pulsing gold outline, steady with reduced motion): `partner` Juf Jannie's
 seat, `hand` the cards in the hand (their hint glow), `card` one card in
 the hand (the same glow; the hint's glow waits), `trick` a box round
 the trick, `trump` the trump badge, `score` the score pill, `rule` the
-rule above the hand, `chat` the chat button, or on wide screens the chat
+rule above the hand, `chat` the chat button, or where the side column
+shows the chat
 beside the table (its tab *Chat* while the manual has the column). A step with `manual` has a link under its text,
 *Handleiding: Kaartwaarden* (the book icon and the section's title), that opens the manual
 at that section; it is a button, so tapping it reads nothing. In the
@@ -1254,26 +1284,32 @@ then "Kees is aan de beurt" or, with the trick complete, "Kees neemt de
 slag · 21 punten · roem: …", and *Stand in dit potje: Wij 34 – Zij 12*
 (card points and roem of the tricks taken), after the last card
 *Uitslag: Wij 0 – Zij 182 · Wij nat*. Below the table, a box
-(`.rp-moment`) with Juf Jannie's view of the player's own decisions: a choice belongs to the step
-just before the player's card in its trick (`before`; a lead: with the
-previous trick still on the table), a trump choice or bid to step 0,
-before the first card. The box shows every choice of the step on screen
-(step 0 may have a bid, a trump choice and the lead of trick 1), else the
-latest one before it with *Naar deze keuze*, and nothing before the
-player's first choice. A choice that lost points reads as in the
+(`.rp-moment`) with Juf Jannie's view of the player's own decisions of
+what is on the table: the player's graded card of the trick shown, at
+every step of that trick, and before the first card the bid and the
+trump choice. A step shows no choice of another trick: no box where the
+trick shown has none. A choice that lost points reads as in the
 Spelanalyse (*Potje 5, slag 3*, *♠10 gespeeld, ♠A 18 punten beter: …*,
 its split), so does a strong move; one that did neither reads *♠8
 gespeeld: geen duidelijk betere keuze volgens Juf Jannie* (*♥ als troef:
 …*, *Gepast: …*, *Gespeeld: …*; `fineLine`), without a split. Below,
-the hands left, the player's first: at a card choice of the step on
-screen that lost or gained points, the card played and the better (or
-obvious) one are marked in it, with a key. A bar under the scrolling body keeps ‹ *Slag 4 · 2 van 4
+the hands left, the player's first. For a card choice of the trick shown
+that lost or gained points, the card played and the better (or obvious)
+one are marked, with a key: the card played in the hand until it is
+played and then on the table, the other in the hand. The colours say
+which is which: green the stronger card (the better one, or the card
+played in a strong move), red a card played that lost points, grey the
+obvious alternative to a strong move. The box has a bar in the same
+colour: red for points left, green for a strong move, grey for neither.
+A bar under the scrolling body keeps ‹ *Slag 4 · 2 van 4
 kaarten* › (also ←/→) and the eight tricks in view: each in its taker's
-colour, with a small dot for the player's graded card in it (light: points
-left, gold: a strong move, also said in its title; a trump choice or bid
-only shows at step 0), and a tap shows it complete. It opens at the
-step of a moment, or just before the player's card in the tapped trick;
-*Potjes terugkijken* at the deal of the first hand. In short landscape
+colour, with a small dot for the player's graded card in it (red: points
+left, green: a strong move, also said in its title; a trump choice or bid
+has no dot), and a tap shows it complete. It opens before the first card
+of its hand (*Dit potje terugkijken*; *Potjes terugkijken*: of the first
+hand), or at a moment of the Spelanalyse: the step with the player's card
+of that trick just played (a trump choice or bid: before the first
+card). In short landscape
 the table sits beside the box and the hands, the hand's line stays in
 the head, and the bar is one line. The 'review' replay follows
 `review.replay` at game over and closes outside it. The 'hand' replay
@@ -1282,8 +1318,7 @@ stays open as the phase moves on (its hand is finished; a
 closes in the lobby and when a new match starts (a `deal` with no score
 rows yet). While it is open and the player is to play at the table, a
 line on top says *Aan tafel ben je aan de beurt.* with *Naar tafel*,
-which closes it and then the views that led to it (the trick view,
-*Laatste slag*, the score sheet). The replay has no feedback per decision: the review's
+which closes it and then the score sheet, when that led to it. The replay has no feedback per decision: the review's
 *Opmerkingen* is about the game as a whole (the expert, and a player in
 training, comment on their decisions while playing, [Expert](#expert)).
 

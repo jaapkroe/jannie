@@ -16,7 +16,7 @@ globalThis.localStorage = {
 };
 siteImports();
 const {
-  roemText, handHeadline, posOf, lobbyPos, WIND, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, variantText,
+  roemText, handHeadline, posOf, lobbyPos, WIND, sideOf, isWij, teamName, scorerOf, scorerOrder, scorerName, handNow, handNowTitle, variantText,
   reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
   MANUAL_SECTIONS, chartSpec,
 } = await import('../../games/klaverjas/web/js/rules.js');
@@ -109,6 +109,25 @@ test('scores: per team with four players, else per player, ours first', () => {
   assert.equal(scorerName(table(3, 1), 1), 'Jij');
   assert.equal(scorerName(table(3, 1), 2), 'Kees');
   assert.deepEqual(scorerOrder(table(2, 0)), [0, 1]);
+});
+
+// The score pill: per scorer the tricks and the points (roem included) of
+// its side in the hand in play; with three players the two who play
+// together share theirs, and nobody has any before the soloist is known.
+test('the score pill has this hand\'s tricks and points per scorer', () => {
+  const now = { tricksWon: [3, 1], handPoints: [41, 12], handRoem: [20, 0] };
+  const four = { ...table(4, 3), ...now };
+  assert.deepEqual(handNow(four, 1), { tricks: 1, points: 12, roem: 0 });
+  assert.deepEqual(handNow(four, 0), { tricks: 3, points: 61, roem: 20 });
+  assert.equal(handNowTitle(four), 'Dit potje: Wij 1 slag, 12 punten · Zij 3 slagen, 61 punten (20 roem). Tik voor het scorebord: alle potjes en de stand.');
+  const three = { ...table(3, 1, 2), ...now };
+  assert.deepEqual(handNow(three, 2), { tricks: 3, points: 61, roem: 20 }, 'the soloist');
+  assert.deepEqual(handNow(three, 0), handNow(three, 1), 'the two who play together');
+  assert.deepEqual(handNow(three, 1), { tricks: 1, points: 12, roem: 0 });
+  assert.deepEqual(handNow({ ...table(3, 1), ...now }, 1), { tricks: 0, points: 0, roem: 0 }, 'no soloist yet');
+  assert.deepEqual(handNow(table(4, 0), 0), { tricks: 0, points: 0, roem: 0 }, 'before the first state of a hand');
+  assert.equal(handNowTitle({ ...table(2, 0), tricksWon: [0, 1], handPoints: [0, 1], handRoem: [0, 0] }),
+    'Dit potje: Jij 0 slagen, 0 punten · Opa Dirk (AI) 1 slag, 1 punt. Tik voor het scorebord: alle potjes en de stand.');
 });
 
 test('the chart of a match: Wij and Zij in their colours, a ring where a side went nat', () => {

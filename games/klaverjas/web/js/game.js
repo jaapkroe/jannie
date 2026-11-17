@@ -20,7 +20,6 @@ export const ACKED = new Set(['play', 'trump', 'bid', 'auction', 'discard', 'vot
 // The table's own tools in the top bars (panels.toolButtons), and the menu.
 const TOOLS = {
   last: ['history', 'Laatste slag', 'Laatste slag: bekijk wie wat speelde', () => table.openLastTrick()],
-  score: ['score', 'Scorebord', 'Scorebord: alle potjes en de stand', () => table.openScoreSheet()],
   help: ['help', 'Handleiding', 'Handleiding: bediening, spelregels, roem en tips', () => table.openManual()],
   expert: ['bot', 'Redenering van de AI', 'Redenering van de AI bij jouw zetten, en commentaar', () => table.openWhy(), { hidden: true }],
 };
@@ -32,6 +31,10 @@ export const menu = item => [
   item('help', 'Handleiding', () => table.openManual()),
 ];
 export const soundSub = 'Kaarten, troef, roem en je beurt';
+// Instellingen, Uitleg van de regels: what the switch hides here, and the
+// table drawn again once it changes.
+export const ruleTips = 'Onder de tafel staat welke regel voor je kaart geldt, zoals "Je moet troeven"';
+export const onPrefs = () => { if (app.view) table.render(app.view); };
 export const chatQuick = ['👍', '😂', '😱', '😭', 'Mooi!', 'Nat!', 'Goed gespeeld!'];
 export const chatCls = (s, seat) => teamCls(s, seat);
 
@@ -242,7 +245,7 @@ function openExpert() {
   showHands();
   const m = panels.openModal({
     id: 'expert', title: 'Expert', cls: 'm-sheet m-train', body: [
-      h('p', { class: 'sheet-note', text: 'Speel een spel opnieuw met de seed, of één potje ervan, op een plaats naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op de robot voor de redenering van de AI, en geef je commentaar. Na elk potje tik je op een slag en dan op Dit potje terugkijken.' }),
+      h('p', { class: 'sheet-note', text: 'Speel een spel opnieuw met de seed, of één potje ervan, op een plaats naar keuze, tegen drie AI-spelers. Op je beurt tik je bovenin op de robot voor de redenering van de AI, en geef je commentaar. Na elk potje tik je op Dit potje terugkijken.' }),
       h('label', { class: 'set-row' },
         h('span', { class: 'set-txt' }, h('b', { text: 'Open kaarten' }), h('small', { text: 'Je ziet de kaarten van alle spelers' })),
         h('span', { class: 'switch' }, open, h('i'))),

@@ -294,7 +294,7 @@ function buildLobby() {
   const bar = h('header', { class: 'lobby-bar' },
     h('button', { class: 'tb tb-back', type: 'button', title: 'Tafel verlaten', 'aria-label': 'Tafel verlaten', onclick: () => app.leave() }, icon('back')),
     E.lbTitle, h('span', { class: 'spacer' }),
-    ...panels.toolButtons(['chat', 'help', 'settings', 'sound']));
+    ...panels.toolButtons(['chat', 'help', 'settings']));
   E.lbCode = h('div', { class: 'code-big', 'aria-label': 'Spelcode' });
   E.lbCodeCard = h('section', { class: 'lb-card lb-code' },
     h('div', { class: 'lb-lbl', text: 'Spelcode' }), E.lbCode,

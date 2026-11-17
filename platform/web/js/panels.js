@@ -189,7 +189,6 @@ export function infoBtn(title, text) {
 const TOOLS = {
   chat: ['chat', 'Chat', 'Chat met de tafel', () => toggleChat()],
   settings: ['settings', 'Instellingen', 'Instellingen: geluid, kaarten, animaties en je naam', () => openSettings()],
-  sound: ['soundOn', 'Geluid', 'Geluid aan', () => toggleSound()], // a toggle: soundState sets icon, tooltip, aria-pressed
   menu: ['menu', 'Meer', 'Meer: instellingen', () => openMenu()],
 };
 
@@ -199,7 +198,6 @@ export function toolButtons(names) {
     const title = n === 'menu' && game.menuTitle ? game.menuTitle : tip;
     const b = h('button', { class: 'tb tb-' + n, type: 'button', title, 'aria-label': label, onclick: () => { sound.unlock(); fn(); } }, icon(ic));
     if (n === 'chat') b.append(h('span', { class: 'chat-badge', hidden: true }));
-    if (n === 'sound') soundState(b);
     if (opts?.hidden) b.hidden = true; // the game shows it when it applies
     return b;
   });
@@ -209,28 +207,6 @@ export function setLastEnabled(on) {
   for (const b of $$('.tb-last')) b.disabled = !on;
 }
 
-function toggleSound() {
-  sound.setMuted(!sound.isMuted());
-  if (!sound.isMuted()) sound.play('click');
-  refreshSound();
-  toast(sound.isMuted() ? 'Geluid uit' : 'Geluid aan', { ms: 1200 });
-}
-
-export function refreshSound() {
-  for (const b of $$('.tb-sound')) soundState(b);
-}
-
-// The sound button is a toggle: pressed while the sound is on. Its icon and
-// tooltip say which it is now ("Geluid aan", "Geluid uit"); the label
-// stays "Geluid", so a screen reader says "Geluid, ingedrukt".
-function soundState(b) {
-  const on = !sound.isMuted();
-  b.replaceChildren(icon(on ? 'soundOn' : 'soundOff'));
-  b.classList.toggle('muted', !on);
-  b.setAttribute('aria-pressed', String(on));
-  b.title = on ? 'Geluid aan' : 'Geluid uit';
-}
-
 function openMenu() {
   const s = app.s;
   const item = (ic, text, fn, cls = '') => h('button', { class: 'menu-item ' + cls, type: 'button', onclick: () => { m.close(true); fn(); } }, icon(ic), h('span', { text }));
@@ -238,9 +214,9 @@ function openMenu() {
     id: 'menu', cls: 'm-menu', label: 'Menu', body: [
       ...(game.menu?.(item) || []), // the game's own: score sheet, rules…
       item('settings', 'Instellingen', openSettings),
-      item(sound.isMuted() ? 'soundOff' : 'soundOn', sound.isMuted() ? 'Geluid aanzetten' : 'Geluid uitzetten', toggleSound),
-      app.call?.inCall() ? item('hangup', 'Ophangen', () => app.call.hangup())
-        : app.call?.possible() && app.call.supported() ? item('phone', 'Bellen', () => app.call.openSheet()) : null,
+      // Calling and hanging up are in the top bar; the microphone and the
+      // camera too, but for a narrow bar: there they are switched here.
+      ...(app.call?.menuItems() || []).map(([ic, text, fn]) => item(ic, text, fn, 'menu-call')),
       s ? item('leave', 'Spel verlaten', () => confirmLeave(), 'danger') : null,
     ],
   });
@@ -317,7 +293,7 @@ function openSettings() {
   const body = [
     h('section', { class: 'set-group' },
       h('h3', { text: 'Geluid' }),
-      toggleRow('Geluidseffecten', game.soundSub || 'Kaarten en je beurt', !sound.isMuted(), on => { sound.setMuted(!on); refreshSound(); if (on) sound.play('click'); }),
+      toggleRow('Geluidseffecten', game.soundSub || 'Kaarten en je beurt', !sound.isMuted(), on => { sound.setMuted(!on); if (on) sound.play('click'); }),
       h('div', { class: 'set-row' }, h('span', { class: 'set-txt' }, h('b', { text: 'Volume' })), vol)),
     h('section', { class: 'set-group' },
       h('h3', { text: 'Kaarten' }),
@@ -333,7 +309,17 @@ function openSettings() {
       toggleRow('Automatisch meebellen', 'Bij een spel met andere spelers zit je meteen in het gesprek', !!store.json('call', {}).auto,
         on => store.setJSON('call', { ...store.json('call', {}), auto: on }))),
     h('section', { class: 'set-group' },
+      h('h3', { text: 'Chat' }),
+      // One switch, kept per kind of table: at a practice table it is the
+      // practice tables', anywhere else the ordinary tables'.
+      practice()
+        ? toggleRow('Chat van AI-spelers', 'Wat AI-spelers zeggen aan een oefentafel. De uitleg van een les blijft.', prefs.botChatPractice,
+          on => { prefs.botChatPractice = on; savePrefs(); chatRefresh(); })
+        : toggleRow('Chat van AI-spelers', 'Wat AI-spelers zeggen aan tafel. Aan een oefentafel stel je dit apart in.', prefs.botChat,
+          on => { prefs.botChat = on; savePrefs(); chatRefresh(); })),
+    h('section', { class: 'set-group' },
       h('h3', { text: 'Weergave' }),
+      game.ruleTips ? toggleRow('Uitleg van de regels', game.ruleTips, prefs.ruleTips, on => { prefs.ruleTips = on; savePrefs(); if (document.body.dataset.screen === 'game') game.onPrefs?.(); }) : null, // the lobby has no table to draw
       toggleRow('Minder animaties', 'Kortere en rustigere bewegingen', prefs.reduced, on => { prefs.reduced = on; savePrefs(); applyPrefs(); })),
     h('section', { class: 'set-group' },
       h('h3', { text: 'Jij' }),
@@ -533,8 +519,8 @@ export function initChat() {
   C.manualName = game.home?.help?.tab || 'Handleiding'; // the game's word for its manual
   C.tabs = { chat: tab('chat', 'Chat'), manual: tab('manual', C.manualName) };
   C.tabs.chat.append(h('span', { class: 'chat-badge', hidden: true }));
-  const tabs = h('div', {
-    class: 'side-tabs', role: 'tablist', 'aria-label': 'Naast de tafel',
+  const tablist = h('div', {
+    class: 'side-tablist', role: 'tablist', 'aria-label': 'Naast de tafel',
     onkeydown: e => {
       if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
       e.preventDefault();
@@ -544,6 +530,10 @@ export function initChat() {
       C.tabs[to].focus(); // the tab picked, also while its manual still loads
     },
   }, C.tabs.chat, C.tabs.manual);
+  // Beside the tabs: the column larger or back to its width, and closed.
+  C.grow = h('button', { class: 'icon-btn side-grow', type: 'button', onclick: () => { sound.play('click'); sizeSide(size === 'large' ? '' : 'large'); } });
+  const tabs = h('div', { class: 'side-tabs' }, tablist, C.grow,
+    h('button', { class: 'icon-btn side-x', type: 'button', 'aria-label': 'Sluiten', title: 'Sluiten: de tafel krijgt de hele breedte', onclick: () => { sound.play('click'); sizeSide('closed'); } }, icon('close')));
   C.chat = h('div', { class: 'side-chat', id: 'side-chat' }, C.list,
     h('div', { class: 'chat-quick' }, (game.chatQuick || QUICK).map(q => h('button', { class: 'quick', type: 'button', onclick: () => sendChat(q) }, q))),
     form);
@@ -566,14 +556,24 @@ function sendChat(text) {
   C.input.value = '';
 }
 
-const chatVisible = () => chatOpen || (sideWide() && !manualShown());
+const chatVisible = () => chatOpen || (sideOpen() && !manualShown());
 
 function toggleChat() { setChat(!chatOpen); }
 
 function setChat(open) {
   if (open && sideWide()) {
+    // The chat button of a closed column brings the column back, at the
+    // chat: the tab is chosen first, so the manual is not asked for.
+    const back = size === 'closed';
+    if (back) {
+      side = 'chat';
+      store.set('side', 'chat');
+      sizeSide('');
+    }
     if (manualShown()) pickSide('chat');
-    C.input.focus();
+    // Not on a touch screen that just got its column back: the keyboard
+    // would come up over the table.
+    if (!back || fine.matches) C.input.focus();
     return;
   }
   chatOpen = open;
@@ -598,6 +598,18 @@ function badge() {
   }
 }
 
+// A practice table: the table's training mode, or what the game calls
+// practice (game.practice: a lesson table).
+const practice = () => !!app.s && (!!app.s.training || !!game.practice?.(app.s));
+
+// Whether chat line m shows: what an AI player says (not a lesson's coach
+// line) only while the device has AI chat on for this kind of table
+// (kj.prefs botChat, botChatPractice; docs/frontend.md#chat).
+export function chatShown(m) {
+  if (!m.bot || m.coach || m.sys) return true;
+  return practice() ? !!prefs.botChatPractice : !!prefs.botChat;
+}
+
 function msgEl(m) {
   const s = app.s;
   const sys = m.sys || m.seat < 0;
@@ -611,8 +623,12 @@ function msgEl(m) {
 export function chatAdd(m, live = true) {
   const atEnd = C.list.scrollHeight - C.list.scrollTop - C.list.clientHeight < 40;
   log.push(m);
+  if (log.length > 120) log.shift();
+  // A line of an AI player with AI chat off stays in the log, unseen: it
+  // shows once the chat is switched on (chatRefresh).
+  if (!chatShown(m)) return;
   C.list.append(msgEl(m));
-  while (C.list.children.length > 120) { C.list.firstChild.remove(); log.shift(); }
+  while (C.list.children.length > 120) C.list.firstChild.remove();
   if (atEnd || m.seat === app.s?.you) C.list.scrollTop = C.list.scrollHeight;
   if (!live) return;
   const mine = app.s && m.seat === app.s.you && !m.sys;
@@ -627,7 +643,7 @@ export function chatAdd(m, live = true) {
 
 export function chatSet(msgs) {
   log = [...(msgs || [])];
-  C.list.replaceChildren(...log.map(msgEl));
+  C.list.replaceChildren(...log.filter(chatShown).map(msgEl));
   C.list.scrollTop = C.list.scrollHeight;
 }
 
@@ -648,14 +664,45 @@ export function chatReset() {
 // On a wide screen in a room the chat is a column beside the table, with
 // two tabs: Chat, and the game's manual in its place (openManual). The tab
 // chosen stays on the device (kj.side) and comes back when a room next
-// shows on a wide screen. On a narrower screen, and on the home screen,
-// there is no column: the chat is a drawer and the manual a modal
-// (docs/frontend.md#the-side-column).
+// shows on a wide screen; so does the column's size (kj.sideSize): its
+// own width, large, or closed, with the table over the whole width until
+// the chat or the help button brings it back. On a narrower screen, and
+// on the home screen, there is no column: the chat is a drawer and the
+// manual a modal (docs/frontend.md#the-side-column).
 let side = store.get('side', '') === 'manual' ? 'manual' : 'chat'; // the tab chosen
+let size = ['large', 'closed'].includes(store.get('sideSize', '')) ? store.get('sideSize', '') : ''; // '' its own width
 let docked = null;  // the manual in the column, as openManual returned it
 let asked = false;  // the game was asked for its manual for this column
 const sideWide = () => wideMQ.matches && inRoom();
+const sideOpen = () => sideWide() && size !== 'closed';
 const manualShown = () => !!docked && side === 'manual';
+
+// The column's size is chosen: large or its own width (the button beside
+// the tabs), closed (its ✕), or open again (the chat or help button).
+function sizeSide(to) {
+  const was = size;
+  size = to;
+  store.set('sideSize', to);
+  dropDrawer();
+  renderSide();
+  // Back at the chat: what came in meanwhile is read.
+  if (was === 'closed' && to !== 'closed' && side === 'chat') {
+    clearUnread();
+    C.list.scrollTop = C.list.scrollHeight;
+  }
+  // The button pressed is gone with the column: the focus goes to the
+  // chat button that came in its place.
+  if (to === 'closed') $$('.tb-chat').find(b => b.offsetParent)?.focus();
+}
+
+// On a wide screen in a room the drawer is not in use: one left open on a
+// narrower screen is shut, so a closed column does not show it.
+function dropDrawer() {
+  if (!chatOpen || !sideWide()) return;
+  chatOpen = false;
+  document.body.classList.remove('chat-open');
+  syncHistory();
+}
 
 // Opens a game's manual: in the side column on a wide screen in a room,
 // without a modal, so the table stays in use; anywhere else as openModal
@@ -678,7 +725,15 @@ export function openManual(opts, quiet = false) {
   const m = docked = { id, body: C.man, docked: true, close: () => { if (docked === m) { undock(); renderSide(); } } };
   asked = true;
   if (quiet) renderSide();
-  else pickSide('manual');
+  else {
+    // The help button brings a closed column back, at the manual: the tab
+    // is chosen first, so a line unread in the chat keeps its badge.
+    if (size === 'closed') {
+      side = 'manual';
+      sizeSide('');
+    }
+    pickSide('manual');
+  }
   return m;
 }
 
@@ -715,10 +770,11 @@ function pickSide(which) {
 // from the game once per column.
 export function syncSide() {
   if (!C.root) return;
+  dropDrawer();
   if (!sideWide()) {
     undock();
     asked = false;
-  } else if (side === 'manual' && !docked && !asked) {
+  } else if (side === 'manual' && !docked && !asked && size !== 'closed') {
     asked = true;
     game.home?.help?.open?.(true);
   }
@@ -734,8 +790,14 @@ function renderSide() {
   if (!C.root) return;
   const wide = sideWide();
   const man = wide && manualShown();
-  if (sideKey === `${wide} ${man}`) return;
-  sideKey = `${wide} ${man}`;
+  if (sideKey === `${wide} ${man} ${size}`) return;
+  sideKey = `${wide} ${man} ${size}`;
+  document.body.classList.toggle('side-closed', size === 'closed');
+  document.body.classList.toggle('side-large', size === 'large');
+  const large = size === 'large';
+  C.grow.replaceChildren(icon(large ? 'shrink' : 'grow'));
+  C.grow.setAttribute('aria-label', large ? 'Kleiner maken' : 'Groter maken');
+  C.grow.title = large ? 'Kleiner maken: terug naar de gewone breedte' : 'Groter maken: meer ruimte om te lezen';
   C.root.classList.toggle('manual', man);
   C.root.setAttribute('aria-label', wide ? `Chat en ${C.manualName.toLowerCase()}` : 'Chat');
   for (const [which, pane] of [['chat', C.chat], ['manual', C.man]]) {

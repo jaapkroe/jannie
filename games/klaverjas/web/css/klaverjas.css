@@ -173,6 +173,36 @@
   line-height: 1.1;
 }
 
+/* This hand's tricks: under the label in a narrow bar, after it from
+   600 px ("Wij · 3 slagen"). */
+.sp-tr {
+  display: block;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+@media (min-width: 600px) {
+  .sp-tr {
+    display: inline;
+    font-size: inherit;
+  }
+
+  .sp-tr::before {
+    content: " · ";
+  }
+}
+
+/* A narrow bar with a call button in it has no room for the potje's
+   number beside the score: the hand summary has it. */
+@media (max-width: 420px) {
+  .topbar:has(.call-dock:not([hidden])) .potje {
+    display: none;
+  }
+}
+
 .sp-num {
   font-size: 19px;
   font-weight: 900;
@@ -294,6 +324,27 @@
   .sp {
     min-width: 46px;
     padding: 3px 7px;
+  }
+
+  .sp-num {
+    font-size: 17px;
+  }
+}
+
+/* The three lines of a narrow bar's pill stay within the bar's 44 px. */
+@media (max-width: 599px) {
+  .sp {
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+
+  .sp-lbl,
+  .sp-num {
+    line-height: 1.05;
+  }
+
+  .sp-lbl {
+    font-size: 10px;
   }
 
   .sp-num {
@@ -585,56 +636,6 @@
 
   .table[data-players="2"] .seat-top:has(.ring.cam) .nm {
     max-width: max(70px, calc(100vw - var(--opp-pile-w) * 4.5 - 118px));
-  }
-}
-
-.prompt .call-dock {
-  grid-column: 3;
-  grid-row: 1;
-  justify-self: end;
-}
-
-.prompt .call-dock .tb {
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.5);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
-}
-
-.prompt .call-dock .tb-hangup {
-  background: var(--red);
-  color: #fff;
-}
-
-/* Beside the rule the buttons need their room: a long rule wraps sooner. */
-@media (min-width: 600px) {
-  .prompt[data-call="out"] {
-    --dock-w: 44px;
-  }
-
-  .prompt[data-call="in"] {
-    --dock-w: 148px;
-  }
-
-  .prompt[data-call] .rule {
-    max-width: min(66vw, 440px, calc(100vw - 2 * (var(--dock-w) + 26px)));
-  }
-}
-
-@media (max-width: 599px) {
-  /* A row above the last trick, clear of the right seat and the trick;
-     hanging up is in the menu. */
-  .prompt .call-dock {
-    position: absolute;
-    right: calc(var(--sar) + 10px);
-    bottom: calc(100% + 6px);
-  }
-
-  .prompt .call-dock .tb {
-    width: 44px;
-  }
-
-  .prompt .call-dock .tb-hangup {
-    display: none;
   }
 }
 
@@ -2000,9 +2001,14 @@
   color: var(--team-hi);
 }
 
-/* Under a trick of a finished hand: that hand in the replay. */
+/* With the tricks of a finished hand: that hand in the replay (the hand
+   summary, the score sheet's last potje). */
 .last-replay {
   margin-top: 14px;
+}
+
+.last-replay .lr-short {
+  display: none;
 }
 
 .gold {
@@ -2174,8 +2180,45 @@
   background: linear-gradient(180deg, rgba(12, 31, 25, 0), #0c1f19 35%);
 }
 
-.sum-foot .btn {
+/* Dit potje terugkijken above Volgend potje; on a short phone beside it,
+   so the summary still fits without scrolling. */
+.sum-go {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   width: min(100%, 360px);
+}
+
+.sum-go .btn {
+  width: 100%;
+  margin: 0;
+}
+
+@media (max-width: 599px) and (max-height: 640px), (orientation: landscape) and (max-height: 520px) {
+  .sum-go {
+    flex-direction: row;
+  }
+
+  .sum-go .last-replay {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 44px;
+    padding: 0 12px;
+  }
+
+  .sum-go .last-replay .lr-full {
+    display: none;
+  }
+
+  .sum-go .last-replay .lr-short {
+    display: inline;
+  }
+
+  .sum-go .btn-big {
+    padding-left: 10px;
+    padding-right: 10px;
+    white-space: nowrap;
+  }
 }
 
 .ready-list {
@@ -2690,13 +2733,18 @@
   line-height: 1.35;
 }
 
+/* A choice of the trick on screen: green for a strong move, red for
+   points left, as the dots of the tricks. */
 .rp-moment.now {
-  box-shadow: inset 3px 0 0 var(--gold);
+  box-shadow: inset 3px 0 0 var(--ink-3);
 }
 
-.rp-moment .btn {
-  justify-self: start;
-  margin-top: 4px;
+.rp-moment.strong {
+  box-shadow: inset 3px 0 0 var(--rp-good);
+}
+
+.rp-moment.missed {
+  box-shadow: inset 3px 0 0 var(--rp-bad);
 }
 
 .rp-choices {
@@ -2789,8 +2837,8 @@
   color: var(--ink);
 }
 
-/* The player's card in that trick: points left (a light dot), a strong
-   move (a gold dot). */
+/* The player's card in that trick: points left (a red dot), a strong
+   move (a green dot). */
 .rp-tn.missed,
 .rp-tn.strong {
   position: relative;
@@ -2805,11 +2853,12 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--ink);
+  background: var(--rp-bad);
+  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.55);
 }
 
 .rp-tn.strong::after {
-  background: var(--gold);
+  background: var(--rp-good);
 }
 
 .rp-hands {
@@ -2851,14 +2900,23 @@
   margin-left: -10px;
 }
 
+/* The marks of a choice, in the hand and on the table: the stronger card
+   green, a card that lost points red, the obvious one grey. */
+.m-replay {
+  --rp-good: #3ecf73;
+  --rp-bad: #ff5c62;
+}
+
 .rp-cards > .card.rp-played,
+.rp-cross .card.rp-played,
 .rp-key.rp-played {
-  box-shadow: 0 0 0 2px var(--zij-hi);
+  box-shadow: 0 0 0 3px var(--rp-bad);
 }
 
 .rp-cards > .card.rp-better,
+.rp-cross .card.rp-better,
 .rp-key.rp-better {
-  box-shadow: 0 0 0 2px var(--gold-hi);
+  box-shadow: 0 0 0 3px var(--rp-good);
 }
 
 .rp-cards > .card.rp-alt,
@@ -3159,11 +3217,6 @@
     grid-column: 2;
     grid-row: 2;
     margin: 0;
-  }
-
-  :where(html:not(.kb)) .m-last .last-replay {
-    grid-column: 2;
-    grid-row: 3;
   }
 
   :where(html:not(.kb)) .m-summary .sum-head,

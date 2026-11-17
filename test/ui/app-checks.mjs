@@ -721,20 +721,29 @@ CHECKS.dbltap = async browser => {
   }
 };
 
-// The button under a trick of a finished hand that opens the hand in the
-// replay: on screen without scrolling the trick view, and not covered.
+// The hand summary's button that opens the hand in the replay: on screen
+// without scrolling the summary, 44 px high and not covered. Above Volgend
+// potje the summary still fits; beside it (a short screen, where the
+// summary has no room to spare) the button costs the summary no height:
+// it is as high as without the button.
 const REPLAY_FIT = () => {
-  const btn = document.querySelector('.m-last.open .last-replay');
+  const btn = document.querySelector('.m-summary.open .last-replay');
   if (!btn) return ['missing'];
-  const body = document.querySelector('.m-last.open .dlg-body');
+  const body = document.querySelector('.m-summary.open .dlg-body');
   const b = btn.getBoundingClientRect();
-  const bb = body.getBoundingClientRect();
   const bad = [];
   if (body.scrollTop > 0) bad.push(`scrolled ${body.scrollTop}`);
   if (b.top < 0 || b.bottom > innerHeight || b.left < 0 || b.right > innerWidth) bad.push(`outside the screen [${Math.round(b.top)}..${Math.round(b.bottom)}]`);
-  if (b.bottom > bb.bottom + 1) bad.push(`below the visible body [${Math.round(b.bottom)} > ${Math.round(bb.bottom)}]`);
+  if (b.height < 43.5) bad.push(`${Math.round(b.height)} px high`);
   const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
   if (!hit?.closest('.last-replay')) bad.push(`covered by ${hit?.tagName}.${hit?.className}`);
+  const beside = getComputedStyle(btn.parentElement).flexDirection === 'row';
+  const high = body.scrollHeight;
+  if (!beside && high > body.clientHeight + 1) bad.push(`the summary scrolls: ${high} > ${body.clientHeight}`);
+  btn.style.display = 'none';
+  const without = body.scrollHeight;
+  btn.style.display = '';
+  if (beside && high > without) bad.push(`the button makes the summary higher: ${high} > ${without}`);
   return bad;
 };
 
@@ -746,38 +755,33 @@ const REPLAY_VIEW = () => ({
   pos: document.querySelector('.m-replay .rp-pos')?.textContent,
   sum: document.querySelector('.m-replay .rp-sum')?.textContent,
   boxes: [...document.querySelectorAll('.m-replay .rp-choices > .rp-moment')].map(e => ({
-    now: e.classList.contains('now'), where: e.querySelector('.rv-where')?.textContent, back: !!e.querySelector('[data-key="choice"]'),
+    where: e.querySelector('.rv-where')?.textContent, kind: e.classList.contains('missed') ? 'missed' : e.classList.contains('strong') ? 'strong' : '',
   })),
-  rings: [...document.querySelectorAll('.m-replay .rp-hands > .rp-hand:first-child .card:is(.rp-played, .rp-better)')].map(e => e.dataset.card),
+  back: !!document.querySelector('.m-replay [data-key="choice"]'),
+  rings: [...document.querySelectorAll('.m-replay :is(.rp-hands > .rp-hand:first-child, .rp-cross) .card:is(.rp-played, .rp-better)')].map(e => e.dataset.card),
   dots: [...document.querySelectorAll('.m-replay .rp-tn')].map(e => (e.classList.contains('missed') ? 'missed' : e.classList.contains('strong') ? 'strong' : '')),
   turn: !!document.querySelector('.m-replay .rp-turn')?.getClientRects().length,
 });
 
-// The replay of finished hand rh (a handReview) at the step just before
-// the player's (you) card in trick t: the analysis boxes as
-// games/klaverjas/README.md#terugkijken has them, the player's card ringed
-// when graded there, a dot for every trick with points left or a strong move.
-function replayAt(rh, you, t, v) {
-  const before = d => {
-    const tr = d.trick ? rh.tricks[d.trick - 1] : null;
-    return tr ? 4 * (d.trick - 1) + Math.max(0, tr.cards.findIndex(pc => pc.seat === you)) : 0;
-  };
-  const step = before({ trick: t });
+// The replay of finished hand rh (a handReview) at `step` cards played:
+// the analysis boxes as games/klaverjas/README.md#terugkijken has them,
+// the player's graded choices of the trick on the table (before the first
+// card the bid and the trump choice), the player's card ringed when
+// graded there, in the hand or on the table, and a dot for every trick
+// with points left or a strong move.
+function replayAt(rh, step, v) {
   const ti = Math.ceil(step / 4);
   const pos = step === 0 ? 'Voor de eerste kaart' : `Slag ${ti} · ${step - 4 * (ti - 1)} van 4 kaarten`;
-  const now = rh.choices.filter(d => before(d) === step);
-  const last = now.length ? [] : rh.choices.filter(d => before(d) < step).slice(-1);
-  const boxes = [...now.map(d => ({ now: true, d })), ...last.map(d => ({ now: false, d }))]
-    .map(({ now: n, d }) => ({ now: n, where: `Potje ${rh.hand}` + (d.trick ? `, slag ${d.trick}` : ''), back: !n }));
+  const kind = d => (d?.better ? 'missed' : d?.points > 0 ? 'strong' : '');
+  const now = rh.choices.filter(d => (d.trick || 0) === ti);
+  const boxes = now.map(d => ({ where: `Potje ${rh.hand}` + (d.trick ? `, slag ${d.trick}` : ''), kind: kind(d) }));
   // A card that lost and gained nothing is not ringed.
   const card = now.find(d => d.played?.card && (d.better || d.points > 0))?.played.card;
-  const dots = rh.tricks.map((_, k) => {
-    const d = rh.choices.find(x => x.trick === k + 1);
-    return d?.better ? 'missed' : d?.points > 0 ? 'strong' : '';
-  });
+  const dots = rh.tricks.map((_, k) => kind(rh.choices.find(x => x.trick === k + 1)));
   const bad = [];
   if (v.pos !== pos) bad.push(`at "${v.pos}", want "${pos}"`);
   if (JSON.stringify(v.boxes) !== JSON.stringify(boxes)) bad.push(`boxes ${JSON.stringify(v.boxes)}, want ${JSON.stringify(boxes)}`);
+  if (v.back) bad.push('a button to another choice');
   if (card && !v.rings.includes(card)) bad.push(`${card} not ringed: ${v.rings}`);
   if (!card && v.rings.length) bad.push(`rings ${v.rings} without a card graded here`);
   if (String(v.dots) !== String(dots)) bad.push(`dots ${v.dots}, want ${dots}`);
@@ -787,11 +791,13 @@ function replayAt(rh, you, t, v) {
 // Hand summary and score sheet: who played which card, running totals,
 // and the review of the previous hand stays while updates arrive. The
 // updates are held back while the overlays open (-fast pacing would move
-// on first), then let through. A trick of the finished hand opens that
-// hand in the replay (handReview): the line over the hand once its grades
-// are in, the analysis at the player's card in that trick (a trick they
-// led where there is one), open into the next hand until Escape. The
-// score sheet's last potje offers the same.
+// on first), then let through. The summary's Dit potje terugkijken, on
+// screen at every size without scrolling the summary, opens that hand in
+// the replay (handReview) before its first card: the line over the hand
+// once its grades are in, and at a trick the analysis of the player's
+// card in that trick (a trick they led where there is one), open into the
+// next hand until Escape. The score sheet's last potje has the same
+// button; a single trick has none.
 CHECKS.review = async browser => {
   const P = await page(browser, VP.iphone, 'review', {
     hooks: true,
@@ -825,20 +831,22 @@ CHECKS.review = async browser => {
     await waitFor(P, () => document.querySelector('.m-last.open h2')?.textContent === 'Slag 1', { label: 'trick detail' });
     const cross = await P.page.$$eval('.m-last.open .cross-slot', els => els.map(e => e.textContent));
     if (cross.length !== 4 || cross.filter(t => t.includes('kwam uit')).length !== 1 || !cross.some(t => t.includes('Jij'))) throw new Error(`trick detail ${cross}`);
-    const button = await P.page.$$eval('.m-last.open .last-replay', els => els.map(e => e.textContent.trim()));
-    if (String(button) !== 'Dit potje terugkijken') throw new Error(`trick detail buttons ${button}`);
-    // In short landscape the button sits beside the trick.
-    for (const vp of ['landscape', 'smallLandscape']) {
+    if (await P.page.$('.m-last.open .last-replay')) throw new Error('a single trick has the replay button');
+    await P.page.keyboard.press('Escape');
+    await sleep(300);
+    // The summary's button, above Volgend potje; on a short phone and in
+    // short landscape beside it.
+    const button = await P.page.$$eval('.m-summary.open .last-replay > span', els => els.filter(e => e.getClientRects().length).map(e => e.textContent.trim()));
+    if (String(button) !== 'Dit potje terugkijken') throw new Error(`the summary's replay button: ${button}`);
+    for (const vp of ['iphone', 'iphonese', 'phone', 'oldSE', 'landscape', 'smallLandscape']) {
       await P.page.setViewport(VP[vp]);
       await sleep(500);
       const bad = await P.page.evaluate(REPLAY_FIT);
       if (bad.length) throw new Error(`"Dit potje terugkijken" at ${vp}: ${bad.join('; ')}`);
-      await shot(P, `trick-${vp}`);
+      await shot(P, `summary-${vp}`);
     }
     await P.page.setViewport(VP.iphone);
     await sleep(500);
-    await P.page.keyboard.press('Escape');
-    await sleep(300);
 
     // A trick the player led (not the last, which has one card left), else
     // the first.
@@ -846,10 +854,8 @@ CHECKS.review = async browser => {
     if (ended?.hand !== 1 || ended.tricks.length !== 8) throw new Error(`the end of potje 1 as seen: ${JSON.stringify(ended)}`);
     const led = ended.tricks.map((t, k) => (t.cards[0].seat === ended.you ? k + 1 : 0)).filter(t => t && t < 8);
     const trick = led.find(t => t > 1) || led[0] || 1;
-    await press(P, `.m-summary .review > .mt:nth-child(${trick})`);
-    await waitFor(P, t => document.querySelector('.m-last.open h2')?.textContent === `Slag ${t}`, { label: `trick ${trick}` }, trick);
     await P.page.evaluate(() => window.__kj.release());
-    await press(P, '.m-last.open .last-replay');
+    await press(P, '.m-summary.open .last-replay');
     await waitFor(P, () => document.querySelector('.m-replay.open .rp-sum'), { label: 'the hand in the replay' });
     await waitFor(P, () => !/in berekening/.test(document.querySelector('.m-replay.open .rp-sum')?.textContent), { label: 'the grades of the hand', timeout: 90000 });
     await sleep(300);
@@ -858,16 +864,30 @@ CHECKS.review = async browser => {
     if (asked.length !== 1 || asked[0].hand !== 1 || hr?.hand !== 1 || hr.pending !== 0 || !hr.replay.choices.length) {
       throw new Error(`handReview asked ${JSON.stringify(asked)}, answered ${JSON.stringify(hr && { hand: hr.hand, pending: hr.pending, choices: hr.replay.choices.length })}`);
     }
-    const view = await P.page.evaluate(REPLAY_VIEW);
+    // It opens before the first card: the trump choice or bid, if graded.
+    const start = await P.page.evaluate(REPLAY_VIEW);
     const n = hr.replay.choices.length;
-    const bad = replayAt(hr.replay, ended.you, trick, view);
-    if (view.title !== 'Potje 1 van 4' || !view.sum.startsWith(`Volgens Juf Jannie: ${n}\u00a0${n === 1 ? 'keuze' : 'keuzes'}`) || view.turn) bad.push(`head ${JSON.stringify(view)}`);
-    // A box once the player had a graded choice up to this trick (the card
-    // there may have been the only one they could play).
-    if (!view.boxes.length && hr.replay.choices.some(d => d.trick <= trick)) bad.push('no analysis at the player\'s card');
-    if (bad.length) throw new Error(`replay of potje 1 at trick ${trick}: ${bad.join('; ')}`);
+    const bad = replayAt(hr.replay, 0, start);
+    if (start.title !== 'Potje 1 van 4' || !start.sum.startsWith(`Volgens Juf Jannie: ${n}\u00a0${n === 1 ? 'keuze' : 'keuzes'}`) || start.turn) bad.push(`head ${JSON.stringify(start)}`);
+    if (bad.length) throw new Error(`replay of potje 1 before the first card: ${bad.join('; ')}`);
+    // A trick's number shows that trick complete, with the analysis of the
+    // player's card in it, not the next trick's lead; every trick with a
+    // graded card has its box.
+    await press(P, `.m-replay [data-key="t${trick - 1}"]`);
+    await sleep(300);
+    const view = await P.page.evaluate(REPLAY_VIEW);
+    const at = replayAt(hr.replay, 4 * trick, view);
+    if (at.length) throw new Error(`replay of potje 1 at trick ${trick}: ${at.join('; ')}`);
+    for (const d of hr.replay.choices.filter(x => x.trick)) {
+      await press(P, `.m-replay [data-key="t${d.trick - 1}"]`);
+      await sleep(150);
+      const v = await P.page.evaluate(REPLAY_VIEW);
+      const b = replayAt(hr.replay, 4 * d.trick, v);
+      if (b.length || !v.boxes.some(x => x.where === `Potje 1, slag ${d.trick}`)) throw new Error(`replay of potje 1 at trick ${d.trick}: ${b.join('; ')} ${JSON.stringify(v.boxes)}`);
+    }
+    await press(P, `.m-replay [data-key="t${trick - 1}"]`);
+    await sleep(300);
     const lead = led.includes(trick) && hr.replay.choices.some(d => d.trick === trick);
-    if (lead && !view.boxes.some(b => b.now && b.where === `Potje 1, slag ${trick}`)) throw new Error(`the lead in trick ${trick} not at its step: ${JSON.stringify(view)}`);
     if (!lead) console.log(`    (no graded lead of the player in potje 1 besides the last trick: looked at trick ${trick})`);
     await shot(P, 'replay-hand');
     await checkOverflow(P, 'replay of a hand');
@@ -908,15 +928,11 @@ CHECKS.review = async browser => {
       const st = await P.page.evaluate(() => ({ review: !!document.querySelector('.m-score .review'), title: document.querySelector('.m-score h2').textContent }));
       if (!st.review || st.title !== 'Potje 1: de slagen') throw new Error(`review gone after ${(i + 1) * 500} ms: ${JSON.stringify(st)}`);
     }
-    // A trick of it opens potje 1 in the replay too.
-    await press(P, '.m-score .review .mt');
-    await waitFor(P, () => document.querySelector('.m-last.open h2')?.textContent === 'Slag 1', { label: 'a trick of potje 1' });
-    await press(P, '.m-last.open .last-replay');
+    // Under its tricks, potje 1 in the replay too.
+    await press(P, '.m-score .last-replay');
     await waitFor(P, () => document.querySelector('.m-replay.open .rp-title b')?.textContent === 'Potje 1 van 4', { label: 'potje 1 in the replay, from the score sheet' });
     await P.page.keyboard.press('Escape');
     await waitFor(P, () => !document.querySelector('.m-replay.open'), { label: 'the replay closed' });
-    await P.page.keyboard.press('Escape');
-    await waitFor(P, () => !document.querySelector('.m-last.open'), { label: 'the trick closed' });
     await press(P, '.m-score .back-btn');
     await waitFor(P, () => document.querySelector('.m-score .scoresheet') && document.querySelector('.m-score h2').textContent === 'Scorebord', { label: 'back to the score sheet' });
   });
@@ -929,7 +945,8 @@ CHECKS.review = async browser => {
 // with the reasoning; ‹ goes to their card before, asked about and
 // commented on (hand and trick, no seat). Over the hand summary the
 // button opens the sheet again; the summary and game over have no replay
-// of their own (the trick view's, as anyone) and no lobby.
+// of their own (the summary's Dit potje terugkijken, as anyone) and no
+// lobby.
 CHECKS.expert = async browser => {
   const P = await page(browser, VP.iphone, 'expert', { hooks: true });
   await run(P, async () => {
@@ -1070,7 +1087,7 @@ CHECKS.expert = async browser => {
 
     await playUntil(P, () => !!document.querySelector('.m-summary.open'), { ready: false, label: 'the summary' });
     const foot = await P.page.$$eval('.m-summary .sum-foot button', els => els.map(e => e.textContent.trim()));
-    if (!foot.includes('Naar de uitslag') || foot.some(t => t.includes('terugkijken'))) throw new Error(`summary buttons ${foot}`);
+    if (!foot.includes('Naar de uitslag') || foot.filter(t => t.includes('terugkijken')).length !== 1 || foot.length !== 2) throw new Error(`summary buttons ${foot}`);
     // Over the summary, the sheet on the player's card before the last one
     // (the last had no choice).
     await press(P, '.tb-expert');
@@ -1266,37 +1283,110 @@ CHECKS.summary = async browser => {
   });
 };
 
-// The sound button is a toggle: aria-pressed and the tooltip ("Geluid aan",
-// "Geluid uit") follow the state, in the lobby bar and at the table, also
-// after a reload.
+// Instellingen's two switches for a calmer table (docs/frontend.md#settings,
+// #chat). Chat van AI-spelers: on at an ordinary table, where switching it
+// off takes the AI players' lines out of the chat and keeps a new one out,
+// and on again brings them back; at a training table it is another
+// switch, off until switched on, and Juf Jannie's coach lines show all
+// the same. Uitleg van de regels: off, the line under the table says only
+// that it is your turn.
+CHECKS.prefs = async browser => {
+  const P = await page(browser, VP.desktop, 'prefs');
+  await run(P, async () => {
+    const lines = () => P.page.evaluate(() => ({
+      bot: document.querySelectorAll('.chat-list .msg.bot:not(.coach-msg)').length,
+      coach: document.querySelectorAll('.chat-list .msg.coach-msg').length,
+    }));
+    const say = text => P.page.evaluate(async t => (await import('/js/panels.js')).chatAdd({ seat: 1, name: 'Bot', text: t, bot: true, ts: Date.now() }, true), text);
+    // Flips the switch named label and reports whether it was on.
+    const flip = async label => {
+      await press(P, '.topbar .tb-settings');
+      await waitFor(P, () => document.querySelector('.m-settings.open .set-row input'), { label: 'settings' });
+      const was = await P.page.evaluate(l => {
+        const row = [...document.querySelectorAll('.m-settings .set-row')].find(r => r.querySelector('b')?.textContent === l);
+        if (!row) return null;
+        const on = row.querySelector('input').checked;
+        row.querySelector('input').click();
+        return on;
+      }, label);
+      if (was === null) throw new Error(`no switch ${label} in Instellingen`);
+      await P.page.keyboard.press('Escape');
+      await waitFor(P, () => !document.querySelector('.m-settings.open'), { label: 'settings closed' });
+      return was;
+    };
+    await home(P);
+    await quick(P);
+    await say('Hallo.');
+    const before = await lines();
+    if (!before.bot) throw new Error(`no line of an AI player at an ordinary table: ${JSON.stringify(before)}`);
+    if (!(await flip('Chat van AI-spelers'))) throw new Error('Chat van AI-spelers was off at an ordinary table');
+    await say('Nog een.');
+    const off = await lines();
+    if (off.bot) throw new Error(`lines of AI players with their chat off: ${JSON.stringify(off)}`);
+    if (await flip('Chat van AI-spelers')) throw new Error('Chat van AI-spelers still on after switching it off');
+    const on = await lines();
+    if (on.bot < before.bot + 1) throw new Error(`lines of AI players with their chat on again: ${on.bot}, want ${before.bot + 1} or more`);
+
+    // The rule's explanation under the table, on our turn.
+    await playUntil(P, () => !!document.querySelector('.hand.my-turn .card.legal'), { label: 'my turn' });
+    const rule = () => P.page.evaluate(async () => ({ line: document.querySelector('.rule').textContent, rule: (await import('/js/util.js')).app.s.rule || '' }));
+    let r = await rule();
+    if (!r.rule || r.line !== r.rule) throw new Error(`the line under the table: ${JSON.stringify(r)}`);
+    if (!(await flip('Uitleg van de regels'))) throw new Error('Uitleg van de regels was off');
+    r = await rule();
+    if (r.line !== 'Jouw beurt: speel een kaart') throw new Error(`the line without the rule's explanation: ${JSON.stringify(r)}`);
+    await shot(P, 'no-rule');
+    await flip('Uitleg van de regels');
+    r = await rule();
+    if (r.line !== r.rule) throw new Error(`the line with the explanation on again: ${JSON.stringify(r)}`);
+
+    // A training table: its own switch, off, and the coach's lines stay.
+    await P.page.evaluate(async () => (await import('/js/util.js')).app.leave());
+    await waitFor(P, () => document.body.dataset.screen === 'home', { label: 'home' });
+    await P.page.evaluate(async () => (await import('/js/util.js')).app.create({ opts: { tips: true, tempo: 'snel' }, training: true, start: true }));
+    await waitFor(P, () => document.body.dataset.screen === 'game' && document.querySelector('.hand .card'), { label: 'a training table' });
+    await playUntil(P, () => document.querySelectorAll('.chat-list .msg.coach-msg').length > 0, { label: 'a coach line', timeout: 60000 });
+    await say('Hallo.');
+    const train = await lines();
+    if (train.bot || !train.coach) throw new Error(`a training table's chat: ${JSON.stringify(train)}`);
+    if (await flip('Chat van AI-spelers')) throw new Error('Chat van AI-spelers was on at a training table');
+    const shown = await lines();
+    if (!shown.bot) throw new Error(`no line of an AI player at a training table with their chat on: ${JSON.stringify(shown)}`);
+    const kept = await P.page.evaluate(() => JSON.parse(localStorage.getItem('kj.prefs')));
+    if (kept.botChat !== true || kept.botChatPractice !== true || kept.ruleTips !== true) throw new Error(`kj.prefs ${JSON.stringify(kept)}`);
+  });
+};
+
+// Sound on and off is a switch in Instellingen (Geluidseffecten), kept
+// over a reload; no bar has a sound button.
 CHECKS.sound = async browser => {
   const P = await page(browser, VP.desktop, 'sound');
   await run(P, async () => {
-    const state = sel => P.page.$$eval(sel, els => els.map(e => `${e.getAttribute('aria-label')}|${e.getAttribute('aria-pressed')}|${e.title}|${e.classList.contains('muted')}`));
+    const muted = () => P.page.evaluate(async () => (await import('/js/sound.js')).sound.isMuted());
+    const toggle = async where => {
+      await press(P, `${where} .tb-settings`);
+      await waitFor(P, () => document.querySelector('.m-settings.open .set-row input'), { label: 'settings' });
+      const label = await P.page.$eval('.m-settings .set-row b', e => e.textContent);
+      if (label !== 'Geluidseffecten') throw new Error(`the first switch of Instellingen: ${label}`);
+      await press(P, '.m-settings .set-row .switch');
+      await P.page.keyboard.press('Escape');
+      await waitFor(P, () => !document.querySelector('.m-settings.open'), { label: 'settings closed' });
+    };
     await home(P);
     await newGame(P);
-    const lobby = '.lobby-bar .tb-sound';
-    let st = await state(lobby);
-    if (st.join() !== 'Geluid|true|Geluid aan|false') throw new Error(`lobby, sound on: ${st}`);
-    await press(P, lobby);
-    await waitFor(P, () => [...document.querySelectorAll('.toast-main')].some(t => t.textContent === 'Geluid uit'), { label: 'toast Geluid uit' });
-    st = await state(lobby);
-    if (st.join() !== 'Geluid|false|Geluid uit|true') throw new Error(`lobby, sound off: ${st}`);
+    if (await P.page.$('.tb-sound')) throw new Error('a sound button in the lobby');
+    if (await muted()) throw new Error('muted at the start');
+    await toggle('.lobby-bar');
+    if (!(await muted())) throw new Error('not muted after the switch');
     await press(P, '#btn-start:not(:disabled)');
     await waitFor(P, () => document.body.dataset.screen === 'game', { label: 'table' });
-    const table = '.topbar .tb-sound';
-    st = await state(table);
-    if (st.join() !== 'Geluid|false|Geluid uit|true') throw new Error(`table, sound off: ${st}`);
-    await shot(P, 'off');
-    await press(P, table);
-    st = await state(table);
-    if (st.join() !== 'Geluid|true|Geluid aan|false') throw new Error(`table, sound on: ${st}`);
-    await shot(P, 'on');
-    await press(P, table);
+    if (await P.page.$('.tb-sound')) throw new Error('a sound button at the table');
     await P.page.reload({ waitUntil: 'networkidle0' });
     await waitFor(P, () => document.body.dataset.screen === 'game', { label: 'table after a reload' });
-    st = await state(table);
-    if (st.join() !== 'Geluid|false|Geluid uit|true') throw new Error(`after a reload: ${st}`);
+    if (!(await muted())) throw new Error('not muted after a reload');
+    await toggle('.topbar');
+    if (await muted()) throw new Error('muted after switching the sound on');
+    await shot(P, 'settings');
   });
 };
 
@@ -1834,7 +1924,7 @@ CHECKS.names = async browser => {
         const tools = [...document.querySelectorAll('.topbar .tb')].filter(e => getComputedStyle(e).display !== 'none').map(e => e.getBoundingClientRect());
         return { tools: tools.length, inside: tools.every(t => t.right <= innerWidth), apart: r('.score-pill').right <= r('.potje').left && r('.trump-badge').right <= tools[0].left };
       });
-      if (bar.tools < 5 || !bar.inside || !bar.apart) throw new Error(`top bar at ${width}: ${JSON.stringify(bar)}`);
+      if (bar.tools < 3 || !bar.inside || !bar.apart) throw new Error(`top bar at ${width}: ${JSON.stringify(bar)}`); // last, help, settings; under 1200 px the chat too
     }
     await shot(P, 'pill');
     await playUntil(P, () => !document.querySelector('.topbar .tb-last').disabled, { label: 'a first trick' });
@@ -1880,7 +1970,9 @@ CHECKS.leave = async browser => {
 // tab Handleiding puts the manual beside the table without a modal, a
 // person's line then counts on the Chat tab's badge until that tab shows,
 // the help button keeps to the column and the arrow keys change tabs, the
-// tab chosen stays (kj.side) and comes back at the next table; under 1200 px
+// tab chosen stays (kj.side) and comes back at the next table; the column
+// grows and shrinks, and closes until the chat or the help button brings
+// it back (kj.sideSize); under 1200 px
 // the column lets the manual go, which is a modal again, and growing back
 // takes it in again. On the home screen and on a phone it is a modal.
 CHECKS.side = async browser => {
@@ -1921,6 +2013,57 @@ CHECKS.side = async browser => {
     await P.page.keyboard.press('ArrowRight');
     await want({ chat: false, man: true, stored: 'manual' }, 'after the arrow key back');
 
+    // The column's size, beside the tabs: larger and back, then closed,
+    // with the table over the whole width and the chat button in the top
+    // bar again; that button and the help button bring the column back.
+    const size = () => P.page.evaluate(() => ({
+      side: Math.round(document.querySelector('#chat').getBoundingClientRect().width),
+      table: Math.round(document.querySelector('#game').getBoundingClientRect().width),
+      grow: document.querySelector('.side-grow').getAttribute('aria-label'),
+      stored: localStorage.getItem('kj.sideSize') || '',
+      chatBtn: !!document.querySelector('.topbar .tb-chat')?.offsetParent,
+      badge: (b => (!b || b.hidden ? '' : b.textContent))(document.querySelector('.topbar .tb-chat .chat-badge')),
+    }));
+    const sized = async (w, label) => {
+      const z = await size();
+      for (const k of Object.keys(w)) if (z[k] !== w[k]) throw new Error(`${label}: ${JSON.stringify(z)}`);
+    };
+    await sized({ side: 340, table: 1100, grow: 'Groter maken', stored: '', chatBtn: false }, 'the column at its own width');
+    await press(P, '.side-grow');
+    await sleep(300);
+    await sized({ side: 576, table: 864, grow: 'Kleiner maken', stored: 'large', chatBtn: false }, 'the column large');
+    await want({ man: true, modal: false }, 'the manual in the large column');
+    await shot(P, 'large');
+    await press(P, '.side-grow');
+    await sleep(300);
+    await sized({ side: 340, table: 1100, grow: 'Groter maken', stored: '' }, 'the column back at its width');
+    await press(P, '.side-x');
+    await sleep(300);
+    await sized({ table: 1440, stored: 'closed', chatBtn: true, badge: '' }, 'the column closed');
+    // The focus went from the button that is gone to the chat button.
+    if (!(await P.page.evaluate(() => document.activeElement?.classList.contains('tb-chat')))) throw new Error('the focus after closing the column is not on the chat button');
+    await want({ tabs: '', man: false, modal: false }, 'the column closed');
+    await P.page.evaluate(async () => (await import('/js/panels.js')).chatAdd({ seat: 1, name: 'Kees', text: 'Hallo?', ts: Date.now() }, true));
+    await sized({ badge: '1' }, 'a line while the column is closed');
+    await shot(P, 'closed');
+    await press(P, '.topbar .tb-chat');
+    await sleep(300);
+    await sized({ side: 340, table: 1100, stored: '', chatBtn: false }, 'the chat button brings the column back');
+    await want({ tabs: 'Chat:true Handleiding:false', chat: true, man: false, badge: '' }, 'the chat button brings the column back');
+    await press(P, '.side-x');
+    await sleep(300);
+    // A line unread while the column is closed keeps its badge when the
+    // help button brings the column back at the manual.
+    await P.page.evaluate(async () => (await import('/js/panels.js')).chatAdd({ seat: 1, name: 'Kees', text: 'Nog iemand?', ts: Date.now() }, true));
+    await press(P, '.topbar .tb-help');
+    await docked();
+    await sized({ side: 340, stored: '' }, 'the help button brings the column back');
+    await want({ tabs: 'Chat:false Handleiding:true', man: true, modal: false, stored: 'manual', badge: '1' }, 'the help button brings the column back');
+    await press(P, '#side-tab-chat');
+    await want({ badge: '' }, 'the chat tab reads the line');
+    await press(P, '#side-tab-manual');
+    await docked();
+
     await P.page.setViewport({ ...VP.desktop, width: 1100 });
     await sleep(300);
     await want({ tabs: '', man: false, modal: false, stored: 'manual' }, 'under 1200 px');
@@ -1929,6 +2072,21 @@ CHECKS.side = async browser => {
     await P.page.setViewport(VP.desktop);
     await docked();
     await want({ tabs: 'Chat:false Handleiding:true', man: true }, 'wide again');
+    // A drawer left open under 1200 px is shut on the wide screen: closing
+    // the column does not bring it out.
+    await P.page.setViewport({ ...VP.desktop, width: 1100 });
+    await sleep(300);
+    await P.page.keyboard.press('Escape'); // the manual, a modal again
+    await sleep(300);
+    await press(P, '.topbar .tb-chat');
+    await waitFor(P, () => document.body.classList.contains('chat-open'), { label: 'the chat drawer under 1200 px' });
+    await P.page.setViewport(VP.desktop);
+    await sleep(400);
+    await press(P, '.side-x');
+    await sleep(300);
+    if (await P.page.evaluate(() => document.body.classList.contains('chat-open'))) throw new Error('the drawer is open over the table after closing the column');
+    await press(P, '.topbar .tb-help');
+    await docked();
 
     await P.page.evaluate(async () => (await import('/js/util.js')).app.leave());
     await waitFor(P, () => document.body.dataset.screen === 'home', { label: 'home' });
@@ -3025,7 +3183,8 @@ CHECKS.takeover = async browser => {
 // and trump's marks outside it; a muted microphone has a mark in the
 // circle. Microphone and camera switch with one tap and are remembered (a
 // refused one as off), and a refused camera leaves the microphone; a new
-// connection starts a new call session; the phone's menu hangs up; a
+// connection starts a new call session; the phone's top bar hangs up and
+// its menu switches the microphone; a
 // reload comes back into the call with Automatisch meebellen, with the
 // devices as last chosen, and never answered is proposed it, with the
 // question, its answers in view in short landscape. A camera or microphone
@@ -3124,6 +3283,15 @@ CHECKS.call = async browser => {
     }, { label: `${sel} in reach` }, sel);
     await press(P, sel);
   };
+  // An item of the phone's menu, by its text (the microphone, the camera).
+  const menuCall = async (P, text) => {
+    await tapCall(P, '.topbar .tb-menu');
+    await waitFor(P, () => document.querySelector('.m-menu.open'), { label: 'menu' });
+    await sleep(250);
+    const items = await P.page.$$eval('.m-menu .menu-item', els => els.map(e => e.textContent));
+    if (!items.includes(text)) throw new Error(`[${P.name}] no menu item ${text}: ${items}`);
+    await pressEl(P, (await P.page.$$('.m-menu .menu-item'))[items.indexOf(text)]);
+  };
   // The switches of the call sheet, by label: whether each is on.
   const switches = P => P.page.$$eval('.m-call .set-row', rows => rows.map(r => `${r.querySelector('b').textContent}:${r.querySelector('input').checked}`).join(','));
   const flip = async (P, label) => {
@@ -3149,7 +3317,7 @@ CHECKS.call = async browser => {
       await home(S, 'Solo');
       await quick(S);
       await sleep(1500);
-      const solo = await S.page.evaluate(() => ({ dock: !document.querySelector('.prompt .call-dock')?.hidden, sheet: !!document.querySelector('.m-call') }));
+      const solo = await S.page.evaluate(() => ({ dock: !document.querySelector('.topbar .call-dock')?.hidden, sheet: !!document.querySelector('.m-call') }));
       if (solo.dock || solo.sheet || fetched.some(u => u.includes('/js/call.js'))) throw new Error(`call alone with bots: ${JSON.stringify(solo)}, fetched call.js ${fetched.some(u => u.includes('call.js'))}`);
     } finally {
       await S.ctx.close().catch(() => {});
@@ -3215,7 +3383,7 @@ CHECKS.call = async browser => {
     // devices (both off, as last chosen): it listens, and sees and hears the
     // host. Its seat has the mark of a microphone off, in the circle; the
     // host's none.
-    await tapCall(G, '.prompt .call-dock .tb-call');
+    await tapCall(G, '.topbar .call-dock .tb-call');
     await waitFor(G, () => document.querySelector('.m-call.open .btn-go'), { label: 'call sheet' });
     if (await switches(G) !== 'Microfoon:false,Camera:false') throw new Error(`the guest's switches with Bellen ${await switches(G)}`);
     await sleep(300);
@@ -3228,15 +3396,15 @@ CHECKS.call = async browser => {
     await tagsIn(H);
 
     // The guest's camera is refused, its microphone comes: one tap each.
-    await tapCall(G, '.prompt .call-dock .tb-cam');
+    await tapCall(G, '.topbar .call-dock .tb-cam');
     await toasted(G, 'Geen toegang tot de camera');
-    await tapCall(G, '.prompt .call-dock .tb-mic');
+    await tapCall(G, '.topbar .call-dock .tb-mic');
     await marked(H, 'guest with microphone', '');
-    if (!(await G.page.$('.prompt .call-dock .tb-cam[aria-pressed="false"]'))) throw new Error('guest camera button not off');
+    if (!(await G.page.$('.topbar .call-dock .tb-cam[aria-pressed="false"]'))) throw new Error('guest camera button not off');
 
     // The camera allowed after all: one tap and the host sees the guest.
     await G.page.evaluate(() => { window.__camOk = true; });
-    await tapCall(G, '.prompt .call-dock .tb-cam');
+    await tapCall(G, '.topbar .call-dock .tb-cam');
     await shows(H, 'guest video on the host page', 'Gast,Host');
     await shows(G, 'both videos on the guest page', 'Gast,Host');
     // The dealer's and trump's marks lie outside a ring with a video.
@@ -3266,17 +3434,17 @@ CHECKS.call = async browser => {
     const cdp = await browser.target().createCDPSession();
     const permit = (name, setting) => cdp.send('Browser.setPermission', { permission: { name }, setting, origin: BASE, browserContextId: G.ctx.id });
     await permit('camera', 'denied');
-    await waitFor(G, () => document.querySelector('.prompt .call-dock .tb-cam[aria-pressed="false"]'), { label: 'guest camera off by itself' });
+    await waitFor(G, () => document.querySelector('.topbar .call-dock .tb-cam[aria-pressed="false"]'), { label: 'guest camera off by itself' });
     await shows(G, 'the guest without its own video', 'Host');
     await permit('microphone', 'denied');
-    await waitFor(G, () => document.querySelector('.prompt .call-dock .tb-mic[aria-pressed="false"]'), { label: 'guest microphone off by itself' });
+    await waitFor(G, () => document.querySelector('.topbar .call-dock .tb-mic[aria-pressed="false"]'), { label: 'guest microphone off by itself' });
     await marked(H, 'guest microphone off on the host page', 'Gast:off');
     await sends(G, 'no ended microphone on the connection', 'none/300000');
     await permit('camera', 'granted');
     await permit('microphone', 'granted');
-    await tapCall(G, '.prompt .call-dock .tb-cam');
+    await tapCall(G, '.topbar .call-dock .tb-cam');
     await shows(H, 'guest video back on the host page', 'Gast,Host');
-    await tapCall(G, '.prompt .call-dock .tb-mic');
+    await tapCall(G, '.topbar .call-dock .tb-mic');
     await marked(H, 'guest microphone back on the host page', '');
     await sends(G, 'guest microphone back, video under the ceiling again', 'mic/300000');
 
@@ -3285,14 +3453,14 @@ CHECKS.call = async browser => {
     // the camera, refused once more but slowly, is still asked for and the
     // microphone goes meanwhile. The microphone stays off, nothing on the
     // connection; allowed again, one tap brings it back. Then the camera.
-    await tapCall(G, '.prompt .call-dock .tb-hangup');
+    await tapCall(G, '.topbar .call-dock .tb-hangup');
     await shows(H, 'guest hung up', 'Host');
     await outCall(G, 'guest out of the call');
     await G.page.evaluate(() => {
       window.__camOk = false;
       window.__camHold = new Promise(r => { window.__camGo = r; });
     });
-    await tapCall(G, '.prompt .call-dock .tb-call');
+    await tapCall(G, '.topbar .call-dock .tb-call');
     await waitFor(G, () => document.querySelector('.m-call.open .btn-go'), { label: 'call sheet' });
     if (!(await G.page.$eval('.m-call .dlg-body p', e => e.textContent)).startsWith('Host belt al.')) throw new Error('the Bellen sheet does not say who calls');
     if (await switches(G) !== 'Microfoon:true,Camera:true') throw new Error(`the guest's switches the second time ${await switches(G)}`);
@@ -3300,30 +3468,31 @@ CHECKS.call = async browser => {
     await press(G, '.m-call .btn-go');
     await marked(H, 'guest in the call at once, listening', 'Gast:off');
     await waitFor(G, () => window.__mic.readyState === 'live', { label: 'guest microphone, the camera still asked for' });
-    if (!(await G.page.$('.prompt .call-dock .tb-mic:disabled'))) throw new Error('the guest\'s buttons not waiting for the camera');
+    if (!(await G.page.$('.topbar .call-dock .tb-mic:disabled'))) throw new Error('the guest\'s buttons not waiting for the camera');
     await permit('microphone', 'denied');
     await waitFor(G, () => window.__mic.readyState === 'ended', { label: 'guest microphone ended while the camera is asked for' });
     await G.page.evaluate(() => window.__camGo());
-    await waitFor(G, () => document.querySelector('.prompt .call-dock .tb-mic[aria-pressed="false"]:not(:disabled)'), { label: 'guest with the microphone off' });
+    await waitFor(G, () => document.querySelector('.topbar .call-dock .tb-mic[aria-pressed="false"]:not(:disabled)'), { label: 'guest with the microphone off' });
     await marked(H, 'guest microphone still off on the host page', 'Gast:off');
     await sends(G, 'no microphone that ended meanwhile on the connection', 'none/300000');
     await permit('microphone', 'granted');
     await cdp.detach();
-    await tapCall(G, '.prompt .call-dock .tb-mic');
+    await tapCall(G, '.topbar .call-dock .tb-mic');
     await marked(H, 'guest microphone on', '');
     await G.page.evaluate(() => { window.__camOk = true; });
-    await tapCall(G, '.prompt .call-dock .tb-cam');
+    await tapCall(G, '.topbar .call-dock .tb-cam');
     await shows(H, 'guest video on the host page again', 'Gast,Host');
 
-    // The host's microphone off: one tap, marked on the guest page, remembered.
-    await tapCall(H, '.prompt .call-dock .tb-mic');
+    // The host's microphone off: on its phone in the menu (the bar has no
+    // room for the button), marked on the guest page, remembered.
+    await menuCall(H, 'Microfoon uitzetten');
     await marked(G, 'host muted', 'Host:off');
     await tagsIn(G);
     await sends(H, 'no microphone on the connection', 'none/300000');
     const kept = await stored(H);
     if (kept.mic !== false || kept.cam !== true || kept.auto !== true) throw new Error(`host remembers ${JSON.stringify(kept)}`);
     // On again: the microphone is back on the connection at once.
-    await tapCall(H, '.prompt .call-dock .tb-mic');
+    await menuCall(H, 'Microfoon aanzetten');
     await marked(G, 'host unmuted', '');
     await sends(H, 'microphone back on the connection', 'mic/300000');
 
@@ -3335,14 +3504,18 @@ CHECKS.call = async browser => {
     await shows(H, 'guest video after the reconnect', 'Gast,Host');
     await shows(G, 'host video after the reconnect', 'Gast,Host');
 
-    // The phone's menu hangs up.
+    // On the phone the top bar has hanging up alone; the microphone and
+    // the camera are in the menu.
+    const bar = await H.page.$$eval('.topbar .call-dock .tb', els => els.filter(e => e.getClientRects().length).map(e => e.getAttribute('aria-label')));
+    if (String(bar) !== 'Ophangen') throw new Error(`the phone's call buttons in the top bar: ${bar}`);
     await press(H, '.topbar .tb-menu');
     await waitFor(H, () => document.querySelector('.m-menu.open'), { label: 'menu' });
     await sleep(250);
     const items = await H.page.$$eval('.m-menu .menu-item', els => els.map(e => e.textContent));
-    if (!items.includes('Ophangen')) throw new Error(`menu items ${items}`);
-    const hang = (await H.page.$$('.m-menu .menu-item'))[items.indexOf('Ophangen')];
-    await pressEl(H, hang);
+    if (!items.includes('Microfoon uitzetten') || !items.includes('Camera uitzetten') || items.includes('Ophangen') || items.includes('Bellen')) throw new Error(`menu items ${items}`);
+    await H.page.keyboard.press('Escape');
+    await waitFor(H, () => !document.querySelector('.m-menu.open'), { label: 'the menu closed' });
+    await tapCall(H, '.topbar .call-dock .tb-hangup');
     await shows(G, 'only the own video after the hang-up', 'Gast');
     await outCall(H, 'host call button again');
     // Though it came into the call by itself, it stays out now.
@@ -3424,7 +3597,7 @@ CHECKS.call = async browser => {
         return prev.call(md, c);
       };
     });
-    await tapCall(G, '.prompt .call-dock .tb-call');
+    await tapCall(G, '.topbar .call-dock .tb-call');
     await waitFor(G, () => document.querySelector('.m-call.open .btn-go'), { label: 'call sheet, refused slowly' });
     await sleep(300);
     await press(G, '.m-call .btn-go');
@@ -3438,7 +3611,7 @@ CHECKS.call = async browser => {
     // meanwhile: in the call it was at once, the session is the game's
     // again, and the tracks that come late are stopped.
     await H.page.evaluate(() => { window.__hold = new Promise(r => { window.__release = r; }); });
-    await tapCall(H, '.prompt .call-dock .tb-call');
+    await tapCall(H, '.topbar .call-dock .tb-call');
     await waitFor(H, () => document.querySelector('.m-call.open .btn-go'), { label: 'host call sheet' });
     await sleep(300);
     await press(H, '.m-call .btn-go');

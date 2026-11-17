@@ -516,7 +516,7 @@ test('bediening chips show the pictograms of the real buttons', () => {
   for (const [term, , name] of rows) assert.match(util, new RegExp(`\\n  ${name}: \\[`), `${term}: icon ${name} in util.js`);
   const blocks = CONTENT.bediening;
   const buttons = blocks[blocks.findIndex((b) => b.h === 'Knoppen tijdens het spel') + 2].dl;
-  for (const label of ['Laatste slag', 'Scorebord', 'Chat', 'Handleiding', 'Instellingen', 'Geluid', 'Meer']) {
+  for (const label of ['Laatste slag', 'Chat', 'Handleiding', 'Instellingen', 'Meer']) {
     const row = buttons.find(([term]) => term === label);
     assert.ok(row, `${label} is listed`);
     assert.equal(row[2], tools[label], `${label} shows the button's icon`);

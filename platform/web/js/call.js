@@ -679,6 +679,20 @@ export function dock(el) {
   paintDock(el);
 }
 
+// The menu's items for the microphone and the camera, in the call on a
+// device that has them: a narrow top bar has no room for their buttons
+// (panels.js openMenu). Each is [icon, label, switch].
+export function menuItems() {
+  // Not while a switch is under way (the browser asks for the device).
+  if (!me || !devices() || busy === me) return [];
+  const micWas = micOn;
+  const camWas = camOn;
+  return [
+    [micWas ? 'mic' : 'micOff', micWas ? 'Microfoon uitzetten' : 'Microfoon aanzetten', () => setDevices({ mic: !micWas })],
+    [camWas ? 'cam' : 'camOff', camWas ? 'Camera uitzetten' : 'Camera aanzetten', () => setDevices({ cam: !camWas })],
+  ];
+}
+
 // A call button: a pictogram, with its label beside it where there is
 // room (the lobby: `text`).
 function toolBtn(name, ic, label, title, fn, { pressed = null, disabled = false, text = false } = {}) {
@@ -693,9 +707,6 @@ function toolBtn(name, ic, label, title, fn, { pressed = null, disabled = false,
 function paintDock(el) {
   const show = supported() && possible();
   el.hidden = !show;
-  // Its row makes room for the buttons (the game's stylesheet).
-  if (show) el.parentElement.dataset.call = me ? 'in' : 'out';
-  else delete el.parentElement.dataset.call;
   if (!show) {
     el.replaceChildren();
     delete el.dataset.key;
@@ -785,7 +796,7 @@ export function openSheet({ proposal = false } = {}) {
         own ? panels.toggleRow('Microfoon', 'De anderen horen je', pick.mic, on => set('mic', on)) : null,
         own ? panels.toggleRow('Camera', 'Je beeld staat op je plaats aan tafel', pick.cam, on => set('cam', on)) : null,
         h('p', { class: 'call-note', text: 'Beeld en geluid gaan rechtstreeks van toestel naar toestel, niet via de server.'
-          + (own && document.body.dataset.screen === 'game' ? ' Tijdens het spel zet je ze aan en uit met de knoppen rechtsonder.' : '')
+          + (own && document.body.dataset.screen === 'game' ? ' Tijdens het spel zet je ze aan en uit met de knoppen bovenaan, op een smalle telefoon onder ⋯.' : '')
           + (inside ? ' Automatisch meebellen zet je uit bij Instellingen.' : '') })),
       h('div', { class: 'call-answer' },
         first ? panels.toggleRow('Automatisch meebellen', 'Voortaan zit je bij een spel met andere spelers meteen in het gesprek', pick.auto, on => set('auto', on)) : null,

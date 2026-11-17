@@ -46,6 +46,8 @@ async function openTool(P, tool, menuIndex) {
     const box = await items[menuIndex].boundingBox();
     if (P.touch) await P.page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
     else await P.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  } else if (tool === 'score') {
+    await press(P, '.score-pill'); // the score sheet has no button of its own: the pill opens it
   } else {
     await press(P, `.topbar .tb-${tool}`);
   }
@@ -227,8 +229,8 @@ async function mainFlow(P) {
   await waitFor(P, () => /Uitslag/.test(document.querySelector('.m-replay .rp-stand')?.textContent), { label: 'replay at the end of the hand' });
   await snap(P, '14d-replay-end');
 
-  // The score sheet's last potje: a trick of it, and the hand in the
-  // replay (handReview).
+  // The score sheet's last potje: a trick of it, and under its tricks
+  // the hand in the replay (handReview).
   await closeModal(P);
   await closeModal(P);
   await pressRow(P, '.m-over .btn-row .btn:first-child');
@@ -236,10 +238,11 @@ async function mainFlow(P) {
   await pressRow(P, '.m-score tr.tap');
   await waitFor(P, () => document.querySelector('.m-score .review .mt'), { label: 'the last potje' });
   await pressRow(P, '.m-score .review .mt');
-  await waitFor(P, () => document.querySelector('.m-last.open .last-replay'), { label: 'a trick of the last potje' });
+  await waitFor(P, () => document.querySelector('.m-last.open .cross'), { label: 'a trick of the last potje' });
   await sleep(300);
   await snap(P, '14e-trick');
-  await pressRow(P, '.m-last.open .last-replay');
+  await closeModal(P);
+  await pressRow(P, '.m-score .last-replay');
   // The hand's line; the replay lists a choice only from the player's first
   // one on, and a forced card is none.
   await waitFor(P, () => document.querySelector('.m-replay.open .rp-sum'), { label: 'the last potje in the replay' });

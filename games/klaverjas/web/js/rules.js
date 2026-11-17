@@ -58,6 +58,27 @@ export function scorerOrder(s) {
   return Array.from({ length: n }, (_, k) => (s.you + k) % n);
 }
 
+// What scorer k has in the hand in play, for the score pill: the tricks
+// of its side and its points, roem included (roem: how much of them);
+// zeros while its side is not known (three players before the auction
+// ends) or no trick is played yet.
+export function handNow(s, k) {
+  const side = sideOf(s, k);
+  if (side < 0) return { tricks: 0, points: 0, roem: 0 };
+  const roem = s.handRoem?.[side] ?? 0;
+  return { tricks: s.tricksWon?.[side] ?? 0, points: (s.handPoints?.[side] ?? 0) + roem, roem };
+}
+
+// The pill's tooltip: what each scorer has in this hand, ours first, and
+// what a tap opens.
+export function handNowTitle(s) {
+  const part = k => {
+    const x = handNow(s, k);
+    return `${scorerName(s, k)} ${x.tricks} ${x.tricks === 1 ? 'slag' : 'slagen'}, ${x.points} ${x.points === 1 ? 'punt' : 'punten'}${x.roem ? ` (${x.roem} roem)` : ''}`;
+  };
+  return `Dit potje: ${scorerOrder(s).map(part).join(' · ')}. Tik voor het scorebord: alle potjes en de stand.`;
+}
+
 // ---------- roem and the variant ----------
 
 // Capitalised for headings ("+20 Stuk!"); roemText is for use mid-sentence.

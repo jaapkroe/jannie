@@ -1400,8 +1400,7 @@ body.busy::after {
 @media (max-width: 599px) {
   .topbar .tb-score,
   .topbar .tb-help,
-  .topbar .tb-settings,
-  .topbar .tb-sound {
+  .topbar .tb-settings {
     display: none;
   }
 
@@ -1585,11 +1584,30 @@ body.busy::after {
   color: var(--gold-hi);
 }
 
-/* The call buttons: right of the rule above the hand, on phones above
-   the last trick (table.js); under the seats in the lobby. */
+/* The call buttons: in the table's top bar before the tools, under the
+   seats in the lobby. */
 .call-dock {
   display: flex;
   gap: 8px;
+}
+
+.topbar .call-dock {
+  gap: 6px;
+}
+
+/* A narrow bar keeps calling and hanging up; the microphone and the camera
+   are switched in the menu there, and only there. */
+@media (max-width: 599px) {
+  .topbar .call-dock .tb-mic,
+  .topbar .call-dock .tb-cam {
+    display: none;
+  }
+}
+
+@media (min-width: 600px) {
+  .menu-item.menu-call {
+    display: none;
+  }
 }
 
 .call-dock[hidden] {
@@ -2787,6 +2805,25 @@ body.chat-open .chat-scrim {
   min-height: 0;
 }
 
+/* The tabs take the row; the column's size buttons sit at its end. */
+.side-tablist {
+  display: flex;
+  align-items: flex-end;
+  flex: 1;
+  min-width: 0;
+}
+
+.side-tabs > .icon-btn {
+  flex: none;
+  align-self: center;
+  background: none;
+  color: var(--ink-3);
+}
+
+.side-tabs > .icon-btn:hover {
+  color: var(--ink);
+}
+
 .side-tab {
   display: flex;
   align-items: center;
@@ -2820,11 +2857,11 @@ body.chat-open .chat-scrim {
 }
 
 @media (min-width: 1200px) {
-  body.in-room #app {
+  body.in-room:not(.side-closed) #app {
     grid-template-columns: minmax(0, 1fr) var(--side-w);
   }
 
-  body.in-room .chat {
+  body.in-room:not(.side-closed) .chat {
     position: relative;
     z-index: 1;
     grid-area: 1 / 2;
@@ -2835,39 +2872,45 @@ body.chat-open .chat-scrim {
     padding-left: 0;
   }
 
-  body.in-room .chat-head,
-  body.in-room .chat-scrim,
-  body.in-room .tb-chat {
+  body.in-room:not(.side-closed) .chat-head,
+  body.in-room:not(.side-closed) .chat-scrim,
+  body.in-room:not(.side-closed) .tb-chat {
     display: none;
   }
 
-  body.in-room .side-tabs {
+  /* Large: more room to read, the table keeps the rest
+     (docs/frontend.md#the-side-column). */
+  body.in-room.side-large {
+    --side-w: clamp(480px, 40vw, 760px);
+  }
+
+  body.in-room:not(.side-closed) .side-tabs {
     display: flex;
     align-items: flex-end;
     flex: none;
     min-height: 58px;
-    padding: 0 10px;
+    padding: 0 6px 0 10px;
     border-bottom: 1px solid var(--line);
   }
 
-  body.in-room .chat.manual .side-chat {
+  body.in-room:not(.side-closed) .chat.manual .side-chat {
     display: none;
   }
 
   /* The manual's own tabs and its scrolling pane (.tabs, .man-scroll). */
-  body.in-room .chat.manual .side-man {
+  body.in-room:not(.side-closed) .chat.manual .side-man {
     display: flex;
     flex-direction: column;
     flex: 1;
     min-height: 0;
   }
 
-  body.in-room .side-man > .tabs {
+  body.in-room:not(.side-closed) .side-man > .tabs {
     padding-top: 12px;
   }
 
   /* Hand summary and game over sit over the table and leave the column usable. */
-  body.in-room .modal.passive {
+  body.in-room:not(.side-closed) .modal.passive {
     right: var(--side-w);
   }
 }

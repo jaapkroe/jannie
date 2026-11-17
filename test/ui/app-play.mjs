@@ -120,17 +120,17 @@ async function reload(P) {
   console.log(`  ${P.name}: reloaded mid-game, rejoined ${after.path}`);
 }
 
-// After game over: one score-sheet row per potje, totals agree everywhere.
+// After game over: one score-sheet row per potje, totals agree everywhere
+// (the pill has the last hand's points, not the totals).
 async function checkTotals(P) {
-  const pill = await P.page.$$eval('.sp-num', els => els.map(e => Number(e.dataset.n ?? e.textContent)));
   const over = await P.page.$$eval('.os b', els => els.map(e => Number(e.textContent)));
   await press(P, '.m-over .btn-row .btn-ghost');
   await waitFor(P, () => document.querySelector('.m-score.open'), { label: 'score sheet' });
   const rows = await P.page.$$eval('.m-score tbody tr', els => els.length);
   const foot = await P.page.$$eval('.m-score tfoot td.num b', els => els.map(e => Number(e.textContent)));
   if (rows !== 4) throw new Error(`[${P.name}] score sheet has ${rows} rows, want 4`);
-  if (String(pill) !== String(over) || String(foot) !== String(over)) {
-    throw new Error(`[${P.name}] totals differ: pill ${pill}, game over ${over}, sheet ${foot}`);
+  if (String(foot) !== String(over)) {
+    throw new Error(`[${P.name}] totals differ: game over ${over}, sheet ${foot}`);
   }
   // The course of the match under the table: a line per score, and at the
   // last potje (the End key) the tooltip has the totals.

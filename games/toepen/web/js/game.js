@@ -2,7 +2,7 @@
 // needs from the game of this site (docs/frontend.md#the-game-module;
 // games/toepen/README.md#the-site). No side effects when imported: node
 // tests read it.
-import { h, icon, store, countWord, cap, toast } from './util.js';
+import { app, h, icon, store, countWord, cap, toast } from './util.js';
 import * as table from './table.js';
 import * as R from './rules.js';
 
@@ -28,6 +28,10 @@ export const menu = item => [
   item('help', 'Spelregels toepen', table.openRules),
 ];
 export const soundSub = 'Kaarten, toepen en je beurt';
+// Instellingen, Uitleg van de regels: what the switch hides here, and the
+// table drawn again once it changes.
+export const ruleTips = 'Onder de tafel staat welke regel voor je kaart geldt, zoals "Je moet bekennen (♥)"';
+export const onPrefs = () => { if (app.view) table.render(app.view); };
 export const onError = () => table.onError();
 // After every update, the lobby's too: overlays of the game close once the
 // room moved on (game over → Spelers of regels wijzigen).

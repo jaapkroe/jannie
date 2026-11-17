@@ -545,7 +545,7 @@ export function manual(o = {}, { touch = false, table = true } = {}) {
       ['Stand en meer', [
         'Bovenaan staan jouw strafpunten, het potje en de inzet. Tik op je punten voor de stand van iedereen en elk potje.',
         'Na het laatste potje tik je in de tabel op een potje om terug te zien wat er gebeurde: de vuile was, armoede, wie toepte, wie meeging of paste, en elke slag. Je ziet alleen wat op tafel kwam: handen die niemand zag, blijven verborgen.',
-        'Onder de drie puntjes vind je de stand, deze spelregels, de instellingen en het geluid. Met het ballonnetje open je de chat.']],
+        'Onder de drie puntjes vind je de stand, deze spelregels en de instellingen. Bij de instellingen zet je het geluid, de chat van AI-spelers en de uitleg van de regels onder de tafel aan of uit. Met het ballonnetje open je de chat.']],
       ['Alleen AI-spelers over', [
         'Ligt iedereen aan tafel eruit en spelen alleen AI-spelers nog, dan kies je onder de tafel: Toekijken, Versnellen (de AI-spelers spelen het spel snel uit, zodra iedereen aan tafel dat kiest) of Nieuw spel (je verlaat de tafel en begint meteen een spel met AI-spelers en dezelfde regels).']],
       ['Score bijhouden', [
