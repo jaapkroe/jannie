@@ -193,7 +193,9 @@ const TOOLS = {
 };
 
 export function toolButtons(names) {
-  return names.map(n => {
+  // A name without a tool is left out (a game that still asks for one the
+  // shell no longer has).
+  return names.filter(n => game.TOOLS?.[n] || TOOLS[n]).map(n => {
     const [ic, label, tip, fn, opts] = game.TOOLS?.[n] || TOOLS[n];
     const title = n === 'menu' && game.menuTitle ? game.menuTitle : tip;
     const b = h('button', { class: 'tb tb-' + n, type: 'button', title, 'aria-label': label, onclick: () => { sound.unlock(); fn(); } }, icon(ic));
