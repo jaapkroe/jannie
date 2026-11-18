@@ -84,6 +84,8 @@ STAMP := $(shell date +%Y%m%d-%H%M%S)
 BUILD_TAG = $(GIT_SHA)-$(STAMP)
 # --pull=newer: a Go, nginx or Alpine fix re-published under the same base tag
 # reaches the next build (podman's default reuses a local base image forever).
+# The web image also upgrades its Alpine packages, at every build: its
+# BUILD_STAMP below (Containerfile).
 BUILD_ARGS = --pull=newer --build-arg GIT_SHA=$(GIT_SHA)
 QUADLET_DIR ?= $(HOME)/.config/containers/systemd
 GO = scripts/go
@@ -165,7 +167,7 @@ image-server:   ## build GAME's server image (fresh base image), tagged BUILD_TA
 image-web:      ## build GAME's web image, tagged BUILD_TAG: nginx, its configuration for SITE, platform/web and the game's web/
 	$(if $(SUPPORT_URL),,@echo "No SUPPORT_URL (local.mk): $(GAME)'s web image has no support button.")
 	@mkdir -p extra
-	podman build --target web $(BUILD_ARGS) $(WEB_ARGS) -t localhost/$(GAME)-web:$(BUILD_TAG) .
+	podman build --target web --build-arg BUILD_STAMP=$(STAMP) $(BUILD_ARGS) $(WEB_ARGS) -t localhost/$(GAME)-web:$(BUILD_TAG) .
 image: image-server image-web   ## build both images of GAME; the running pod keeps its :current ones
 quadlet:   ## show the three units of GAME (every game's without GAME) with its settings filled in
 	@for s in $(UNIT_SUFFIXES); do echo "# ---- $(GAME)$$s"; $(RENDER) deploy/game$$s.in; echo; done

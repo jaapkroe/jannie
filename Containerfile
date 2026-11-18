@@ -129,9 +129,14 @@ ARG GAME
 ARG GIT_SHA=dev
 LABEL org.opencontainers.image.title="${GAME} web" org.opencontainers.image.revision="${GIT_SHA}"
 ENV NGINX_ENTRYPOINT_QUIET_LOGS=1
-# The image's own site and server block; deploy/nginx.conf replaces both.
+# Alpine's fixes since the base image was built, and without the image's own
+# site and server block, which deploy/nginx.conf replaces. BUILD_STAMP is the
+# build's time (make image-web): it differs at every build, so podman's layer
+# cache, which knows nothing of Alpine's package index, never answers this step.
+ARG BUILD_STAMP=
 USER root
-RUN rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
+RUN : "build ${BUILD_STAMP}" && apk upgrade --no-cache && \
+    rm -rf /etc/nginx/conf.d/default.conf /usr/share/nginx/html/*
 USER 101
 COPY --from=web-conf --chown=0:0 /tmp/nginx.conf /etc/nginx/nginx.conf
 # What web-conf checked, so nothing here depends on GAME being set.
