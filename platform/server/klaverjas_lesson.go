@@ -308,7 +308,7 @@ func (r *room) introSteps() []lessonStep {
 		{Spot: "trick", Text: "Om de beurt speelt iedereen een kaart op tafel. Die vier kaarten samen zijn een slag. " +
 			"De hoogste kaart wint de slag, en wie wint, komt bij de volgende slag als eerste uit."},
 		r.trumpIntro(),
-		{Spot: "score", Text: "Elke slag levert punten op. Bovenaan staat de stand: Wij, dat zijn jij en ik, en Zij, de andere twee."},
+		{Spot: "score", Text: "Elke slag levert punten op. Bovenaan staan de slagen en de punten van dit potje: Wij, dat zijn jij en ik, en Zij, de andere twee."},
 		{Spot: "chat", Text: chat},
 	}
 }

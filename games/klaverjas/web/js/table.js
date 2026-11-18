@@ -9,7 +9,7 @@ import {
   fillAvatar, countUp, icon, suitify, cap, playerName, shortLandscape, onKeyboard, chartBox,
 } from './util.js';
 import {
-  POS, posOf, isWij, teamCls, teamName, mySide, scorerOrder, scorerName, myScorer, roemTotal, ROEM_NAMES, roemText,
+  POS, posOf, isWij, teamCls, teamName, mySide, scorerOrder, scorerName, myScorer, handNow, handNowTitle, roemTotal, ROEM_NAMES, roemText,
   variantText, handHeadline, pointsText, rowMarks, playedBy, chartSpec,
   reviewVerdict, luckText, momentWhere, strongLine, missedLine, fineLine, outcomeLine, handSum, timeText, reviewHistory,
   MANUAL_SECTIONS,
@@ -97,9 +97,7 @@ export function init() {
         (E.coachRing = panels.countdownRing()).el, h('span', { text: 'Verder' }))),
     h('button', { class: 'coach-x', type: 'button', 'aria-label': 'Sluiten', onclick: closeCoach }, icon('close')));
   E.rule = h('div', { class: 'rule', 'aria-live': 'polite' });
-  // The call buttons (call.js), right of the rule; on phones above the last trick.
-  E.callDock = h('div', { class: 'call-dock', role: 'group', 'aria-label': 'Bellen', hidden: true });
-  E.prompt = h('div', { class: 'prompt' }, seats.bottom.root, E.rule, ...panels.toolButtons(['last']), E.callDock, E.coach);
+  E.prompt = h('div', { class: 'prompt' }, seats.bottom.root, E.rule, ...panels.toolButtons(['last']), E.coach);
   E.hand = h('div', { class: 'hand', role: 'group', 'aria-label': 'Jouw kaarten' });
   E.table.append(E.prompt, E.hand);
 
@@ -118,7 +116,7 @@ export function init() {
 function buildTopbar(bar) {
   // One part per score: Wij and Zij with four players, else every player
   // (see renderTop).
-  E.pill = h('button', { class: 'score-pill', type: 'button', title: 'Scorebord: alle potjes en de stand', onclick: () => openScoreSheet() });
+  E.pill = h('button', { class: 'score-pill', type: 'button', onclick: () => openScoreSheet() });
   E.segs = [];
   E.potje = h('div', { class: 'potje', title: 'Het hoeveelste potje van het spel' },
     h('span', { class: 'potje-lbl', text: 'Potje' }), h('span', { class: 'potje-n' }, E.potjeN = h('b', { text: '1' }), '/', E.potjeT = h('span', { text: '16' })));
@@ -126,8 +124,10 @@ function buildTopbar(bar) {
     E.badgeSym = h('span', { class: 'tb-sym', text: '?' }),
     E.badgeLbl = h('span', { class: 'tb-lbl', text: 'Troef' }),
     E.badgeCnt = h('span', { class: 'tb-cnt', hidden: true }));
-  bar.append(E.pill, E.potje, E.badge, h('span', { class: 'spacer' }),
-    ...panels.toolButtons(['expert', 'last', 'score', 'chat', 'help', 'settings', 'sound', 'menu']));
+  // The call buttons (call.js), before the tools.
+  E.callDock = h('div', { class: 'call-dock', role: 'group', 'aria-label': 'Bellen', hidden: true });
+  bar.append(E.pill, E.potje, E.badge, h('span', { class: 'spacer' }), E.callDock,
+    ...panels.toolButtons(['expert', 'last', 'chat', 'help', 'settings', 'menu']));
   E.expert = bar.querySelector('.tb-expert');
 }
 
@@ -205,7 +205,12 @@ function renderTop(s) {
   while (E.segs.length > order.length) E.segs.pop().root.remove();
   while (E.segs.length < order.length) {
     const g = {};
-    g.root = h('span', { class: 'sp' }, g.lbl = h('span', { class: 'sp-lbl' }), g.num = h('span', { class: 'sp-num', text: '0' }),
+    // The label with the side's tricks of this hand ("Wij · 3 slagen"; in
+    // a narrow bar on a line of their own), its points of this hand, and
+    // its names.
+    g.root = h('span', { class: 'sp' },
+      h('span', { class: 'sp-lbl' }, g.lbl = h('span'), g.tr = h('span', { class: 'sp-tr' })),
+      g.num = h('span', { class: 'sp-num', text: '0' }),
       g.names = h('span', { class: 'sp-names' }));
     E.pill.append(g.root);
     E.segs.push(g);
@@ -214,9 +219,15 @@ function renderTop(s) {
     const g = E.segs[i];
     g.root.className = 'sp ' + (k === myScorer(s) ? 'sp-wij' : 'sp-zij');
     g.lbl.textContent = scoreLabel(s, k);
-    countUp(g.num, s.total?.[k] ?? 0);
+    // This hand's tricks and points (roem included); the stand is on the
+    // score sheet, a tap away.
+    const now = handNow(s, k);
+    g.tr.textContent = `${now.tricks} ${now.tricks === 1 ? 'slag' : 'slagen'}`;
+    countUp(g.num, now.points);
     setScoreNames(g.names, s, k);
   });
+  const title = handNowTitle(s);
+  if (E.pill.title !== title) E.pill.title = title;
   E.pill.classList.toggle('three', order.length === 3);
   E.expert.hidden = !s.expert && !s.training; // the reasoning: expert mode and training
   E.potjeN.textContent = s.handNo || 1;
@@ -662,7 +673,7 @@ function renderPrompt(s) {
   let cls = 'rule';
   const lifted = s.phase === 'play' && my && !pending && selected && (s.legal || []).includes(selected) ? selected : '';
   if (lifted) { text = liftedText(lifted); cls += ' mine'; }
-  else if (s.phase === 'play' && my && !pending) { text = s.rule || 'Jouw beurt: speel een kaart'; cls += ' mine'; }
+  else if (s.phase === 'play' && my && !pending) { text = ((prefs.ruleTips || s.opts?.lesson) && s.rule) || 'Jouw beurt: speel een kaart'; cls += ' mine'; } // a lesson may point at the rule: it always shows there
   else if (s.phase === 'play' && s.turn >= 0 && !my) text = `${nameOf(s, s.turn)} is aan de beurt`;
   else if (s.phase === 'trump' && my) { text = 'Jij mag troef kiezen'; cls += ' mine'; }
   else if (s.phase === 'bid' && my) { text = 'Spelen of passen?'; cls += ' mine'; }
@@ -1735,7 +1746,8 @@ export function relayout() {
 
 function mini(code, cls = '') {
   const c = createCard(code, { size: 'sm' });
-  if (cls) c.classList.add(cls);
+  const names = cls.split(' ').filter(Boolean);
+  if (names.length) c.classList.add(...names);
   return c;
 }
 
@@ -1783,26 +1795,28 @@ function trickCross(s, t) {
 
 function openTrick(s, t, i, owner, hand) {
   sound.play('click');
-  const m = openModal({ id: 'trick', title: `Slag ${i + 1}`, cls: 'm-last', body: [...trickCross(s, t), replayButton(hand, i + 1)] });
+  const m = openModal({ id: 'trick', title: `Slag ${i + 1}`, cls: 'm-last', body: trickCross(s, t) });
   m.owner = owner;
 }
 
-// Under a trick of finished hand `hand`, at a table of four: the button that
-// opens that hand in the replay, just before the player's card in the
-// trick. The server sends the hand (handReview); until then the button
-// says it is loading. A reconnect asks again (onReconnect).
-let handWait = null; // {hand, trick, btn, done}: the tap waiting for its hand
-function replayButton(hand, trick) {
+// With the tricks of finished hand `hand`, at a table of four (the hand
+// summary, the score sheet's last potje): the button that opens that hand
+// in the replay, before its first card. The server sends the hand
+// (handReview); until then the button says it is loading. A reconnect asks
+// again (onReconnect).
+let handWait = null; // {hand, btn, done}: the tap waiting for its hand
+function replayButton(hand) {
   const s = app.s;
   if (!s || seatCount(s) !== 4 || !s.scores?.some(r => r.hand === hand)) return null;
-  const label = () => [icon('history'), 'Dit potje terugkijken'];
+  // A short screen has the button beside Volgend potje, with the short label.
+  const label = () => [icon('history'), h('span', { class: 'lr-full', text: 'Dit potje terugkijken' }), h('span', { class: 'lr-short', text: 'Terugkijken' })];
   const btn = h('button', {
     class: 'btn btn-ghost btn-block last-replay', type: 'button', onclick: () => {
       sound.play('click');
       handWait?.done();
       btn.disabled = true;
       btn.replaceChildren('Laden…');
-      const w = handWait = { hand, trick, btn, done: () => { btn.disabled = false; btn.replaceChildren(...label()); } };
+      const w = handWait = { hand, btn, done: () => { btn.disabled = false; btn.replaceChildren(...label()); } };
       w.sent = app.send({ t: 'handReview', hand }); // false: queued until the connection is back
     },
   }, label());
@@ -1925,6 +1939,7 @@ function showReview(s, m, r) {
     h('button', { class: 'btn btn-ghost btn-sm back-btn', type: 'button', onclick: () => { m.view = 'score'; m.refresh(); } }, icon('back'), 'Terug naar scorebord'),
     resultLine(s, res),
     review(asInHand(s, res), s.prevHand.tricks, 'score', r.hand),
+    replayButton(r.hand),
     h('p', { class: 'legend', text: seatCount(s) === 4 ? 'De kaarten liggen in speelvolgorde, gekleurd per koppel. Tik op een slag om te zien wie wat speelde.'
       : 'De kaarten liggen in speelvolgorde, gekleurd per kant. Tik op een slag om te zien wie wat speelde.' }));
 }
@@ -1946,15 +1961,13 @@ function resultLine(s, r) {
 
 // ---------- last trick ----------
 
-// Once a hand is over, its last trick also opens the hand in the replay.
 export function openLastTrick() {
   const s = app.s;
   if (!s) return;
   const t = s.lastTrick;
   if (!t?.cards?.length) { toast('Er is nog geen slag gespeeld'); return; }
   sound.play('click');
-  const over = s.phase === 'handEnd' || s.phase === 'gameOver';
-  openModal({ id: 'last', title: 'Laatste slag', cls: 'm-last', body: [...trickCross(s, t), over ? replayButton(s.scores?.at(-1)?.hand, 8) : null] });
+  openModal({ id: 'last', title: 'Laatste slag', cls: 'm-last', body: trickCross(s, t) });
 }
 
 // ---------- trump / variant info ----------
@@ -2129,7 +2142,7 @@ function showSummary(s, ev) {
         seatCount(s) === 3 ? discardLine(s, r) : natWhy(s, r, w),
         tricks.length ? h('div', { class: 'sum-review' + (n !== 4 ? ` sum-review-${n}` : '') }, h('h3', {}, 'De slagen', h('small', { text: ' · tik voor wie wat speelde' })),
           review(asInHand(s, r), tricks, 'summary', s.handNo)) : null,
-        h('div', { class: 'sum-foot' }, go, ready),
+        h('div', { class: 'sum-foot' }, h('div', { class: 'sum-go' }, replayButton(s.handNo), go), ready),
       ],
     });
     overlayUp(m);
@@ -2400,30 +2413,30 @@ function openReview() {
 // what Juf Jannie thinks of it (the hand's choices). hands are the hands
 // to step through: one hand from handReview (owner 'hand'; pending: its
 // grades still out), or every hand of the review at game over (owner
-// 'review'). It starts at the first hand's deal, at {hand, step}, or just
-// before the player's card of a moment {hand, trick} (at the deal for a
-// trump choice or bid). A step is the number of cards played: at 4 × n
-// trick n lies complete.
+// 'review'). It starts at the first hand's deal, or at a moment {hand,
+// trick}: with the player's card of that trick just played (the deal for
+// a trump choice or bid, trick 0). A step is the number of cards played:
+// at 4 × n trick n lies complete.
 function openReplay(s, { hands, moment = null, owner = 'review' }) {
   if (!hands?.length) return null;
   sound.play('click');
   const seats = [0, 1, 2, 3].map(k => (s.you + k) % 4);
   const cardsOf = rh => rh.tricks.flatMap(t => t.cards);
   const indexOf = n => Math.max(0, hands.findIndex(x => x.hand === n));
-  // The step just before the player's card in trick d.trick of hand rh:
-  // for a lead the trick before still lies complete; the deal (0) for a
-  // trump choice or bid.
-  const before = (rh, d) => {
+  // The step with the player's card in trick d.trick of hand rh just
+  // played; the deal (0) for a trump choice or bid.
+  const at = (rh, d) => {
     const t = d.trick ? rh?.tricks[d.trick - 1] : null;
-    return t ? 4 * (d.trick - 1) + Math.max(0, t.cards.findIndex(pc => pc.seat === s.you)) : 0;
+    return t ? 4 * (d.trick - 1) + Math.max(0, t.cards.findIndex(pc => pc.seat === s.you)) + 1 : 0;
   };
   let hand = indexOf(moment?.hand);
-  let step = moment ? before(hands[hand], moment) : 0;
+  let step = moment ? at(hands[hand], moment) : 0;
   const m = openModal({ id: 'replay', title: 'Terugkijken', cls: 'm-replay', body: [] });
   m.owner = owner;
   // A hand looked back at during the next one: your turn at the table. To
-  // the table closes the views that led here too, top down, so the focus
-  // goes back to the table. The text comes a frame after the line shows,
+  // the table closes the views under it too (the score sheet that led
+  // here, a trick opened meanwhile), top down, so the focus goes back to
+  // the table. The text comes a frame after the line shows,
   // so a screen reader announces it.
   const turnText = h('span');
   const turn = h('p', { class: 'rp-turn', role: 'status', hidden: true }, turnText,
@@ -2490,15 +2503,15 @@ function openReplay(s, { hands, moment = null, owner = 'review' }) {
     const complete = shown.length === 4;
     const next = step < n ? played[step].seat : -1;
     const trump = row ? { suit: row.trump, by: row.trumpBy } : null;
-    // The player's graded decisions at this step (at the deal maybe a bid,
-    // a trump choice and the lead of the first trick), else the latest one
-    // before it.
+    // The player's graded decisions of what is on the table: the card of
+    // the trick shown, at every step of that trick; before the first card
+    // the bid and the trump choice.
     const choices = rh.choices || [];
-    const now = choices.filter(d => before(rh, d) === step);
-    const last = now.length ? null : choices.filter(d => before(rh, d) < step).at(-1);
-    // The player's card and the option it is measured against, marked in
-    // their hand at the decision itself: the stronger of the two in gold.
-    // A card that lost and gained nothing is not marked.
+    const now = choices.filter(d => (d.trick || 0) === ti + 1);
+    // The player's card and the option it is measured against, marked
+    // while that trick shows, in the hand or, once played, on the table:
+    // the stronger of the two in green, a card that lost points in red. A
+    // card that lost and gained nothing is not marked.
     const mo = now.find(d => d.played?.card && (d.better || d.points > 0));
     const playedCls = mo?.better ? 'rp-played' : 'rp-better';
     const alt = mo && (mo.better || mo.alt);
@@ -2514,7 +2527,7 @@ function openReplay(s, { hands, moment = null, owner = 'review' }) {
       const pc = shown.find(x => x.seat === seat);
       const win = complete && trick.winner === seat;
       return h('div', { class: `cross-slot cs-${posOf(s, seat)} ${teamCls(s, seat)}` + (win ? ' win' : '') + (seat === next && !complete ? ' turn' : '') },
-        pc ? mini(pc.card, win ? 'winner' : '') : h('div', { class: 'rp-slot' }),
+        pc ? mini(pc.card, (win ? 'winner ' : '') + (seat === s.you ? marks.get(pc.card) || '' : '')) : h('div', { class: 'rp-slot' }),
         playerName(nameOf(s, seat), { cls: 'cs-name', title: true }));
     }));
     const what = complete
@@ -2525,14 +2538,13 @@ function openReplay(s, { hands, moment = null, owner = 'review' }) {
       : next >= 0 ? h('p', { class: 'last-sum rp-what' }, next === s.you ? 'Jij bent aan de beurt' : `${nameOf(s, next)} is aan de beurt`) : null;
 
     // A graded decision as in the review: points left, a strong move, or
-    // neither; away from it, a button back to it.
+    // neither.
     const rated = d => d.better || d.points > 0;
-    const choice = (d, here) => h('div', { class: 'rp-moment' + (here ? ' now' : '') },
+    const choice = d => h('div', { class: 'rp-moment now' + (d.better ? ' missed' : d.points > 0 ? ' strong' : '') },
       h('span', { class: 'rv-where', text: momentWhere({ hand: rh.hand, trick: d.trick }) }),
       h('span', { class: 'rv-text' }, suitify(d.better ? missedLine(d) : d.points > 0 ? Object.values(strongLine(d)).join('') : fineLine(d))),
-      rated(d) ? h('span', { class: 'rv-sum' }, suitify(outcomeLine(d))) : null,
-      here ? null : h('button', { class: 'btn btn-ghost btn-sm', type: 'button', dataset: { key: 'choice' }, onclick: () => go(hand, before(rh, d)) }, 'Naar deze keuze'));
-    const box = now.length ? now.map(d => choice(d, true)) : last ? [choice(last, false)] : [];
+      rated(d) ? h('span', { class: 'rv-sum' }, suitify(outcomeLine(d))) : null);
+    const box = now.map(choice);
     const sum = handSum(choices, rh.pending);
     const hand4 = seat => h('div', { class: 'rp-hand ' + teamCls(s, seat) + (seat === next && !complete ? ' turn' : '') },
       playerName(nameOf(s, seat), { cls: 'rp-name', title: true }),
@@ -2562,8 +2574,8 @@ function openReplay(s, { hands, moment = null, owner = 'review' }) {
         seats.slice(1).map(hand4)),
       h('p', { class: 'legend', text: 'Alle kaarten liggen open. Bij een keuze zag de speler alleen de eigen kaarten en wat er gespeeld was.' }),
     ].filter(Boolean));
-    // The player's card in a trick that lost points has a light dot, a
-    // strong one a gold dot.
+    // The player's card in a trick that lost points has a red dot, a
+    // strong one a green dot.
     const dot = d => (d?.better ? 'missed' : d?.points > 0 ? 'strong' : '');
     bar.replaceChildren(
       h('div', { class: 'rp-steps' },
@@ -2585,8 +2597,8 @@ function openReplay(s, { hands, moment = null, owner = 'review' }) {
 }
 
 // A hand from the server (handReview): opened in the replay for the tap
-// that asked for it, while that tap's trick is still open; else the grades
-// so far for the hand the replay shows.
+// that asked for it, while the view with that button is still open; else
+// the grades so far for the hand the replay shows.
 export function onHandReview(msg) {
   const rh = { ...msg.replay, pending: msg.pending };
   const w = handWait;
@@ -2594,7 +2606,7 @@ export function onHandReview(msg) {
     handWait = null;
     w.done();
     if (w.btn.closest('.modal.open') && app.s) {
-      openReplay(app.s, { hands: [rh], moment: { hand: msg.hand, trick: w.trick }, owner: 'hand' });
+      openReplay(app.s, { hands: [rh], moment: { hand: msg.hand, trick: 0 }, owner: 'hand' });
       return;
     }
   }
@@ -2624,8 +2636,8 @@ export function overlayError() {
 }
 
 // The connection is back (see the shell's panels.onReconnect): a hand asked
-// over the old connection is asked again, while its trick view is open (a
-// second answer only refreshes the replay). The expert's question likewise.
+// over the old connection is asked again, while the view with its button is
+// open (a second answer only refreshes the replay). The expert's question likewise.
 export function overlayReconnect() {
   expertJs?.onReconnect();
   const w = handWait;

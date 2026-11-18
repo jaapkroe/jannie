@@ -60,10 +60,10 @@ const ICONS = {
   chat: ['M20.5 11.5a8 8 0 0 1-11.7 7.1L4 20l1.3-4.4A8 8 0 1 1 20.5 11.5z'],
   help: ['M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z', 'M9.6 9.3a2.5 2.5 0 1 1 3.6 2.3c-.7.4-1.2.9-1.2 1.7v.4', 'M12 17h.01'],
   settings: ['M4 7h8', 'M18 7h2', 'M15 4.5v5', 'M4 17h2', 'M12 17h8', 'M9 14.5v5'],
-  soundOn: ['M11 5 6.5 9H3.5v6h3L11 19z', 'M15.5 9a4.5 4.5 0 0 1 0 6', 'M18.5 6a8.5 8.5 0 0 1 0 12'],
-  soundOff: ['M11 5 6.5 9H3.5v6h3L11 19z', 'M16 9.5l5 5', 'M21 9.5l-5 5'],
   menu: ['M5 12h.01', 'M12 12h.01', 'M19 12h.01'],
   close: ['M6 6l12 12', 'M18 6 6 18'],
+  grow: ['M5 5h14v14H5z'],
+  shrink: ['M9 9h10v10H9z', 'M5 15V5h10'],
   copy: ['M9 9h10v11H9z', 'M5 15V4h10'],
   share: ['M12 3v12', 'M8 7l4-4 4 4', 'M5 12v7a1.5 1.5 0 0 0 1.5 1.5h11A1.5 1.5 0 0 0 19 19v-7'],
   back: ['M15 18l-6-6 6-6'],
@@ -139,9 +139,12 @@ export const store = {
 
 const coarse = matchMedia('(pointer: coarse)').matches;
 
-// Per-device preferences (kj.prefs).
+// Per-device preferences (kj.prefs). ruleTips: the line under the table
+// explains the rule for your card; botChat and botChatPractice: what the
+// AI players say shows, at an ordinary table and at a practice table
+// (docs/frontend.md#chat).
 export const prefs = Object.assign(
-  { fourColor: false, tap: coarse ? 'two' : 'one', reduced: false, tab: 'bediening' },
+  { fourColor: false, tap: coarse ? 'two' : 'one', reduced: false, tab: 'bediening', ruleTips: true, botChat: true, botChatPractice: false },
   store.json('prefs', {}),
 );
 export function savePrefs() { store.setJSON('prefs', prefs); }

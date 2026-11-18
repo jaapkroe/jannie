@@ -648,7 +648,7 @@ function onChat(msg) {
   if (!msg) return;
   panels.chatAdd(msg, true);
   // Juf Jannie's lessons and explanations show in the coach bubble already.
-  if (app.s && msg.seat >= 0 && !msg.sys && !msg.coach) table.bubble(app.s, msg.seat, msg.text);
+  if (app.s && msg.seat >= 0 && !msg.sys && !msg.coach && panels.chatShown(msg)) table.bubble(app.s, msg.seat, msg.text);
 }
 
 // ---------- boot ----------
@@ -660,7 +660,6 @@ function boot() {
   table.init();
   home.init(game);
   panels.initChat();
-  panels.refreshSound();
 
   const unlock = () => { sound.unlock(); };
   addEventListener('pointerdown', unlock, { once: true, capture: true });

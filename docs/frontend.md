@@ -150,6 +150,10 @@ export const TOOLS;         // the game's top-bar tools for panels.toolButtons, 
                             //   name: [icon, label, title, fn, {hidden}?]
 export const menuTitle, menu;  // the menu button's tooltip; menu(item) → the game's menu items, before the shell's
 export const soundSub, chatQuick, chatCls;  // settings line under Geluidseffecten; quick chat lines; a sender's colour
+export const ruleTips, onPrefs;  // optional: the settings line under Uitleg van de regels, a switch only a game with
+                            //   this line has; called when that switch changes at the table ("Settings")
+export function practice(s);  // optional: whether s is a practice table, besides a table in training (s.training):
+                            //   the chat of AI players is kept apart there ("Chat")
 export const sync, onError, onReconnect;    // after every update; on a refusal; on a new connection (all optional)
 export const messages, queued;  // the game's own server messages: handled at once, or after the animations before them
 export const home;          // options (rows: key, label, choices, info, players?, input?, multi + value?), defaults,
@@ -469,6 +473,35 @@ it hold still while it is open (not a lesson spot in the top bar). The
 sheet is at most 900 px high, so in a taller window the table shows above
 it and they keep moving.
 
+### Settings
+
+*Instellingen*, from the gear in the lobby bar and the tables' top bars
+(under 600 px wide in the ⋯ menu): one sheet on every site, every choice
+kept on the device. Its groups:
+
+- *Geluid*: *Geluidseffecten* (under it the game's `soundSub`) and
+  *Volume* (`kj.sound`). This is where the sound goes on and off: the
+  lobby bar, the tables' top bars and the ⋯ menu have no sound button.
+- *Kaarten*: *Vierkleurenspel*, and *Kaart spelen op een touchscreen*
+  (*Eén tik* / *Twee tikken*).
+- *Bellen*: *Bellen voorstellen* and *Automatisch meebellen*
+  ([Calling](#calling)).
+- *Chat*: *Chat van AI-spelers* ([Chat](#chat)).
+- *Weergave*: *Uitleg van de regels* (below) and *Minder animaties*
+  ([Motion and glows](#motion-and-glows)).
+- *Jij*: the name; at a table also *Spel verlaten*.
+
+*Uitleg van de regels* is there only in a game with such texts
+(`game.ruleTips`, the line under the switch: klaverjas and toepen), and
+is on by default (`ruleTips` in `kj.prefs`). Off, the line under the table
+no longer explains the rule for the player's card on their turn (the
+state's `rule`: "Je kunt niet bekennen: je moet troeven (♦)") and only
+says that it is their turn (klaverjas: "Jouw beurt: speel een kaart";
+toepen: "Jij bent aan de beurt"). Everything else on that line stays: the
+card lifted ("Tik nog eens om ♠A te spelen"), whose turn it is. The game
+draws its table again when the switch changes at the table
+(`game.onPrefs`); changed in the lobby, the next table reads it.
+
 ### Chat
 
 Drawer (on wide screens the side column, below), quick reactions (the game's
@@ -486,6 +519,21 @@ still queued from before a reconnect is not shown twice, and your own
 line waits behind a chat log still queued, which was sent before it.
 `app-checks.mjs --only queue` sends lines during the trump banner and
 drops the socket there.
+
+What the AI players say can be switched off: Instellingen, *Chat*, the
+one switch *Chat van AI-spelers*. It is kept per kind of table in
+`kj.prefs`: `botChat` for an ordinary table, on by default, and
+`botChatPractice` for a practice table, off by default. A practice table
+is one in training (`s.training`) or one the game calls practice
+(`game.practice(s)`: a table of lessons). The sheet shows the switch of
+the kind of table the player is at ("Wat AI-spelers zeggen aan een
+oefentafel. De uitleg van een les blijft."), and anywhere else the
+ordinary one ("Wat AI-spelers zeggen aan tafel. Aan een oefentafel stel
+je dit apart in."). Off, a line of an AI player is
+not in the chat list and gives no speech bubble and no chat sound; it
+stays in the log, and shows when the switch goes on. A lesson's coach
+lines (`coach`: Juf Jannie's explanation), system lines and what people
+write always show (`chatShown` in `panels.js`).
 
 ### Calling
 
@@ -583,13 +631,14 @@ would otherwise refuse the sound; a priming refused (a swipe is no
 gesture) waits for the next tap. A browser that still refuses gets "Tik
 ergens om de anderen te horen" once someone in the call has the
 microphone on, and the next tap plays everything. The call buttons sit
-in the prompt row
-right of the rule: *Microfoon* and *Camera* toggles (`aria-pressed`,
-coral while off) and a red *Ophangen*; while they show, a long rule wraps
-sooner, so the two never overlap. On phones under 600 px the two toggles
-stand in a row above the last-trick button, clear of the right seat and
-the trick, and *Ophangen* is in the ⋯ menu. Not in the call, one button
-*Bellen* (on phones also in the ⋯ menu) opens the dialog. In the lobby
+in the table's top bar, before the tools: not in the call one button
+*Bellen*, which opens the dialog; in the call *Microfoon* and *Camera*
+toggles (`aria-pressed`, coral while off) and a red *Ophangen*. Under
+600 px wide the bar has no room for the toggles and keeps *Bellen* or
+*Ophangen*; the ⋯ menu there has the two toggles as items while the page
+is in the call on a device with a microphone and camera (*Microfoon
+uitzetten* / *aanzetten*, *Camera uitzetten* / *aanzetten*, with the
+button's icon). The ⋯ menu has no *Bellen* or *Ophangen*. In the lobby
 the same buttons sit under the table, *Bellen* and *Ophangen* with their
 label. The question whether to call by itself sits just above the
 answers. In short landscape the dialog puts the microphone's and
@@ -641,6 +690,18 @@ chat's place, with its own section tabs and scrolling pane, as a reference
 beside the cards. The second tab has the game's word for its manual
 (`game.home.help.tab`; toepen: *Spelregels*).
 
+Beside the tabs are two buttons for the column's size. *Groter maken*
+makes it large, `clamp(480px, 40vw, 760px)` wide instead of 340 px, for
+more room to read; the table keeps the rest, and the button is then
+*Kleiner maken*, back to 340 px. *Sluiten* closes the column: the table
+has the whole width, the hand summary and game over too, and the top
+bar's chat button shows again as on a narrower screen. The chat button
+or the help button brings the column back, 340 px wide, at that tab. The
+size stays on the device (`kj.sideSize`: nothing, `large` or `closed`;
+the body has class `side-large` or `side-closed`). A chat drawer left
+open on a narrower screen is shut once the screen is wide, so closing
+the column never brings it out.
+
 A game opens its manual with `panels.openManual({ id, title, cls, body })`
 wherever it opened a modal for it. With a column that puts `body` in it and
 selects the tab, without a modal or a backdrop: the table stays in use,
@@ -661,7 +722,9 @@ next shows on a wide screen: the manual is then asked from the game, once
 per room, so a manual module that is loaded when first needed is loaded
 then, not with the page. While *Handleiding* shows, the chat is not in
 sight: what people write counts on the unread badge, which sits on the tab
-*Chat* and clears when that tab shows.
+*Chat* and clears when that tab shows. While the column is closed the
+manual is not asked from the game by itself, only when the column comes
+back, and the unread badge counts on the top bar's chat button.
 
 When the window gets narrower than 1200 px the column goes, and the manual
 with it: the chat is the drawer again and the manual a modal, from the

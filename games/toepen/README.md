@@ -431,7 +431,12 @@ sterk decision takes about 4 ms.
   cards come from the middle; on armoede the hand is shown in the middle
   first; a caught bluffer's cards lie face up at its seat (*speelt
   open*). Keys: 1–4 (1–8) play a card, T toeps or overtoeps. Sound
-  `knock` for a toep.
+  `knock` for a toep. On your turn to play a card the question of the
+  moment is the state's `rule` ("Je moet bekennen (♥)."), or "Jij bent aan
+  de beurt" with *Uitleg van de regels* off
+  ([docs/frontend.md, "Settings"](../../docs/frontend.md#settings)); the
+  line under it stays. The top bar has, before its tools, the call
+  buttons ([docs/frontend.md, "Calling"](../../docs/frontend.md#calling)).
 - The manual (*Spelregels toepen*, from the table and the home screen; on
   a wide screen at a table in the side column, under the tab *Spelregels*,
   [docs/frontend.md, "The side column"](../../docs/frontend.md#the-side-column),

@@ -6,7 +6,7 @@
 // over, the standings and the manual.
 // The shell (main.js, home.js, panels.js) does the rest; game.js ties the
 // two together. Pure parts: rules.js.
-import { app, h, clear, icon, toast, avatar, fillAvatar, playerName, wait, anim, dur, vibrate, store, chartBox } from './util.js';
+import { app, h, clear, icon, toast, avatar, fillAvatar, playerName, wait, anim, dur, vibrate, store, chartBox, prefs } from './util.js';
 import { createCard, createBack, cardName } from './cards.js';
 import { sound } from './sound.js';
 import * as panels from './panels.js';
@@ -39,7 +39,9 @@ export function init() {
     E.stakeTop = h('div', { class: 'tp-stake-top', title: 'De inzet: zoveel strafpunten krijgt wie de laatste slag niet haalt' },
       h('span', { class: 'tp-st-lbl', text: 'Inzet' }), E.stakeN = h('b', { text: '1' })),
     h('span', { class: 'spacer' }),
-    ...panels.toolButtons(['chat', 'why', 'help', 'settings', 'sound', 'menu']));
+    // The call buttons (call.js), before the tools.
+    E.callDock = h('div', { class: 'call-dock', role: 'group', 'aria-label': 'Bellen', hidden: true }),
+    ...panels.toolButtons(['chat', 'why', 'help', 'settings', 'menu']));
   E.why = E.top.querySelector('.tb-why');
   E.table = h('div', { class: 'tp-table' }, h('div', { class: 'tp-felt', 'aria-hidden': 'true' }));
   E.seats = h('div', { class: 'tp-seats' });
@@ -56,8 +58,7 @@ export function init() {
   E.ring = panels.countdownRing();
   E.ringBox = h('span', { class: 'tp-ring', hidden: true }, E.ring.el);
   E.vote = h('div', { class: 'tp-vote', hidden: true });
-  E.callDock = h('div', { class: 'call-dock', role: 'group', 'aria-label': 'Bellen', hidden: true });
-  E.prompt = h('div', { class: 'tp-prompt' }, E.me, E.text, E.ringBox, E.actions, E.vote, E.callDock);
+  E.prompt = h('div', { class: 'tp-prompt' }, E.me, E.text, E.ringBox, E.actions, E.vote);
   E.hand = h('div', { class: 'tp-hand', role: 'group', 'aria-label': 'Jouw kaarten' });
   root.append(E.top, E.table, E.prompt, E.hand);
   // A tap beside your cards puts a lifted card down again.
@@ -88,7 +89,7 @@ export function render(s) {
 }
 
 // The call, once call.js is loaded: a seat's video in place of its face,
-// and the call buttons by your name.
+// and the call buttons in the top bar.
 export function renderCall() {
   if (!app.call || !E.callDock) return;
   app.call.dock(E.callDock);
@@ -251,7 +252,8 @@ function renderTrick(s) {
 }
 
 function renderPrompt(s) {
-  const q = R.prompt(s);
+  // Without the rule's explanation (Instellingen): only whose turn it is.
+  const q = R.prompt(prefs.ruleTips ? s : { ...s, rule: '' });
   const choice = aiOnlyPanel(s);
   const vote = votePanel(s) || choice;
   E.vote.hidden = !vote;
