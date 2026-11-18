@@ -184,8 +184,11 @@ The `Containerfile`'s stages:
   `@VERSION@` and `@SUPPORT_URL@` into the game's `index.html` (`og:image`,
   the version, and `<meta name="support">`, empty without a link), where it
   also puts every `/css/` and `/js/` link under `/v/<hash>/`
-  ([nginx](#nginx)); `web` copies the union of the two trees and that
-  `index.html`.
+  ([nginx](#nginx)); `web` upgrades the image's Alpine packages (`apk
+  upgrade`), then copies the union of the two trees and that `index.html`.
+  `make image-web` passes the build's time as `BUILD_STAMP`, which keeps
+  podman from taking the upgrade from its layer cache: every build asks
+  Alpine again.
 
 The build copies `extra/`, and podman refuses to copy a directory that is
 not there: `make image-server` and `make image-web` make an empty `extra/`
@@ -195,7 +198,9 @@ extra` ([adding-a-game.md, "The overlay"](adding-a-game.md#the-overlay)).
 The base tags (minor versions) live only in the `Containerfile`;
 `scripts/go` and `scripts/dev-server` read the build image from its `FROM …
 AS build` line, and `make image` builds with `--pull=newer`, so a fix
-re-published under the same tag reaches the next build.
+re-published under the same tag reaches the next build. A fix in an Alpine
+package that the nginx image has not been built again with reaches the web
+image through its own upgrade.
 
 ## nginx
 
@@ -576,7 +581,9 @@ longer exists.
 The `Containerfile` names its base images by minor version, without a
 digest (see its `FROM` lines). Security fixes in Go, nginx or Alpine are
 published again under those same tags, and every image build uses
-`--pull=newer`, so it picks them up: rebuilding is the response to a
+`--pull=newer`, so it picks them up; the web image upgrades its Alpine
+packages besides, for a fix its base image does not have yet
+("[Images](#images)" above): rebuilding is the response to a
 vulnerability found in any game's image. `make deploy` rebuilds the web
 image every time, and the server with a change to its code or with
 `SERVER=1`, which a fix in Go or in the golang image needs (the server

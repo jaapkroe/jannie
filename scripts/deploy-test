@@ -377,8 +377,9 @@ expect "make deploy looks up the server the pod runs, before it builds" 1 \
 # web image with the deployment's support link, none here (no local.mk).
 expect "klaverjas's server image" 1 \
   "$(has "podman build --target server --pull=newer --build-arg GIT_SHA=$head --build-arg GAME=klaverjas -t localhost/klaverjas-server:" "$calls")"
-expect "klaverjas's web image" 1 "$(has "podman build --target web --pull=newer --build-arg GIT_SHA=$head \
---build-arg GAME=klaverjas --build-arg GAME_DIR=games/klaverjas --build-arg SITE=klaverjas.kroes.dev --build-arg TITLE=Klaverjas \
+expect "klaverjas's web image, with the build's time" 1 "$(holds grep -q "^podman build --target web --build-arg BUILD_STAMP=$stamp \
+--pull=newer --build-arg GIT_SHA=$head \
+--build-arg GAME=klaverjas --build-arg GAME_DIR=games/klaverjas --build-arg SITE=klaverjas\.kroes\.dev --build-arg TITLE=Klaverjas \
 --build-arg VERB=klaverjassen --build-arg SUPPORT_URL= -t localhost/klaverjas-web:" "$calls")"
 # A rebuild of the same commit (for a fixed base image) keeps the build before it.
 sleep 1
@@ -394,7 +395,7 @@ for g in $games; do
   expect "make deploy GAME=$g, exit status" 0 "$status"
   expect "make deploy GAME=$g builds its server" 1 "$(grep -c "^podman build --target server --pull=newer \
 --build-arg GIT_SHA=$(rev "$g") --build-arg GAME=$g -t localhost/$g-server:$(rev "$g")-$stamp \.\$" "$calls" || true)"
-  expect "make deploy GAME=$g builds its web image, from its folder" 1 "$(grep -c "^podman build --target web --pull=newer \
+  expect "make deploy GAME=$g builds its web image, from its folder" 1 "$(grep -c "^podman build --target web --build-arg BUILD_STAMP=$stamp --pull=newer \
 --build-arg GIT_SHA=$(rev "$g") --build-arg GAME=$g --build-arg GAME_DIR=$(folder "$g") --build-arg SITE=$(val "$g" SITE) \
 --build-arg TITLE=$(val "$g" TITLE) --build-arg VERB=$(val "$g" VERB) --build-arg SUPPORT_URL= -t localhost/$g-web:$(rev "$g")-$stamp \.\$" \
     "$calls" || true)"
